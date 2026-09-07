@@ -4,7 +4,9 @@
 // No cachea datos dinámicos (webhook AS).
 // ═══════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'cu-v6-cache-v94';
+// v95: purga las respuestas de servicios de Maps que el patrón anterior había
+// dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
+const CACHE_NAME = 'cu-v6-cache-v95';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -67,6 +69,17 @@ const SWR_PATTERNS = [
 const NO_CACHE_PATTERNS = [
   'script.google.com',
   'script.googleusercontent.com',
+  // Servicios internos de la API de Maps. Cuelgan de /maps/api/js/ y por eso
+  // caían en el cache-first de CDN_PATTERNS ('maps.googleapis.com/maps/api/js'),
+  // que está pensado para el bootstrap y los módulos versionados. No son
+  // assets: Authenticate valida la clave, QuotaService reporta uso y
+  // GetMapImage viene firmada con un token que caduca. Servir una respuesta
+  // vieja de Authenticate rompe el mapa cuando el token rota.
+  '/maps/api/js/AuthenticationService',
+  '/maps/api/js/QuotaService',
+  '/maps/api/js/StaticMapService',
+  '/maps/api/js/ViewportInfoService',
+  '/maps/api/mapsjs/gen_204',
 ];
 
 function isCDN(url) {

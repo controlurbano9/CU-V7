@@ -788,6 +788,29 @@ function _BtnAccion({ children, onClick, busy, ...rest }) {
   );
 }
 
+// Ejecuta cb(true) cuando la API JS de Google Maps esté disponible.
+// El <script> de Maps en index.html es `async`: puede llegar DESPUÉS de que
+// React monte la vista. Antes los efectos de mapa salían sin construir nada y
+// NO reintentaban (Nueva visita se quedaba con el recuadro vacío hasta la
+// primera captura GPS; Norma dejaba fijo "Google Maps no cargó").
+// Sondea cada 300 ms y se rinde a los timeoutMs (20 s por defecto) con
+// cb(false). Devuelve la función para cancelar el sondeo.
+// Compartida con consulta-norma.jsx (build.js concatena los .jsx en un solo
+// scope; nueva-visita.jsx va antes que consulta-norma.jsx).
+function _cuandoGoogleMapsListo(cb, timeoutMs) {
+  if (typeof google !== 'undefined' && google.maps) { cb(true); return function () {}; }
+  var limite = Date.now() + (timeoutMs || 20000);
+  var id = setInterval(function () {
+    if (typeof google !== 'undefined' && google.maps) { clearInterval(id); cb(true); }
+    else if (Date.now() > limite) { clearInterval(id); cb(false); }
+  }, 300);
+  return function () { clearInterval(id); };
+}
+
+function _googleMapsYaEsta() {
+  return typeof google !== 'undefined' && !!google.maps;
+}
+
 // Mapa Google Maps con pin arrastrable para corregir coordenadas.
 // Sin coordenadas muestra vista general de Bello; con coords, zoom 18 + pin.
 function _MapaGPS({ lat, lon, onMove }) {
@@ -797,11 +820,26 @@ function _MapaGPS({ lat, lon, onMove }) {
   const gMapRef = React.useRef(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const markerRef = React.useRef(null);
+  // onMove en ref: el listener 'dragend' se registra UNA sola vez (al crear el
+  // marcador) y capturaba el onMove de aquel render. Como es una arrow inline,
+  // el closure quedaba congelado con las funciones de ese primer render.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const onMoveRef = React.useRef(onMove);
+  onMoveRef.current = onMove;
+  // null = esperando el script de Maps · true = listo · false = se rindió
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [gmListo, setGmListo] = useStateNV(_googleMapsYaEsta() ? true : null);
   const tieneCoords = lat != null && lon != null;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffectNV(() => {
-    if (!mapRef.current || typeof google === 'undefined' || !google.maps) return;
+    if (gmListo !== null) return;
+    return _cuandoGoogleMapsListo(setGmListo);
+  }, [gmListo]);
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffectNV(() => {
+    if (gmListo !== true || !mapRef.current) return;
     const pos = tieneCoords
       ? { lat: Number(lat), lng: Number(lon) }
       : { lat: 6.338, lng: -75.556 };
@@ -826,7 +864,7 @@ function _MapaGPS({ lat, lon, onMove }) {
         });
         markerRef.current.addListener('dragend', () => {
           const p = markerRef.current.getPosition();
-          if (onMove) onMove(p.lat(), p.lng());
+          if (onMoveRef.current) onMoveRef.current(p.lat(), p.lng());
         });
       } else {
         markerRef.current.setPosition(pos);
@@ -835,13 +873,16 @@ function _MapaGPS({ lat, lon, onMove }) {
     } else if (markerRef.current) {
       markerRef.current.setMap(null);
     }
-  }, [lat, lon]);
+  }, [lat, lon, gmListo]);
 
   // Limpieza de listeners al desmontar (mapa/marker persisten toda la vida
   // del componente, se crean una sola vez arriba — solo falta esto al final).
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
   useEffectNV(() => {
     return () => {
+      // Guardado: si el script de Maps nunca cargó, `google` no existe y el
+      // propio desmontaje lanzaría.
+      if (!_googleMapsYaEsta()) return;
       if (markerRef.current) google.maps.event.clearInstanceListeners(markerRef.current);
       if (gMapRef.current) google.maps.event.clearInstanceListeners(gMapRef.current);
     };
@@ -850,7 +891,10 @@ function _MapaGPS({ lat, lon, onMove }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
-        {tieneCoords ? 'Arrastra el pin para corregir la ubicación' : 'Captura tu ubicación para colocar el pin'}
+        {gmListo === null ? 'Cargando mapa…'
+          : gmListo === false ? 'No se pudo cargar el mapa (sin conexión o Maps bloqueado). Las coordenadas sí se guardan.'
+          : tieneCoords ? 'Arrastra el pin para corregir la ubicación'
+          : 'Captura tu ubicación para colocar el pin'}
       </div>
       <div ref={mapRef} style={{
         width: '100%', height: 220, borderRadius: 10,
@@ -1311,6 +1355,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [busyGeo, setBusyGeo]   = useStateNV(false);
   const [gpsAccuracy, setGpsAccuracy] = useStateNV(null); // precisión en metros
   const geoWatchRef = React.useRef(null); // id del watchPosition activo
+  // id del setTimeout de 30s que corta el watch. En ref y no en variable local:
+  // "Cancelar", el aceptar manual y el desmontaje pasan por _detenerGeoWatch()
+  // y deben poder matarlo. Antes solo se limpiaba en el auto-aceptar (≤8m) y en
+  // el callback de error, así que cancelar NO cancelaba (30s después el timeout
+  // aceptaba igual y disparaba POT+catastro) y el aceptar manual dejaba una
+  // segunda aceptación viva capaz de pisar una corrección del pin.
+  const geoTimeoutRef = React.useRef(null);
   const mejorPosGeoRef = React.useRef(null); // {lat, lon, acc} de la última lectura del watch activo
   const [busyMejora, setBusyMe] = useStateNV(false);
   const [sugerenciaIA, setSugerenciaIA] = useStateNV(''); // texto mejorado pendiente de aceptar
@@ -1747,6 +1798,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         navigator.geolocation.clearWatch(geoWatchRef.current);
         geoWatchRef.current = null;
       }
+      // También el timeout de 30s: si sobrevive al desmontaje, dispara
+      // _aceptarCoordenadas sobre un formulario que ya no existe (POT y
+      // catastro incluidos).
+      if (geoTimeoutRef.current != null) {
+        clearTimeout(geoTimeoutRef.current);
+        geoTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -1983,11 +2041,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       navigator.geolocation.clearWatch(geoWatchRef.current);
       geoWatchRef.current = null;
     }
+    // Matar también el timeout de 30s — si sobrevive al watch, vuelve a
+    // aceptar coordenadas que el inspector ya canceló o ya corrigió.
+    if (geoTimeoutRef.current != null) {
+      clearTimeout(geoTimeoutRef.current);
+      geoTimeoutRef.current = null;
+    }
   }
   function _aceptarCoordenadas(lat, lon, acc) {
     _detenerGeoWatch();
     setBusyGeo(false);
-    setGpsAccuracy(acc);
+    // Redondear aquí y no en cada llamador: el aceptar manual pasaba el float
+    // crudo del GPS y el badge salía "±12.3456789m".
+    setGpsAccuracy(acc != null && isFinite(acc) ? Math.round(acc) : null);
     setCampo('lat', lat);
     setCampo('lon', lon);
     ejecutarPOT(lat, lon);
@@ -2016,7 +2082,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setGpsAccuracy(null);
     var mejorPos = { lat: null, lon: null, acc: Infinity };
     mejorPosGeoRef.current = null;
-    var timeoutId = setTimeout(function() {
+    geoTimeoutRef.current = setTimeout(function() {
+      geoTimeoutRef.current = null;   // ya disparó: nada que cancelar
       // Timeout 30s: aceptar la mejor lectura o fallar
       if (mejorPos.lat != null) {
         _aceptarCoordenadas(mejorPos.lat, mejorPos.lon, mejorPos.acc);
@@ -2040,15 +2107,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           setCampo('lat', lat);
           setCampo('lon', lon);
         }
-        // Auto-aceptar cuando la precisión es suficiente (≤8 metros)
+        // Auto-aceptar cuando la precisión es suficiente (≤8 metros).
+        // El clearTimeout lo hace _detenerGeoWatch() dentro de _aceptarCoordenadas.
         if (acc <= 8) {
-          clearTimeout(timeoutId);
           _aceptarCoordenadas(lat, lon, Math.round(acc));
         }
       },
       function(err) {
-        clearTimeout(timeoutId);
-        _detenerGeoWatch();
+        _detenerGeoWatch();   // detiene watch + timeout
         setBusyGeo(false);
         var msg = err.code === 1 ? 'Permiso de ubicación denegado. Habilítalo en los ajustes del navegador.' :
                   err.code === 2 ? 'GPS no disponible. Verifica que la ubicación esté encendida y estás al aire libre.' :
@@ -2710,6 +2776,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         <div style={{ gridColumn: '1 / -1' }}>
           <_MapaGPS lat={d.lat} lon={d.lon} onMove={(lat, lon) => {
             setCampo('lat', lat); setCampo('lon', lon);
+            // Arrastrar el pin es una corrección deliberada del punto: hay que
+            // re-consultar POT y catastro. Antes solo se movían las coordenadas
+            // y AZ/BA/BB (y la sugerencia A1/A3) quedaban calculadas sobre el
+            // punto anterior, sin que nada lo advirtiera.
+            setGpsAccuracy(null);   // la precisión del GPS ya no describe este punto
+            ejecutarPOT(lat, lon);
+            ejecutarBusquedaCatastral(lat, lon);
           }} />
         </div>
       </_Seccion>

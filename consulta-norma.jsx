@@ -131,13 +131,25 @@ function ConsultaNormaScreen() {
   const mapDivRef = useRefCN(null);
   const mapRef = useRefCN(null);
   const markerRef = useRefCN(null);
+  // null = esperando el script `async` de Maps · true = listo · false = se rindió.
+  // Antes este efecto corría con deps [] y, si Maps aún no había cargado,
+  // dejaba el error fijo "Google Maps no cargó. Recarga la página." sin volver
+  // a intentarlo nunca. `_cuandoGoogleMapsListo` vive en nueva-visita.jsx
+  // (build.js concatena los .jsx en un solo scope, en ese orden).
+  const [gmListoCN, setGmListoCN] = useStateCN(
+    (typeof google !== 'undefined' && google.maps) ? true : null
+  );
+  useEffectCN(() => {
+    if (gmListoCN !== null) return;
+    return _cuandoGoogleMapsListo(setGmListoCN);
+  }, [gmListoCN]);
+  useEffectCN(() => {
+    if (gmListoCN === false) setError('Google Maps no cargó. Revisa la conexión y recarga la página.');
+  }, [gmListoCN]);
 
   // Montar Google Maps (satellite)
   useEffectCN(() => {
-    if (typeof google === 'undefined' || !google.maps) {
-      setError('Google Maps no cargó. Recarga la página.');
-      return;
-    }
+    if (gmListoCN !== true) return;
     if (mapRef.current || !mapDivRef.current) return;
 
     var map = new google.maps.Map(mapDivRef.current, {
@@ -172,7 +184,7 @@ function ConsultaNormaScreen() {
       mapRef.current = null;
       markerRef.current = null;
     };
-  }, []);
+  }, [gmListoCN]);
 
   function colocarPin(lat, lon, consultar) {
     setError('');
