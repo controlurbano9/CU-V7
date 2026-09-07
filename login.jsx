@@ -51,7 +51,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div id="pantalla-login" style={{ display: 'flex' }}>
       <div className="login-logo">
-        <img src="logo.jpg" alt="Alcaldía de Bello" />
+        <img src="logo-login.png" alt="Control Urbano" />
       </div>
       <div className="login-titulo">Control Urbano</div>
       <div className="login-sub">Inspección N°9 · Alcaldía de Bello</div>

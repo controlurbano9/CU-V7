@@ -273,17 +273,14 @@ body {
   text-align: center;
 }
 .login-logo {
-  width: 64px; height: 64px;
-  background: var(--brand); border-radius: var(--r-lg);
+  width: 92px; height: 92px;
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 28px;
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 12px 24px rgba(0,0,0,0.45));
 }
 .login-logo img {
   width: 100%; height: 100%;
-  object-fit: contain; padding: 8px;
-  filter: brightness(0) invert(1);
+  object-fit: contain;
 }
 .login-titulo {
   font-family: var(--font-serif);

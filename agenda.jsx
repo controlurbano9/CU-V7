@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/agenda.jsx — Agenda diaria (ADMIN)
 //   POST obtenerAgenda → { dia, fecha, esRural, manana[], tarde[], totalPendientes }
-//   Por ítem: completar (calcula días) / desasignar
+//   Por ítem: completar (calcula días) / asignar visitador individual
+//   (BotonesAdminVisita + PanelSeleccionInspector, reusados de visita-card.jsx)
+//   Por jornada: "Confirmar agenda" — asigna todas de un click (accion confirmarAgenda)
 //   Reemplazos: confirm → appConfirm; alert → appAlert
 //   Mutaciones invalidan la caché de visitas para que el resto de la app vea el cambio.
 // ═══════════════════════════════════════════════════════════════
@@ -14,7 +16,21 @@ function AgendaScreen({ usuario }) {
   const [error, setError]       = useStateG('');
   const [busyFila, setBusyFila] = useStateG(null);
 
+  // ── Asignación de visitador (individual + bulk por jornada) ──
+  // inspectores: lista activa desde USUARIOS (mismo endpoint que Buscar).
+  // asignandoFila: fila con el panel de "Asignar a:" abierto.
+  // inspectorSel: chip elegido por jornada para "Confirmar agenda".
+  const [inspectores, setInspectores]   = useStateG([]);
+  const [asignandoFila, setAsignandoFila] = useStateG(null);
+  const [inspectorSel, setInspectorSel] = useStateG({ manana: '', tarde: '' });
+  const [confirmando, setConfirmando]   = useStateG(false);
+
   useEffectG(() => { cargar(); }, []);
+
+  useEffectG(() => {
+    if (usuario.rol !== 'ADMIN') return;
+    listarInspectoresActivos().then(lista => setInspectores(lista || [])).catch(() => {});
+  }, [usuario.rol]);
 
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido (solo ADMIN).</div>;
@@ -95,19 +111,50 @@ function AgendaScreen({ usuario }) {
     setBusyFila(null);
   }
 
-  async function desasignar(item) {
-    const ok = await appConfirm(
-      `¿Quitar la asignación de ${item.radicado}?\nVolverá a estado PENDIENTE.`,
-      { titulo: 'Desasignar', btnOk: 'Desasignar' }
-    );
-    if (!ok) return;
-    setBusyFila(item.fila);
+  // Asignación individual — misma acción que usa Buscar (asignarRadicado).
+  // Como todo ítem de la Agenda ya viene en PENDIENTE, esto es lo único que
+  // BotonesAdminVisita puede ofrecer aquí (nunca "Desasignar").
+  async function adminAsignar(fila, inspector) {
+    setBusyFila(fila);
     try {
-      await gasPost({ accion: 'desasignarRadicado', fila: item.fila });
+      await gasPost({
+        accion: 'asignarRadicado', fila, inspector,
+        fechaAsignacion: hoyDDMMAAAA(),
+      });
       invalidarCache('visitas');
+      setAsignandoFila(null);
       await cargar();
     } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
     setBusyFila(null);
+  }
+
+  // Confirmar jornada completa: asigna de un solo click todas las visitas
+  // visibles de la jornada al inspector elegido (accion 'confirmarAgenda',
+  // ya existente en el backend pero nunca cableada hasta ahora).
+  async function confirmarJornada(jornadaKey, items) {
+    const inspector = inspectorSel[jornadaKey];
+    if (!inspector || !items.length) return;
+    const label = jornadaKey === 'manana' ? 'mañana' : 'tarde';
+    const ok = await appConfirm(
+      `¿Confirmar ${items.length} visita(s) de la jornada de la ${label} y asignarlas a ${inspector}?`,
+      { titulo: 'Confirmar agenda', btnOk: 'Confirmar' }
+    );
+    if (!ok) return;
+    setConfirmando(true);
+    try {
+      const r = await gasPost({
+        accion: 'confirmarAgenda',
+        jornadas: { [jornadaKey]: { inspector, visitas: items.map(it => ({ radicado: it.radicado })) } },
+      });
+      if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
+      invalidarCache('visitas');
+      setInspectorSel(s => Object.assign({}, s, { [jornadaKey]: '' }));
+      if (r && r.errores && r.errores.length) {
+        await appAlert('No se pudieron confirmar: ' + r.errores.join(', '), { titulo: 'Confirmado parcialmente' });
+      }
+      await cargar();
+    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    setConfirmando(false);
   }
 
   const diasLabel = { lunes: 'Lunes', martes: 'Martes', 'miércoles': 'Miércoles',
@@ -161,19 +208,54 @@ function AgendaScreen({ usuario }) {
             </button>
           </div>
 
-          <ItemsLista
-            items={tab === 'manana' ? (data.jornadas?.manana.visitas || []) : (data.jornadas?.tarde.visitas || [])}
-            busyFila={busyFila}
-            onCompletar={completar}
-            onDesasignar={desasignar}
-          />
+          {(() => {
+            const jornada = data.jornadas && data.jornadas[tab];
+            const items = jornada ? jornada.visitas : [];
+            return (
+              <>
+                {jornada && jornada.activa && items.length > 0 && (
+                  <div className="card">
+                    <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
+                      Confirmar jornada — asignar todas a:
+                    </div>
+                    <div className="inspector-chips">
+                      {inspectores.map(insp => (
+                        <button key={insp.nombre} type="button"
+                          className={'inspector-chip' + (inspectorSel[tab] === insp.nombre ? ' sel' : '')}
+                          onClick={() => setInspectorSel(s => Object.assign({}, s, { [tab]: insp.nombre }))}>
+                          {insp.nombre}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="agenda-confirmar-bar">
+                      <button className="btn-principal" disabled={!inspectorSel[tab] || confirmando}
+                        onClick={() => confirmarJornada(tab, items)}
+                        style={{ flex: 1, margin: 0 }}>
+                        {confirmando ? 'Confirmando...' : `Confirmar agenda (${items.length})`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <ItemsLista
+                  items={items}
+                  busyFila={busyFila}
+                  onCompletar={completar}
+                  inspectores={inspectores}
+                  asignandoFila={asignandoFila}
+                  setAsignandoFila={setAsignandoFila}
+                  onAsignar={adminAsignar}
+                />
+              </>
+            );
+          })()}
         </>
       )}
     </div>
   );
 }
 
-function ItemsLista({ items, busyFila, onCompletar, onDesasignar }) {
+function ItemsLista({ items, busyFila, onCompletar, inspectores, asignandoFila, setAsignandoFila, onAsignar }) {
   if (!items.length) {
     return (
       <div className="card agenda-empty">
@@ -216,18 +298,33 @@ function ItemsLista({ items, busyFila, onCompletar, onDesasignar }) {
               );
             })()}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button onClick={() => onCompletar(it)} disabled={busyFila === it.fila}
-              className="btn-principal secundario" style={{ flex: 1, margin: 0, padding: '8px 12px', fontSize: 13 }}>
+              className="btn-principal secundario" style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
               {busyFila === it.fila ? '...' : 'Completar'}
             </button>
-            <button onClick={() => onDesasignar(it)} disabled={busyFila === it.fila} style={{
-              flex: 1, background: 'var(--gris-bg)', color: 'var(--texto)', border: '1px solid var(--borde)',
-              borderRadius: 10, padding: '8px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-              cursor: busyFila === it.fila ? 'not-allowed' : 'pointer',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}><Icon.Undo size={14} /> Desasignar</button>
+            {/* Reusa BotonesAdminVisita (visita-card.jsx): como todo ítem de la
+                Agenda es PENDIENTE, solo se activa su rama "Asignar" — nunca
+                "Desasignar" (no hay nada que desasignar todavía). */}
+            <BotonesAdminVisita
+              f={{ _idx: it.fila, 'RADICADO': it.radicado, 'ESTADO VISITA': 'PENDIENTE',
+                   'FECHA ASIGNACION VISITA': it.fechaAsignacion || '' }}
+              esAdmin={true}
+              busy={busyFila === it.fila}
+              abierto={asignandoFila === it.fila}
+              onAbrirAsignar={() => setAsignandoFila(asignandoFila === it.fila ? null : it.fila)}
+              onDesasignar={() => {}}
+              onCompletar={() => {}}
+            />
           </div>
+
+          <PanelSeleccionInspector
+            f={{ _idx: it.fila, 'ESTADO VISITA': 'PENDIENTE' }}
+            busy={busyFila === it.fila}
+            abierto={asignandoFila === it.fila}
+            inspectores={inspectores}
+            onAsignar={onAsignar}
+          />
         </div>
       ))}
     </div>
