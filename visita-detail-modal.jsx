@@ -14,6 +14,13 @@ const { useState: useStateVD, useEffect: useEffectVD } = React;
 
 let _pushVisitaDetail = null;
 
+const _TONO_ESTADO_VD = {
+  PENDIENTE:  'badge-amarillo',
+  ASIGNADO:   'badge-amarillo',
+  INICIADO:   'badge-azul',
+  COMPLETADO: 'badge-verde',
+};
+
 function VisitaDetailModalHost() {
   const [fila, setFila] = useStateVD(null);
 
@@ -101,7 +108,10 @@ function VisitaDetailUI({ f, onCerrar }) {
             </div>
             <div style={{ fontSize: 11, color: 'var(--texto-suave, #5C5142)', fontFamily: 'var(--font-mono)' }}>
               {_g(f, 'RADICADO') || '—'} · {_fmt(_g(f, 'FECHA DE VISITA'))}
-              {estado && <span style={{ marginLeft: 8, padding: '1px 7px', borderRadius: 8, background: 'var(--verde-bg)', color: 'var(--verde-dark)', fontFamily: 'inherit', fontSize: 10, fontWeight: 700 }}>{estado}</span>}
+              {/* El badge estaba fijo en verde: una visita PENDIENTE se leía
+                  como completada. Ahora usa las clases por estado de styles.css. */}
+              {estado && <span className={'badge-suave ' + (_TONO_ESTADO_VD[normalizarEstado(estado)] || 'badge-amarillo')}
+                style={{ marginLeft: 8 }}>{estado}</span>}
             </div>
           </div>
           <button onClick={onCerrar} aria-label="Cerrar" title="Cerrar (Esc)" style={{
@@ -243,7 +253,7 @@ function _DebugRawVD({ f, solo_admin }) {
         borderRadius: 8, padding: '6px 10px', fontFamily: 'var(--font-mono)',
         fontSize: 11, color: 'var(--texto-suave, #5C5142)', cursor: 'pointer',
         display: 'inline-flex', alignItems: 'center', gap: 6,
-      }}>{open ? <Icon.Chevron size={12} /> : <Icon.ChevronUp size={12} />} Debug — ver datos crudos del Sheet ({pares.length} columnas con valor)</button>
+      }}>{open ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />} Ver datos crudos del Sheet ({pares.length} columnas con valor)</button>
       {open && (
         <div style={{
           marginTop: 8, padding: 10, background: 'var(--gris-bg, #F5F1EB)',

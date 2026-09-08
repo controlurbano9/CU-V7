@@ -9,7 +9,7 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateG, useEffect: useEffectG } = React;
 
-function AgendaScreen({ usuario }) {
+function AgendaScreen({ usuario, onContinuar }) {
   const [data, setData]         = useStateG(null);
   const [tab, setTab]           = useStateG('manana');
   const [cargando, setCargando] = useStateG(true);
@@ -45,18 +45,11 @@ function AgendaScreen({ usuario }) {
     setCargando(false);
   }
 
-  function _hoyDDMMYYYY() {
-    const d = new Date();
-    return String(d.getDate()).padStart(2, '0') + '/' +
-           String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
-  }
-  function _calcularDias(fechaAsig) {
-    if (!fechaAsig) return '';
-    const p = fechaAsig.split('/');
-    if (p.length !== 3) return '';
-    const dA = new Date(+p[2], +p[1] - 1, +p[0]);
-    return Math.ceil((Date.now() - dA.getTime()) / 86400000);
-  }
+  // hoyDDMMAAAA() y diasDesde() viven en utils.js. Las copias locales que
+  // había aquí no solo duplicaban código: _calcularDias() usaba Math.ceil
+  // sobre milisegundos crudos y buscar.jsx usa diasDesde() (días de
+  // calendario), así que la misma columna DIAS se escribía con dos criterios
+  // distintos según desde dónde se completara la visita.
 
   async function completar(item) {
     // Paridad con buscar.jsx: SUSPENSION=SI + orden de policía + sin oficio
@@ -93,21 +86,44 @@ function AgendaScreen({ usuario }) {
       }
     }
 
-    const ok = await appConfirm('¿Marcar como COMPLETADO?', {
-      titulo: 'Completar visita', btnOk: 'Completar',
-    });
+    // Todos los ítems de la Agenda están en PENDIENTE (ESTADOS_AGENDA en el
+    // backend), así que completar desde aquí cierra una visita que nunca se
+    // diligenció: no habrá acta, informe ni fotos. Se avisa explícitamente en
+    // vez de esconderlo tras un "¿Marcar como COMPLETADO?" genérico.
+    const ok = await appConfirm(
+      'Esta visita está PENDIENTE y se cerrará sin diligenciar: no tendrá acta, informe ni fotos.\n\n' +
+      'Si la visita se hizo, use "Iniciar visita" y complete el formulario.\n\n¿Cerrarla de todos modos?',
+      { titulo: 'Completar sin diligenciar', btnOk: 'Cerrar visita', peligro: true });
     if (!ok) return;
     setBusyFila(item.fila);
     try {
       await gasPost({
         accion: 'completarRegistro',
         fila: item.fila,
-        dias: _calcularDias(item.fechaAsignacion),
-        fecha: _hoyDDMMYYYY(),
+        dias: item.fechaAsignacion ? diasDesde(item.fechaAsignacion) : '',
+        fecha: hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
       await cargar();
     } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    setBusyFila(null);
+  }
+
+  // Abrir la visita en el formulario. Los ítems de la Agenda son objetos
+  // sintéticos (radicado/direccion/score), no filas de BD, así que hay que
+  // resolver la fila real antes de entregarla a NuevaVisitaScreen — si no,
+  // el formulario abriría en blanco.
+  async function abrirVisita(item) {
+    if (!onContinuar) return;
+    setBusyFila(item.fila);
+    try {
+      const { datos } = await leerVisitas();
+      const fila = datos.find(f => f._idx === item.fila) || null;
+      if (!fila) throw new Error('No se encontró la visita en BD VISITAS.');
+      onContinuar(item.fila, fila);
+    } catch (e) {
+      await appAlert('No se pudo abrir la visita: ' + e.message, { titulo: 'Error' });
+    }
     setBusyFila(null);
   }
 
@@ -240,6 +256,7 @@ function AgendaScreen({ usuario }) {
                 <ItemsLista
                   items={items}
                   busyFila={busyFila}
+                  onAbrir={onContinuar ? abrirVisita : null}
                   onCompletar={completar}
                   inspectores={inspectores}
                   asignandoFila={asignandoFila}
@@ -255,7 +272,7 @@ function AgendaScreen({ usuario }) {
   );
 }
 
-function ItemsLista({ items, busyFila, onCompletar, inspectores, asignandoFila, setAsignandoFila, onAsignar }) {
+function ItemsLista({ items, busyFila, onAbrir, onCompletar, inspectores, asignandoFila, setAsignandoFila, onAsignar }) {
   if (!items.length) {
     return (
       <div className="card agenda-empty">
@@ -299,27 +316,39 @@ function ItemsLista({ items, busyFila, onCompletar, inspectores, asignandoFila, 
             })()}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {/* Acción principal: el paso real siguiente de una visita PENDIENTE
+                es diligenciarla. Antes la Agenda solo ofrecía "Completar", que
+                cierra el caso sin haberlo llenado. */}
+            {onAbrir && (
+              <button onClick={() => onAbrir(it)} disabled={busyFila === it.fila}
+                className="btn-principal verde" style={{ flex: 1, minWidth: 120, margin: 0, padding: '8px 12px', fontSize: 13 }}>
+                {busyFila === it.fila ? '...' : 'Iniciar visita'}
+              </button>
+            )}
             <button onClick={() => onCompletar(it)} disabled={busyFila === it.fila}
-              className="btn-principal secundario" style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
-              {busyFila === it.fila ? '...' : 'Completar'}
+              className="btn-sm gris" style={{ minWidth: 96, padding: '8px 12px', fontSize: 12.5 }}>
+              {busyFila === it.fila ? '...' : 'Cerrar sin visita'}
             </button>
-            {/* Reusa BotonesAdminVisita (visita-card.jsx): como todo ítem de la
-                Agenda es PENDIENTE, solo se activa su rama "Asignar" — nunca
-                "Desasignar" (no hay nada que desasignar todavía). */}
+            {/* Reusa BotonesAdminVisita (visita-card.jsx): solo se activa su rama
+                "Asignar". Nunca "Desasignar": ESTADOS_AGENDA (backend) admite
+                únicamente PENDIENTE, y desasignar deja la fila en PENDIENTE con
+                VISITADOR(ES) vacío — no hay asignación que quitar. Por eso aquí
+                no se pasa onDesasignar. */}
             <BotonesAdminVisita
-              f={{ _idx: it.fila, 'RADICADO': it.radicado, 'ESTADO VISITA': 'PENDIENTE',
+              f={{ _idx: it.fila, 'RADICADO': it.radicado,
+                   'ESTADO VISITA': it.estado || 'PENDIENTE',
                    'FECHA ASIGNACION VISITA': it.fechaAsignacion || '' }}
               esAdmin={true}
               busy={busyFila === it.fila}
               abierto={asignandoFila === it.fila}
               onAbrirAsignar={() => setAsignandoFila(asignandoFila === it.fila ? null : it.fila)}
-              onDesasignar={() => {}}
-              onCompletar={() => {}}
+              onCompletar={() => onCompletar({ fila: it.fila, radicado: it.radicado,
+                                               fechaAsignacion: it.fechaAsignacion })}
             />
           </div>
 
           <PanelSeleccionInspector
-            f={{ _idx: it.fila, 'ESTADO VISITA': 'PENDIENTE' }}
+            f={{ _idx: it.fila, 'ESTADO VISITA': it.estado || 'PENDIENTE' }}
             busy={busyFila === it.fila}
             abierto={asignandoFila === it.fila}
             inspectores={inspectores}

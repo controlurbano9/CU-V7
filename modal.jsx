@@ -12,42 +12,52 @@ const { useState: useStateM, useEffect: useEffectM } = React;
 // el ModalHost; null mientras no exista.
 let _pushModal = null;
 
+let _modalSeq = 0;   // id estable por modal — el índice cambia al desapilar
+
 function ModalHost() {
   const [modales, setModales] = useStateM([]);
 
   useEffectM(() => {
-    _pushModal = function(m) { setModales(function(prev) { return prev.concat([m]); }); };
+    _pushModal = function(m) {
+      setModales(function(prev) { return prev.concat([Object.assign({ _id: ++_modalSeq }, m)]); });
+    };
     return function() { _pushModal = null; };
   }, []);
 
-  function resolver(idx, valor) {
-    setModales(function(prev) {
-      const m = prev[idx];
-      if (m && m.resolver) m.resolver(valor);
-      return prev.filter(function(_, i) { return i !== idx; });
-    });
+  // El resolver de la promesa es un efecto: ejecutarlo dentro del updater de
+  // setModales lo hacía correr dos veces en StrictMode y en cualquier
+  // re-ejecución del updater. Ahora el efecto va fuera y el updater solo filtra.
+  function resolver(id, valor) {
+    const m = modales.find(function(x) { return x._id === id; });
+    setModales(function(prev) { return prev.filter(function(x) { return x._id !== id; }); });
+    if (m && m.resolver) m.resolver(valor);
   }
 
   if (!modales.length) return null;
   return (
     <>
       {modales.map(function(m, idx) {
-        return <ModalUI key={idx} {...m} onResolver={function(v) { resolver(idx, v); }} />;
+        return <ModalUI key={m._id} {...m}
+          esUltimo={idx === modales.length - 1}
+          onResolver={function(v) { resolver(m._id, v); }} />;
       })}
     </>
   );
 }
 
-function ModalUI({ tipo, titulo, mensaje, btnOk, btnCancel, onResolver }) {
+function ModalUI({ tipo, titulo, mensaje, btnOk, btnCancel, peligro, esUltimo, onResolver }) {
   // Esc cancela (confirm) o cierra (alert). Enter acepta.
+  // Solo el modal superior escucha el teclado: antes cada modal apilado
+  // registraba su propio listener y un Esc los resolvía todos de golpe.
   useEffectM(function() {
+    if (esUltimo === false) return;
     function onKey(e) {
       if (e.key === 'Escape') { e.preventDefault(); onResolver(tipo === 'confirm' ? false : true); }
       else if (e.key === 'Enter') { e.preventDefault(); onResolver(true); }
     }
     window.addEventListener('keydown', onKey);
     return function() { window.removeEventListener('keydown', onKey); };
-  }, [onResolver, tipo]);
+  }, [onResolver, tipo, esUltimo]);
 
   // Detecta viewport móvil para renderizar como bottom sheet (patrón nativo
   // móvil con gesto de descarte) en lugar de center modal.
@@ -113,8 +123,12 @@ function ModalUI({ tipo, titulo, mensaje, btnOk, btnCancel, onResolver }) {
               color: 'var(--texto-suave, #5C5142)',
             }}>{btnCancel || 'Cancelar'}</button>
           )}
+          {/* peligro=true → variante destructiva (rojo). Antes toda confirmación,
+              incluida "Desasignar" o "Eliminar atascados", usaba el mismo botón
+              terracotta que un simple "Aceptar". */}
           <button onClick={function() { onResolver(true); }} autoFocus style={{
-            background: 'var(--brand-accent, #C96442)', color: 'white', border: 'none',
+            background: peligro ? 'var(--rojo, #B43A2E)' : 'var(--brand-accent, #C96442)',
+            color: 'white', border: 'none',
             borderRadius: 8, padding: '8px 16px',
             fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
           }}>{btnOk || 'Aceptar'}</button>

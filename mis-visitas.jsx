@@ -6,13 +6,8 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateMV, useEffect: useEffectMV, useMemo: useMemoMV } = React;
 
-// Mapeo estado → clase de badge (definidos en styles.css)
-const TONOS_MV = {
-  PENDIENTE:  { cls: 'badge-amarillo', label: 'Pendiente' },
-  ASIGNADO:   { cls: 'badge-amarillo', label: 'Asignada' },
-  INICIADO:   { cls: 'badge-azul',     label: 'Iniciada' },
-  COMPLETADO: { cls: 'badge-verde',    label: 'Completada' },
-};
+// El mapeo estado → badge vive en TONOS_VISITA (visita-card.jsx), que es lo
+// que renderiza VisitaCard. La copia que había aquí no la usaba nadie.
 
 // Colores de contador por sección (cada acordeón)
 const SECCION_COLORES = {
@@ -38,7 +33,7 @@ const SECCION_ICONOS = {
 const COMPLETADAS_INICIAL = 20;
 const COMPLETADAS_PASO = 20;
 
-function MisVisitasScreen({ usuario, onNueva, onContinuar }) {
+function MisVisitasScreen({ usuario, onContinuar }) {
   const [datos, setDatos]       = useStateMV([]);
   const [cargando, setCargando] = useStateMV(true);
   const [error, setError]       = useStateMV('');
@@ -117,17 +112,11 @@ function MisVisitasScreen({ usuario, onNueva, onContinuar }) {
   }, [misVisitas]);
 
   // Parsear fecha para ordenamiento (devuelve timestamp)
+  // parsearFecha() (utils.js) ya cubre Date, DD/MM/YYYY e ISO; esta era la
+  // cuarta copia del mismo parser en el proyecto.
   function _parsearFechaOrden(val) {
-    if (!val) return 0;
-    const s = String(val).trim().split(' ')[0];
-    // DD/MM/YYYY
-    const m1 = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
-    if (m1) return new Date(+m1[3], +m1[2] - 1, +m1[1]).getTime() || 0;
-    // YYYY-MM-DD
-    const m2 = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-    if (m2) return new Date(+m2[1], +m2[2] - 1, +m2[3]).getTime() || 0;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? 0 : d.getTime();
+    const d = parsearFecha(val);
+    return d ? d.getTime() : 0;
   }
 
   // Toggle sección del acordeón
@@ -182,7 +171,7 @@ function MisVisitasScreen({ usuario, onNueva, onContinuar }) {
                   Sin visitas asignadas
                 </div>
               : grupos.asignadas.map((f, i) => (
-                  <TarjetaVisitaMV key={f._idx || i} f={f} onContinuar={onContinuar} />
+                  <TarjetaVisitaMV key={f._idx || i} f={f} usuario={usuario} onContinuar={onContinuar} />
                 ))
             }
           </SeccionAcordeonMV>
@@ -200,7 +189,7 @@ function MisVisitasScreen({ usuario, onNueva, onContinuar }) {
                   Sin visitas iniciadas
                 </div>
               : grupos.iniciadas.map((f, i) => (
-                  <TarjetaVisitaMV key={f._idx || i} f={f} onContinuar={onContinuar} />
+                  <TarjetaVisitaMV key={f._idx || i} f={f} usuario={usuario} onContinuar={onContinuar} />
                 ))
             }
           </SeccionAcordeonMV>
@@ -223,7 +212,7 @@ function MisVisitasScreen({ usuario, onNueva, onContinuar }) {
                   return (
                     <>
                       {visibles.map((f, i) => (
-                        <TarjetaVisitaMV key={f._idx || i} f={f} onContinuar={onContinuar} />
+                        <TarjetaVisitaMV key={f._idx || i} f={f} usuario={usuario} onContinuar={onContinuar} />
                       ))}
                       {ocultas > 0 && (
                         <div style={{ padding: '12px 14px', textAlign: 'center' }}>
@@ -311,7 +300,7 @@ function SeccionAcordeonMV({ titulo, icono, count, color, abierto, onToggle, chi
 // ═══════════════════════════════════════════════════════════════
 // Tarjeta individual de visita
 // ═══════════════════════════════════════════════════════════════
-function TarjetaVisitaMV({ f, onContinuar }) {
+function TarjetaVisitaMV({ f, usuario, onContinuar }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
 
   // Mis visitas usa labels capitalizados (Pendiente/Asignada/Iniciada/Completada),
@@ -324,12 +313,15 @@ function TarjetaVisitaMV({ f, onContinuar }) {
     }}>
       <VisitaCard f={f} mostrarFecha accionesMt={12}>
         {/* Iniciar/Continuar para no completadas, entregables para completadas */}
-        {est !== 'COMPLETADO' && onContinuar && (
-          <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />
+        {est !== 'COMPLETADO' && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {onContinuar && <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />}
+            <BotonVerDatos f={f} />
+          </div>
         )}
         {est === 'COMPLETADO' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <BotonesEntregables f={f} />
+            <BotonesEntregables f={f} usuario={usuario} />
           </div>
         )}
       </VisitaCard>

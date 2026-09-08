@@ -146,11 +146,70 @@ function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
   );
 }
 
+// Datos de prefill del generador F-GGO-43 a partir de una fila de BD.
+// Lo consume window.abrirInformeF43() (informe-modal.jsx).
+function paramsInformeF43(f, usuario) {
+  var idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
+  var p = {};
+  if (f._idx)        p.fila       = String(f._idx);
+  if (idCarpeta)     p.idCarpeta  = idCarpeta;
+  if (f['RADICADO']) p.radicado   = f['RADICADO'];
+  if (f['FECHA DE VISITA'])      p.fechaVisita = f['FECHA DE VISITA'];
+  if (f['DIRECCION INFRACCION'] || f['DIRECCION']) p.direccion = f['DIRECCION INFRACCION'] || f['DIRECCION'];
+  var barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
+  if (barrio)        p.barrio     = barrio;
+  if (f['COMUNA'])   p.comuna     = f['COMUNA'];
+  if (f['CODIGO CATASTRAL'] || f['CATASTRAL']) p.catastral = f['CODIGO CATASTRAL'] || f['CATASTRAL'];
+  if (f['LATITUD'])  p.lat        = f['LATITUD'];
+  if (f['LONGITUD']) p.lon        = f['LONGITUD'];
+  if (usuario && usuario.usuario) p.inspector = usuario.usuario;
+  if (usuario && usuario.cargo)   p.cargo     = usuario.cargo;
+  if (f['SE APORTO LICENCIA'])    p.seAportoLicencia = f['SE APORTO LICENCIA'];
+  if (f['N LICENCIA'])            p.numRes           = f['N LICENCIA'];
+  if (f['FECHA LICENCIA'])        p.fechaEjec        = f['FECHA LICENCIA'];
+  if (f['TIPO Y MODALIDAD LICENCIA']) p.tipoModalidad = f['TIPO Y MODALIDAD LICENCIA'];
+  if (f['PISOS APROBADOS'])       p.pisos            = f['PISOS APROBADOS'];
+  if (f['DESTINACIONES LICENCIA'])p.dest             = f['DESTINACIONES LICENCIA'];
+  if (f['CUBIERTA LICENCIA'])     p.cubierta         = f['CUBIERTA LICENCIA'];
+  if (f['SISTEMA ESTRUCT'])       p.sist             = f['SISTEMA ESTRUCT'];
+  if (f['OBS LICENCIA'])          p.obsLicencia      = f['OBS LICENCIA'];
+  // POT
+  if (f['POLIGONO USO SUELO'])    p.poligono         = f['POLIGONO USO SUELO'];
+  if (f['AMENAZA'])               p.amenaza          = f['AMENAZA'];
+  if (f['SUELO DE PROTECCION'])   p.sueloProt        = f['SUELO DE PROTECCION'];
+  // Observaciones
+  var rawAct = f['ACTUACION / OBSERVACIONES'] || f['ACTUACION'] || '';
+  var partsAct = rawAct.split('\n══CONCLUSIONES══\n');
+  if (partsAct[0]) p.observaciones = partsAct[0];
+  if (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2']) {
+    var areaVal = (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2'] || '').toString().trim();
+    if (areaVal && areaVal !== 'No se pudo medir') p.areas = areaVal;
+  }
+  return p;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BotonVerDatos — abre el detalle de solo lectura.
+// Extraído de BotonesEntregables para que también las visitas NO
+// completadas tengan una forma de consultar sus datos sin abrir el
+// formulario completo (antes solo existía en COMPLETADO).
+// ═══════════════════════════════════════════════════════════════
+function BotonVerDatos({ f }) {
+  return (
+    <button type="button"
+      onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}
+      className="btn-principal secundario"
+      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12 }}>
+      <Icon.Eye size={14} /> Ver datos
+    </button>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BotonesEntregables — para visitas COMPLETADO
 // 👁 Ver datos (siempre) + 📂 Carpeta + 📄 Acta + 📝 Informe (si hay link)
 // ═══════════════════════════════════════════════════════════════
-function BotonesEntregables({ f }) {
+function BotonesEntregables({ f, usuario }) {
   const linkDrive   = f['LINK_DRIVE'];
   const linkActaPdf = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
   const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
@@ -167,15 +226,24 @@ function BotonesEntregables({ f }) {
 
   return (
     <>
-      <button type="button"
-        onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}
-        className="btn-principal secundario"
-        style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12 }}>
-        <Icon.Eye size={14} /> Ver datos
-      </button>
+      <BotonVerDatos f={f} />
       {linkDrive   && <a href={linkDrive}   target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Folder size={14} /> Carpeta</a>}
       {linkActaPdf && <a href={linkActaPdf} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.File   size={14} /> Acta</a>}
       {linkInforme && <a href={linkInforme} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Edit   size={14} /> Informe</a>}
+      {/* Una visita completada sin informe F-GGO-43 no tenía ninguna ruta para
+          generarlo: el único botón vivía dentro del formulario, y el formulario
+          no se reabre en COMPLETADO. Este botón es esa ruta. */}
+      {!linkInforme && (
+        <button type="button" onClick={() => {
+          if (typeof window.abrirInformeF43 !== 'function') {
+            appAlert('El generador de informes no está disponible.', { titulo: 'Error' });
+            return;
+          }
+          window.abrirInformeF43(paramsInformeF43(f, usuario));
+        }} style={btnSty}>
+          <Icon.Edit size={14} /> Generar informe
+        </button>
+      )}
     </>
   );
 }
@@ -314,5 +382,6 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 window.VisitaCard              = VisitaCard;
 window.BotonContinuarVisita    = BotonContinuarVisita;
 window.BotonesEntregables      = BotonesEntregables;
+window.BotonVerDatos           = BotonVerDatos;
 window.BotonesAdminVisita      = BotonesAdminVisita;
 window.PanelSeleccionInspector = PanelSeleccionInspector;

@@ -60,21 +60,15 @@ function BuscarScreen({ usuario, onContinuar }) {
 
   // Cargar lista de visitadores activos (filtro admin) desde USUARIOS.
   // listarInspectoresActivos() está cacheado en api.js (TTL 60s).
-  // El filtro de chips del Buscar solo muestra los inspectores fijos
-  // (Alejandro, Mauricio, Daniel); la lista completa se conserva
-  // para el panel de asignación admin.
-  const VISITADORES_FILTRO = ['ALEJANDRO HERNANDEZ', 'MAURICIO HERRERA', 'DANIEL PEDRAZA'];
+  // Antes los chips se filtraban contra tres nombres escritos a mano
+  // (Alejandro, Mauricio, Daniel): un inspector nuevo dado de alta en
+  // USUARIOS nunca aparecía como filtro. Ahora se muestran todos los activos,
+  // que es la misma lista que alimenta el panel de asignación.
   useEffectB(() => {
     if (!esAdmin) return;
     listarInspectoresActivos().then(lista => {
       const todos = lista || [];
-      setVisitadores(
-        todos
-          .filter(u => VISITADORES_FILTRO.some(pref =>
-            (u.nombre || '').toUpperCase().includes(pref)))
-          .map(u => ({ val: u.nombre, l: titleCaseFirst2(u.nombre) }))
-      );
-      // Lista completa para el panel de asignación
+      setVisitadores(todos.map(u => ({ val: u.nombre, l: titleCaseFirst2(u.nombre) })));
       setInspectores(todos);
     }).catch(() => {});
   }, [esAdmin]);
@@ -138,7 +132,7 @@ function BuscarScreen({ usuario, onContinuar }) {
   const adminDesasignar = useCallbackB(async (fila, rad) => {
     const ok = await appConfirm(
       '¿Quitar asignación de ' + (rad || 'este radicado') + '?\nVolverá a estado PENDIENTE.',
-      { titulo: 'Desasignar', btnOk: 'Desasignar' }
+      { titulo: 'Desasignar', btnOk: 'Desasignar', peligro: true }
     );
     if (!ok) return;
     setBusyFila(fila);
@@ -302,7 +296,9 @@ function BuscarScreen({ usuario, onContinuar }) {
 
   return (
     <div className="pantalla activa pad-bottom">
-      <div className="page-title" style={{ marginBottom: 16 }}>Visitas</div>
+      {/* Mismo nombre que la pestaña del nav: antes la pestaña decía "Buscar"
+          y el título de la pantalla "Visitas". */}
+      <div className="page-title" style={{ marginBottom: 16 }}>Buscar</div>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="input-grupo" style={{ marginBottom: 10 }}>
@@ -319,7 +315,7 @@ function BuscarScreen({ usuario, onContinuar }) {
               <button key={est}
                 className={'btn-filtro' + (activo ? ' ' + ESTADO_CLASE[est] : '')}
                 onClick={() => setFiltrosEstado(toggleEnArr(filtrosEstado, est))}>
-                {est.charAt(0) + est.slice(1).toLowerCase() + (est === 'PENDIENTE' || est === 'ASIGNADO' || est === 'INICIADO' || est === 'COMPLETADO' ? 's' : '')}
+                {est.charAt(0) + est.slice(1).toLowerCase() + 's'}
               </button>
             );
           })}
@@ -447,55 +443,6 @@ function BuscarScreen({ usuario, onContinuar }) {
 
 // extraerIdCarpetaDrive() vive en utils.js (compartida con informe-modal.jsx).
 
-// Datos de prefill del generador F-GGO-43 a partir de una fila de BD.
-// Devuelve un dict; `urlInformeF43` lo serializa a query string.
-function paramsInformeF43(f, usuario) {
-  var idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
-  var p = {};
-  if (f._idx)        p.fila       = String(f._idx);
-  if (idCarpeta)     p.idCarpeta  = idCarpeta;
-  if (f['RADICADO']) p.radicado   = f['RADICADO'];
-  if (f['FECHA DE VISITA'])      p.fechaVisita = f['FECHA DE VISITA'];
-  if (f['DIRECCION INFRACCION'] || f['DIRECCION']) p.direccion = f['DIRECCION INFRACCION'] || f['DIRECCION'];
-  var barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
-  if (barrio)        p.barrio     = barrio;
-  if (f['COMUNA'])   p.comuna     = f['COMUNA'];
-  if (f['CODIGO CATASTRAL'] || f['CATASTRAL']) p.catastral = f['CODIGO CATASTRAL'] || f['CATASTRAL'];
-  if (f['LATITUD'])  p.lat        = f['LATITUD'];
-  if (f['LONGITUD']) p.lon        = f['LONGITUD'];
-  if (usuario && usuario.usuario) p.inspector = usuario.usuario;
-  if (usuario && usuario.cargo)   p.cargo     = usuario.cargo;
-  if (f['SE APORTO LICENCIA'])    p.seAportoLicencia = f['SE APORTO LICENCIA'];
-  if (f['N LICENCIA'])            p.numRes           = f['N LICENCIA'];
-  if (f['FECHA LICENCIA'])        p.fechaEjec        = f['FECHA LICENCIA'];
-  if (f['TIPO Y MODALIDAD LICENCIA']) p.tipoModalidad = f['TIPO Y MODALIDAD LICENCIA'];
-  if (f['PISOS APROBADOS'])       p.pisos            = f['PISOS APROBADOS'];
-  if (f['DESTINACIONES LICENCIA'])p.dest             = f['DESTINACIONES LICENCIA'];
-  if (f['CUBIERTA LICENCIA'])     p.cubierta         = f['CUBIERTA LICENCIA'];
-  if (f['SISTEMA ESTRUCT'])       p.sist             = f['SISTEMA ESTRUCT'];
-  if (f['OBS LICENCIA'])          p.obsLicencia      = f['OBS LICENCIA'];
-  // POT
-  if (f['POLIGONO USO SUELO'])    p.poligono         = f['POLIGONO USO SUELO'];
-  if (f['AMENAZA'])               p.amenaza          = f['AMENAZA'];
-  if (f['SUELO DE PROTECCION'])   p.sueloProt        = f['SUELO DE PROTECCION'];
-  // Observaciones
-  var rawAct = f['ACTUACION / OBSERVACIONES'] || f['ACTUACION'] || '';
-  var partsAct = rawAct.split('\n══CONCLUSIONES══\n');
-  if (partsAct[0]) p.observaciones = partsAct[0];
-  if (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2']) {
-    var areaVal = (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2'] || '').toString().trim();
-    if (areaVal && areaVal !== 'No se pudo medir') p.areas = areaVal;
-  }
-  return p;
-}
-
-// Construye la URL al generador V6 con prefill por query string.
-// Se conserva por compatibilidad (links externos, share); el flujo principal
-// ahora pasa por `window.abrirInformeF43(paramsInformeF43(...))`.
-function urlInformeF43(f, usuario) {
-  return 'informe/?' + new URLSearchParams(paramsInformeF43(f, usuario)).toString();
-}
-
 // React.memo más abajo. Cada GrupoRadicado se re-renderiza solo si cambian
 // sus props (radicado, filas, usuario); un keystroke en el buscador que
 // reduce filtros ya no rerenderea todas las tarjetas visibles.
@@ -556,7 +503,7 @@ function FilaVisitaBase({ f, usuario, onContinuar,
             <BotonContinuarVisita f={f} onContinuar={onContinuar} busy={busy} tamaño="sm" />
           )}
           {/* Entregables solo para completadas (Ver datos + Carpeta + Acta + Informe) */}
-          {est === 'COMPLETADO' && <BotonesEntregables f={f} />}
+          {est === 'COMPLETADO' && <BotonesEntregables f={f} usuario={usuario} />}
           {/* Botones admin contextuales (Asignar / Reasignar / Desasignar / Completar / + Nueva visita) */}
           <BotonesAdminVisita
             f={f} esAdmin={esAdmin} busy={busy} abierto={abierto}

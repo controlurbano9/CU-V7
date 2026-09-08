@@ -11,8 +11,15 @@ function LoginScreen({ onLogin }) {
   const [error, setError] = useStateLG('');
   const [verificando, setVerificando] = useStateLG(false);
 
-  // Cargar inspectores activos al montar
-  useEffectLG(() => {
+  // Cargar inspectores activos al montar.
+  // Si falla (sin red al arrancar, webhook caído) el usuario quedaba encerrado
+  // en el login sin ninguna forma de reintentar salvo recargar la página.
+  const [fallóLista, setFallóLista] = useStateLG(false);
+
+  function cargarInspectores() {
+    setCargandoLista(true);
+    setFallóLista(false);
+    setError('');
     listarInspectoresActivos()
       .then(list => {
         setInspectores(list);
@@ -23,9 +30,12 @@ function LoginScreen({ onLogin }) {
       })
       .catch(e => {
         setCargandoLista(false);
+        setFallóLista(true);
         setError('No se pudo cargar la lista de inspectores');
       });
-  }, []);
+  }
+
+  useEffectLG(cargarInspectores, []);
 
   async function manejarSubmit(e) {
     e.preventDefault();
@@ -96,9 +106,16 @@ function LoginScreen({ onLogin }) {
           onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
         />
 
-        <button type="submit" className="btn-login" disabled={verificando}>
+        <button type="submit" className="btn-login" disabled={verificando || cargandoLista || fallóLista}>
           {verificando ? 'Verificando...' : 'Ingresar →'}
         </button>
+
+        {fallóLista && (
+          <button type="button" onClick={cargarInspectores} className="btn-login"
+            style={{ marginTop: 8, background: 'transparent', border: '1px solid rgba(245,241,235,0.35)' }}>
+            Reintentar
+          </button>
+        )}
 
         {error && (
           <div role="alert" style={{

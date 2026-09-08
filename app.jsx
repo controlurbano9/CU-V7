@@ -211,7 +211,7 @@ function OfflineColaBadge() {
     const ok = await appConfirm(
       'Hay ' + atasc.length + ' item(s) que fallaron ' + OFFLINE_MAX_INTENTOS + ' veces y no son errores de red ' +
       '(probablemente validación del servidor). Si se eliminan, esos datos se perderán de este dispositivo.\n\n¿Eliminar?',
-      { titulo: 'Eliminar items atascados', btnOk: 'Eliminar', btnCancel: 'Cancelar' }
+      { titulo: 'Eliminar items atascados', btnOk: 'Eliminar', btnCancel: 'Cancelar', peligro: true }
     );
     if (!ok) return;
     // Respaldo antes de borrar: el dato no vuelve una vez eliminado de la cola.
@@ -374,6 +374,50 @@ function AppV6() {
   const [contextoNueva, setContextoNueva] = useStateApp(null);
   const [winW, setWinW] = useStateApp(window.innerWidth);
 
+  // ── Botón "atrás" del navegador / gesto atrás de Android ──────
+  // La navegación es puro state, sin History API: el botón atrás sacaba al
+  // usuario de la aplicación entera. Dentro del formulario eso significaba
+  // perder la visita a medio diligenciar (beforeunload no se dispara en una
+  // navegación de historia dentro de la misma página).
+  //
+  // Se empuja una entrada de historia por pantalla y popstate vuelve a la
+  // anterior. Si el formulario está montado, expone su propia confirmación en
+  // window._cuGuardSalir y aquí se respeta.
+  const pilaRef = React.useRef(['home']);
+  const saltarGuardRef = React.useRef(false);   // salida ya confirmada por el propio formulario
+  useEffectApp(() => {
+    history.replaceState({ cuPantalla: 'home' }, '');
+    async function onPop(e) {
+      const destino = (e.state && e.state.cuPantalla) || 'home';
+      const actual = pilaRef.current[pilaRef.current.length - 1];
+      if (actual === 'nueva-visita' && !saltarGuardRef.current
+          && typeof window._cuGuardSalir === 'function') {
+        const ok = await window._cuGuardSalir();
+        if (!ok) {
+          // Cancelado: reponer la entrada que el navegador acaba de consumir.
+          history.pushState({ cuPantalla: 'nueva-visita' }, '');
+          return;
+        }
+        setContextoNueva(null);
+      }
+      saltarGuardRef.current = false;
+      pilaRef.current = pilaRef.current.slice(0, -1);
+      if (!pilaRef.current.length) pilaRef.current = [destino];
+      setPantalla(destino);
+    }
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // navegar() sustituye a setPantalla en todos los puntos de navegación:
+  // mantiene sincronizados el state, la pila y el historial del navegador.
+  function navegar(destino) {
+    if (destino === pilaRef.current[pilaRef.current.length - 1]) return;
+    pilaRef.current = pilaRef.current.concat([destino]);
+    history.pushState({ cuPantalla: destino }, '');
+    setPantalla(destino);
+  }
+
   useEffectApp(() => {
     const onR = () => setWinW(window.innerWidth);
     window.addEventListener('resize', onR);
@@ -478,7 +522,12 @@ function AppV6() {
     return <>
       <OfflineBanner />
       <OfflineColaBadge />
-      <LoginScreen onLogin={u => { setUsuario(u); setPantalla('home'); }} />
+      <LoginScreen onLogin={u => {
+        setUsuario(u);
+        pilaRef.current = ['home'];
+        history.replaceState({ cuPantalla: 'home' }, '');
+        setPantalla('home');
+      }} />
       <ModalHost />
     </>;
   }
@@ -494,11 +543,20 @@ function AppV6() {
 
   function irNueva() {
     setContextoNueva(null);
-    setPantalla('nueva-visita');
+    navegar('nueva-visita');
+  }
+
+  // Salida desde el propio formulario: ya confirmó el usuario, así que se
+  // retrocede en el historial en vez de apilar otra entrada (si no, "atrás"
+  // reabriría el formulario recién cerrado).
+  function salirFormulario() {
+    setContextoNueva(null);
+    saltarGuardRef.current = true;
+    history.back();
   }
   function irContinuar(fila, datos) {
     setContextoNueva({ fila, datos });
-    setPantalla('nueva-visita');
+    navegar('nueva-visita');
   }
 
   // Pestañas según rol — Icono es un componente de Icon.* (icons.jsx)
@@ -530,8 +588,11 @@ function AppV6() {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {esAdmin && (
-                <button type="button" onClick={() => setPantalla('admin')} title="Administración" style={{
+              {/* En escritorio la Administración ya tiene su entrada en la
+                  barra lateral; este atajo del encabezado solo se muestra en
+                  móvil/tablet, donde no hay sidebar. */}
+              {esAdmin && !isDesktop && (
+                <button type="button" onClick={() => navegar('admin')} title="Administración" style={{
                   background: pantalla === 'admin' ? 'var(--brand-bg)' : 'none',
                   border: pantalla === 'admin' ? '1px solid var(--brand-accent)' : '1px solid transparent',
                   borderRadius: 8, padding: 6, cursor: 'pointer',
@@ -550,12 +611,12 @@ function AppV6() {
         {isDesktop && (
           <div id="sidebar-desktop" style={{ display: 'flex' }}>
             {tabs.map(t => (
-              <SidebarBtn key={t.k} pantalla={pantalla} setPantalla={setPantalla}
+              <SidebarBtn key={t.k} pantalla={pantalla} setPantalla={navegar}
                 k={t.k} label={t.label} Icono={t.Icono} />
             ))}
             {esAdmin && <>
               <div className="sidebar-sep"></div>
-              <SidebarBtn pantalla={pantalla} setPantalla={setPantalla}
+              <SidebarBtn pantalla={pantalla} setPantalla={navegar}
                 k="admin" label="Administración" Icono={Icon.Admin} />
             </>}
           </div>
@@ -563,18 +624,16 @@ function AppV6() {
 
         {/* ── CONTENT ── */}
         <div id="content-desktop">
-          {pantalla === 'home' && <HomeScreen usuario={usuario}
-            onNueva={irNueva} onContinuar={irContinuar} />}
-          {pantalla === 'mis-visitas' && <MisVisitasScreen usuario={usuario}
-            onNueva={irNueva} onContinuar={irContinuar} />}
+          {pantalla === 'home' && <HomeScreen usuario={usuario} onContinuar={irContinuar} />}
+          {pantalla === 'mis-visitas' && <MisVisitasScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
             onContinuar={irContinuar} />}
-          {pantalla === 'agenda' && <AgendaScreen usuario={usuario} />}
+          {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen
             usuario={usuario}
             filaInicial={contextoNueva?.fila || null}
             datosIniciales={contextoNueva?.datos || null}
-            onSalir={() => { setContextoNueva(null); setPantalla('home'); }} />}
+            onSalir={salirFormulario} />}
           {pantalla === 'consulta-norma' && <ConsultaNormaScreen />}
           {pantalla === 'admin' && <AdminScreen usuario={usuario} />}
         </div>
@@ -583,7 +642,7 @@ function AppV6() {
         {!isDesktop && !enFormulario && (
           <div className="nav-inferior" style={{ display: 'flex' }}>
             {tabs.map(t => (
-              <BottomTab key={t.k} pantalla={pantalla} setPantalla={setPantalla}
+              <BottomTab key={t.k} pantalla={pantalla} setPantalla={navegar}
                 k={t.k} label={t.label} Icono={t.Icono} />
             ))}
           </div>

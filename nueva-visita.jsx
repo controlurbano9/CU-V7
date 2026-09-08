@@ -573,18 +573,21 @@ function _TextArea({ value, onChange, placeholder, rows, ...rest }) {
   );
 }
 
+// Grupo de opciones excluyentes. Antes cada opción era un <div onClick>:
+// sin foco, sin teclado y sin estado anunciado — en un control de captura de
+// datos primario. Ahora son <button role="radio"> dentro de un radiogroup.
 function _Radio({ value, onChange, opciones }) {
   return (
-    <div className="radio-grupo">
+    <div className="radio-grupo" role="radiogroup">
       {opciones.map(o => {
         const v = typeof o === 'string' ? o : o.v;
         const l = typeof o === 'string' ? o : o.l;
         return (
-          <div key={v}
+          <button key={v} type="button" role="radio" aria-checked={value === v}
             className={'radio-opcion' + (value === v ? ' sel' : '')}
             onClick={() => onChange(v)}>
             {l}
-          </div>
+          </button>
         );
       })}
     </div>
@@ -1808,6 +1811,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     };
   }, []);
 
+  // Va aquí, antes del early return de la fase modal: si se declara después, el
+  // paso modal→formulario cambia el número de hooks entre renders (React #310).
+  // _puedeSalir es una declaración de función, así que está izada.
+  useEffectNV(() => {
+    window._cuGuardSalir = _puedeSalir;
+    return function() { delete window._cuGuardSalir; };
+  });
+
   // ── Si estamos en fase modal, mostrar solo el selector ──
   if (fase === 'modal') {
     return <ModalInicioVisita onResult={handleModalResult} onCancelar={onSalir} />;
@@ -2592,19 +2603,24 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   const tieneInfoSticky = d.direccion || d.radicado || d.esOficio;
 
+  // Devuelve true si se puede abandonar el formulario. Se usa tanto desde el
+  // botón "Volver" como desde el botón atrás del navegador (app.jsx la lee en
+  // window._cuGuardSalir): antes el atrás de Android salía de la app entera y
+  // se perdía la visita a medio diligenciar.
+  async function _puedeSalir() {
+    if (!_hayCambiosSinGuardar()) return true;
+    return await appConfirm(
+      'Hay cambios sin guardar. Si vuelves ahora se perderán.',
+      { titulo: 'Salir sin guardar', btnOk: 'Salir sin guardar', peligro: true }
+    );
+  }
+
   async function _confirmarVolver() {
-    if (_hayCambiosSinGuardar()) {
-      const ok = await appConfirm(
-        'Hay cambios sin guardar. Si vuelves ahora se perderán.',
-        { titulo: 'Salir sin guardar', btnOk: 'Salir sin guardar' }
-      );
-      if (!ok) return;
-    }
-    onSalir();
+    if (await _puedeSalir()) onSalir();
   }
 
   return (
-    <div className="pantalla activa pad-bottom">
+    <div className="pantalla activa" style={{ paddingBottom: 140 }}>
       {/* Header unificado (NO sticky) — título + Volver + info radicado/dirección/N° visita */}
       <div style={{
         background: 'var(--fondo)', paddingBottom: 12, marginBottom: 14,
@@ -3279,35 +3295,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </_Campo>
       </_Seccion>
 
-      {/* ── Botón guardar ──────────────────────────────────── */}
-      <button onClick={guardar} disabled={guardando} className="btn-principal secundario"
-        style={{ marginTop: 18, fontSize: 16 }}>
-        {guardando
-          ? 'Guardando...'
-          : (filaEditando
-              ? (enLinea ? 'Actualizar visita' : 'Actualizar (se sincronizará)')
-              : (enLinea ? 'Guardar visita'    : 'Guardar (se sincronizará)'))}
-      </button>
-      {/* Pista visual offline: refuerza que la cola se encarga */}
-      {!enLinea && !guardando && (
-        <div style={{
-          marginTop: 6, fontSize: 11, color: 'var(--cafe)', textAlign: 'center',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amarillo)' }} />
-          Sin conexión — los datos se enviarán cuando vuelva la red.
-        </div>
-      )}
-      {/* Pista de autoguardado: muestra hora del último auto/manual save. */}
-      {ultimoGuardadoMs && !guardando && (
-        <div style={{
-          marginTop: 6, fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--verde-dark)' }} />
-          Autoguardado · {new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      )}
+      {/* El botón de guardar ya no vive aquí: pasó a la barra fija inferior
+          (ver final del componente). En campo el inspector tenía que recorrer
+          ~3000px de formulario para llegar a la acción principal. */}
 
       {/* Botones de documentos generados (solo con fila guardada) */}
       {filaEditando && (
@@ -3774,6 +3764,46 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           <Icon.Folder size={18} /> Ver carpeta Drive de la visita
         </a>
       )}
+
+      {/* ── Barra fija: acción principal siempre alcanzable ─────────
+          El nav inferior está oculto mientras se edita una visita
+          (app.jsx: enFormulario), así que esta barra no lo tapa. */}
+      <div style={{
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60,
+        background: 'var(--superficie)', borderTop: '1px solid var(--borde-med)',
+        boxShadow: '0 -6px 20px -12px rgba(31,27,22,0.35)',
+        padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
+      }}>
+        <div style={{ maxWidth: 'var(--content-max)', margin: '0 auto' }}>
+          {/* Estado: offline o última hora de autoguardado */}
+          {!enLinea && !guardando && (
+            <div style={{
+              fontSize: 11, color: 'var(--cafe)', textAlign: 'center', marginBottom: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amarillo)' }} />
+              Sin conexión — los datos se enviarán cuando vuelva la red.
+            </div>
+          )}
+          {enLinea && ultimoGuardadoMs && !guardando && (
+            <div style={{
+              fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--verde-dark)' }} />
+              Autoguardado &middot; {new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
+          <button onClick={guardar} disabled={guardando} className="btn-principal"
+            style={{ margin: 0, fontSize: 16 }}>
+            {guardando
+              ? 'Guardando...'
+              : (filaEditando
+                  ? (enLinea ? 'Actualizar visita' : 'Actualizar (se sincronizará)')
+                  : (enLinea ? 'Guardar visita'    : 'Guardar (se sincronizará)'))}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3827,6 +3857,7 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
     async function subirTodos() {
       setSubiendo(true);
       var i = 0;
+      var fallidas = [];   // fotos que no se pudieron subir (antes fallaban en silencio)
       // Loop dinámico: la cola puede crecer mientras subimos (ver alSeleccionar).
       while (i < colaRef.current.length) {
         if (cancelado) break;
@@ -3846,6 +3877,7 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
           });
         } catch (err) {
           console.warn('Error subiendo foto:', err);
+          fallidas.push(f.name || 'foto ' + (i + 1));
         }
         i++;
       }
@@ -3854,6 +3886,12 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
       setCola(function(prev) { return prev.slice(i); });
       setProgreso('');
       setSubiendo(false);
+      // Antes el error solo iba a console.warn: la foto desaparecía de la lista
+      // sin avisar y el inspector creía que estaba en Drive.
+      if (!cancelado && fallidas.length) {
+        appAlert('No se pudieron subir ' + fallidas.length + ' foto(s):\n• ' + fallidas.join('\n• ') +
+                 '\n\nVuelva a seleccionarlas para reintentar.', { titulo: 'Fotos no subidas' });
+      }
     }
     subirTodos();
     return function() { cancelado = true; };

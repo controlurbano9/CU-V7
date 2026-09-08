@@ -612,6 +612,10 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   background: var(--surface);
   color: var(--ink-3);
   -webkit-user-select: none;
+  /* _Radio ahora renderiza <button role="radio">: los botones no heredan
+     tipografía del documento y traen estilo nativo. */
+  font-family: inherit;
+  appearance: none; -webkit-appearance: none;
 }
 @media (hover: hover) and (pointer: fine) {
   .radio-opcion:hover:not(.sel):not(.sel-verde):not(.sel-cafe):not(.sel-rojo) {

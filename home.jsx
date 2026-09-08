@@ -9,7 +9,7 @@ const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 // Término legal de respuesta a derechos de petición (PQR), Ley 1755/2015 (CPACA): 15 días hábiles.
 const PQR_PLAZO_DIAS_HABILES = 15;
 
-function HomeScreen({ usuario, onNueva, onContinuar }) {
+function HomeScreen({ usuario, onContinuar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
   const [error, setError] = useStateH('');
@@ -62,7 +62,10 @@ function HomeScreen({ usuario, onNueva, onContinuar }) {
         const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
         if (dVis && formatearFecha(dVis) === hoyStr) realHoy++;
       }
-      if (e === 'ASIGNADO') {
+      // Mismo criterio que la lista "Asignadas hoy" de abajo (PENDIENTE o
+      // ASIGNADO): antes la tarjeta contaba solo ASIGNADO y el número no
+      // cuadraba con las tarjetas listadas.
+      if (e === 'PENDIENTE' || e === 'ASIGNADO') {
         const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
         if (dAsig && formatearFecha(dAsig) === hoyStr) asigHoy++;
       }
@@ -151,7 +154,22 @@ function HomeScreen({ usuario, onNueva, onContinuar }) {
     rojas.sort((a, b) => a.diasH - b.diasH);
     amarillas.sort((a, b) => b.dias - a.dias);
 
-    return { rojas, amarillas, total: rojas.length + amarillas.length };
+    // Una misma visita puede disparar varias alertas a la vez (PQR por vencer
+    // + audiencia próxima + días sin completar). Antes se renderizaba una
+    // tarjeta por alerta, con keys React duplicadas ('r' + mismo _idx) y el
+    // mismo predio repetido 2-3 veces en pantalla. Se conserva solo la alerta
+    // más urgente de cada visita: la roja mejor rankeada; y ninguna amarilla
+    // si la visita ya tiene una roja.
+    const vistas = new Set();
+    const rojasU = rojas.filter(a => {
+      const k = a.f._idx || a.f['RADICADO'] || a.f;
+      if (vistas.has(k)) return false;
+      vistas.add(k);
+      return true;
+    });
+    const amarillasU = amarillas.filter(a => !vistas.has(a.f._idx || a.f['RADICADO'] || a.f));
+
+    return { rojas: rojasU, amarillas: amarillasU, total: rojasU.length + amarillasU.length };
   }, [datos, esAdmin, miNombre]);
 
   // ── Visitas asignadas hoy (al inspector logueado) ──
@@ -162,13 +180,16 @@ function HomeScreen({ usuario, onNueva, onContinuar }) {
       if (e !== 'ASIGNADO' && e !== 'PENDIENTE') return false;
       // Solo mis asignaciones (no las de otros)
       const vis = visitadoresBD(f).toUpperCase();
-      if (!vis.includes(miNombre)) return false;
+      // El admin ve todas (vista de sistema), igual que stats.asigHoy: antes
+      // la tarjeta mostraba el número global y la lista de abajo solo las
+      // propias, así que nunca coincidían.
+      if (!esAdmin && !vis.includes(miNombre)) return false;
       // Filtrar por fecha de asignación = hoy
       const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
       if (dAsig && formatearFecha(dAsig) === hoyStr) return true;
       return false;
     });
-  }, [datos, miNombre]);
+  }, [datos, esAdmin, miNombre]);
 
   // ── Render ──
   const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -197,7 +218,7 @@ function HomeScreen({ usuario, onNueva, onContinuar }) {
         </div>
         <div className="stat-box-v2 verde compact">
           <div className="stat-num-v2">{cargando ? '—' : stats.realHoy}</div>
-          <div className="stat-label-v2">Realizadas hoy</div>
+          <div className="stat-label-v2">Iniciadas hoy</div>
         </div>
       </div>
 

@@ -62,32 +62,21 @@ function TabVigilancia() {
       // Ordenar por fecha de visita descendente (más recientes primero).
       // localeCompare sobre DD/MM/YYYY ordena por día primero, no por fecha real;
       // parseamos a timestamp para que "02/02/2026" > "10/01/2026" como debe ser.
-      susp.sort((a, b) => _parsearFechaVigilancia(b['FECHA DE VISITA']) - _parsearFechaVigilancia(a['FECHA DE VISITA']));
+      susp.sort((a, b) => _ts(b['FECHA DE VISITA']) - _ts(a['FECHA DE VISITA']));
       setFilas(susp);
     } catch (e) { setError(e.message); }
     setCargando(false);
   }
 
-  function extraerIdCarpeta(link) {
-    if (!link) return '';
-    const m = link.match(/folders\/([a-zA-Z0-9_-]+)/);
-    return m ? m[1] : '';
-  }
-
-  // Parsea DD/MM/YYYY (formato canónico en BD), ISO o Date a timestamp.
-  function _parsearFechaVigilancia(val) {
-    if (!val) return 0;
-    const s = String(val).trim().split(' ')[0];
-    let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
-    if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime() || 0;
-    m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-    if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime() || 0;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? 0 : d.getTime();
+  // Timestamp para ordenar. parsearFecha() (utils.js) ya cubre Date,
+  // DD/MM/YYYY e ISO; antes había aquí una tercera copia del mismo parser.
+  function _ts(val) {
+    const d = parsearFecha(val);
+    return d ? d.getTime() : 0;
   }
 
   async function generar(f) {
-    const idCarpeta = extraerIdCarpeta(f['LINK_DRIVE'] || f[55] || '');
+    const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
     if (!idCarpeta) { await appAlert('La visita no tiene carpeta de Drive asociada.', { titulo: 'Sin carpeta' }); return; }
     setBusyFila(f._idx);
     try {
@@ -200,16 +189,24 @@ function TabUsuarios() {
     setCargando(false);
   }
 
+  // busyFila evita el doble POST si se pulsa dos veces mientras responde el
+  // webhook (antes el botón quedaba activo durante toda la petición).
+  const [busyFila, setBusyFila] = useStateA(null);
+
   async function togglear(u) {
+    if (busyFila) return;
     const accion = u.activo ? 'desactivar' : 'activar';
     if (!(await appConfirm(`¿${accion} a ${u.nombre}?`, {
       titulo: u.activo ? 'Desactivar usuario' : 'Activar usuario',
       btnOk: u.activo ? 'Desactivar' : 'Activar',
+      peligro: u.activo,
     }))) return;
+    setBusyFila(u.fila);
     try {
       await toggleActivo(u.fila, u.activo ? 'NO' : 'SI');
-      cargar();
+      await cargar();
     } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    setBusyFila(null);
   }
 
   return (
@@ -241,11 +238,17 @@ function TabUsuarios() {
                   <td style={{ padding: 8, textAlign: 'center', fontSize: 11 }}>{u.cargo}</td>
                   <td style={{ padding: 8, textAlign: 'center' }}>{u.rol}</td>
                   <td style={{ padding: 6, textAlign: 'center' }}>
-                    <button onClick={() => togglear(u)} style={{
-                      background: u.activo ? 'var(--verde)' : 'var(--rojo)', color: 'white',
-                      border: 'none', borderRadius: 6, padding: '4px 10px',
-                      fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
-                    }}>{u.activo ? 'Activo' : 'Inactivo'}</button>
+                    {/* El estado se muestra como texto y el botón nombra la
+                        ACCIÓN. Antes el botón decía "Activo"/"Inactivo", así
+                        que pulsar "Activo" desactivaba al usuario. */}
+                    <span className={'badge-suave ' + (u.activo ? 'badge-verde' : 'badge-rojo')}
+                      style={{ marginRight: 8 }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
+                    <button onClick={() => togglear(u)} disabled={busyFila != null} style={{
+                      background: 'var(--gris-bg)', color: u.activo ? 'var(--rojo)' : 'var(--verde)',
+                      border: '1px solid var(--borde)', borderRadius: 6, padding: '4px 10px',
+                      fontSize: 11, cursor: busyFila != null ? 'not-allowed' : 'pointer',
+                      opacity: busyFila != null ? 0.5 : 1, fontFamily: 'inherit', fontWeight: 600,
+                    }}>{busyFila === u.fila ? '...' : (u.activo ? 'Desactivar' : 'Activar')}</button>
                   </td>
                 </tr>
               ))}
@@ -278,7 +281,7 @@ function TabResetPin() {
     if (pin !== pin2) { setMsg({ t: 'error', m: 'Los dos PIN no coinciden' }); return; }
     const u = usuarios.find(x => x.fila === parseInt(sel, 10));
     const ok = await appConfirm(`¿Resetear el PIN de ${u?.nombre}?`, {
-      titulo: 'Resetear PIN', btnOk: 'Resetear',
+      titulo: 'Resetear PIN', btnOk: 'Resetear', peligro: true,
     });
     if (!ok) return;
     setBusy(true);
@@ -336,16 +339,28 @@ function TabLog() {
   const [filas, setFilas] = useStateA([]);
   const [cargando, setCargando] = useStateA(true);
   const [error, setError] = useStateA('');
-  useEffectA(() => {
+
+  // Antes el log se leía una sola vez al montar: un fallo de red dejaba el
+  // panel muerto y no había forma de reintentar ni de refrescar.
+  function cargar() {
+    setCargando(true); setError('');
     leerLogAuditoria().then(v => {
       setFilas((v || []).slice(1).reverse().slice(0, 50));
       setCargando(false);
     }).catch(e => { setError(e.message); setCargando(false); });
-  }, []);
+  }
+  useEffectA(cargar, []);
 
   return (
     <div className="card">
-      <div className="card-titulo" style={{ marginBottom: 12 }}>Auditoría · últimos 50</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="card-titulo" style={{ margin: 0 }}>Auditoría · últimos 50</div>
+        <button onClick={cargar} disabled={cargando} style={{
+          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
+          padding: '6px 12px', fontFamily: 'inherit', fontSize: 12,
+          cursor: cargando ? 'not-allowed' : 'pointer', opacity: cargando ? 0.5 : 1,
+        }}>{cargando ? '...' : 'Recargar'}</button>
+      </div>
       {cargando && <div style={{ color: 'var(--texto-suave)' }}>Cargando...</div>}
       {error && <div style={{ color: 'var(--rojo)', fontSize: 13 }}>Error al cargar auditoría: {error}</div>}
       {!cargando && !error && filas.length === 0 && <div style={{ color: 'var(--texto-suave)' }}>Sin registros.</div>}
