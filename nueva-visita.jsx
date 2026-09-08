@@ -3326,6 +3326,24 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* Botones de documentos generados (solo con fila guardada) */}
       {filaEditando && (
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Acta e informe exigen el formulario completo (_validarAntesDeActa).
+              Los botones siguen habilitados a propósito: al pulsarlos aparece la
+              lista de campos que faltan, que es la información útil. Lo que no
+              podía quedar así es que se vieran listos cuando no lo están — sin
+              este aviso el inspector solo se entera al intentar generar. */}
+          {(() => {
+            const nFaltan = _validarAntesDeActa().length;
+            if (nFaltan === 0) return null;
+            return (
+              <div style={{
+                fontSize: 12, color: 'var(--amber)', background: 'var(--amber-bg)',
+                border: '1px solid rgba(184,135,58,.25)', borderRadius: 8, padding: '8px 10px',
+              }}>
+                Faltan {nFaltan} campo{nFaltan === 1 ? '' : 's'} por diligenciar para generar
+                el acta o el informe. Pulsa un botón para ver cuáles.
+              </div>
+            );
+          })()}
           {/* Acta F-GGO-46:
               - Sin acta: un solo boton 'Generar acta F-GGO-46' (relleno).
               - Con acta: dos botones lado a lado — 'Ver acta' (relleno) y

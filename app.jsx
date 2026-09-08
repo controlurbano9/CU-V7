@@ -535,8 +535,29 @@ function AppV6() {
   const esAdmin = usuario.rol === 'ADMIN';
   const isDesktop = winW >= 900;
 
-  function salir() {
+  // El botón "Salir" vive en el header, que también se ve con el formulario
+  // abierto: sin el guard, salir desde ahí se llevaba los cambios sin avisar.
+  // Es la misma confirmación que ya usa popstate más arriba.
+  async function salir() {
+    if (enFormulario && typeof window._cuGuardSalir === 'function') {
+      const ok = await window._cuGuardSalir();
+      if (!ok) return;
+    }
     registrarLog(usuario.usuario, 'Logout V6');
+    // Los borradores locales son de quien acaba de cerrar sesión y llevan datos
+    // personales de terceros (nombre e identificación de quien atiende). En un
+    // equipo compartido no pueden sobrevivir al logout esperando la purga de 7
+    // días. Lo guardado en BD no se toca: el autoguardado remoto corre cada 60 s
+    // y el guard de arriba ya advirtió de lo que quedara sin guardar.
+    try {
+      const aBorrar = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('cu_draft_v1_') === 0) aBorrar.push(k);
+      }
+      aBorrar.forEach(k => { try { localStorage.removeItem(k); } catch(_) {} });
+      if (aBorrar.length) console.log('[autoguardado] ' + aBorrar.length + ' borrador(es) purgados al cerrar sesión');
+    } catch(_) { /* localStorage no disponible: silencio */ }
     SESSION_V6.borrar();
     setUsuario(null);
   }
