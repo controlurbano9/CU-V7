@@ -281,17 +281,19 @@ function _SeccionVD({ titulo, children }) {
   const [open, setOpen] = useStateVD(true);
   return (
     <div style={{ marginBottom: 14, border: '1px solid var(--borde, rgba(31,27,22,0.08))', borderRadius: 10, overflow: 'hidden' }}>
-      <div onClick={() => setOpen(!open)} style={{
-        padding: '10px 14px', cursor: 'pointer', background: 'var(--gris-bg, #F5F1EB)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        fontSize: 13, fontWeight: 600, color: 'var(--texto, #1F1B16)',
-        userSelect: 'none',
-      }}>
+      <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{
+          padding: '10px 14px', background: 'var(--gris-bg, #F5F1EB)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontSize: 13, fontWeight: 600, color: 'var(--texto, #1F1B16)',
+          userSelect: 'none',
+        }}>
         <span>{titulo}</span>
         <span style={{ color: 'var(--texto-suave, #5C5142)', display: 'inline-flex' }}>
           {open ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
         </span>
-      </div>
+      </button>
       {open && (
         <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
           {children}

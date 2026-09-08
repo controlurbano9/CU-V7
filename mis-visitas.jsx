@@ -266,16 +266,19 @@ function SeccionAcordeonMV({ titulo, icono, count, color, abierto, onToggle, chi
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       {/* Encabezado del acordeón */}
-      <div
+      <button
+        type="button"
+        className="btn-cabecera"
         onClick={onToggle}
+        aria-expanded={abierto}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 14px', cursor: 'pointer', userSelect: 'none',
+          padding: '14px 14px', userSelect: 'none',
           borderBottom: abierto ? '1px solid var(--borde)' : 'none',
           background: abierto ? 'var(--superficie)' : 'transparent',
           transition: 'background 0.15s ease',
         }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ display: 'flex', alignItems: 'center' }}>{icono}</span>
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--texto-2)' }}>
             {titulo}
@@ -283,11 +286,11 @@ function SeccionAcordeonMV({ titulo, icono, count, color, abierto, onToggle, chi
           <span className={'badge-suave ' + color} style={{ minWidth: 22, textAlign: 'center' }}>
             {count}
           </span>
-        </div>
+        </span>
         <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
           {abierto ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
         </span>
-      </div>
+      </button>
 
       {/* Cuerpo del acordeón */}
       {abierto && (

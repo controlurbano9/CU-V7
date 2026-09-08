@@ -289,6 +289,12 @@ function _estadoInicial(datosIniciales) {
   // Separar actuación y conclusiones (almacenados juntos en BD col AU)
   const _rawAct = d['ACTUACION / OBSERVACIONES'] || d['ACTUACION'] || '';
   const _partsAct = _rawAct.split('\n══CONCLUSIONES══\n');
+  // Modo oficio: el flag _oficio solo existe al crear la visita; al REABRIR
+  // desde BD no viaja, así que se detecta por el prefijo del radicado. Sin
+  // esto, una visita de oficio reabierta se mostraba como PQR con el radicado
+  // "OFICIO-..." editable y el campo de orden escondido — editar el radicado
+  // destruía la identidad de oficio en el siguiente guardado.
+  const esOficioDetectado = !!d['_oficio'] || /^OFICIO-/i.test(String(d['RADICADO'] || ''));
   return {
     // Identificación
     radicado:       d['RADICADO']             || '',
@@ -302,7 +308,7 @@ function _estadoInicial(datosIniciales) {
     fechaVisita:    _fechaAIso(d['FECHA DE VISITA'] || ''),
     denunciante:    d['DENUNCIANTE/REMITENTE'] || d['DENUNCIANTE'] || '',
     nVisita:        d['N° VISITA']           || d['N VISITA']           || 1,
-    esOficio:       !!d['_oficio'],
+    esOficio:       esOficioDetectado,
     // Ubicación
     direccion:      d['DIRECCION INFRACCION'] || d['DIRECCION']         || '',
     barrio:         d['BARRIO/VEREDA']        || d['BARRIO']            || '',
@@ -642,11 +648,11 @@ function _ChipsMulti({ opciones, value, onChange, separador, otroLabel }) {
     <div>
       <div className="chips">
         {opciones.map(opt => (
-          <div key={opt}
+          <button key={opt} type="button"
             className={'chip' + ((opt === 'Otro' ? otroActivo : isActive(opt)) ? ' activo' : '')}
             onClick={() => toggle(opt)}>
             {opt}
-          </div>
+          </button>
         ))}
       </div>
       {otroActivo && opciones.includes('Otro') && (
@@ -700,12 +706,12 @@ function _ChipsContravencion({ value, onChange }) {
           </div>
           <div className="chips">
             {grupo.opciones.map(opt => (
-              <div key={opt.val}
+              <button key={opt.val} type="button"
                 className={'chip' + (seleccionados.includes(opt.val) ? ' activo' : '')}
                 style={{ fontSize: 12 }}
                 onClick={() => toggle(opt.val)}>
                 {opt.l}
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -713,11 +719,12 @@ function _ChipsContravencion({ value, onChange }) {
       {/* Opción especial */}
       <div style={{ marginTop: 6 }}>
         <div className="chips">
-          <div className={'chip' + (esNoInfraccion ? ' activo' : '')}
+          <button type="button"
+            className={'chip' + (esNoInfraccion ? ' activo' : '')}
             style={{ fontSize: 12, fontStyle: 'italic' }}
             onClick={() => toggle(CONTRAVENCION_ESPECIAL)}>
             {CONTRAVENCION_ESPECIAL}
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -921,7 +928,7 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
       flexShrink: 0,           // evita que se aplaste dentro de flex-column con scroll
       marginBottom: 4,
     }}>
-      <div style={{ padding: '10px 12px', cursor: 'pointer' }} onClick={() => setAbierta(!abierta)}>
+      <button type="button" className="btn-cabecera" style={{ padding: '10px 12px' }} onClick={() => setAbierta(!abierta)}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
@@ -943,7 +950,7 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
             {abierta ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
           </span>
         </div>
-      </div>
+      </button>
       {abierta && (
         <div style={{
           borderTop: '1px solid var(--borde)', padding: '10px 12px',
@@ -1501,8 +1508,22 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // Compartido entre beforeunload y el botón "Volver" (QW3) — misma
   // definición de "sucio" en los dos sitios.
+  // Los campos derivados del servidor (carpetas/links Drive, ultimaModConocida)
+  // NO cuentan como cambios del usuario: los efectos de enriquecimiento al
+  // reabrir (recuperar idCarpetaFotos, autocrear carpeta) los mutan después
+  // del snapshot limpio, y antes eso disparaba el falso positivo
+  // "hay cambios sin guardar" sobre un formulario recién abierto.
+  function _snapshotLimpia(dObj) {
+    const _servidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
+                       'linkXlsxActa', 'linkPdfActa', 'ultimaModConocida'];
+    const out = {};
+    Object.keys(dObj).forEach(function(k) {
+      if (_servidor.indexOf(k) < 0) out[k] = dObj[k];
+    });
+    return out;
+  }
   function _hayCambiosSinGuardar() {
-    const snap = JSON.stringify({ d: _dRef.current, b: _bOtroRef.current });
+    const snap = JSON.stringify({ d: _snapshotLimpia(_dRef.current), b: _bOtroRef.current });
     return snap !== _lastSavedRef.current;
   }
 
@@ -1533,6 +1554,17 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         }
       }
     } catch(e) { /* localStorage no disponible / corrupto: silencio */ }
+    // Snapshot "limpio" tras aterrizar la restauración (o confirmar que no
+    // hay borrador): _lastSavedRef arrancaba en '' y NUNCA coincidía con el
+    // JSON del state inicial — salir de un formulario sin tocar nada (o del
+    // modal de tipo de visita) preguntaba "hay cambios sin guardar", y
+    // beforeunload también. El setTimeout deja pasar el commit del setD
+    // de arriba para que _dRef ya tenga el estado restaurado.
+    setTimeout(function() {
+      if (_lastSavedRef.current === '') {
+        _lastSavedRef.current = JSON.stringify({ d: _snapshotLimpia(_dRef.current), b: _bOtroRef.current });
+      }
+    }, 0);
   }, [fase, _draftKey]);
 
   // (2) Persistir borrador local con debounce 500ms en cada cambio.
@@ -1581,7 +1613,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (!filaEditando) return;
     const id = setInterval(async function() {
       if (_guardandoRef.current || _generandoActaRef.current || _generandoRFRef.current) return;
-      const snap = JSON.stringify({ d: _dRef.current, b: _bOtroRef.current });
+      const snap = JSON.stringify({ d: _snapshotLimpia(_dRef.current), b: _bOtroRef.current });
       if (snap === _lastSavedRef.current) return; // sin cambios
       try {
         const dCur = _dRef.current;
@@ -2186,6 +2218,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // ── Guardar (un solo POST) ─────────────────────────────────
   async function guardar() {
+    // Doble-tap defensivo: el disabled del botón llega tras el re-render;
+    // un segundo toque en esa ventana podía lanzar dos POST 'agregar'.
+    if (_guardandoRef.current) return;
     const errs = _validar();
     if (errs.length) {
       await appAlert('Faltan campos:\n• ' + errs.join('\n• '), { titulo: 'Datos incompletos' });
@@ -2250,7 +2285,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       }));
       // Sincronizar el snapshot del autoguardado: este estado está "limpio"
       // hasta que el inspector vuelva a tocar un campo.
-      _lastSavedRef.current = JSON.stringify({ d: dPersistido, b: barrioOtro });
+      _lastSavedRef.current = JSON.stringify({ d: _snapshotLimpia(dPersistido), b: barrioOtro });
       setUltimoGuardadoMs(Date.now());
 
       if (r && r.encolado) {
@@ -2630,8 +2665,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Devuelve true si se puede abandonar el formulario. Se usa tanto desde el
   // botón "Volver" como desde el botón atrás del navegador (app.jsx la lee en
   // window._cuGuardSalir): antes el atrás de Android salía de la app entera y
-  // se perdía la visita a medio diligenciar.
+  // se perdía la visita a medio diligenciar. En fase modal (selector de tipo)
+  // no hay nada que perder: salir directo, sin preguntar.
   async function _puedeSalir() {
+    if (fase !== 'formulario') return true;
     if (!_hayCambiosSinGuardar()) return true;
     return await appConfirm(
       'Hay cambios sin guardar. Si vuelves ahora se perderán.',
@@ -3224,12 +3261,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 setCampo('visitador', next.join(' / '));
               }
               return (
-                <div key={v.val}
+                <button key={v.val} type="button"
                   className={'chip-vis' + (activo ? ' activo' : '')}
                   data-val={v.val}
                   onClick={toggle}>
                   {v.l}
-                </div>
+                </button>
               );
             })}
           </div>

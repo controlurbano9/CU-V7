@@ -214,6 +214,16 @@ function BuscarScreen({ usuario, onContinuar }) {
         dias: dias || '',
         fecha: hoyDDMMAAAA(),
       });
+      // PDF del acta al cierre (best-effort): sin esto, LINK_PDF_ACTA nunca
+      // se poblaba y el botón "Acta" abría el Sheet en vez del PDF.
+      if (f && (f['LINK_XLSX_ACTA'] || '').trim() && !(f['LINK_PDF_ACTA'] || '').trim()) {
+        generarPdfActaDesdeSheet(
+          f._idx,
+          f['LINK_XLSX_ACTA'],
+          f['RADICADO'] || '',
+          extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '')
+        ).catch(e => console.warn('[completar] pdf acta best-effort:', e.message));
+      }
       invalidarCache('visitas');
       await cargar(true);
     } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
@@ -323,15 +333,20 @@ function BuscarScreen({ usuario, onContinuar }) {
             value={qInput} onChange={e => setQInput(e.target.value)} />
         </div>
 
-        {/* Estado chips */}
+        {/* Estado chips — "visita" es femenino en toda la app: Asignadas,
+            no "Asignados" como decía antes */}
         <div className="filtros-estado">
           {['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'].map(est => {
             const activo = filtrosEstado.includes(est);
+            const label = {
+              PENDIENTE: 'Pendientes', ASIGNADO: 'Asignadas',
+              INICIADO: 'Iniciadas', COMPLETADO: 'Completadas',
+            }[est];
             return (
               <button key={est}
                 className={'btn-filtro' + (activo ? ' ' + ESTADO_CLASE[est] : '')}
                 onClick={() => setFiltrosEstado(toggleEnArr(filtrosEstado, est))}>
-                {est.charAt(0) + est.slice(1).toLowerCase() + 's'}
+                {label}
               </button>
             );
           })}
@@ -340,7 +355,8 @@ function BuscarScreen({ usuario, onContinuar }) {
         {/* Comunas collapse */}
         {comunas.length > 0 && (
           <div style={{ marginTop: 10 }}>
-            <div className="filtro-section-header" onClick={() => setComunasOpen(!comunasOpen)} style={{ cursor: 'pointer' }}>
+            <button type="button" className="filtro-section-header btn-cabecera"
+              onClick={() => setComunasOpen(!comunasOpen)} aria-expanded={comunasOpen}>
               <span className="filtro-section-titulo">
                 Comuna {filtroComunas.length > 0 && (
                   <span style={{ color: 'var(--brand-accent)', fontSize: 11 }}>· {filtroComunas.length}</span>
@@ -349,7 +365,7 @@ function BuscarScreen({ usuario, onContinuar }) {
               <span className="filtro-section-chevron" style={{ display: 'inline-flex' }}>
                 {comunasOpen ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
               </span>
-            </div>
+            </button>
             {comunasOpen && (
               <div className="filtros-comunas">
                 {comunas.map(c => (
@@ -370,7 +386,8 @@ function BuscarScreen({ usuario, onContinuar }) {
         {/* Visitador — solo ADMIN */}
         {esAdmin && (
           <div style={{ marginTop: 10 }}>
-            <div className="filtro-section-header" onClick={() => setVisitadorOpen(!visitadorOpen)} style={{ cursor: 'pointer' }}>
+            <button type="button" className="filtro-section-header btn-cabecera"
+              onClick={() => setVisitadorOpen(!visitadorOpen)} aria-expanded={visitadorOpen}>
               <span className="filtro-section-titulo">
                 Visitador {filtrosVisitador.length > 0 && (
                   <span style={{ color: 'var(--brand-accent)', fontSize: 11 }}>· {filtrosVisitador.length}</span>
@@ -379,7 +396,7 @@ function BuscarScreen({ usuario, onContinuar }) {
               <span className="filtro-section-chevron" style={{ display: 'inline-flex' }}>
                 {visitadorOpen ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
               </span>
-            </div>
+            </button>
             {visitadorOpen && (
               <div className="filtros-estado">
                 {visitadores.map(v => (
@@ -468,21 +485,23 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
   const [open, setOpen] = useStateB(filas.length === 1);
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div onClick={() => setOpen(!open)} style={{
-        padding: '12px 14px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: open ? '1px solid var(--borde)' : 'none',
-      }}>
-        <div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</div>
-          <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
+      <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{
+          padding: '12px 14px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: open ? '1px solid var(--borde)' : 'none',
+        }}>
+        <span>
+          <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</span>
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
             {filas.length} {filas.length === 1 ? 'registro' : 'registros'}
-          </div>
-        </div>
+          </span>
+        </span>
         <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
           {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
         </span>
-      </div>
+      </button>
       {open && (
         <div>
           {filas.map((f, i) => <FilaVisita key={f._idx || i} f={f} usuario={usuario} onContinuar={onContinuar}

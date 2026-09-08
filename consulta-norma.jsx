@@ -224,8 +224,9 @@ function ConsultaNormaScreen() {
   // → llega la lectura → se consulta la norma de inmediato.
   // En el formulario de Nueva Visita sí usamos watchPosition refinado.
   const [gpsAccCN, setGpsAccCN] = useStateCN(null);
-  // geoWatchCNRef se mantiene como ref por compatibilidad con _detenerGeoCN
-  // (que aún se llama desde el botón "✕ Cancelar" para abortar si hace falta).
+  // getCurrentPosition no se puede cancelar; este ref se mantiene para
+  // limpiar en el desmontaje (consistencia con el flujo watchPosition del
+  // formulario) — no hay botón de cancelar en esta pantalla.
   const geoWatchCNRef = useRefCN(null);
   function _detenerGeoCN() {
     if (geoWatchCNRef.current != null) {
@@ -311,7 +312,9 @@ function ConsultaNormaScreen() {
           setError('No se encontró dentro de Bello. Verifica la dirección (ej: CL 50 32-10) o pega coordenadas (ej: 6.337, -75.557).');
         }
       } catch (e2) {
-        setError('Error buscando: ' + (e1.message || e2.message));
+        // e2 (fallback del webhook) es más específico que e1 (el geocoder del
+        // navegador, siempre "No se encontró la dirección"): mostrar e2 primero.
+        setError('Error buscando: ' + (e2.message || e1.message));
       }
     }
     setBusyGeo(false);
@@ -439,25 +442,28 @@ function ConsultaNormaScreen() {
       {/* Consulta Catastro — acordeón, encima del panel POT */}
       {(busyCat || catastro) && (
         <div className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
-          <div onClick={() => setCatastroOpen(!catastroOpen)} style={{
-            padding: '14px 16px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: catastroOpen ? '1px solid var(--borde)' : 'none',
-            userSelect: 'none',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div className="card-titulo" style={{ margin: 0 }}>Consulta Catastro</div>
+          <button type="button" className="btn-cabecera"
+            onClick={() => setCatastroOpen(!catastroOpen)}
+            aria-expanded={catastroOpen}
+            style={{
+              padding: '14px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: catastroOpen ? '1px solid var(--borde)' : 'none',
+              userSelect: 'none',
+            }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="card-titulo" style={{ margin: 0 }}>Consulta Catastro</span>
               {catastro && catastro.length > 0 && (
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                   background: 'var(--azul-bg)', color: 'var(--azul)',
                 }}>{catastro.length} {catastro.length === 1 ? 'ficha' : 'fichas'}</span>
               )}
-            </div>
+            </span>
             <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
               {catastroOpen ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
             </span>
-          </div>
+          </button>
           {catastroOpen && (
             <div style={{ padding: '12px 16px' }}>
               {busyCat && (

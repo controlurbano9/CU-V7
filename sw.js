@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v102';
+const CACHE_NAME = 'cu-v6-cache-v103';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -34,7 +34,8 @@ const PRECACHE_URLS = [
   './api.js',
   './logo.jpg',
   './logo-login.png',
-  // JSX compilados por Babel en runtime — se cachean al primer fetch
+  // El resto de assets locales (bundle.min.js, catastro.json, env.js, etc.)
+  // se cachean al primer fetch con la estrategia network-first de abajo.
 ];
 
 // CDN que se cachean al primer uso (cache-first)

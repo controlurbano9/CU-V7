@@ -133,7 +133,6 @@ async function login(nombre, pin) {
   const pinHash = await hashPin(pin);
   try {
     const d = await gasPost({ accion: 'login', nombre, hash: pinHash });
-    if (!d || !d.ok) return { ok: false, error: (d && d.error) || 'Error de conexión' };
     return {
       ok:      true,
       usuario: d.usuario,
@@ -142,7 +141,13 @@ async function login(nombre, pin) {
       hash:    pinHash,  // se conserva para reusar en llamadas admin
     };
   } catch (e) {
-    return { ok: false, error: 'Error de conexión. Intenta de nuevo.' };
+    // gasPost lanza con el mensaje del backend cuando la respuesta llegó
+    // (ej. 'Credenciales inválidas' o el aviso de rate-limit): ese mensaje
+    // es útil y debe llegar al usuario. Antes el catch devolvía siempre
+    // "Error de conexión" — un PIN equivocado parecía un problema de red.
+    const m = (e && e.message) || '';
+    const esRed = !m || /failed to fetch|networkerror|network error|load failed|aborted|timeout|HTTP \d/i.test(m);
+    return { ok: false, error: esRed ? 'Error de conexión. Intenta de nuevo.' : m };
   }
 }
 
@@ -201,6 +206,37 @@ async function generarSolicitudVigilancia(params) {
   return r;
 }
 
+// ── PDF del acta F-GGO-46 al COMPLETAR ─────────────────────────
+// La acción backend 'generarPdfActa' existía ("llamado al marcar COMPLETADO")
+// pero nadie la invocaba: LINK_PDF_ACTA nunca se poblaba y el botón "Acta"
+// de los entregables abría el Sheet editable en vez del PDF. Se invoca
+// best-effort tras completar una visita con acta generada (Sheet): un fallo
+// aquí no debe bloquear el cierre, el Sheet sigue disponible.
+async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpetaVisita) {
+  try {
+    const m = String(linkActaSheet || '').match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (!m) return '';
+    const r = await gasPost({
+      accion: 'generarPdfActa',
+      ssId: m[1],
+      radicado: radicado || '',
+      idCarpetaVisita: idCarpetaVisita || '',
+    });
+    if (!r || !r.linkPdf) return '';
+    // Persistir LINK_PDF_ACTA en BD — best-effort, el PDF ya quedó en Drive.
+    gasPost({
+      accion: 'actualizarLinks',
+      fila: fila,
+      linkPdfActa: r.linkPdf,
+    }).catch(e => console.warn('[generarPdfActa] no se pudo persistir linkPdfActa:', e.message));
+    invalidarCache('visitas');
+    return r.linkPdf;
+  } catch (e) {
+    console.warn('[generarPdfActa] best-effort falló:', e.message);
+    return '';
+  }
+}
+
 // ── NUEVA VISITA ───────────────────────────────────────────────
 // Geocoding (forward o reverse) — la API key vive en Apps Script.
 async function geocodeDireccion(query) {
@@ -208,7 +244,30 @@ async function geocodeDireccion(query) {
   const params = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(query)
     ? { accion: 'geocode', latlng: query.replace(/\s+/g, '') }
     : { accion: 'geocode', address: query };
-  return gasGet(params);
+  const d = await gasGet(params);
+  // El backend devuelve la respuesta CRUDA de Google (data.results[...]) —
+  // sin aplanar, todo consumidor que espera lat/lng planos (nueva-visita,
+  // consulta-norma) fallaba en silencio con "No se encontró la ubicación".
+  if (d && d.data && Array.isArray(d.data.results) && d.data.results.length) {
+    const loc = d.data.results[0].geometry && d.data.results[0].geometry.location;
+    if (loc && loc.lat != null && loc.lng != null) {
+      return { ok: true, data: {
+        lat: loc.lat, lng: loc.lng,
+        formatted: d.data.results[0].formatted_address || '',
+      } };
+    }
+  }
+  // ok:true sin resultados (REQUEST_DENIED por restricción de la clave Maps,
+  // ZERO_RESULTS real, etc.): traducirlo a un error honesto en vez de dejar
+  // que el caller diga "no se encontró dentro de Bello" cuando ni se buscó.
+  if (d && d.data && d.data.results && d.data.results.length === 0) {
+    const st = (d.data.status || 'SIN_RESULTADOS');
+    throw new Error(st === 'ZERO_RESULTS'
+      ? 'Google no encontró esa dirección.'
+      : 'El servicio de geocodificación no está disponible'
+        + (st === 'REQUEST_DENIED' ? ' (la clave de Maps no tiene permiso de Geocoding).' : ' (' + st + ').'));
+  }
+  return d;
 }
 
 // Crea carpeta de la visita en Drive y devuelve { linkCarpeta, idFotos }.
@@ -324,8 +383,14 @@ async function listarFotosActa(idCarpetaFotos) {
 }
 
 // Describe una foto por fileId usando Gemini Vision (thumbnail 600px).
+// NO pasa por gasGet: ese lanza al ver ok:false y se llevaba consigo el flag
+// rateLimited que el caller usa para reintentar con backoff 4s/8s — el
+// reintento era código muerto y un 429 de Gemini se trataba como fallo final.
 async function describirFotoDesdeId(fileId) {
-  return gasGet({ accion: 'describirFotoDesdeId', fileId });
+  const qs = new URLSearchParams(_conCredencialesSesion({ accion: 'describirFotoDesdeId', fileId })).toString();
+  const r = await fetch(CFG.webhook + '?' + qs);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return await r.json();
 }
 
 // ── Consulta POT (100% cliente, igual que producción V2) ───────────
@@ -720,7 +785,7 @@ Object.assign(window, {
   hashPin, gasGet, gasPost, leerHoja, leerVisitas, normalizarEstado,
   login, listarInspectoresActivos, listarUsuariosAdmin,
   toggleActivo, resetPin, registrarLog, leerLogAuditoria,
-  generarSolicitudVigilancia,
+  generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,
   subirFotoConDescripcion, describirFotoConIA,

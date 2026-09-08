@@ -411,8 +411,16 @@ function AppV6() {
 
   // navegar() sustituye a setPantalla en todos los puntos de navegación:
   // mantiene sincronizados el state, la pila y el historial del navegador.
-  function navegar(destino) {
+  // Si hay formulario montado, se consulta el mismo guard que popstate:
+  // sin esto, el sidebar (desktop) y el atajo ⚙ (móvil) sacaban al inspector
+  // del formulario sin la confirmación que sí tiene el botón atrás.
+  async function navegar(destino) {
     if (destino === pilaRef.current[pilaRef.current.length - 1]) return;
+    if (pantalla === 'nueva-visita' && typeof window._cuGuardSalir === 'function') {
+      const ok = await window._cuGuardSalir();
+      if (!ok) return;
+      setContextoNueva(null);
+    }
     pilaRef.current = pilaRef.current.concat([destino]);
     history.pushState({ cuPantalla: destino }, '');
     setPantalla(destino);

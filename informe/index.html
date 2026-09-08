@@ -1229,9 +1229,10 @@ async function generarInformeV2() {
 function _itemBorrador(t) { return { texto: t, incluido: true, manual: false }; }
 
 // Bandera de corte hacia la plantilla oficial (ver plan de migración,
-// docs/F-GGO-43_marcadores.md). Mientras se valida con casos reales
-// (Fase A3), queda en false — renderDocx() sigue siendo el camino de
-// producción. Cambiar a true una vez validado.
+// docs/F-GGO-43_marcadores.md). true desde la promoción a producción de
+// 2026-08-21: el camino por defecto es la plantilla oficial con marcadores
+// (server-side en Apps Script); renderDocx() queda como fallback legacy.
+// Volver a false revierte al camino docx.js en el navegador.
 var USAR_PLANTILLA_F43 = true;
 
 // Genera el informe real a partir del borrador ya revisado por el inspector
