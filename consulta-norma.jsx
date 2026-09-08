@@ -400,7 +400,7 @@ function ConsultaNormaScreen() {
 
       {/* Mapa Google Maps */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-        <div ref={mapDivRef} style={{ width: '100%', height: 380 }}></div>
+        <div ref={mapDivRef} className="mapa-norma"></div>
         {punto && (
           <div style={{
             padding: '8px 12px', borderTop: '1px solid var(--borde)',
@@ -502,10 +502,15 @@ function ConsultaNormaScreen() {
         {resultado && !busyPOT && (() => {
           // Comuna: preferir el valor del Comunas.geojson (point-in-polygon, más exacto);
           // si no está, derivar del barrio sugerido.
-          var comuna = resultado.comuna ||
+          // En rural no hay comuna: las 12 comunas del POT son urbanas. El
+          // fallback por barrio también se salta (devolvería la comuna de una
+          // vereda homónima).
+          var esRuralCN = resultado.ambito === 'Rural';
+          var comuna = esRuralCN ? '' : (resultado.comuna ||
             ((typeof window._lookupComunaPorBarrio === 'function')
-              ? window._lookupComunaPorBarrio(resultado.barrioSugerido) : '');
-          var comunaLabel = comuna ? (comuna === 'Vereda' ? 'Vereda' : 'Comuna ' + comuna) : '—';
+              ? window._lookupComunaPorBarrio(resultado.barrioSugerido) : ''));
+          var comunaLabel = esRuralCN ? 'No aplica (rural)'
+            : comuna ? (comuna === 'Vereda' ? 'Vereda' : 'Comuna ' + comuna) : '—';
           return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
             <CampoResultado label="Clasificación del suelo" valor={resultado.clasificacion || '—'} />

@@ -810,6 +810,24 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .gps-dir { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 
+/* Mapas. En móvil manda la pantalla; en escritorio sobra alto y el satelital
+   a zoom 18 no se lee en 220px. */
+.mapa-gps {
+  width: 100%; height: 220px;
+  border-radius: 10px;
+  border: 1px solid var(--borde);
+  overflow: hidden;
+}
+.mapa-norma { width: 100%; height: 380px; }
+@media (min-width: 768px) {
+  .mapa-gps   { height: 420px; }
+  .mapa-norma { height: 520px; }
+}
+@media (min-width: 1200px) {
+  .mapa-gps   { height: 500px; }
+  .mapa-norma { height: 600px; }
+}
+
 /* Usado por el indicador "Grabando..." del dictado por voz (nueva-visita) */
 @keyframes pulsar { 0%,100%{opacity:1} 50%{opacity:.3} }
 

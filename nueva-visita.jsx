@@ -906,10 +906,7 @@ function _MapaGPS({ lat, lon, onMove }) {
           : tieneCoords ? 'Arrastra el pin para corregir la ubicación'
           : 'Captura tu ubicación para colocar el pin'}
       </div>
-      <div ref={mapRef} style={{
-        width: '100%', height: 220, borderRadius: 10,
-        border: '1px solid var(--borde)', overflow: 'hidden',
-      }} />
+      <div ref={mapRef} className="mapa-gps" />
     </div>
   );
 }

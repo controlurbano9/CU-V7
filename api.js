@@ -474,8 +474,17 @@ async function consultarPOT(lat, lon) {
   const esRural = _clas.includes('rural');
   result.ambito = esRural ? 'Rural' : (_clas ? 'Urbano' : '');
 
+  // Las 12 comunas de Comunas.geojson son urbanas por definición. Un punto
+  // rural puede caer dentro de un polígono que se desborda del perímetro, y
+  // entonces Norma mostraba "Comuna N" para una vereda. En rural se descarta.
+  if (esRural) { result.comuna = ''; result.comunaNombre = ''; }
+
   // ── PASADA B: capas comunes (aplican a ambos ámbitos) ──
   const tareasComunes = [
+    // UsoGeneralSuelo NO es una capa urbana: su bbox es el municipio completo
+    // y trae categorías rurales/suburbanas (ZCV-SUB-*, COMUNA:'No aplica').
+    // Mientras estuvo en `tareasUrbanas` ningún punto rural obtenía polígono.
+    _cargarGeoJSON('UsoGeneralSuelo.geojson'),
     _cargarGeoJSON('SueloProteccion.geojson'),
     _cargarGeoJSON('AmenazasNaturales.geojson'),
     _cargarGeoJSON('Veredas.geojson'),
@@ -489,20 +498,19 @@ async function consultarPOT(lat, lon) {
   // ── PASADA B (extra): capas urbanas — solo si NO es rural ──
   // Estas son las pesadas. En zona rural quedan en null y se saltan los loops.
   const tareasUrbanas = esRural
-    ? [Promise.resolve(null), Promise.resolve(null), Promise.resolve(null)]
+    ? [Promise.resolve(null), Promise.resolve(null)]
     : [
-      _cargarGeoJSON('UsoGeneralSuelo.geojson'),
       _cargarGeoJSON('Barrios.geojson'),
       _cargarGeoJSON('Densidades.geojson')
         .then(r => r || _cargarGeoJSON('FranjaIntensidad.geojson')),
     ];
 
   const [
-    sueloProtec, amenazas, veredas, retiros, tratUrb, drmi,
-    usoSuelo, barrios, franjaInt,
+    usoSuelo, sueloProtec, amenazas, veredas, retiros, tratUrb, drmi,
+    barrios, franjaInt,
   ] = await Promise.all([...tareasComunes, ...tareasUrbanas]);
 
-  // 1. Polígono uso del suelo (urbano)
+  // 1. Polígono uso del suelo (urbano y rural)
   if (usoSuelo) {
     for (const feat of usoSuelo.features) {
       try {

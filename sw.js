@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v103';
+const CACHE_NAME = 'cu-v6-cache-v104';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -48,11 +48,8 @@ const CDN_PATTERNS = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'tile.openstreetmap.org',
-  // Google Maps tiles (satellite + hybrid + roads)
-  'khms0.googleapis.com', 'khms1.googleapis.com',
-  'khms2.googleapis.com', 'khms3.googleapis.com',
-  'mt0.googleapis.com', 'mt1.googleapis.com',
-  'mt2.googleapis.com', 'mt3.googleapis.com',
+  // Los tiles de Google NO van aquí: se sirven desde /maps/vt con una URL
+  // irrepetible entre sesiones. Tienen su propia rama (ver TILE_PREFIX).
   'maps.gstatic.com',
   // Google Maps JS SDK — sin esto el mapa no carga offline
   'maps.googleapis.com/maps/api/js',
@@ -83,6 +80,30 @@ const NO_CACHE_PATTERNS = [
   '/maps/api/js/ViewportInfoService',
   '/maps/api/mapsjs/gen_204',
 ];
+
+// ── Tiles de Google Maps ────────────────────────────────────────
+// Hasta v103 se filtraban por `khms0-3` / `mt0-3`: hosts que la API JS ya no
+// usa. Hoy pide `maps.googleapis.com/maps/vt?pb=...`, que no casaba con
+// ningún patrón y caía en la rama network-first de assets locales — o sea
+// NUNCA se cacheó un tile: sin red el mapa satelital quedaba gris (síntoma
+// reportado al abrir una visita iniciada en campo) y `_precacheMapTiles()`
+// de app.jsx no precargaba nada.
+//
+// La URL no sirve como clave: el `pb=` lleva los IDs de experimento del
+// release de Maps, que rotan entre sesiones. Se normaliza a zoom/x/y/capa,
+// que es lo único que identifica al tile.
+const TILE_PREFIX = 'https://maps.googleapis.com/__cu_tile/';
+
+function claveTile(url) {
+  if (url.indexOf('maps.googleapis.com/maps/vt') === -1) return null;
+  const pb = url.split('pb=')[1];
+  if (!pb) return null;
+  const xyz = /!1m4!1i(\d+)!2i(\d+)!3i(\d+)!4i(\d+)/.exec(pb);
+  if (!xyz) return null;
+  const capa = /!2m1!1e(\d+)/.exec(pb);
+  return TILE_PREFIX + (capa ? capa[1] : '0') + '/' +
+    xyz[1] + '/' + xyz[2] + '/' + xyz[3] + '/' + xyz[4];
+}
 
 function isCDN(url) {
   return CDN_PATTERNS.some(p => url.includes(p));
@@ -242,6 +263,30 @@ self.addEventListener('fetch', event => {
 
   // No interceptar requests dinámicos (webhook, POSTs)
   if (event.request.method !== 'GET' || isNoCache(url)) return;
+
+  // Tiles de Maps: cache-first contra la clave normalizada.
+  // El <img> del SDK los pide en no-cors, y una respuesta opaca no se puede
+  // cachear (`response.ok` es false). /maps/vt sí responde con CORS, así que
+  // se re-pide en modo cors sólo cuando hay que ir a la red.
+  // ponytail: la caché de tiles crece sin tope; se purga sola en cada bump de
+  // CACHE_NAME. Si eso deja de bastar, hace falta LRU por fecha de uso.
+  const claveT = claveTile(url);
+  if (claveT) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(claveT).then(cached => {
+          if (cached) return cached;
+          return fetch(new Request(url, { mode: 'cors', credentials: 'omit' }))
+            .then(response => {
+              if (response.ok) cache.put(claveT, response.clone());
+              return response;
+            })
+            .catch(() => fetch(event.request));
+        })
+      )
+    );
+    return;
+  }
 
   // SWR: sirve caché si existe + refresca en background.
   // Para GeoJSONs POT y catastro.json: imprescindible que estén disponibles
