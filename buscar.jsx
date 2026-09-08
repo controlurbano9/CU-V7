@@ -95,7 +95,23 @@ function BuscarScreen({ usuario, onContinuar }) {
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
   // más abajo — sin esto, cada re-render de BuscarScreen (ej. un keystroke
   // en otro filtro) les pasaba callbacks con identidad nueva y anulaba el memo.
-  const adminAsignar = useCallbackB(async (fila, inspector) => {
+  const adminAsignar = useCallbackB(async (fila, inspector, f) => {
+    // Relevar una visita INICIADA no es lo mismo que asignar una pendiente:
+    // el backend conserva el estado, pero por la regla del diligenciador el
+    // inspector anterior deja de verla, y su borrador local (localStorage)
+    // no viaja — lo que no haya guardado se queda en su dispositivo.
+    const estActual = normalizarEstado(f ? (f['ESTADO VISITA'] || f[13] || '') : '');
+    if (estActual === 'INICIADO') {
+      const actual = primerVisitador(visitadoresBD(f));
+      const ok = await appConfirm(
+        'Esta visita está INICIADA' + (actual ? ' por ' + actual : '') + '.\n\n' +
+        'Al pasarla a ' + inspector + ' conserva el estado y todo lo guardado en BD, ' +
+        'pero ' + (actual || 'el inspector actual') + ' dejará de verla y se perderá lo que ' +
+        'aún no haya guardado en su dispositivo.',
+        { titulo: 'Reasignar visita iniciada', btnOk: 'Reasignar', peligro: true }
+      );
+      if (!ok) return;
+    }
     setBusyFila(fila);
     try {
       await gasPost({

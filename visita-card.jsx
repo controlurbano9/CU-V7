@@ -351,8 +351,12 @@ function BotonesAdminVisita({ f, esAdmin, busy, abierto,
 //
 // Props:
 //   f, busy, abierto, inspectores
-//   onAsignar(fila, nombre)              — usado para PENDIENTE/ASIGNADO/INICIADO
+//   onAsignar(fila, nombre, f)           — usado para PENDIENTE/ASIGNADO/INICIADO
 //   onAsignarNuevaVisita(fila, nombre)   — usado solo para COMPLETADO
+//
+// El 3er argumento de onAsignar (la fila completa) es opcional para el caller:
+// Buscar lo usa para advertir antes de relevar una visita INICIADA; Agenda,
+// donde todo está en PENDIENTE, lo ignora.
 // ═══════════════════════════════════════════════════════════════
 function PanelSeleccionInspector({ f, busy, abierto, inspectores,
   onAsignar, onAsignarNuevaVisita }) {
@@ -365,7 +369,9 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
       display: 'flex', flexDirection: 'column', gap: 6,
     }}>
       <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 2 }}>
-        {est === 'COMPLETADO' ? 'Crear nueva visita y asignar a:' : 'Asignar a:'}
+        {est === 'COMPLETADO' ? 'Crear nueva visita y asignar a:'
+          : est === 'INICIADO' ? 'Reasignar (conserva el avance) a:'
+          : 'Asignar a:'}
       </div>
       {inspectores.map(i => (
         <button key={i.nombre} type="button"
@@ -374,7 +380,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
             if (est === 'COMPLETADO' && onAsignarNuevaVisita) {
               onAsignarNuevaVisita(f._idx, i.nombre);
             } else {
-              onAsignar(f._idx, i.nombre);
+              onAsignar(f._idx, i.nombre, f);
             }
           }} disabled={busy} style={{
             background: 'var(--superficie)', border: '1px solid var(--borde)', borderRadius: 6,
