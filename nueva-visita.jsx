@@ -929,27 +929,27 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
       marginBottom: 4,
     }}>
       <button type="button" className="btn-cabecera" style={{ padding: '10px 12px' }} onClick={() => setAbierta(!abierta)}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
+        <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
               {r.municipal && <span style={{ color: 'var(--rojo)', marginRight: 4 }}>🏛</span>}
               Ficha <span style={{ fontFamily: 'var(--font-mono)' }}>{r.ficha}</span>
               <span style={{ fontWeight: 400, color: 'var(--texto-suave)', marginLeft: 8, fontSize: 11 }}>
                 · {r.destinacion || 'Sin destinación'}
               </span>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
+            </span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)' }}>
               {r.direccion || 'Sin dirección'}
-            </div>
-            <div style={{ fontSize: 11, marginTop: 2 }}>
+            </span>
+            <span style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
               <span style={{ color: 'var(--texto-suave)' }}>{r.esRazonSocial ? 'Razón social: ' : 'Titular: '}</span>
               <span style={{ fontWeight: 500 }}>{titular}</span>
-            </div>
-          </div>
+            </span>
+          </span>
           <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
             {abierta ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
           </span>
-        </div>
+        </span>
       </button>
       {abierta && (
         <div style={{
