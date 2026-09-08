@@ -1100,6 +1100,9 @@ function ModalInicioVisita({ onResult, onCancelar }) {
     datosBase['N° VISITA'] = (resultado?.nVisitaSig || 2).toString();
     datosBase['N VISITA'] = datosBase['N° VISITA'];
     datosBase['ESTADO VISITA'] = 'PENDIENTE';
+    // No heredar el visitador de la visita anterior: la nueva la diligencia quien
+    // la crea. Vacío, el efecto de prefijado lo rellena con el usuario logueado.
+    datosBase['VISITADOR(ES)'] = '';
     datosBase['FECHA DE VISITA'] = '';
     datosBase['LINK_DRIVE'] = '';
     datosBase['ACTUACION / OBSERVACIONES'] = '';
@@ -1297,23 +1300,44 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                         </button>
                       </>
                     )}
-                    {esIniciada && (
+                    {/* Regla del diligenciador: sin ella, buscar el radicado por el FAB
+                        dejaba iniciar y guardar sobre la fila de otro inspector. Crear una
+                        visita NUEVA del mismo radicado sí es legítimo (visita de seguimiento),
+                        y nace a nombre de quien la crea. */}
+                    {!puedeDiligenciar(u) ? (
                       <>
-                        <button type="button" onClick={() => iniciarConDatos(u, nVis)}
-                          className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
-                          Continuar visita N°{nVis}
-                        </button>
-                        <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
-                          className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
-                          Crear nueva visita N°{resultado.nVisitaSig}
-                        </button>
+                        <div style={{ fontSize: 13, color: 'var(--texto-suave)' }}>
+                          La diligencia {primerVisitador(visitadoresBD(u))}. No puedes continuar
+                          una visita de otro inspector.
+                        </div>
+                        {!esCompletada && (
+                          <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
+                            className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
+                            Crear nueva visita N°{resultado.nVisitaSig}
+                          </button>
+                        )}
                       </>
-                    )}
-                    {!esCompletada && !esIniciada && (
-                      <button type="button" onClick={() => iniciarConDatos(u, nVis)}
-                        className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
-                        Iniciar visita
-                      </button>
+                    ) : (
+                      <>
+                        {esIniciada && (
+                          <>
+                            <button type="button" onClick={() => iniciarConDatos(u, nVis)}
+                              className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
+                              Continuar visita N°{nVis}
+                            </button>
+                            <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
+                              className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
+                              Crear nueva visita N°{resultado.nVisitaSig}
+                            </button>
+                          </>
+                        )}
+                        {!esCompletada && !esIniciada && (
+                          <button type="button" onClick={() => iniciarConDatos(u, nVis)}
+                            className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
+                            Iniciar visita
+                          </button>
+                        )}
+                      </>
                     )}
                     <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} style={{
                       background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,

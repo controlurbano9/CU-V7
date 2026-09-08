@@ -129,23 +129,15 @@ function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
   if (!onContinuar) return null;
   if (est === 'COMPLETADO') return null;
 
-  // Regla del diligenciador aplicada también al CTA: al iniciar, la visita pasa
-  // a INICIADO y solo la ve el primer nombre de VISITADOR(ES). Si la iniciara un
-  // co-asignado, desaparecería de su propia lista sin explicación. En vez del
-  // botón se le dice quién la diligencia; "Ver datos" sigue disponible.
-  // El admin conserva el acceso (ve todas las visitas en Buscar).
-  const dilig = _primerVisitador(f).toUpperCase();
-  if (dilig) {
-    let s = null;
-    try { s = (typeof SESSION_V6 !== 'undefined') ? SESSION_V6.leer() : null; } catch (e) { s = null; }
-    // Sin sesión legible no bloqueamos: el filtro de la pantalla ya decidió qué mostrar.
-    if (s && s.rol !== 'ADMIN' && String(s.usuario || '').toUpperCase() !== dilig) {
-      return (
-        <span style={{ fontSize: 12, color: 'var(--texto-suave)', alignSelf: 'center' }}>
-          Diligencia {_primerVisitador(f)}
-        </span>
-      );
-    }
+  // Regla del diligenciador aplicada también al CTA (puedeDiligenciar en utils.js):
+  // en vez del botón se dice quién la diligencia. "Ver datos" sigue disponible, así
+  // que el co-asignado no pierde acceso a la información.
+  if (!puedeDiligenciar(f)) {
+    return (
+      <span style={{ fontSize: 12, color: 'var(--texto-suave)', alignSelf: 'center' }}>
+        Diligencia {_primerVisitador(f)}
+      </span>
+    );
   }
 
   const esSm = tamaño === 'sm';

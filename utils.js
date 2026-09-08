@@ -215,6 +215,22 @@ function primerVisitador(visitadores) {
   return String(visitadores || '').split(/\s*[\/,]\s*/)[0].trim();
 }
 
+// Regla del diligenciador aplicada a la escritura: solo el primer nombre de
+// VISITADOR(ES) puede diligenciar la visita, porque al pasar a INICIADO solo él
+// la sigue viendo. Un co-asignado que la iniciara la perdería de su lista y la
+// dejaría a nombre de quien nunca la empezó.
+//   - Admin: sin restricción (gestiona todas las visitas).
+//   - Sin diligenciador asignado: cualquiera puede tomarla.
+//   - Sin sesión legible: no bloqueamos; la pantalla ya filtró qué mostrar.
+function puedeDiligenciar(fila) {
+  var dilig = primerVisitador(visitadoresBD(fila)).toUpperCase();
+  if (!dilig) return true;
+  var s = null;
+  try { s = (typeof SESSION_V6 !== 'undefined') ? SESSION_V6.leer() : null; } catch (e) { s = null; }
+  if (!s) return true;
+  return s.rol === 'ADMIN' || String(s.usuario || '').toUpperCase() === dilig;
+}
+
 // Extrae el ID de carpeta Drive desde un link "https://drive.google.com/.../folders/<id>..."
 // Antes duplicada de forma idéntica en informe-modal.jsx y buscar.jsx: al concatenar
 // el bundle, la segunda declaración pisaba silenciosamente a la primera (mismo scope global).
@@ -234,6 +250,7 @@ var _cuUtilsExports = {
   hoyDDMMAAAA: hoyDDMMAAAA,
   visitadoresBD: visitadoresBD,
   primerVisitador: primerVisitador,
+  puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
