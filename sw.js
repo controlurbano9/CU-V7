@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v104';
+const CACHE_NAME = 'cu-v6-cache-v105';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -30,7 +30,10 @@ const MAX_INTENTOS = 5;
 const PRECACHE_URLS = [
   './',
   './index.html',
-  './styles.css',
+  // styles.css NO va aquí: se pre-cachea con la URL sin `?v=`, y si el install
+  // corre antes de que Pages publique el CSS nuevo la hoja vieja queda clavada
+  // (pasó al desplegar v104). Ahora lleva `?v=` en index.html y la cachea la
+  // rama network-first en el primer fetch, como el resto de assets locales.
   './api.js',
   './logo.jpg',
   './logo-login.png',
