@@ -178,7 +178,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       if (generar) {
         setBusyFila(fila);
         try {
-          const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
+          const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || '');
           if (!idCarpeta) {
             await appAlert('La visita no tiene carpeta de Drive asociada.', { titulo: 'Sin carpeta' });
             setBusyFila(null);
@@ -221,7 +221,7 @@ function BuscarScreen({ usuario, onContinuar }) {
           f._idx,
           f['LINK_XLSX_ACTA'],
           f['RADICADO'] || '',
-          extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '')
+          extraerIdCarpetaDrive(f['LINK_DRIVE'] || '')
         ).catch(e => console.warn('[completar] pdf acta best-effort:', e.message));
       }
       invalidarCache('visitas');
