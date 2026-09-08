@@ -784,21 +784,6 @@ body.v2-mode .v2-autosave{display:inline-flex}
       </div>
     </div>
   </div>
-  <div class="card" id="card-hallazgos" data-momento="2">
-    <div class="ch"><div class="ci"><svg viewBox="0 0 24 24"><path d="M3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2zm12 4c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3zm-9 8c0-2 4-3.1 6-3.1s6 1.1 6 3.1v1H6v-1z"/></svg></div><div><div class="ct">Hallazgos principales</div><div class="cst">Marque los que aplican</div></div></div>
-    <div id="hallazgos-sugerencia-art135" class="hidden" style="margin-bottom:10px"></div>
-    <div class="hlist">
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="ocupacion en antejardín"><span>Ocupacion o intervencion en antejardín</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="construccion sin licencia urbanistica"><span>Construccion sin licencia urbanistica</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="construccion sin sistema estructural sismorresistente"><span>Construccion sin sistema estructural sismorresistente</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="construccion con desconocimiento de la licencia"><span>Construccion con desconocimiento de la licencia</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="eliminacion o cambio de uso de celdas de parqueo"><span>Eliminacion o cambio de uso de celdas de parqueo</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="vanos en muros medianeros no aprobados"><span>Vanos en muros medianeros no aprobados</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="materiales de construccion en espacio publico"><span>Materiales de construccion en espacio publico</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="patologias o fisuras estructurales"><span>Patologias o fisuras estructurales</span></label>
-      <label class="hitem"><input type="checkbox" class="hallazgo" value="uso diferente al senalado en la licencia de construccion"><span>Uso diferente al senalado en la licencia de construccion</span></label>
-    </div>
-  </div>
   <div class="card" id="card-art135-comp" data-momento="2">
     <div class="ch"><div class="ci"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div><div class="ct">Comportamientos contrarios - Art. 135 Ley 1801/2016</div><div class="cst">Literales A, C y D. Marque los que aplican para incluir en conclusiones</div></div></div>
     <div style="margin-bottom:8px"><small style="font-size:11px;color:#2E5496;font-weight:700">LITERAL A — Comportamientos contra la integridad urbanistica:</small></div>
@@ -975,74 +960,18 @@ var MOMENTOS_V2 = [
 var momentoActivo = 1;
 var borradorIA = null;
 
-// Mapeo hallazgo → sugerencia Art. 135 (100% cliente, sin backend nuevo).
-// Se sugiere, NUNCA se auto-aplica — mismo patrón ya validado en
-// nueva-visita.jsx para Literal A. Solo 5 de 9 hallazgos tienen
-// correspondencia real; los otros 4 quedan sin sugerencia a propósito
-// (no se fuerza una categoría legal que no existe).
-var HALLAZGO_ART135 = {
-  'ocupacion en antejardín': ['A1', 'A3'],
-  'construccion sin licencia urbanistica': ['A4'],
-  'construccion con desconocimiento de la licencia': ['A2'],
-  'materiales de construccion en espacio publico': ['D13'],
-  'uso diferente al senalado en la licencia de construccion': ['C9'],
-};
-
-function _normalizarHallazgo(s) {
-  return (s || '').toString().trim().toLowerCase();
-}
-
-// Pinta sugerencias de Art.135 debajo del listado de hallazgos, sin
-// tocar los checkboxes comp-ac hasta que el inspector acepte.
-function actualizarSugerenciaArt135() {
-  var box = document.getElementById('hallazgos-sugerencia-art135');
-  if (!box) return;
-  var marcados = [];
-  document.querySelectorAll('.hallazgo:checked').forEach(function(c) { marcados.push(c.value); });
-
-  var sugeridos = {};
-  marcados.forEach(function(h) {
-    var codigos = HALLAZGO_ART135[_normalizarHallazgo(h)];
-    if (codigos) codigos.forEach(function(c) { sugeridos[c] = true; });
-  });
-  var codigos = Object.keys(sugeridos);
-  if (!codigos.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-
-  var yaMarcados = [];
-  document.querySelectorAll('.comp-ac:checked').forEach(function(c) { yaMarcados.push(c.value); });
-  var faltantes = codigos.filter(function(c) {
-    return !yaMarcados.some(function(v) { return v.indexOf(c + ' -') === 0; });
-  });
-  if (!faltantes.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-
-  box.classList.remove('hidden');
-  box.innerHTML = '<div class="nota" style="margin-bottom:0">'
-    + '<b>Sugerencia Art. 135:</b> segun lo marcado, podria aplicar '
-    + faltantes.join(', ')
-    + '. <button type="button" class="btn btn-o" style="padding:4px 10px;font-size:11px;margin-left:6px" onclick="aceptarSugerenciaArt135()">Marcar sugeridos</button>'
-    + '</div>';
-  box.setAttribute('data-faltantes', faltantes.join(','));
-}
-
-// Acepta la sugerencia: marca los comp-ac correspondientes. Nunca ocurre
-// solo — siempre requiere el clic explícito del inspector.
-function aceptarSugerenciaArt135() {
-  var box = document.getElementById('hallazgos-sugerencia-art135');
-  var faltantes = (box.getAttribute('data-faltantes') || '').split(',').filter(Boolean);
-  document.querySelectorAll('.comp-ac').forEach(function(cb) {
-    faltantes.forEach(function(c) {
-      if (cb.value.indexOf(c + ' -') === 0) cb.checked = true;
-    });
-  });
-  guardar();
-  actualizarSugerenciaArt135();
-}
+// Los 9 checkboxes .hallazgo legados y su mapeo HALLAZGO_ART135 fueron
+// retirados (auditoría 2026-09-08): la fuente real de hallazgos es el
+// catálogo del backend (HALLAZGOS_CONFIRMADOS), validado end-to-end en vivo
+// con casos reales — el bloque legado quedaba solo como respaldo y dejó de
+// usarse. La sugerencia de Art.135 ahora se aplica en el mismo momento de
+// confirmar un hallazgo del catálogo (_marcarComportamientoPorCodigo).
 
 // ── Validaciones centralizadas (una sola fuente, spec funcional §06) ──
 function puedeAvanzarA(n) {
   if (n <= 1 || n === 3) return true;
   if (n === 4) {
-    var hayHallazgo = document.querySelectorAll('.hallazgo:checked').length > 0;
+    var hayHallazgo = HALLAZGOS_CONFIRMADOS.length > 0;
     var hayObs = (gv('obs') || '').trim().length > 0;
     if (!hayHallazgo && !hayObs) return false;
   }
@@ -1054,7 +983,7 @@ function estadoMomento(n) {
   if (n === momentoActivo) return 'activo';
   if (!puedeAvanzarA(n)) return 'bloqueado';
   if (n === 1) return gv('inspector') ? 'completo' : 'pendiente';
-  if (n === 2) return (document.querySelectorAll('.hallazgo:checked').length > 0 || (gv('obs')||'').trim()) ? 'completo' : 'pendiente';
+  if (n === 2) return (HALLAZGOS_CONFIRMADOS.length > 0 || (gv('obs')||'').trim()) ? 'completo' : 'pendiente';
   if (n === 3) return document.querySelectorAll('#fotos-list > div[id^="foto-"]').length > 0 ? 'completo' : 'pendiente';
   if (n === 5) return 'pendiente';
   return 'pendiente';
@@ -1368,9 +1297,6 @@ function activarV2() {
   // confirmacion v2 en vez de generarInforme() directo.
   var btnGen = document.getElementById('btn-gen');
   if (btnGen) btnGen.setAttribute('onclick', "mostrarModalEmision('recibo')");
-  document.querySelectorAll('.hallazgo, .comp-ac').forEach(function(cb) {
-    cb.addEventListener('change', actualizarSugerenciaArt135);
-  });
 }
 
 // Inspectores firmantes — se carga desde la hoja USUARIOS al iniciar.
@@ -1530,8 +1456,7 @@ function descartarVersionMejorada() {
 }
 
 // ── Hallazgos del catálogo — sugerencia por IA desde texto libre ───────────
-// Extiende el patrón ya probado en actualizarSugerenciaArt135()/
-// aceptarSugerenciaArt135() (sugerir + boton confirmar, nunca auto-marcado)
+// Extiende el patrón de sugerir + boton confirmar (nunca auto-marcado) al
 // al catálogo de 98 hallazgos del backend: en vez de 98 checkboxes en el
 // wizard, el inspector escribe observaciones en texto libre y la IA sugiere
 // que claves del catalogo aplican; el inspector rechaza las que no aplican
@@ -2189,8 +2114,7 @@ function escapeHtml(s) {
 }
 function buildRes() {
   var sinLic = document.getElementById('sinLic').checked;
-  var hs = [], tts = [], mods = [], comps = [];
-  document.querySelectorAll('.hallazgo:checked').forEach(function(c) { hs.push(c.value); });
+  var tts = [], mods = [], comps = [];
   document.querySelectorAll('.tt-chk:checked').forEach(function(c) { tts.push(c.value); });
   document.querySelectorAll('.mod-chk:checked').forEach(function(c) { mods.push(c.value); });
   document.querySelectorAll('.comp-ac:checked').forEach(function(c) { comps.push(c.value); });
@@ -2280,9 +2204,6 @@ function buildRes() {
     h += '</div>';
   }
 
-  // ── Hallazgos (legado, checkboxes .hallazgo) ────────────────
-  if (hs.length) h += bloque('Hallazgos (' + hs.length + ')', chips(hs));
-
   // ── Hallazgos del catalogo confirmados ──────────────────────
   // HALLAZGOS_CONFIRMADOS es la fuente real desde que construirPromptF43()
   // dejo de leer los checkboxes .hallazgo — este resumen tambien debe
@@ -2334,8 +2255,7 @@ function showStatus(tipo, titulo, msg) {
 //  los elementos otra vez.
 function recolectarDatosWizard() {
   var sinLic = document.getElementById('sinLic').checked;
-  var hs = [], tts = [], mods = [], comps = [];
-  document.querySelectorAll('.hallazgo:checked').forEach(function(c) { hs.push(c.value); });
+  var tts = [], mods = [], comps = [];
   document.querySelectorAll('.tt-chk:checked').forEach(function(c) { tts.push(c.value); });
   document.querySelectorAll('.mod-chk:checked').forEach(function(c) { mods.push(c.value); });
   document.querySelectorAll('.comp-ac:checked').forEach(function(c) { comps.push(c.value); });
@@ -2358,7 +2278,7 @@ function recolectarDatosWizard() {
     dest:sinLic?'No se aporto':gv('dest'),
     cubierta:sinLic?'No se aporto':gv('cubierta'),
     curaduria:sinLic?'No aplica':gv('curaduria'),
-    obs:gv('obs'), areas:gv('areas'), hallazgos:hs, comportamientos:comps,
+    obs:gv('obs'), areas:gv('areas'), comportamientos:comps,
     clasificacion:gv('clasificacion'), polig_uso:gv('poligUso'),
     polig_trat:gv('poligTrat'), franja:gv('franja'), proteccion:gv('proteccion')
   };
@@ -2368,7 +2288,7 @@ function recolectarDatosWizard() {
     if (desc) fotoDescs.push(desc);
   });
   var nFotos = document.querySelectorAll('#fotos-list > div[id^="foto-"]').length;
-  return { d: d, hs: hs, tts: tts, mods: mods, fotoDescs: fotoDescs, sinLic: sinLic, nFotos: nFotos };
+  return { d: d, tts: tts, mods: mods, fotoDescs: fotoDescs, sinLic: sinLic, nFotos: nFotos };
 }
 
 // ── Checklist de aclaraciones (momento 5) ────────────────────────────────
@@ -3367,7 +3287,6 @@ var CHECKS = ['sinLic','incluirArt','esDiligencia'];
 var CHK_GROUPS = [
   { sel: '.tt-chk',     key: 'tipos_tramite' },
   { sel: '.mod-chk',    key: 'modalidades'   },
-  { sel: '.hallazgo',   key: 'hallazgos'     },
   { sel: '.comp-ac',    key: 'comp_ac'       }
 ];
 // ── ID efímero de sesión para informes sin visita asociada ─────────────
@@ -3485,7 +3404,7 @@ function nuevoInforme() {
     var el = document.getElementById(id);
     if (el) { el.checked = false; toggleSinLic && el.id==='sinLic' && toggleSinLic(el); toggleArt && el.id==='incluirArt' && toggleArt(el); }
   });
-  document.querySelectorAll('.hallazgo,.mod-chk,.comp-ac,.tt-chk').forEach(function(cb) { cb.checked = false; });
+  document.querySelectorAll('.mod-chk,.comp-ac,.tt-chk').forEach(function(cb) { cb.checked = false; });
   document.querySelectorAll('.sel-c,.sel-nc').forEach(function(sel) { sel.value = ''; });
   document.querySelectorAll('.obs-inp').forEach(function(inp) { inp.value = ''; });
   document.getElementById('fotos-list').innerHTML = '';
@@ -3501,8 +3420,6 @@ function nuevoInforme() {
   document.getElementById('fechaInforme').value = hoy;
   ir(1);
   if (UI_MODE === 'v2') {
-    var sug = document.getElementById('hallazgos-sugerencia-art135');
-    if (sug) { sug.classList.add('hidden'); sug.innerHTML = ''; }
     irMomento(1);
   }
 }
@@ -4103,7 +4020,7 @@ function _hoyLocal() {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', guardar);
   });
-  document.querySelectorAll('.hallazgo,.mod-chk,.comp-ac,.tt-chk').forEach(function(cb) {
+  document.querySelectorAll('.mod-chk,.comp-ac,.tt-chk').forEach(function(cb) {
     cb.addEventListener('change', guardar);
   });
   var irOrig = ir;
