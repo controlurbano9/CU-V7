@@ -41,17 +41,35 @@ const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.
 // Promesa por URL: varias llamadas concurrentes comparten una sola descarga
 // y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
 const _scriptsEnVuelo = {};
+// Timeout explícito: con señal marginal —el escenario normal en campo— una
+// descarga puede quedarse colgada sin disparar `onerror` nunca, y entonces la
+// promesa no se resuelve jamás. El escáner de órdenes se quedaba clavado en
+// "Armando PDF..." sin mensaje ni forma de reintentar (auditoría 2026-09-09).
+const _SCRIPT_TIMEOUT_MS = 20000;
 function cargarScript(url) {
   if (_scriptsEnVuelo[url]) return _scriptsEnVuelo[url];
   _scriptsEnVuelo[url] = new Promise(function (resolve, reject) {
     const s = document.createElement('script');
+    let listo = false;
+    const fallar = function (msg) {
+      if (listo) return;
+      listo = true;
+      clearTimeout(reloj);
+      delete _scriptsEnVuelo[url]; // se olvida para permitir reintento
+      reject(new Error(msg));
+    };
+    const reloj = setTimeout(function () {
+      fallar('Tiempo agotado al cargar ' + url);
+    }, _SCRIPT_TIMEOUT_MS);
     s.src = url;
     s.async = true;
-    s.onload = function () { resolve(true); };
-    s.onerror = function () {
-      delete _scriptsEnVuelo[url];
-      reject(new Error('No se pudo cargar ' + url));
+    s.onload = function () {
+      if (listo) return;
+      listo = true;
+      clearTimeout(reloj);
+      resolve(true);
     };
+    s.onerror = function () { fallar('No se pudo cargar ' + url); };
     document.head.appendChild(s);
   });
   return _scriptsEnVuelo[url];
@@ -105,6 +123,12 @@ async function hashPin(pin) {
 // a propósito — varias acciones (ej. resetPin) ya usan "hash" con otro
 // significado (el hash del PIN NUEVO a fijar, no el del que llama) y no
 // deben pisarse. Sin sesión activa (pre-login) no se agrega nada.
+// Lo que se encola para offline también pasa por aquí ANTES de guardarse en
+// IndexedDB, no al enviarlo: el Service Worker reenvía la cola con la pestaña
+// cerrada (BG Sync) y no tiene acceso a SESSION. Sin credenciales dentro del
+// item, el backend responde "No autorizado" —que no es error de red—, el item
+// suma intentos y a los 5 queda atascado; el único camino visible para el
+// inspector es "Eliminar atascados", que le pierde el trabajo de campo.
 function _conCredencialesSesion(obj) {
   const s = (typeof SESSION !== 'undefined') ? SESSION.leer() : null;
   if (!s || !s.usuario || !s.hash) return obj;
@@ -398,7 +422,7 @@ async function guardarVisita(payload) {
     if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
       const localId = await offlineEnqueue({
         tipo: 'guardarVisita',
-        body: body,
+        body: _conCredencialesSesion(body),
         descripcion: body.fila ? 'Actualizar visita #' + body.fila : 'Nueva visita',
       });
       return { ok: true, encolado: true, localId: localId, fila: body.fila || null };
@@ -436,7 +460,7 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
     if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
       const localId = await offlineEnqueue({
         tipo: 'subirFoto',
-        body: body,
+        body: _conCredencialesSesion(body),
         descripcion: 'Subir foto: ' + body.nombre,
       });
       return { ok: true, encolado: true, localId: localId, nombre: body.nombre, link: '', descripcion: body.descripcion };
@@ -464,7 +488,7 @@ async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden) {
     if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
       const localId = await offlineEnqueue({
         tipo: 'subirOrdenPolicia',
-        body: body,
+        body: _conCredencialesSesion(body),
         descripcion: 'Orden de policía ' + (orden || nombre),
       });
       return { ok: true, encolado: true, localId: localId, nombre: nombre, link: '' };
