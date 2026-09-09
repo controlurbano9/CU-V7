@@ -75,6 +75,13 @@ function _precargarLibsPesadas() {
   if (typeof cargarTurf === 'function') {
     cargarTurf().catch(function (e) { console.warn('[precarga] turf:', e.message); });
   }
+  // jsPDF (~360 KB): arma el PDF de la orden de policía escaneada. Igual que
+  // turf, se precalienta aquí porque el escaneo ocurre en campo y sin la
+  // librería en caché no hay documento que subir (la subida sí sobrevive sin
+  // red — se encola —, la generación no).
+  if (typeof cargarJsPDF === 'function') {
+    cargarJsPDF().catch(function (e) { console.warn('[precarga] jsPDF:', e.message); });
+  }
   if (typeof cargarMapsJS === 'function') {
     return cargarMapsJS();
   }

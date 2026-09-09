@@ -35,7 +35,8 @@ const CFG = {
 // (_precargarLibsPesadas), igual que hace con las capas POT.
 // ═══════════════════════════════════════════════════════════════
 
-const TURF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js';
+const TURF_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js';
+const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
 
 // Promesa por URL: varias llamadas concurrentes comparten una sola descarga
 // y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
@@ -61,6 +62,20 @@ async function cargarTurf() {
   if (typeof turf !== 'undefined') return true;
   await cargarScript(TURF_URL);
   return typeof turf !== 'undefined';
+}
+
+// jsPDF — solo lo usa el escáner de órdenes de policía (escaner-orden.jsx).
+// Se precalienta tras el login junto a turf/Maps: el escaneo ocurre en campo,
+// muchas veces sin señal, y sin la librería en caché el PDF no se puede armar
+// (la subida sí sobrevive sin red — se encola —, la generación no).
+// Devuelve el constructor, no un booleano: el UMD lo cuelga de window.jspdf.
+async function cargarJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+  await cargarScript(JSPDF_URL);
+  if (!(window.jspdf && window.jspdf.jsPDF)) {
+    throw new Error('jsPDF no quedó disponible tras cargar el script');
+  }
+  return window.jspdf.jsPDF;
 }
 
 // SDK JS de Google Maps. La URL (con la clave) vive en index.html, igual que
@@ -425,6 +440,34 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
         descripcion: 'Subir foto: ' + body.nombre,
       });
       return { ok: true, encolado: true, localId: localId, nombre: body.nombre, link: '', descripcion: body.descripcion };
+    }
+    throw e;
+  }
+}
+
+// Sube el PDF de la orden de policía escaneada a la carpeta de la visita
+// (raíz, no /Fotos) y deja el link en BD col LINK_ORDEN_POLICIA.
+// El PDF llega ya armado desde el cliente (escaner-orden.jsx). Mismo trato
+// offline que las fotos: sin red se encola y sube al recuperar conexión.
+async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden) {
+  const body = {
+    accion: 'subirOrdenPolicia',
+    idCarpeta: idCarpetaVisita,
+    fila: fila,
+    base64: base64,
+    nombre: nombre,
+    orden: orden || '',
+  };
+  try {
+    return await gasPost(body);
+  } catch (e) {
+    if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
+      const localId = await offlineEnqueue({
+        tipo: 'subirOrdenPolicia',
+        body: body,
+        descripcion: 'Orden de policía ' + (orden || nombre),
+      });
+      return { ok: true, encolado: true, localId: localId, nombre: nombre, link: '' };
     }
     throw e;
   }
@@ -859,6 +902,7 @@ Object.assign(window, {
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,
   subirFotoConDescripcion, describirFotoConIA,
+  subirOrdenPolicia, cargarJsPDF,
   listarFotosActa, describirFotoDesdeId,
   consultarPOT,
   buscarCatastroGPS, formatearCOP,

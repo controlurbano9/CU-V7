@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v107';
+const CACHE_NAME = 'cu-v6-cache-v108';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -47,6 +47,9 @@ const CDN_PATTERNS = [
   'unpkg.com/react-dom@',
   // '@babel/standalone' eliminado: bundle.min.js viene pre-transpilado
   'cdnjs.cloudflare.com/ajax/libs/Turf.js',
+  // jsPDF — arma el PDF de la orden de policía escaneada. Sin esto en caché,
+  // el escaneo en campo sin señal no puede generar el documento.
+  'cdnjs.cloudflare.com/ajax/libs/jspdf',
   'unpkg.com/leaflet@',
   'fonts.googleapis.com',
   'fonts.gstatic.com',

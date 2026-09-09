@@ -16,7 +16,7 @@
 //
 // Estructura de item:
 //   {
-//     id: <auto>, tipo: 'guardarVisita'|'subirFoto',
+//     id: <auto>, tipo: 'guardarVisita'|'subirFoto'|'subirOrdenPolicia',
 //     body: {...},           // payload completo para gasPost
 //     descripcion: '...',    // texto para mostrar en UI
 //     created: <timestamp>,
@@ -220,6 +220,7 @@
     switch (item.tipo) {
       case 'guardarVisita':
       case 'subirFoto':
+      case 'subirOrdenPolicia': // PDF de la orden escaneada en campo
       case 'gasPost':           // genérico por si encolamos otras acciones
         return await gasPost(item.body);
       default:

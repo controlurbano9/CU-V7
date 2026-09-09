@@ -76,6 +76,7 @@ function VisitaDetailUI({ f, onCerrar }) {
   const linkXlsx = _g(f, 'LINK_XLSX_ACTA');
   const linkInforme = _g(f, 'LINK_DOCX_INFORME', 'LINK_INFORME_F43');
   const linkVigilancia = _g(f, 'LINK_SOLICITUD_VIGILANCIA');
+  const linkOrden = _g(f, 'LINK_ORDEN_POLICIA');
 
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }} style={{
@@ -126,7 +127,7 @@ function VisitaDetailUI({ f, onCerrar }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
 
           {/* Links a entregables (si los hay) */}
-          {(linkDrive || linkPdf || linkXlsx || linkInforme || linkVigilancia) && (
+          {(linkDrive || linkPdf || linkXlsx || linkInforme || linkVigilancia || linkOrden) && (
             <_SeccionVD titulo="Entregables">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {linkDrive    && <_LinkBtnVD href={linkDrive}     Icono={Icon.Folder} label="Carpeta Drive" />}
@@ -134,6 +135,7 @@ function VisitaDetailUI({ f, onCerrar }) {
                 {!linkPdf && linkXlsx && <_LinkBtnVD href={linkXlsx} Icono={Icon.File} label="Acta (Sheet)" />}
                 {linkInforme  && <_LinkBtnVD href={linkInforme}   Icono={Icon.Edit}   label="Informe F-43" />}
                 {linkVigilancia && <_LinkBtnVD href={linkVigilancia} Icono={Icon.Alert} label="Vigilancia Policía" />}
+                {linkOrden && <_LinkBtnVD href={linkOrden} Icono={Icon.File} label="Orden de policía" />}
               </div>
             </_SeccionVD>
           )}

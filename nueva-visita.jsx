@@ -117,6 +117,13 @@ function _extraerAnioOrden(ordenCompleta) {
   const m = /(\d{4})-0?9-\d+/.exec(ordenCompleta);
   return m ? m[1] : '';
 }
+// ¿La visita tiene realmente una orden de policía? La columna AS puede traer
+// 'N/A' en filas viejas migradas de V2, y ese texto no es una orden: sin esto
+// el escáner aparecería en visitas donde no hay nada que escanear.
+function _hayOrdenReal(orden) {
+  const s = String(orden || '').trim().toUpperCase();
+  return !!s && s !== 'N/A' && s !== 'NA' && s !== 'NO APLICA';
+}
 
 // ── Catálogos ──────────────────────────────────────────────────
 // VISITADORES_FALLBACK se usa si el endpoint público listarInspectoresActivos()
@@ -393,6 +400,10 @@ function _estadoInicial(datosIniciales) {
     idCarpetaFotos:  '',
     linkXlsxActa:    d['LINK_XLSX_ACTA']      || '',
     linkPdfActa:     d['LINK_PDF_ACTA']       || '',
+    // PDF de la orden de policía escaneada en campo (col LINK_ORDEN_POLICIA).
+    // Lo escribe el backend al subir; el formulario solo lo lee para saber si
+    // ya existe. No viaja en el array de valores B→BD.
+    linkOrdenPolicia: d['LINK_ORDEN_POLICIA'] || '',
   };
 }
 function _idCarpetaDeLink(url) {
@@ -1507,7 +1518,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // "hay cambios sin guardar" sobre un formulario recién abierto.
   function _snapshotLimpia(dObj) {
     const _servidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
-                       'linkXlsxActa', 'linkPdfActa', 'ultimaModConocida'];
+                       'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
+                       'ultimaModConocida'];
     const out = {};
     Object.keys(dObj).forEach(function(k) {
       if (_servidor.indexOf(k) < 0) out[k] = dObj[k];
@@ -1579,7 +1591,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // conflicto falso ("Otra persona guardó cambios...") sin que nadie
         // más hubiera tocado la fila. Siempre debe venir fresco de BD.
         const _dServidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
-                            'linkXlsxActa', 'linkPdfActa', 'ultimaModConocida'];
+                            'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
+                            'ultimaModConocida'];
         const _dSafe = {};
         Object.keys(d).forEach(function(k){
           if (_dServidor.indexOf(k) < 0) _dSafe[k] = d[k];
@@ -3555,6 +3568,22 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           className="btn-principal secundario" style={{ fontSize: 15, marginTop: 14 }}>
           {cargandoFotos ? 'Cargando fotos...' : generandoRF ? 'Generando...' : 'Generar registro fotográfico'}
         </button>
+      )}
+
+      {/* Escáner de la orden de policía. Va aquí, entre los entregables, y no
+          junto al campo del N° de orden: `d.orden` se captura en dos sitios
+          distintos (arriba en visita de oficio, en Suspensión para PQR) y
+          duplicar el componente daría dos escáneres para el mismo PDF.
+          Exige carpeta de Drive + fila: la orden se sube a la carpeta de la
+          visita, que solo existe después del primer guardado. */}
+      {_hayOrdenReal(d.orden) && filaEditando && d.idCarpetaVisita && (
+        <EscanerOrdenPolicia
+          idCarpetaVisita={d.idCarpetaVisita}
+          fila={filaEditando}
+          orden={d.orden}
+          linkInicial={d.linkOrdenPolicia}
+          onSubido={link => setCampo('linkOrdenPolicia', link)}
+        />
       )}
 
       {/* Modal de revision de fotos antes de generar RF */}

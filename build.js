@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
 // build.js — Genera bundle.min.js con esbuild.
 //
-// - Concatena los 12 .jsx en el orden correcto (mismo que tenía
-//   index.html antes del bundle).
+// - Concatena los .jsx de ARCHIVOS en orden de dependencia (el mismo que
+//   tenía index.html antes del bundle).
 // - Transpila JSX → React.createElement nativo.
 // - Minifica (whitespace + identificadores + dead code).
 // - Target ES2019 (cubre todos los navegadores modernos en uso).
@@ -36,6 +36,8 @@ const ARCHIVOS = [
   'mis-visitas.jsx',
   'buscar.jsx',
   'agenda.jsx',
+  // escaner-orden.jsx antes de nueva-visita.jsx (que lo consume)
+  'escaner-orden.jsx',
   'nueva-visita.jsx',
   'consulta-norma.jsx',
   'admin.jsx',
