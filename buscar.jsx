@@ -9,14 +9,6 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateB, useEffect: useEffectB, useMemo: useMemoB, useCallback: useCallbackB } = React;
 
-// Title-case primeros 2 tokens del nombre en mayúsculas de USUARIOS.
-// "ALEJANDRO HERNANDEZ MUÑOZ" → "Alejandro Hernandez"
-function titleCaseFirst2(nombre) {
-  return String(nombre || '').trim().split(/\s+/).slice(0, 2)
-    .map(t => t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : '')
-    .join(' ');
-}
-
 // Mapeo estado → tono de chip (clases de styles.css)
 const ESTADO_CLASE = {
   PENDIENTE:  'activo-pendiente',
@@ -68,7 +60,7 @@ function BuscarScreen({ usuario, onContinuar }) {
     if (!esAdmin) return;
     listarInspectoresActivos().then(lista => {
       const todos = lista || [];
-      setVisitadores(todos.map(u => ({ val: u.nombre, l: titleCaseFirst2(u.nombre) })));
+      setVisitadores(todos.map(u => ({ val: u.nombre, l: titleCaseNombre(u.nombre) })));
       setInspectores(todos);
     }).catch(() => {});
   }, [esAdmin]);
@@ -482,43 +474,102 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
   esAdmin, inspectores, busyFila, asignandoFila, setAsignandoFila,
   onAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
   const [open, setOpen] = useStateB(filas.length === 1);
+
+  // Orden y numeración de visitas del radicado. N° VISITA es columna de BD
+  // (la escribe crearNuevaVisitaAsignada); las filas migradas de V2 pueden
+  // tenerla vacía, ahí cae al orden de creación (_idx = fila del Sheet).
+  const ordenadas = useMemoB(() => {
+    const conN = filas.map(f => ({
+      f, n: parseInt(f['N° VISITA'] || f['N VISITA'] || 0, 10) || 0,
+    }));
+    conN.sort((a, b) => (a.n - b.n) || ((a.f._idx || 0) - (b.f._idx || 0)));
+    return conN.map((x, i) => ({ f: x.f, n: x.n || (i + 1) }));
+  }, [filas]);
+
+  // Una visita abierta (no COMPLETADO) bloquea crear otra sobre el mismo
+  // radicado: dos visitas vivas a la vez duplican el trabajo y dejan sin
+  // definir cuál manda. Se libera al completar la que está en curso.
+  const abierta = ordenadas.find(x =>
+    normalizarEstado(x.f['ESTADO VISITA'] || x.f[13] || '') !== 'COMPLETADO');
+  const filaBase = ordenadas.length ? ordenadas[ordenadas.length - 1].f : null;
+  const puedeNueva = esAdmin && onAsignarNuevaVisita && filaBase && radicado !== 'Sin radicado';
+  const panelNuevaAbierto = !!filaBase && asignandoFila === filaBase._idx;
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        style={{
-          padding: '12px 14px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: open ? '1px solid var(--borde)' : 'none',
-        }}>
-        <span>
-          <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</span>
-          <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
-            {filas.length} {filas.length === 1 ? 'registro' : 'registros'}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, paddingRight: 10,
+        borderBottom: (open || panelNuevaAbierto) ? '1px solid var(--borde)' : 'none',
+      }}>
+        <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          style={{
+            flex: 1, minWidth: 0, padding: '12px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          }}>
+          <span>
+            <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
+              {filas.length} {filas.length === 1 ? 'visita' : 'visitas'}
+            </span>
           </span>
-        </span>
-        <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
-          {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
-        </span>
-      </button>
+          <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
+            {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
+          </span>
+        </button>
+
+        {/* "+ Nueva visita" es del radicado, no de una fila: vive en la
+            cabecera del grupo. Se apoya en la última visita para clonar los
+            datos fijos (dirección, barrio, GPS...). */}
+        {puedeNueva && (abierta ? (
+          <span style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'right' }}
+            title="Completa la visita en curso antes de abrir otra">
+            Visita {abierta.n} en curso
+          </span>
+        ) : (
+          <button type="button"
+            onClick={() => setAsignandoFila(panelNuevaAbierto ? null : filaBase._idx)}
+            disabled={busyFila === filaBase._idx}
+            style={{
+              background: 'var(--gris-bg)', color: 'var(--texto)',
+              border: '1px dashed var(--brand-accent)', borderRadius: 10,
+              padding: '8px 12px', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+            {panelNuevaAbierto ? 'Cancelar' : '+ Nueva visita'}
+          </button>
+        ))}
+      </div>
+
+      {/* Panel de inspectores para la nueva visita (filaBase está COMPLETADO,
+          así que PanelSeleccionInspector llama a onAsignarNuevaVisita). */}
+      {puedeNueva && !abierta && (
+        <div style={{ padding: panelNuevaAbierto ? '0 14px 12px' : 0 }}>
+          <PanelSeleccionInspector
+            f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
+            inspectores={inspectores}
+            onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
+        </div>
+      )}
+
       {open && (
         <div>
-          {filas.map((f, i) => <FilaVisita key={f._idx || i} f={f} usuario={usuario} onContinuar={onContinuar}
+          {ordenadas.map(({ f, n }, i) => <FilaVisita key={f._idx || i} f={f} nVisita={n}
+            totalVisitas={ordenadas.length}
+            usuario={usuario} onContinuar={onContinuar}
             esAdmin={esAdmin} inspectores={inspectores}
             busy={busyFila === f._idx}
             abierto={asignandoFila === f._idx}
             onAbrirAsignar={() => setAsignandoFila(asignandoFila === f._idx ? null : f._idx)}
-            onAsignar={onAsignar} onDesasignar={onDesasignar} onCompletar={onCompletar}
-            onAsignarNuevaVisita={onAsignarNuevaVisita} />)}
+            onAsignar={onAsignar} onDesasignar={onDesasignar} onCompletar={onCompletar} />)}
         </div>
       )}
     </div>
   );
 }
 
-function FilaVisitaBase({ f, usuario, onContinuar,
-  esAdmin, inspectores, busy, abierto, onAbrirAsignar, onAsignar, onDesasignar, onCompletar,
-  onAsignarNuevaVisita }) {
+function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
+  esAdmin, inspectores, busy, abierto, onAbrirAsignar, onAsignar, onDesasignar, onCompletar }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
 
   // En Buscar el badge se renderizaba con el estado raw mayúsculas (PENDIENTE,
@@ -526,6 +577,13 @@ function FilaVisitaBase({ f, usuario, onContinuar,
   // el override a VisitaCard.
   return (
     <div style={{ padding: '12px 14px', borderTop: '1px solid var(--borde)' }}>
+      {/* Qué visita del radicado es esta — sin esto dos filas idénticas del
+          mismo radicado solo se distinguían por la fecha. */}
+      {totalVisitas > 1 && (
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--texto-suave)', marginBottom: 6 }}>
+          Visita {nVisita} de {totalVisitas}
+        </div>
+      )}
       <VisitaCard f={f}
         mostrarFecha mostrarInspector mostrarAsignado
         labelBadge={est || '—'}
@@ -537,14 +595,13 @@ function FilaVisitaBase({ f, usuario, onContinuar,
             <BotonContinuarVisita f={f} onContinuar={onContinuar} busy={busy} tamaño="sm" />
           )}
           {/* Entregables solo para completadas (Ver datos + Carpeta + Acta + Informe) */}
-          {est === 'COMPLETADO' && <BotonesEntregables f={f} usuario={usuario} />}
+          {est === 'COMPLETADO' && <BotonesEntregables f={f} />}
           {/* Botones admin contextuales (Asignar / Reasignar / Desasignar / Completar / + Nueva visita) */}
           <BotonesAdminVisita
             f={f} esAdmin={esAdmin} busy={busy} abierto={abierto}
             onAbrirAsignar={onAbrirAsignar}
             onDesasignar={onDesasignar}
             onCompletar={onCompletar}
-            onAsignarNuevaVisita={onAsignarNuevaVisita}
           />
         </div>
       </VisitaCard>
@@ -552,9 +609,8 @@ function FilaVisitaBase({ f, usuario, onContinuar,
       {/* Panel de selección de inspector (fuera del flex de botones, va debajo) */}
       {esAdmin && (
         <PanelSeleccionInspector
-          f={f} busy={busy} abierto={abierto} inspectores={inspectores}
-          onAsignar={onAsignar}
-          onAsignarNuevaVisita={onAsignarNuevaVisita}
+          f={f} busy={busy} abierto={abierto && est !== 'COMPLETADO'}
+          inspectores={inspectores} onAsignar={onAsignar}
         />
       )}
     </div>

@@ -404,6 +404,10 @@ function _estadoInicial(datosIniciales) {
     // Lo escribe el backend al subir; el formulario solo lo lee para saber si
     // ya existe. No viaja en el array de valores B→BD.
     linkOrdenPolicia: d['LINK_ORDEN_POLICIA'] || '',
+    // PDF de la PQR original (col LINK_PDF_RADICADO). Lo llena la
+    // sincronización del módulo de priorización desde las carpetas de Drive
+    // del scraper; el formulario solo lo lee para ofrecer el botón de consulta.
+    linkPdfRadicado: d['LINK_PDF_RADICADO'] || '',
   };
 }
 function _idCarpetaDeLink(url) {
@@ -1519,7 +1523,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   function _snapshotLimpia(dObj) {
     const _servidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                        'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                       'ultimaModConocida'];
+                       'linkPdfRadicado', 'ultimaModConocida'];
     const out = {};
     Object.keys(dObj).forEach(function(k) {
       if (_servidor.indexOf(k) < 0) out[k] = dObj[k];
@@ -1592,7 +1596,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // más hubiera tocado la fila. Siempre debe venir fresco de BD.
         const _dServidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                             'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                            'ultimaModConocida'];
+                            'linkPdfRadicado', 'ultimaModConocida'];
         const _dSafe = {};
         Object.keys(d).forEach(function(k){
           if (_dServidor.indexOf(k) < 0) _dSafe[k] = d[k];
@@ -2757,10 +2761,36 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </_Campo>
         {!d.esOficio && (
           <>
-            <_Campo label="Radicado">
-              <_Input mono value={d.radicado} onChange={v => setCampo('radicado', v)}
-                placeholder="20251143210" />
-            </_Campo>
+            {/* Grupo escrito a mano en vez de <_Campo>: _Campo asocia el label
+                clonando su ÚNICO hijo con un id, así que envolver el input en
+                el flex del botón dejaría el <label for> apuntando al div. */}
+            <div className="input-grupo">
+              <label className="input-label" htmlFor="nv-radicado">Radicado</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input id="nv-radicado" type="text" className="input-campo mono"
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={d.radicado || ''}
+                  onChange={e => setCampo('radicado', e.target.value)}
+                  placeholder="20251143210" />
+                {/* PDF de la PQR original, en pestaña nueva. Solo aparece si BD
+                    trae el link: no existe para oficios ni para los radicados
+                    que el scraper no alcanzó a descargar del gestor. */}
+                {d.linkPdfRadicado && (
+                  <a href={d.linkPdfRadicado} target="_blank" rel="noopener noreferrer"
+                    title="Abrir el PDF de la PQR radicada (pestaña nueva)"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'var(--brand-bg)', color: 'var(--brand-ink)',
+                      border: '1px solid var(--brand-accent)',
+                      fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}>
+                    <Icon.File size={14} /> Ver PQR
+                  </a>
+                )}
+              </div>
+            </div>
             <_Campo label="Fecha radicado">
               <_Input type="date" value={d.fechaRadicado} onChange={v => setCampo('fechaRadicado', v)} />
             </_Campo>
@@ -3360,20 +3390,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {filaEditando && (
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {/* Acta e informe exigen el formulario completo (_validarAntesDeActa).
-              Los botones siguen habilitados a propósito: al pulsarlos aparece la
-              lista de campos que faltan, que es la información útil. Lo que no
-              podía quedar así es que se vieran listos cuando no lo están — sin
-              este aviso el inspector solo se entera al intentar generar. */}
+              El aviso lista los campos que faltan: antes decía "pulsa un botón
+              para ver cuáles" y obligaba a intentar generar el acta solo para
+              enterarse de qué faltaba. */}
           {(() => {
-            const nFaltan = _validarAntesDeActa().length;
-            if (nFaltan === 0) return null;
+            const faltan = _validarAntesDeActa();
+            if (faltan.length === 0) return null;
             return (
               <div style={{
                 fontSize: 12, color: 'var(--amber)', background: 'var(--amber-bg)',
                 border: '1px solid rgba(184,135,58,.25)', borderRadius: 8, padding: '8px 10px',
               }}>
-                Faltan {nFaltan} campo{nFaltan === 1 ? '' : 's'} por diligenciar para generar
-                el acta o el informe. Pulsa un botón para ver cuáles.
+                <div style={{ fontWeight: 600 }}>
+                  Falta{faltan.length === 1 ? '' : 'n'} {faltan.length} campo{faltan.length === 1 ? '' : 's'} para generar el acta o el informe:
+                </div>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {faltan.map(x => <li key={x}>{x}</li>)}
+                </ul>
               </div>
             );
           })()}

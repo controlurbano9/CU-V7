@@ -28,6 +28,27 @@ function formatearFecha(valor) {
   return s; // devolver tal cual si no se pudo parsear
 }
 
+// Fecha + hora local (America/Bogota) para timestamps del backend, que
+// llegan como ISO. Devuelve "DD/MM/YYYY HH:mm" o '' si no es parseable.
+function formatearFechaHora(valor) {
+  if (!valor) return '';
+  var d = (valor instanceof Date) ? valor : new Date(String(valor).trim());
+  if (isNaN(d.getTime())) return formatearFecha(valor);
+  var f = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d).reduce(function(a, p) { a[p.type] = p.value; return a; }, {});
+  return f.day + '/' + f.month + '/' + f.year + ' ' + f.hour + ':' + f.minute;
+}
+
+// "ALEJANDRO HERNANDEZ MUÑOZ" → "Alejandro Hernandez" (los nombres de
+// USUARIOS vienen en mayúsculas sin tildes).
+function titleCaseNombre(nombre) {
+  return String(nombre || '').trim().split(/\s+/).slice(0, 2)
+    .map(function(t) { return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : ''; })
+    .join(' ');
+}
+
 function _padFecha(dia, mes, anio) {
   return String(dia).padStart(2, '0') + '/' + String(mes).padStart(2, '0') + '/' + anio;
 }
@@ -240,9 +261,30 @@ function extraerIdCarpetaDrive(link) {
   return m ? m[1] : '';
 }
 
+// Link al PDF de la PQR tal como la radicó el ciudadano (columna
+// LINK_PDF_RADICADO de BD VISITAS, que llena la sincronización del módulo de
+// priorización desde las carpetas de Drive donde el scraper deja los PDFs).
+//
+// Se lee por nombre de columna y con variantes toleradas: la hoja lleva años
+// recibiendo columnas de distintos flujos y el encabezado exacto no es un
+// contrato estable. Devuelve '' cuando no hay PDF — que es lo normal en las
+// visitas de oficio (no nacen de una PQR) y en los radicados que el scraper
+// nunca alcanzó a descargar.
+function linkPdfRadicado(f) {
+  if (!f) return '';
+  var claves = ['LINK_PDF_RADICADO', 'LINK PDF RADICADO', 'LINK_PDF_PQR'];
+  for (var i = 0; i < claves.length; i++) {
+    var v = f[claves[i]];
+    if (v != null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   formatearFecha: formatearFecha,
+  formatearFechaHora: formatearFechaHora,
+  titleCaseNombre: titleCaseNombre,
   parsearFecha: parsearFecha,
   esDiaHabil: esDiaHabil,
   diasHabilesHasta: diasHabilesHasta,
@@ -252,6 +294,7 @@ var _cuUtilsExports = {
   primerVisitador: primerVisitador,
   puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
+  linkPdfRadicado: linkPdfRadicado,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

@@ -324,7 +324,7 @@ function TarjetaVisitaMV({ f, usuario, onContinuar }) {
         )}
         {est === 'COMPLETADO' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <BotonesEntregables f={f} usuario={usuario} />
+            <BotonesEntregables f={f} />
           </div>
         )}
       </VisitaCard>

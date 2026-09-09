@@ -32,6 +32,38 @@ function _primerVisitador(f) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BotonPdfRadicado — abre el PDF de la PQR original en pestaña nueva.
+//
+// Va pegado al radicado (no en la fila de botones de abajo): es una
+// propiedad del radicado, no un entregable de la visita, y ahí lo
+// encuentra el inspector antes de salir a campo.
+//
+// Se renderiza null si la fila no tiene link — el caso normal en visitas
+// de oficio y en radicados que el scraper no alcanzó a descargar.
+// stopPropagation porque la tarjeta puede vivir dentro de contenedores
+// clickeables (acordeones, filas de resultado).
+// ═══════════════════════════════════════════════════════════════
+function BotonPdfRadicado({ f, titulo }) {
+  const link = linkPdfRadicado(f);
+  if (!link) return null;
+  return (
+    <a href={link} target="_blank" rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title={titulo || 'Abrir el PDF de la PQR radicada (pestaña nueva)'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '1px 7px', borderRadius: 8,
+        background: 'var(--brand-bg)', color: 'var(--brand-ink)',
+        border: '1px solid var(--brand-accent)',
+        fontFamily: 'inherit', fontSize: 10, fontWeight: 700,
+        textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
+      }}>
+      <Icon.File size={11} /> PQR
+    </a>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // VisitaCard — header de tarjeta de visita (info + badge + meta).
 //
 // NO envuelve en wrapper externo. El caller decide:
@@ -63,19 +95,27 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, labelB
     ? _primerVisitador(f)
     : '';
 
-  const tieneMeta = fechaVisita || inspector || fechaAsig;
+  // ULTIMA_MODIFICACION viene del backend como ISO (AP2); el autor, de
+  // ULTIMA_MODIFICACION_POR. Ambas columnas son opcionales en la hoja.
+  const ultimaMod = formatearFechaHora(f['ULTIMA_MODIFICACION'] || '');
+  const ultimaModPor = (f['ULTIMA_MODIFICACION_POR'] || '').toString().trim();
+
+  const tieneMeta = fechaVisita || inspector || fechaAsig || ultimaMod;
   const mt = (accionesMt != null) ? accionesMt : 12;
 
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Radicado en mono terracota — ancla visual */}
+          {/* Radicado en mono terracota — ancla visual. Al lado, el PDF de la
+              PQR original cuando existe (ver BotonPdfRadicado). */}
           <div style={{
             fontFamily: 'var(--font-mono)', fontSize: 12,
             fontWeight: 600, color: 'var(--brand-accent)',
+            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
           }}>
             {f['RADICADO'] || '—'}
+            <BotonPdfRadicado f={f} />
           </div>
 
           {/* Dirección — bold, principal */}
@@ -98,6 +138,11 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, labelB
               {fechaVisita && <span><span style={{ opacity: 0.7 }}>Fecha:</span> {fechaVisita}</span>}
               {inspector   && <span><span style={{ opacity: 0.7 }}>Inspector:</span> {inspector}</span>}
               {fechaAsig   && <span><span style={{ opacity: 0.7 }}>Asignado:</span> {fechaAsig}</span>}
+              {ultimaMod   && (
+                <span><span style={{ opacity: 0.7 }}>Editado:</span> {ultimaMod}
+                  {ultimaModPor && ' · ' + titleCaseNombre(ultimaModPor)}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -157,48 +202,6 @@ function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
   );
 }
 
-// Datos de prefill del generador F-GGO-43 a partir de una fila de BD.
-// Lo consume window.abrirInformeF43() (informe-modal.jsx).
-function paramsInformeF43(f, usuario) {
-  var idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
-  var p = {};
-  if (f._idx)        p.fila       = String(f._idx);
-  if (idCarpeta)     p.idCarpeta  = idCarpeta;
-  if (f['RADICADO']) p.radicado   = f['RADICADO'];
-  if (f['FECHA DE VISITA'])      p.fechaVisita = f['FECHA DE VISITA'];
-  if (f['DIRECCION INFRACCION'] || f['DIRECCION']) p.direccion = f['DIRECCION INFRACCION'] || f['DIRECCION'];
-  var barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
-  if (barrio)        p.barrio     = barrio;
-  if (f['COMUNA'])   p.comuna     = f['COMUNA'];
-  if (f['CODIGO CATASTRAL'] || f['CATASTRAL']) p.catastral = f['CODIGO CATASTRAL'] || f['CATASTRAL'];
-  if (f['LATITUD'])  p.lat        = f['LATITUD'];
-  if (f['LONGITUD']) p.lon        = f['LONGITUD'];
-  if (usuario && usuario.usuario) p.inspector = usuario.usuario;
-  if (usuario && usuario.cargo)   p.cargo     = usuario.cargo;
-  if (f['SE APORTO LICENCIA'])    p.seAportoLicencia = f['SE APORTO LICENCIA'];
-  if (f['N LICENCIA'])            p.numRes           = f['N LICENCIA'];
-  if (f['FECHA LICENCIA'])        p.fechaEjec        = f['FECHA LICENCIA'];
-  if (f['TIPO Y MODALIDAD LICENCIA']) p.tipoModalidad = f['TIPO Y MODALIDAD LICENCIA'];
-  if (f['PISOS APROBADOS'])       p.pisos            = f['PISOS APROBADOS'];
-  if (f['DESTINACIONES LICENCIA'])p.dest             = f['DESTINACIONES LICENCIA'];
-  if (f['CUBIERTA LICENCIA'])     p.cubierta         = f['CUBIERTA LICENCIA'];
-  if (f['SISTEMA ESTRUCT'])       p.sist             = f['SISTEMA ESTRUCT'];
-  if (f['OBS LICENCIA'])          p.obsLicencia      = f['OBS LICENCIA'];
-  // POT
-  if (f['POLIGONO USO SUELO'])    p.poligono         = f['POLIGONO USO SUELO'];
-  if (f['AMENAZA'])               p.amenaza          = f['AMENAZA'];
-  if (f['SUELO DE PROTECCION'])   p.sueloProt        = f['SUELO DE PROTECCION'];
-  // Observaciones
-  var rawAct = f['ACTUACION / OBSERVACIONES'] || f['ACTUACION'] || '';
-  var partsAct = rawAct.split('\n══CONCLUSIONES══\n');
-  if (partsAct[0]) p.observaciones = partsAct[0];
-  if (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2']) {
-    var areaVal = (f['AREA CONTRAVENCION m2'] || f['AREA CONTRAVENCION M2'] || '').toString().trim();
-    if (areaVal && areaVal !== 'No se pudo medir') p.areas = areaVal;
-  }
-  return p;
-}
-
 // ═══════════════════════════════════════════════════════════════
 // BotonVerDatos — abre el detalle de solo lectura.
 // Extraído de BotonesEntregables para que también las visitas NO
@@ -219,8 +222,9 @@ function BotonVerDatos({ f }) {
 // ═══════════════════════════════════════════════════════════════
 // BotonesEntregables — para visitas COMPLETADO
 // 👁 Ver datos (siempre) + 📂 Carpeta + 📄 Acta + 📝 Informe (si hay link)
+// El informe se genera durante la visita; una vez COMPLETADA solo se consulta.
 // ═══════════════════════════════════════════════════════════════
-function BotonesEntregables({ f, usuario }) {
+function BotonesEntregables({ f }) {
   const linkDrive   = f['LINK_DRIVE'];
   const linkActaPdf = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
   const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
@@ -241,20 +245,6 @@ function BotonesEntregables({ f, usuario }) {
       {linkDrive   && <a href={linkDrive}   target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Folder size={14} /> Carpeta</a>}
       {linkActaPdf && <a href={linkActaPdf} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.File   size={14} /> Acta</a>}
       {linkInforme && <a href={linkInforme} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Edit   size={14} /> Informe</a>}
-      {/* Una visita completada sin informe F-GGO-43 no tenía ninguna ruta para
-          generarlo: el único botón vivía dentro del formulario, y el formulario
-          no se reabre en COMPLETADO. Este botón es esa ruta. */}
-      {!linkInforme && (
-        <button type="button" onClick={() => {
-          if (typeof window.abrirInformeF43 !== 'function') {
-            appAlert('El generador de informes no está disponible.', { tono: 'error', titulo: 'Error' });
-            return;
-          }
-          window.abrirInformeF43(paramsInformeF43(f, usuario));
-        }} style={btnSty}>
-          <Icon.Edit size={14} /> Generar informe
-        </button>
-      )}
     </>
   );
 }
@@ -397,6 +387,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 
 // Exponer al scope global del bundle (mismo patrón que el resto de los componentes)
 window.VisitaCard              = VisitaCard;
+window.BotonPdfRadicado        = BotonPdfRadicado;
 window.BotonContinuarVisita    = BotonContinuarVisita;
 window.BotonesEntregables      = BotonesEntregables;
 window.BotonVerDatos           = BotonVerDatos;

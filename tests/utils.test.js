@@ -11,7 +11,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   formatearFecha, parsearFecha, esDiaHabil, diasHabilesHasta, diasDesde,
-  _festivosColombia, _calcularPascua, _alLunes,
+  _festivosColombia, _calcularPascua, _alLunes, formatearFechaHora, titleCaseNombre,
+  linkPdfRadicado,
 } = require('../utils.js');
 
 test('_calcularPascua — fechas de Pascua conocidas y verificables', () => {
@@ -110,4 +111,32 @@ test('formatearFecha — vacío/null no lanza excepción', () => {
   assert.equal(formatearFecha(null), '');
   assert.equal(formatearFecha(''), '');
   assert.equal(formatearFecha(undefined), '');
+});
+
+test('formatearFechaHora — ISO del backend a hora de Bogotá', () => {
+  // ULTIMA_MODIFICACION llega en UTC; Bogotá es UTC-5 todo el año.
+  assert.equal(formatearFechaHora('2026-09-09T19:05:00.000Z'), '09/09/2026 14:05');
+  assert.equal(formatearFechaHora('2026-09-10T02:30:00.000Z'), '09/09/2026 21:30');
+  assert.equal(formatearFechaHora(''), '');
+  assert.equal(formatearFechaHora(null), '');
+  // Basura no parseable: cae a formatearFecha, que devuelve el valor tal cual.
+  assert.equal(formatearFechaHora('no es fecha'), 'no es fecha');
+});
+
+test('titleCaseNombre — primeros 2 tokens del nombre de USUARIOS', () => {
+  assert.equal(titleCaseNombre('ALEJANDRO HERNANDEZ MUÑOZ'), 'Alejandro Hernandez');
+  assert.equal(titleCaseNombre('DANIEL'), 'Daniel');
+  assert.equal(titleCaseNombre(''), '');
+});
+
+test('linkPdfRadicado — link del PDF de la PQR, con variantes de encabezado', () => {
+  const url = 'https://drive.google.com/file/d/ABC123/view';
+  assert.equal(linkPdfRadicado({ 'LINK_PDF_RADICADO': url }), url);
+  assert.equal(linkPdfRadicado({ 'LINK PDF RADICADO': url }), url, 'variante con espacios');
+  assert.equal(linkPdfRadicado({ 'LINK_PDF_RADICADO': '  ' + url + ' ' }), url, 'recorta espacios');
+  // Sin PDF: el caso normal en visitas de oficio y en radicados no descargados.
+  assert.equal(linkPdfRadicado({ 'RADICADO': '20251143210' }), '');
+  assert.equal(linkPdfRadicado({ 'LINK_PDF_RADICADO': '' }), '');
+  assert.equal(linkPdfRadicado(null), '', 'fila nula no lanza');
+  assert.equal(linkPdfRadicado(undefined), '');
 });

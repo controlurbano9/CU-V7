@@ -77,6 +77,10 @@ function VisitaDetailUI({ f, onCerrar }) {
   const linkInforme = _g(f, 'LINK_DOCX_INFORME', 'LINK_INFORME_F43');
   const linkVigilancia = _g(f, 'LINK_SOLICITUD_VIGILANCIA');
   const linkOrden = _g(f, 'LINK_ORDEN_POLICIA');
+  // PDF de la PQR tal como la radicó el ciudadano. No es un entregable que
+  // produzca la visita, pero se muestra con ellos porque es el otro documento
+  // que el inspector consulta desde acá.
+  const linkPqr = linkPdfRadicado(f);
 
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }} style={{
@@ -127,9 +131,10 @@ function VisitaDetailUI({ f, onCerrar }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
 
           {/* Links a entregables (si los hay) */}
-          {(linkDrive || linkPdf || linkXlsx || linkInforme || linkVigilancia || linkOrden) && (
+          {(linkDrive || linkPdf || linkXlsx || linkInforme || linkVigilancia || linkOrden || linkPqr) && (
             <_SeccionVD titulo="Entregables">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {linkPqr      && <_LinkBtnVD href={linkPqr}       Icono={Icon.File}   label="PQR radicada (PDF)" />}
                 {linkDrive    && <_LinkBtnVD href={linkDrive}     Icono={Icon.Folder} label="Carpeta Drive" />}
                 {linkPdf      && <_LinkBtnVD href={linkPdf}       Icono={Icon.File}   label="Acta (PDF)" />}
                 {!linkPdf && linkXlsx && <_LinkBtnVD href={linkXlsx} Icono={Icon.File} label="Acta (Sheet)" />}
@@ -141,7 +146,14 @@ function VisitaDetailUI({ f, onCerrar }) {
           )}
 
           <_SeccionVD titulo="1. Identificación del caso">
-            <_CampoVD l="Radicado"            v={_g(f, 'RADICADO', 1)} />
+            {/* El chip del PDF va pegado al radicado además de en Entregables:
+                es el sitio donde se lo busca cuando ya se está leyendo el caso. */}
+            <_CampoVD l="Radicado" v={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {_g(f, 'RADICADO', 1) || '—'}
+                <BotonPdfRadicado f={f} />
+              </span>
+            } />
             <_CampoVD l="Fecha radicado"      v={_fmt(_g(f, 'FECHA RADICADO', 2))} />
             <_CampoVD l="Atención PQR"        v={_g(f, 'ATENCION PQR', 0)} />
             <_CampoVD l="Denunciante"         v={_g(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6)} />
