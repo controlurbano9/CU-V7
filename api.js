@@ -18,6 +18,65 @@ const CFG = {
   hoja:    'BD VISITAS',
 };
 
+
+// ═══════════════════════════════════════════════════════════════
+// CARGA PEREZOSA DE LIBRERÍAS PESADAS
+//
+// turf.js (149 KB gz) y el SDK JS de Google Maps (100 KB gz) estaban como
+// <script> en index.html, o sea en la ruta crítica de TODO arranque —
+// incluida la pantalla de login, donde ninguna de las dos se usa. Entre las
+// dos eran el 54% de la descarga inicial.
+//
+// Ninguna hace falta hasta que el inspector abre Nueva visita o Consulta
+// norma. El Service Worker ya las cachea en cache-first (CDN_PATTERNS en
+// sw.js), así que a partir de la primera carga resuelven desde caché y el
+// coste es una sola vez por dispositivo. Para no perder el offline-first,
+// app.jsx las precalienta en segundo plano 3 s después del login
+// (_precargarLibsPesadas), igual que hace con las capas POT.
+// ═══════════════════════════════════════════════════════════════
+
+const TURF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js';
+
+// Promesa por URL: varias llamadas concurrentes comparten una sola descarga
+// y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
+const _scriptsEnVuelo = {};
+function cargarScript(url) {
+  if (_scriptsEnVuelo[url]) return _scriptsEnVuelo[url];
+  _scriptsEnVuelo[url] = new Promise(function (resolve, reject) {
+    const s = document.createElement('script');
+    s.src = url;
+    s.async = true;
+    s.onload = function () { resolve(true); };
+    s.onerror = function () {
+      delete _scriptsEnVuelo[url];
+      reject(new Error('No se pudo cargar ' + url));
+    };
+    document.head.appendChild(s);
+  });
+  return _scriptsEnVuelo[url];
+}
+
+// turf.js — solo lo usa consultarPOT().
+async function cargarTurf() {
+  if (typeof turf !== 'undefined') return true;
+  await cargarScript(TURF_URL);
+  return typeof turf !== 'undefined';
+}
+
+// SDK JS de Google Maps. La URL (con la clave) vive en index.html, igual que
+// antes, para no repartir la clave por varios archivos. El SDK se anuncia
+// listo por su cuenta: quien lo espera usa _cuandoGoogleMapsListo().
+function cargarMapsJS() {
+  if (typeof google !== 'undefined' && google.maps) return Promise.resolve(true);
+  const url = (typeof window !== 'undefined' && window.CU_MAPS_JS_URL) || '';
+  if (!url) {
+    console.warn('[api.js] CU_MAPS_JS_URL indefinida — el mapa no cargará.');
+    return Promise.resolve(false);
+  }
+  return cargarScript(url).then(function () { return true; })
+    .catch(function (e) { console.warn('[maps] ' + e.message); return false; });
+}
+
 // ── Hashing PIN (igual que app.js: SHA-256 hex) ────────────────
 async function hashPin(pin) {
   const enc = new TextEncoder().encode(String(pin));
@@ -417,8 +476,11 @@ async function _cargarGeoJSON(nombre) {
 }
 
 async function consultarPOT(lat, lon) {
-  if (typeof turf === 'undefined') {
-    throw new Error('turf.js no cargado — verifica VERSION_6_REACT.html');
+  // turf ya no viene en index.html: se descarga aquí, la primera vez que
+  // alguien consulta el POT. La función ya era async (baja GeoJSONs pesados),
+  // así que el await no añade una espera perceptible.
+  if (!(await cargarTurf())) {
+    throw new Error('No se pudo cargar turf.js. Revisa la conexión e intenta de nuevo.');
   }
   const punto = turf.point([Number(lon), Number(lat)]);
   const result = { poligono: '', sueloProt: 'NO', sueloProtCategoria: '', amenaza: 'NO', amenazaTipo: '', amenazaCategoria: '', barrioSugerido: '', enRetiro: 'NO', clasificacion: '', tratamiento: '', intensidad: '', comuna: '', enDRMI: 'NO', drmiNombre: '', ambito: '' };

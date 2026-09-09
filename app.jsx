@@ -59,6 +59,28 @@ async function _precacheDatos(onProgress) {
   try { localStorage.setItem(DATA_PRECACHE_KEY, 'done'); } catch (e) {}
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Precalentado de turf.js + SDK de Google Maps.
+// Salieron de index.html para no pagarlos en cada arranque (249 KB gz, el
+// 54% de la descarga inicial, y ninguna de las dos se usa en el login).
+// Aquí se traen en segundo plano tras el login, de modo que ya estén en el
+// caché del SW cuando el inspector salga a campo sin señal — que era lo que
+// garantizaba tenerlas en index.html.
+//
+// NO va detrás de DATA_PRECACHE_KEY: son cache-first en el SW, así que a
+// partir de la segunda vez resuelven desde caché y no cuestan red. Ponerlo
+// tras el flag obligaría a bumparlo y a rebajar los 38 MB de catastro.json.
+// ═══════════════════════════════════════════════════════════════
+function _precargarLibsPesadas() {
+  if (typeof cargarTurf === 'function') {
+    cargarTurf().catch(function (e) { console.warn('[precarga] turf:', e.message); });
+  }
+  if (typeof cargarMapsJS === 'function') {
+    return cargarMapsJS();
+  }
+  return Promise.resolve(false);
+}
+
 function _precacheMapTiles(onProgress, onDone, cancelRef) {
   if (typeof google === 'undefined' || !google.maps) { onDone(false); return; }
   // Div oculto para el mapa de precarga
@@ -471,8 +493,16 @@ function AppV6() {
   const [dataPrecache, setDataPrecache] = useStateApp(null); // null | {progreso, total} | 'done'
   useEffectApp(() => {
     if (!usuario) return;
-    try { if (localStorage.getItem(DATA_PRECACHE_KEY) === 'done') return; } catch (e) {}
     if (!navigator.onLine) return;
+    // turf + SDK de Maps: fuera de la ruta crítica de arranque, pero
+    // necesarias offline. Se traen siempre (son cache-first en el SW, así
+    // que a partir de la 2ª vez no cuestan red) y sin bloquear la UI.
+    var libs = setTimeout(_precargarLibsPesadas, 3000);
+    try {
+      if (localStorage.getItem(DATA_PRECACHE_KEY) === 'done') {
+        return function() { clearTimeout(libs); };
+      }
+    } catch (e) {}
     var cancelado = false;
     var timer = setTimeout(function() {
       if (cancelado) return;
@@ -485,7 +515,7 @@ function AppV6() {
         setTimeout(function() { if (!cancelado) setDataPrecache(null); }, 4000);
       });
     }, 3000);
-    return function() { cancelado = true; clearTimeout(timer); };
+    return function() { cancelado = true; clearTimeout(timer); clearTimeout(libs); };
   }, [usuario]);
 
   // ── Precarga automática de mapa offline (una vez tras login) ──
@@ -503,8 +533,21 @@ function AppV6() {
     // Necesita conexión y Google Maps cargado
     if (!navigator.onLine) return;
     // Delay 5s para no competir con la carga inicial de la app
-    var timer = setTimeout(function() {
-      if (typeof google === 'undefined' || !google.maps) return;
+    var timer = setTimeout(async function() {
+      // Antes: `if (typeof google === 'undefined') return;` — un abandono
+      // silencioso. Con el SDK cargándose bajo demanda esa rama se cumpliría
+      // siempre y los tiles offline no se precargarían nunca.
+      if (typeof google === 'undefined' || !google.maps) {
+        if (typeof cargarMapsJS !== 'function') return;
+        await cargarMapsJS();
+        // cargarMapsJS resuelve con el <script> cargado; el SDK se inicializa
+        // un instante después.
+        for (var i = 0; i < 40 && (typeof google === 'undefined' || !google.maps); i++) {
+          await new Promise(function(r) { setTimeout(r, 250); });
+        }
+        if (typeof google === 'undefined' || !google.maps) return;
+      }
+      if (precacheCancelRef.current) return;
       if (precacheRunningRef.current) return;
       precacheRunningRef.current = true;
       precacheCancelRef.current = false;

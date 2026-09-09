@@ -808,6 +808,12 @@ function _BtnAccion({ children, onClick, busy, className, ...rest }) {
 // scope; nueva-visita.jsx va antes que consulta-norma.jsx).
 function _cuandoGoogleMapsListo(cb, timeoutMs) {
   if (typeof google !== 'undefined' && google.maps) { cb(true); return function () {}; }
+  // El SDK ya no viene en index.html: esta es la primera pantalla que lo
+  // necesita, así que aquí se dispara la descarga. `cargarMapsJS` es
+  // idempotente — varias pantallas montándose a la vez comparten una sola
+  // etiqueta <script>. El sondeo de abajo sigue igual porque el SDK se
+  // anuncia listo por su cuenta, no por el onload del script.
+  if (typeof cargarMapsJS === 'function') cargarMapsJS();
   var limite = Date.now() + (timeoutMs || 20000);
   var id = setInterval(function () {
     if (typeof google !== 'undefined' && google.maps) { clearInterval(id); cb(true); }
