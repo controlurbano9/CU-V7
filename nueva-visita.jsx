@@ -3440,8 +3440,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             </button>
           )}
 
-          {/* Informe F-GGO-43: estilo outlined para diferenciarlo del acta */}
-          <button onClick={async () => {
+          {/* Informe F-GGO-43: estilo outlined para diferenciarlo del acta.
+              Oculto en visitas COMPLETADAS: la visita está cerrada y su
+              informe ya se subió a Drive (LINK_DOCX_INFORME) — regenerarlo
+              desde aquí no tiene sentido. */}
+          {estadoVisita !== 'COMPLETADO' && (<button onClick={async () => {
             if (typeof window.abrirInformeF43 !== 'function') {
               appAlert('El generador de informe no cargó.', { tono: 'error', titulo: 'Error' });
               return;
@@ -3582,7 +3585,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             });
           }} className="btn-principal secundario" style={{ margin: 0, fontSize: 15 }}>
             Generar informe F-GGO-43
-          </button>
+          </button>)}
         </div>
       )}
 

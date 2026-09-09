@@ -280,6 +280,59 @@ function linkPdfRadicado(f) {
   return '';
 }
 
+// ── Numeración de visitas de un radicado (Buscar) ─────────────
+// Una fila PENDIENTE es la queja sin atender, no una visita: sale con
+// n = null y nunca lleva el rótulo "Visita N de M". Solo ASIGNADO,
+// INICIADO y COMPLETADO son visitas reales y se numeran.
+// El N° VISITA explícito de BD se respeta tal cual; a las filas sin
+// número (migradas de V2) se les asigna el primer número libre del
+// radicado — nunca posición+1 a ciegas, que duplicaba números cuando
+// otra fila ya traía el suyo.
+// El estado se lee SOLO por nombre de columna ('ESTADO VISITA'), nunca
+// por índice: insertar una columna en el Sheet no debe cambiar la lectura.
+var _ESTADOS_VISITA_REAL = { ASIGNADO: 1, INICIADO: 1, COMPLETADO: 1 };
+
+// Normalización local de estado (misma regla que normalizarEstado de
+// api.js, que no está cargada en Node al correr los tests).
+function _normEstadoVisitaBD(s) {
+  return (s || '').toString().toUpperCase()
+    .replace(/[ÁÀÄ]/g, 'A').replace(/[ÉÈË]/g, 'E').replace(/[ÍÌÏ]/g, 'I')
+    .replace(/[ÓÒÖ]/g, 'O').replace(/[ÚÙÜ]/g, 'U').trim();
+}
+
+// filas: array de filas de BD VISITAS del mismo radicado (con _idx).
+// Devuelve [{ f, n }] ordenado por n (las no-visitas al final, desempate
+// por _idx): n = número de visita o null si la fila no es visita real.
+function numerarVisitasRadicado(filas) {
+  if (!Array.isArray(filas)) return [];
+  var conN = filas.map(function(f) {
+    return {
+      f: f,
+      esVisita: !!_ESTADOS_VISITA_REAL[_normEstadoVisitaBD(f['ESTADO VISITA'])],
+      n: parseInt(f['N° VISITA'] || f['N VISITA'] || 0, 10) || 0,
+    };
+  });
+  // Números ya ocupados explícitamente por otra fila del radicado.
+  var usados = {};
+  conN.forEach(function(x) { if (x.esVisita && x.n > 0) usados[x.n] = true; });
+  // A las visitas sin número: primer número libre, en orden de creación
+  // (_idx = fila del Sheet), para que el resultado no dependa del orden
+  // en que lleguen las filas.
+  var libre = 1;
+  conN.slice().sort(function(a, b) { return (a.f._idx || 0) - (b.f._idx || 0); })
+    .forEach(function(x) {
+      if (!x.esVisita) { x.n = null; return; }
+      if (x.n > 0) return;
+      while (usados[libre]) libre++;
+      x.n = libre; usados[libre] = true;
+    });
+  conN.sort(function(a, b) {
+    var na = a.n == null ? Infinity : a.n, nb = b.n == null ? Infinity : b.n;
+    return (na - nb) || ((a.f._idx || 0) - (b.f._idx || 0));
+  });
+  return conN.map(function(x) { return { f: x.f, n: x.n }; });
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   formatearFecha: formatearFecha,
@@ -295,6 +348,7 @@ var _cuUtilsExports = {
   puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,
+  numerarVisitasRadicado: numerarVisitasRadicado,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

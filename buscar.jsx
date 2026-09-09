@@ -475,22 +475,27 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
   onAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
   const [open, setOpen] = useStateB(filas.length === 1);
 
-  // Orden y numeración de visitas del radicado. N° VISITA es columna de BD
-  // (la escribe crearNuevaVisitaAsignada); las filas migradas de V2 pueden
-  // tenerla vacía, ahí cae al orden de creación (_idx = fila del Sheet).
-  const ordenadas = useMemoB(() => {
-    const conN = filas.map(f => ({
-      f, n: parseInt(f['N° VISITA'] || f['N VISITA'] || 0, 10) || 0,
-    }));
-    conN.sort((a, b) => (a.n - b.n) || ((a.f._idx || 0) - (b.f._idx || 0)));
-    return conN.map((x, i) => ({ f: x.f, n: x.n || (i + 1) }));
-  }, [filas]);
+  // Orden y numeración de visitas del radicado (numerarVisitasRadicado
+  // en utils.js): respeta el N° VISITA explícito de BD, asigna el primer
+  // número libre a las filas migradas de V2 sin número, y deja fuera de
+  // la numeración (n = null) las filas PENDIENTE — una PQR sin asignar
+  // no es una visita.
+  const ordenadas = useMemoB(() => numerarVisitasRadicado(filas), [filas]);
+  // Solo cuentan como visitas reales las numeradas (ASIGNADO/INICIADO/COMPLETADO).
+  const totalVisitas = ordenadas.filter(x => x.n != null).length;
 
-  // Una visita abierta (no COMPLETADO) bloquea crear otra sobre el mismo
-  // radicado: dos visitas vivas a la vez duplican el trabajo y dejan sin
-  // definir cuál manda. Se libera al completar la que está en curso.
-  const abierta = ordenadas.find(x =>
-    normalizarEstado(x.f['ESTADO VISITA'] || x.f[13] || '') !== 'COMPLETADO');
+  // Una visita en curso (ASIGNADO o INICIADO) bloquea crear otra sobre el
+  // mismo radicado: dos visitas vivas a la vez duplican el trabajo y dejan
+  // sin definir cuál manda. Se libera al completar la que está en curso.
+  // Una PENDIENTE no es visita en curso y no muestra el rótulo — pero
+  // tampoco habilita "+ Nueva visita": sobre una PQR sin asignar la acción
+  // correcta es Asignar, y ese botón ya vive en la fila.
+  const abierta = ordenadas.find(x => {
+    const e = normalizarEstado(x.f['ESTADO VISITA'] || '');
+    return e === 'ASIGNADO' || e === 'INICIADO';
+  });
+  const pendiente = ordenadas.find(x =>
+    normalizarEstado(x.f['ESTADO VISITA'] || '') === 'PENDIENTE');
   const filaBase = ordenadas.length ? ordenadas[ordenadas.length - 1].f : null;
   const puedeNueva = esAdmin && onAsignarNuevaVisita && filaBase && radicado !== 'Sin radicado';
   const panelNuevaAbierto = !!filaBase && asignandoFila === filaBase._idx;
@@ -526,7 +531,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
             title="Completa la visita en curso antes de abrir otra">
             Visita {abierta.n} en curso
           </span>
-        ) : (
+        ) : !pendiente && (
           <button type="button"
             onClick={() => setAsignandoFila(panelNuevaAbierto ? null : filaBase._idx)}
             disabled={busyFila === filaBase._idx}
@@ -543,7 +548,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
 
       {/* Panel de inspectores para la nueva visita (filaBase está COMPLETADO,
           así que PanelSeleccionInspector llama a onAsignarNuevaVisita). */}
-      {puedeNueva && !abierta && (
+      {puedeNueva && !abierta && !pendiente && (
         <div style={{ padding: panelNuevaAbierto ? '0 14px 12px' : 0 }}>
           <PanelSeleccionInspector
             f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
@@ -555,7 +560,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
       {open && (
         <div>
           {ordenadas.map(({ f, n }, i) => <FilaVisita key={f._idx || i} f={f} nVisita={n}
-            totalVisitas={ordenadas.length}
+            totalVisitas={totalVisitas}
             usuario={usuario} onContinuar={onContinuar}
             esAdmin={esAdmin} inspectores={inspectores}
             busy={busyFila === f._idx}
@@ -570,7 +575,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
 
 function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
   esAdmin, inspectores, busy, abierto, onAbrirAsignar, onAsignar, onDesasignar, onCompletar }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  const est = normalizarEstado(f['ESTADO VISITA'] || '');
 
   // En Buscar el badge se renderizaba con el estado raw mayúsculas (PENDIENTE,
   // ASIGNADO, INICIADO, COMPLETADO). Preservamos ese comportamiento pasando
@@ -578,8 +583,10 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
   return (
     <div style={{ padding: '12px 14px', borderTop: '1px solid var(--borde)' }}>
       {/* Qué visita del radicado es esta — sin esto dos filas idénticas del
-          mismo radicado solo se distinguían por la fecha. */}
-      {totalVisitas > 1 && (
+          mismo radicado solo se distinguían por la fecha. Una PENDIENTE
+          (nVisita = null) no es visita y nunca lleva el rótulo; este solo
+          tiene sentido con más de una visita real. */}
+      {nVisita != null && totalVisitas > 1 && (
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--texto-suave)', marginBottom: 6 }}>
           Visita {nVisita} de {totalVisitas}
         </div>

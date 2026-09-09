@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const {
   formatearFecha, parsearFecha, esDiaHabil, diasHabilesHasta, diasDesde,
   _festivosColombia, _calcularPascua, _alLunes, formatearFechaHora, titleCaseNombre,
-  linkPdfRadicado,
+  linkPdfRadicado, numerarVisitasRadicado,
 } = require('../utils.js');
 
 test('_calcularPascua — fechas de Pascua conocidas y verificables', () => {
@@ -139,4 +139,56 @@ test('linkPdfRadicado — link del PDF de la PQR, con variantes de encabezado', 
   assert.equal(linkPdfRadicado({ 'LINK_PDF_RADICADO': '' }), '');
   assert.equal(linkPdfRadicado(null), '', 'fila nula no lanza');
   assert.equal(linkPdfRadicado(undefined), '');
+});
+
+// ── numerarVisitasRadicado (Buscar: numeración de visitas por radicado) ──
+test('numerarVisitasRadicado — respeta los N° VISITA explícitos de BD', () => {
+  const filas = [
+    { 'ESTADO VISITA': 'COMPLETADO', 'N° VISITA': 2, _idx: 12 },
+    { 'ESTADO VISITA': 'COMPLETADO', 'N° VISITA': 1, _idx: 5 },
+  ];
+  const res = numerarVisitasRadicado(filas);
+  assert.deepEqual(res.map(x => x.n), [1, 2], 'ordenadas por número explícito');
+  assert.ok(res.every(x => x.n != null), 'sin PENDIENTE, todas numeradas');
+});
+
+test('numerarVisitasRadicado — fila V2 sin número recibe el primer número libre', () => {
+  // La fila migrada (sin N° VISITA) y la nueva (N° VISITA = 1 del backend)
+  // no pueden quedar las dos con el mismo número.
+  const filas = [
+    { 'ESTADO VISITA': 'COMPLETADO', 'N° VISITA': '', _idx: 3 },  // migrada de V2
+    { 'ESTADO VISITA': 'INICIADO', 'N° VISITA': 1, _idx: 40 },
+  ];
+  const nums = numerarVisitasRadicado(filas).map(x => x.n);
+  assert.equal(nums.length, 2);
+  assert.equal(new Set(nums).size, 2, 'números distintos, ninguno repetido');
+  assert.ok(nums.includes(1), 'el explícito de BD se respeta tal cual');
+});
+
+test('numerarVisitasRadicado — una fila PENDIENTE única no es visita', () => {
+  const res = numerarVisitasRadicado([{ 'ESTADO VISITA': 'PENDIENTE', _idx: 7 }]);
+  assert.equal(res.length, 1);
+  assert.equal(res[0].n, null, 'PENDIENTE → n = null');
+  assert.equal(res.filter(x => x.n != null).length, 0, 'visitas reales = 0');
+});
+
+test('numerarVisitasRadicado — COMPLETADO + PENDIENTE: la PENDIENTE no cuenta', () => {
+  const res = numerarVisitasRadicado([
+    { 'ESTADO VISITA': 'COMPLETADO', 'N° VISITA': 1, _idx: 2 },
+    { 'ESTADO VISITA': 'PENDIENTE', _idx: 9 },
+  ]);
+  assert.equal(res.find(x => x.f['ESTADO VISITA'] === 'PENDIENTE').n, null, 'la PENDIENTE da null');
+  assert.equal(res.filter(x => x.n != null).length, 1, 'visitas reales = 1');
+  assert.equal(res.find(x => x.n != null).n, 1);
+});
+
+test('numerarVisitasRadicado — orden estable, no depende del orden de entrada', () => {
+  const mk = (e, n, idx) => ({ 'ESTADO VISITA': e, 'N° VISITA': n, _idx: idx });
+  const a = [mk('COMPLETADO', 1, 5), mk('INICIADO', '', 12), mk('COMPLETADO', '', 3), mk('PENDIENTE', '', 20)];
+  const b = [mk('PENDIENTE', '', 20), mk('COMPLETADO', '', 3), mk('INICIADO', '', 12), mk('COMPLETADO', 1, 5)];
+  const ra = numerarVisitasRadicado(a);
+  const rb = numerarVisitasRadicado(b);
+  const clave = (r) => r.map(x => (x.n == null ? 'P' : x.n) + '@' + x.f._idx).join('|');
+  assert.equal(clave(ra), clave(rb), 'mismo array ordenado por n (desempate _idx)');
+  assert.deepEqual(ra.map(x => x.n), [1, 2, 3, null]);
 });
