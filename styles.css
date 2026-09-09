@@ -74,6 +74,16 @@
   --content-max: 740px;
   --header-h:    49px;
 
+  /* ── Piso táctil ─────────────────────────────────────────────
+     App de campo: el inspector la usa de pie, en la calle, con una
+     mano y a veces con guantes. Apple HIG pide 44pt, Material 48dp.
+     Antes solo .btn-principal (48px) y .fab (54px) llegaban; el resto
+     de los accionables medía entre 25px (.btn-limpiar) y 40px (.btn).
+     Los botones "pequeños" siguen viéndose pequeños — lo que crece es
+     el área de impacto, no la caja visual. */
+  --tap:      44px;
+  --tap-min:  36px;   /* controles densos en fila (chips, filtros) */
+
   /* ╭─────────────────────────────────────────────────────────╮ */
   /* │ ALIAS LEGACY                                             │ */
   /* │ Mantienen viva la API CSS vieja. No usar en código nuevo │ */
@@ -331,6 +341,7 @@ body {
   font-weight: 600;
   letter-spacing: -0.1px;
   padding: 11px 18px;
+  min-height: var(--tap);
   border-radius: var(--r);
   border: 1px solid transparent;
   cursor: pointer;
@@ -346,7 +357,10 @@ body {
   .btn-primary:hover { background: var(--brand-ink); }
 }
 
-.btn-sm { padding: 7px 12px; font-size: 12.5px; border-radius: var(--r-sm); gap: 6px; }
+/* `.btn-sm` como modificador de `.btn` se eliminó: el markup nunca usó el
+   combo `btn btn-sm`, y su declaración quedaba ANTES del `.btn-sm` autónomo
+   de la sección 6, que la pisaba entera (fondo, borde) anulando a
+   `.btn-primary`. La definición viva es la de la sección 6. */
 
 /* ── Cabeceras colapsables (acordeones/filtros) ────────────────
    Reset para usarlas como <button> nativo: accesible por teclado y con
@@ -432,9 +446,14 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 
 /* ── 5.7 Radio buttons (chips de opción) ────────────────── */
 .radio-grupo { display: flex; gap: 6px; flex-wrap: wrap; }
+/* `flex: 1` con `min-width: 60px` repartía el ancho en partes iguales y
+   RECORTABA la etiqueta: en 375px el grupo Relación mostraba "Propietari",
+   "Arrendata", "Construct". Ahora la base es el contenido (`flex: 1 1 auto`
+   sobre `width: auto`), así que una opción larga empuja al grupo a envolver
+   en vez de truncarse. Un radio que no se puede leer no se puede elegir. */
 .radio-opcion {
-  flex: 1; min-width: 60px;
-  padding: 10px 8px;
+  flex: 1 1 auto; min-width: 68px;
+  padding: 10px 12px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
   text-align: center;
@@ -444,6 +463,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   transition: background .15s, border-color .15s, color .15s;
   background: var(--surface);
   color: var(--ink-3);
+  min-height: var(--tap-min);
   -webkit-user-select: none;
   /* _Radio ahora renderiza <button role="radio">: los botones no heredan
      tipografía del documento y traen estilo nativo. */
@@ -467,6 +487,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .chip-inf,
 .chip-vis {
   padding: 7px 13px;
+  min-height: var(--tap-min);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-2);
   background: var(--surface);
@@ -499,7 +520,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .chips, .chips-inf {
   display: flex; flex-wrap: wrap;
-  gap: 6px;
+  /* 8px, no 6: entre dos blancos táctiles contiguos, 6px es donde ocurre
+     el fallo de toque con el pulgar en movimiento. */
+  gap: 8px;
   margin-bottom: 14px;
 }
 .chips-inf { margin-bottom: 0; }
@@ -516,6 +539,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   background: var(--brand); color: var(--surface);
   border: 1px solid transparent;
   padding: 14px 18px;
+  /* El padding por sí solo ya daba 48px, pero varias pantallas lo pisan con
+     `style={{ padding: '8px 12px' }}` y ahí caía a ~32px. El piso lo sostiene. */
+  min-height: var(--tap);
   border-radius: var(--r);
   font-size: 15px; font-weight: 600;
   cursor: pointer; font-family: inherit;
@@ -553,14 +579,18 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   }
 }
 
-/* Destructivo */
+/* Destructivo — rojo real, no terracotta oscuro.
+   Antes usaba var(--brand-ink) (#8A3F26), que es EXACTAMENTE el color de
+   hover del botón primario: "Eliminar" se veía igual que "Guardar" con el
+   dedo encima. El rojo semántico (--red) ya existía y solo lo usaba
+   .btn-sm.rojo, así que había dos lenguajes distintos para destruir. */
 .btn-principal.rojo {
-  background: var(--brand-ink);
+  background: var(--red);
   color: var(--surface);
   box-shadow: none;
 }
 @media (hover: hover) and (pointer: fine) {
-.btn-principal.rojo:hover { background: #6F311E; }
+.btn-principal.rojo:hover { background: #932E24; }
 }
 
 /* Neutro */
@@ -580,6 +610,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 /* ── .btn-sm (pills pequeños) ────────────────────────────── */
 .btn-sm {
   padding: 7px 13px;
+  min-height: var(--tap-min);
   font-size: 12.5px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-2);
@@ -587,7 +618,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   color: var(--ink-2);
   cursor: pointer; font-family: inherit;
   font-weight: 600;
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   transition: background .12s, border-color .12s, color .12s, transform .08s;
   line-height: 1.2;
 }
@@ -629,6 +660,109 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   border-color: rgba(180,58,46,.22);
 }
 
+/* ── Acciones de campo, cancelar y solo-icono ─────────────────
+   Estas cuatro clases reemplazan 16 botones que se construían enteros
+   con `style={{}}` en nueva-visita.jsx. El problema no era estético:
+   medían entre 16px (Volver al inicio) y 32px de alto en una app que se
+   usa de pie, en la calle, con una mano.
+
+   `min-height` da el blanco táctil; el padding y el tamaño de letra
+   siguen siendo pequeños, así que la caja visual no engorda. */
+
+/* Acción secundaria de campo: GPS, mejorar con IA, dictar, consultar POT.
+   Antes `_BtnAccion` con padding 6px/12px y font 12 → ~26px de alto. */
+.btn-accion {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--tap);
+  padding: 9px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brand);
+  background: var(--brand-bg);
+  color: var(--brand-ink);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  line-height: 1.2; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.btn-accion:active { transform: scale(0.97); }
+.btn-accion:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+  .btn-accion:not(:disabled):hover { background: #F6DACC; border-color: var(--brand-ink); }
+}
+
+/* Cancelar / retroceder. Un solo lenguaje: antes había SIETE apariencias
+   distintas para la misma intención (texto plano, gris con borde, gris sin
+   borde, outline ámbar, ancho completo…). */
+.btn-neutro {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--tap);
+  padding: 11px 16px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  line-height: 1.2; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.btn-neutro:active { transform: scale(0.97); }
+.btn-neutro:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+  .btn-neutro:not(:disabled):hover { background: var(--surface-2); color: var(--ink); }
+}
+
+/* Terciario: se lee como texto, pulsa como botón. Para escapes discretos
+   ("Volver al inicio", "Cancelar" del GPS) que no deben competir con la
+   acción principal pero tampoco medir 18px. */
+.btn-texto {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: none; background: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  line-height: 1.2; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-texto:hover { background: var(--surface-2); color: var(--ink-2); }
+}
+
+/* Solo icono. Cuadrado de var(--tap) — antes el ✕ de eliminar foto medía
+   24×28px y estaba pegado al input de descripción de la misma fila. */
+.btn-icono {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--tap); height: var(--tap); flex-shrink: 0;
+  padding: 0; border: none; background: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-3); cursor: pointer;
+  transition: background .12s, color .12s, transform .08s;
+}
+.btn-icono:active { transform: scale(0.92); }
+.btn-icono.peligro { color: var(--red); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-icono:hover { background: var(--surface-2); color: var(--ink); }
+  .btn-icono.peligro:hover { background: var(--red-bg); color: var(--red); }
+}
+
+/* Checkbox con blanco táctil. El <input> nativo mide 16px y varios de los
+   del formulario gobiernan si otro campo se habilita — el gesto de
+   desbloqueo más importante de su sección medía 16px. La caja sigue
+   viéndose de 18px; lo que crece es el área pulsable del <label>. */
+.check-tap {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: var(--tap-min);
+  padding: 4px 2px;
+  cursor: pointer;
+  font-size: 13px; color: var(--ink-3);
+  -webkit-user-select: none;
+}
+.check-tap input[type="checkbox"] {
+  width: 18px; height: 18px; flex-shrink: 0;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
 /* ── FAB ─────────────────────────────────────────────────── */
 .fab,
 .fab-nueva {
@@ -656,6 +790,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .btn-filtro {
   padding: 7px 13px;
+  min-height: var(--tap-min);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-2);
   background: var(--surface);
@@ -663,7 +798,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   font-size: 12px; font-weight: 600;
   cursor: pointer; font-family: inherit;
   transition: background .15s, color .15s, border-color .15s;
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   letter-spacing: 0.05em;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -682,6 +817,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .btn-limpiar {
   padding: 5px 10px;
+  min-height: var(--tap-min);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-2);
   background: transparent;
@@ -793,13 +929,24 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    ╚════════════════════════════════════════════════════════════╝ */
 
 /* ── GPS ─────────────────────────────────────────────────── */
+/* La caja envuelve: con el botón ya a tamaño táctil, en 375px no caben la
+   lectura y el botón en una fila y el texto del botón partía en dos líneas.
+   Al envolver, el botón toma el ancho completo y se lee de un vistazo. */
 .gps-box {
   background: var(--brand-bg);
   border: 1px solid rgba(201,100,66,.18);
   border-radius: var(--r-sm);
   padding: 12px 14px;
   display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 13px;
+}
+.gps-box > div:first-child { min-width: 150px; }
+.gps-box > div:last-child  { flex: 1 1 auto; }
+.gps-box .btn-accion { width: 100%; }
+@media (min-width: 480px) {
+  .gps-box > div:last-child { flex: 0 0 auto; }
+  .gps-box .btn-accion { width: auto; }
 }
 .gps-coords {
   font-family: var(--font-mono);
@@ -998,6 +1145,122 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
+@keyframes dlgOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+
+
+/* ── 8.1 Diálogo de aviso / confirmación (modal.jsx) ──────────
+   Antes vivía 100% en estilos inline: sin :hover posible, sin
+   :focus-visible, radio 8px (los tokens son 6/10/16), texto 13px
+   (el cuerpo es 15px) y —lo importante— SIN TONO: los 42 avisos del
+   formulario de visita renderizaban idénticos, así que "Error al
+   guardar" y "Acta generada" se distinguían solo leyendo.
+
+   Regla de color: el ICONO dice qué pasó (verde/rojo/ocre/azul);
+   el BOTÓN dice qué vas a hacer (terracotta = seguir, rojo = destruir).
+   Nunca se mezclan: un aviso de error no pinta el botón de rojo, porque
+   el botón solo cierra. */
+.dlg-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(31,27,22,0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex; justify-content: center; align-items: flex-end;
+  animation: dlgOverlayIn .18s ease-out;
+}
+.dlg {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 18px 20px calc(18px + env(safe-area-inset-bottom));
+  font-family: var(--font-sans);
+  animation: slideUpSheet .25s cubic-bezier(0.32,0.72,0,1);
+}
+.dlg-grip {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--line-2);
+  margin: -4px auto 16px;
+}
+.dlg-head { display: flex; gap: 13px; align-items: flex-start; }
+.dlg-icono {
+  flex: 0 0 38px; width: 38px; height: 38px;
+  border-radius: var(--r-full);
+  display: flex; align-items: center; justify-content: center;
+}
+.dlg-icono svg { width: 20px; height: 20px; stroke-width: 1.9; }
+.dlg-cuerpo { flex: 1; min-width: 0; padding-top: 2px; }
+.dlg-titulo {
+  font-family: var(--font-serif);
+  font-size: 18px; font-weight: 600; line-height: 1.25;
+  letter-spacing: -0.2px;
+  color: var(--ink);
+}
+.dlg-mensaje {
+  font-size: 14px; line-height: 1.55;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+}
+.dlg-titulo + .dlg-mensaje { margin-top: 6px; }
+.dlg-acciones {
+  display: flex; gap: 10px;
+  margin-top: 20px;
+}
+.dlg-btn {
+  flex: 1;
+  min-height: var(--tap);
+  padding: 11px 18px;
+  border-radius: var(--r);
+  border: 1px solid transparent;
+  font-family: inherit; font-size: 15px; font-weight: 600;
+  letter-spacing: -0.1px; line-height: 1.2;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.dlg-btn:active { transform: scale(0.98); }
+.dlg-btn-cancel {
+  background: transparent;
+  color: var(--ink-2);
+  border-color: var(--line-2);
+}
+.dlg-btn-ok {
+  background: var(--brand);
+  color: var(--surface);
+  box-shadow: 0 4px 12px var(--brand-glow);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dlg-btn-cancel:hover { background: var(--surface-2); color: var(--ink); }
+  .dlg-btn-ok:hover     { background: var(--brand-ink); }
+  .dlg-peligro .dlg-btn-ok:hover { background: #932E24; }
+}
+/* Confirmación destructiva: aquí SÍ el botón es rojo, porque la acción
+   que dispara destruye algo. */
+.dlg-peligro .dlg-btn-ok { background: var(--red); box-shadow: none; }
+
+/* Tonos — solo pintan el icono */
+.dlg-info  .dlg-icono { background: var(--info-bg);  color: var(--info); }
+.dlg-exito .dlg-icono { background: var(--green-bg); color: var(--green-ink); }
+.dlg-aviso .dlg-icono { background: var(--amber-bg); color: var(--amber); }
+.dlg-error .dlg-icono { background: var(--red-bg);   color: var(--red); }
+
+/* Desktop: tarjeta centrada, botones a la derecha con ancho natural */
+@media (min-width: 640px) {
+  .dlg-overlay { align-items: center; padding: 20px; }
+  .dlg {
+    max-width: 460px;
+    border-radius: var(--r-lg);
+    padding: 24px 26px;
+    animation: fadeIn .18s ease-out;
+  }
+  .dlg-grip { display: none; }
+  .dlg-acciones { justify-content: flex-end; }
+  .dlg-btn { flex: 0 0 auto; min-width: 116px; }
+}
 
 /* ── Spinner / cargando ──────────────────────────────────── */
 .cargando {
@@ -1015,6 +1278,21 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   animation: girar .65s linear infinite;
 }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+/* Spinner en línea dentro de un botón. El formulario de visita no tenía
+   NINGÚN indicador de carga en 4000 líneas: todo estado ocupado era una
+   sustitución de texto, y dos de ellas eran literalmente "...". */
+.spinner-btn {
+  width: 13px; height: 13px; flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: .8;
+  animation: girar .65s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner-btn { animation: girar 1.4s linear infinite !important; }
+}
 
 /* ── Banner offline ──────────────────────────────────────── */
 .offline-banner {

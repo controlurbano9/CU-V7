@@ -544,9 +544,8 @@ function _Campo({ label, children, hint, fullWidth }) {
 function _CheckNoAporta({ checked, onChange }) {
   return (
     <span style={{ float: 'right', fontWeight: 400 }}>
-      <label style={{ fontSize: 11, color: 'var(--texto-suave)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
-          style={{ cursor: 'pointer', accentColor: 'var(--texto-suave)' }} />
+      <label className="check-tap" style={{ fontSize: 12, gap: 6, padding: '2px 0' }}>
+        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
         No aporta
       </label>
     </span>
@@ -708,7 +707,6 @@ function _ChipsContravencion({ value, onChange }) {
             {grupo.opciones.map(opt => (
               <button key={opt.val} type="button"
                 className={'chip' + (seleccionados.includes(opt.val) ? ' activo' : '')}
-                style={{ fontSize: 12 }}
                 onClick={() => toggle(opt.val)}>
                 {opt.l}
               </button>
@@ -721,7 +719,7 @@ function _ChipsContravencion({ value, onChange }) {
         <div className="chips">
           <button type="button"
             className={'chip' + (esNoInfraccion ? ' activo' : '')}
-            style={{ fontSize: 12, fontStyle: 'italic' }}
+            title="Excluyente: al marcarla se desmarcan los demás comportamientos"
             onClick={() => toggle(CONTRAVENCION_ESPECIAL)}>
             {CONTRAVENCION_ESPECIAL}
           </button>
@@ -784,17 +782,18 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
   );
 }
 
-// Botón pequeño inline (acciones de campo: geocode, mejorar IA, etc.)
-function _BtnAccion({ children, onClick, busy, ...rest }) {
+// Botón de acción de campo (geocode, mejorar IA, dictar, consultar POT).
+// Estilo en `.btn-accion` (styles.css): antes se construía entero inline y
+// medía ~26px de alto, en una app que se usa de pie y con una mano.
+// `busy` muestra un spinner además de deshabilitar: el archivo no tenía
+// ni un solo indicador de carga — todo estado ocupado era cambio de texto.
+function _BtnAccion({ children, onClick, busy, className, ...rest }) {
   return (
-    <button type="button" onClick={onClick} disabled={busy} {...rest} style={{
-      background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-      border: '1px solid var(--brand-accent)', borderRadius: 8,
-      padding: '6px 12px', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-      cursor: busy ? 'not-allowed' : 'pointer',
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      opacity: busy ? 0.6 : 1,
-    }}>{children}</button>
+    <button type="button" onClick={onClick} disabled={busy} aria-busy={!!busy}
+      className={'btn-accion' + (className ? ' ' + className : '')} {...rest}>
+      {busy && <span className="spinner-btn" aria-hidden="true" />}
+      {children}
+    </button>
   );
 }
 
@@ -1081,7 +1080,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
       });
       setPaso('resultado');
     } catch (e) {
-      await appAlert('Error al buscar: ' + e.message, { titulo: 'Error' });
+      await appAlert('Error al buscar: ' + e.message, { tono: 'error', titulo: 'Error' });
     }
     setBuscando(false);
   }
@@ -1189,10 +1188,8 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                 </div>
               </button>
             </div>
-            <button type="button" onClick={onCancelar} style={{
-              marginTop: 20, background: 'none', border: 'none', color: 'var(--texto-suave)',
-              fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'center',
-            }}>← Volver al inicio</button>
+            <button type="button" onClick={onCancelar} className="btn-texto"
+              style={{ marginTop: 16, width: '100%' }}>← Volver al inicio</button>
           </>
         )}
 
@@ -1220,10 +1217,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                 className="btn-principal secundario" style={{ flex: 1, margin: 0, fontSize: 14 }}>
                 {buscando ? 'Buscando...' : 'Buscar en BD'}
               </button>
-              <button type="button" onClick={() => setPaso('tipo')} style={{
-                background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-                padding: '10px 16px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-              }}>Atrás</button>
+              <button type="button" onClick={() => setPaso('tipo')} className="btn-neutro">Atrás</button>
             </div>
           </>
         )}
@@ -1247,11 +1241,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                     className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
                     Continuar sin datos precargados
                   </button>
-                  <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} style={{
-                    background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-                    padding: '10px 16px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-                    width: '100%',
-                  }}>Buscar otro radicado</button>
+                  <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} className="btn-neutro" style={{ width: '100%' }}>Buscar otro radicado</button>
                 </div>
               </>
             )}
@@ -1299,7 +1289,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                           La visita N°{nVis} ya fue completada. ¿Desea realizar una nueva visita?
                         </div>
                         <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
-                          className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
+                          className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
                           Crear visita N°{resultado.nVisitaSig}
                         </button>
                       </>
@@ -1326,28 +1316,27 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                         {esIniciada && (
                           <>
                             <button type="button" onClick={() => iniciarConDatos(u, nVis)}
-                              className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
+                              className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
                               Continuar visita N°{nVis}
                             </button>
+                            {/* Separada y en peso neutro: crea una fila NUEVA en BD.
+                                Antes era el botón relleno y "Continuar" el outline. */}
+                            <div style={{ borderTop: '1px solid var(--borde)', margin: '4px 0 2px' }} />
                             <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
-                              className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
-                              Crear nueva visita N°{resultado.nVisitaSig}
+                              className="btn-neutro" style={{ width: '100%', fontSize: 13 }}>
+                              O crear nueva visita N°{resultado.nVisitaSig} (seguimiento)
                             </button>
                           </>
                         )}
                         {!esCompletada && !esIniciada && (
                           <button type="button" onClick={() => iniciarConDatos(u, nVis)}
-                            className="btn-principal secundario" style={{ margin: 0, fontSize: 14 }}>
+                            className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
                             Iniciar visita
                           </button>
                         )}
                       </>
                     )}
-                    <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} style={{
-                      background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-                      padding: '10px 16px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-                      width: '100%',
-                    }}>Buscar otro radicado</button>
+                    <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} className="btn-neutro" style={{ width: '100%' }}>Buscar otro radicado</button>
                   </div>
                 </>
               );
@@ -1880,7 +1869,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // ── Geocode botón — al obtener coords dispara consulta POT automática ─
   async function ejecutarGeocode() {
     if (!d.direccion) {
-      await appAlert('Ingresa una dirección primero.', { titulo: 'Falta dirección' });
+      await appAlert('Ingresa una dirección primero.', { tono: 'aviso', titulo: 'Falta dirección' });
       return;
     }
     setBusyGeo(true);
@@ -1893,10 +1882,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         ejecutarPOT(c.lat, c.lng);
         ejecutarBusquedaCatastral(c.lat, c.lng);
       } else {
-        await appAlert('No se encontró la ubicación. Refina la dirección.', { titulo: 'Sin resultado' });
+        await appAlert('No se encontró la ubicación. Refina la dirección.', { tono: 'aviso', titulo: 'Sin resultado' });
       }
     } catch (e) {
-      await appAlert('Error: ' + e.message, { titulo: 'Geocoding' });
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Geocoding' });
     }
     setBusyGeo(false);
   }
@@ -1908,14 +1897,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   async function ejecutarMejora() {
     if (busyMejora) return;  // doble-click defensivo
     if (!d.actuacion) {
-      await appAlert('Escribe algo en la descripción primero.', { titulo: 'Nada que mejorar' });
+      await appAlert('Escribe algo en la descripción primero.', { tono: 'aviso', titulo: 'Nada que mejorar' });
       return;
     }
     // IA requiere conexión obligatoria (la respuesta es el texto mejorado
     // que el inspector ve para aceptar/rechazar — no tiene sentido encolarlo).
     if (!navigator.onLine) {
       await appAlert('Sin conexión: la mejora con IA requiere internet. Guarda la descripción tal cual y mejórala cuando vuelva la señal.',
-        { titulo: 'Sin conexión' });
+        { tono: 'aviso', titulo: 'Sin conexión' });
       return;
     }
     setBusyMe(true);
@@ -1923,7 +1912,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const t = await mejorarTexto(d.actuacion);
       if (t) setSugerenciaIA(t);
     } catch (e) {
-      await appAlert('Error: ' + e.message, { titulo: 'Mejora con IA' });
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Mejora con IA' });
     }
     // Cooldown 3s antes de liberar el botón
     setTimeout(() => setBusyMe(false), 3000);
@@ -1948,7 +1937,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // Verificar soporte
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      appAlert('Tu navegador no soporta dictado por voz. Usa Chrome o Edge.', { titulo: 'Sin soporte' });
+      appAlert('Tu navegador no soporta dictado por voz. Usa Chrome o Edge.', { tono: 'aviso', titulo: 'Sin soporte' });
       return;
     }
     const rec = new SpeechRecognition();
@@ -1975,7 +1964,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     rec.onerror = (ev) => {
       console.warn('[Dictado] error:', ev.error);
       if (ev.error !== 'aborted') {
-        appAlert('Error de dictado: ' + ev.error, { titulo: 'Dictado' });
+        appAlert('Error de dictado: ' + ev.error, { tono: 'error', titulo: 'Dictado' });
       }
       setDictando(false);
       recognitionRef.current = null;
@@ -1997,7 +1986,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     const lat = (latArg != null) ? latArg : d.lat;
     const lon = (lonArg != null) ? lonArg : d.lon;
     if (lat == null || lon == null) {
-      await appAlert('Necesitas coordenadas primero. Usa "Buscar coordenadas".', { titulo: 'Sin GPS' });
+      await appAlert('Necesitas coordenadas primero. Usa "Buscar coordenadas".', { tono: 'aviso', titulo: 'Sin GPS' });
       return;
     }
     setBusyPOT(true);
@@ -2030,7 +2019,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       // Sin conexión: no interrumpir al inspector. El botón manual
       // "Consultar POT por coordenadas" permite reintentar al volver la señal.
       if (navigator.onLine) {
-        await appAlert('Error: ' + e.message, { titulo: 'Consulta POT' });
+        await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Consulta POT' });
       } else {
         console.warn('[POT] sin conexión, consulta diferida:', e.message);
       }
@@ -2043,7 +2032,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     const lat = (latArg != null) ? latArg : d.lat;
     const lon = (lonArg != null) ? lonArg : d.lon;
     if (lat == null || lon == null) {
-      await appAlert('Necesitas coordenadas primero. Usa "Buscar coordenadas" o "Mi ubicación".', { titulo: 'Sin GPS' });
+      await appAlert('Necesitas coordenadas primero. Usa "Buscar coordenadas" o "Mi ubicación".', { tono: 'aviso', titulo: 'Sin GPS' });
       return;
     }
     setBusyCat(true);
@@ -2062,7 +2051,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // Solo avisar si fue invocado manualmente con conexión.
         // Tras GPS auto-disparado y sin red, esto sería ruido.
         if (navigator.onLine) {
-          await appAlert('La ubicación GPS no cae dentro de ningún predio registrado en el catastro 2026 de Bello.', { titulo: 'Sin resultados' });
+          await appAlert('La ubicación GPS no cae dentro de ningún predio registrado en el catastro 2026 de Bello.', { tono: 'aviso', titulo: 'Sin resultados' });
         }
       } else if (res.length === 1) {
         setCampo('catastral', res[0].catastral);
@@ -2081,7 +2070,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       // puede llenar manualmente catastral/ficha y dejar la consulta
       // catastral para cuando vuelva la señal.
       if (navigator.onLine) {
-        await appAlert('Error: ' + e.message, { titulo: 'Catastro' });
+        await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Catastro' });
       } else {
         console.warn('[Catastro] sin conexión, consulta diferida:', e.message);
       }
@@ -2125,7 +2114,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
   async function usarMiUbicacion() {
     if (!navigator.geolocation) {
-      await appAlert('Tu dispositivo no soporta geolocalización.', { titulo: 'GPS' });
+      await appAlert('Tu dispositivo no soporta geolocalización.', { tono: 'aviso', titulo: 'GPS' });
       return;
     }
     // Si ya hay un watch corriendo, detenerlo y aceptar lo que haya
@@ -2154,7 +2143,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       } else {
         _detenerGeoWatch();
         setBusyGeo(false);
-        appAlert('Tiempo de espera agotado. Intenta en un lugar con mejor señal GPS.', { titulo: 'GPS' });
+        appAlert('Tiempo de espera agotado. Intenta en un lugar con mejor señal GPS.', { tono: 'aviso', titulo: 'GPS' });
       }
     }, 30000);
     var watchId = navigator.geolocation.watchPosition(
@@ -2184,7 +2173,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   err.code === 2 ? 'GPS no disponible. Verifica que la ubicación esté encendida y estás al aire libre.' :
                   err.code === 3 ? 'Tiempo de espera agotado. Intenta en un lugar con mejor señal.' :
                   'No se pudo obtener ubicación.';
-        appAlert(msg, { titulo: 'GPS' });
+        appAlert(msg, { tono: 'aviso', titulo: 'GPS' });
       },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
@@ -2220,7 +2209,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (_guardandoRef.current) return;
     const errs = _validar();
     if (errs.length) {
-      await appAlert('Faltan campos:\n• ' + errs.join('\n• '), { titulo: 'Datos incompletos' });
+      await appAlert('Faltan campos:\n• ' + errs.join('\n• '), { tono: 'aviso', titulo: 'Datos incompletos' });
       return;
     }
     setGuard(true);
@@ -2256,7 +2245,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             '(' + (eDrive && eDrive.message ? eDrive.message : 'error de conexión') + ').\n\n' +
             'Vuelve a abrir la visita y toca "Actualizar" para reintentar la ' +
             'creación de la carpeta antes de generar acta o subir fotos.',
-            { titulo: 'Carpeta Drive no creada' }
+            { tono: 'aviso', titulo: 'Carpeta Drive no creada' }
           );
         }
       }
@@ -2296,16 +2285,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           'Se sincronizará automáticamente cuando vuelva la señal. ' +
           'Al recuperar conexión, vuelve a abrir la visita y toca "Actualizar" ' +
           'para crear la carpeta Drive y poder generar acta y subir fotos.',
-          { titulo: 'Guardado local' }
+          { tono: 'exito', titulo: 'Guardado local' }
         );
       } else {
         await appAlert(filaEditando
           ? 'Registro actualizado correctamente.'
           : 'Visita guardada. Ya puedes generar el acta F-GGO-46.',
-          { titulo: 'Guardado' });
+          { tono: 'exito', titulo: 'Guardado' });
       }
     } catch (e) {
-      await appAlert('Error: ' + e.message, { titulo: 'Error al guardar' });
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error al guardar' });
     }
     setGuard(false);
   }
@@ -2472,7 +2461,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // No inserta fotos — para el registro fotográfico usar el botón aparte.
   async function generarActa() {
     if (!filaEditando) {
-      await appAlert('Primero guarda la visita.', { titulo: 'Visita no guardada' });
+      await appAlert('Primero guarda la visita.', { tono: 'aviso', titulo: 'Visita no guardada' });
       return;
     }
     // Validar todos los campos antes de generar el acta. Estricto:
@@ -2485,7 +2474,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         'No se puede generar el acta: faltan ' + faltan.length + ' campo(s) por diligenciar:\n\n' +
         lista + extra +
         '\n\nVuelve al formulario, complétalos y guarda antes de generar el acta.',
-        { titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
+        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
       );
       return;
     }
@@ -2497,7 +2486,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // mande a papelera el acta vieja antes de crear la nueva.
   async function regenerarActa() {
     if (!filaEditando) {
-      await appAlert('Primero guarda la visita.', { titulo: 'Visita no guardada' });
+      await appAlert('Primero guarda la visita.', { tono: 'aviso', titulo: 'Visita no guardada' });
       return;
     }
     const faltan = _validarAntesDeActa();
@@ -2508,13 +2497,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         'No se puede regenerar el acta: faltan ' + faltan.length + ' campo(s):\n\n' +
         lista + extra +
         '\n\nVuelve al formulario, complétalos y guarda antes de regenerar.',
-        { titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
+        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
       );
       return;
     }
     const ok = await appConfirm(
       'Se reemplazará el acta F-GGO-46 ya generada por una nueva versión.',
-      { titulo: 'Regenerar acta', btnOk: 'Regenerar' }
+      { tono: 'info', titulo: 'Regenerar acta', btnOk: 'Regenerar' }
     );
     if (!ok) return;
     await _ejecutarGenerarActa(true);
@@ -2544,11 +2533,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             ? 'Acta regenerada correctamente.'
             : (r.yaExistia ? 'El acta ya existía en la carpeta.' : 'Acta generada correctamente.')) +
           '\n\nSe abrirá la hoja de caracterización en una pestaña nueva.',
-          { titulo: 'Acta lista' }
+          { tono: 'exito', titulo: 'Acta lista' }
         );
         window.open(link, '_blank', 'noopener');
       } else {
-        await appAlert('El acta se generó pero no recibí link. Revisa Drive.', { titulo: 'Acta generada' });
+        await appAlert('El acta se generó pero no recibí link. Revisa Drive.', { tono: 'exito', titulo: 'Acta generada' });
       }
     } catch (e) {
       await appAlert('Error: ' + e.message, { titulo: regenerar ? 'Regenerar acta' : 'Generar acta' });
@@ -2565,18 +2554,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   async function abrirModalFotos() {
     if (!filaEditando) {
-      await appAlert('Primero guarda la visita.', { titulo: 'Visita no guardada' });
+      await appAlert('Primero guarda la visita.', { tono: 'aviso', titulo: 'Visita no guardada' });
       return;
     }
     if (!d.idCarpetaFotos) {
-      await appAlert('La visita aún no tiene subcarpeta de fotos. Sube fotos primero.', { titulo: 'Sin fotos' });
+      await appAlert('La visita aún no tiene subcarpeta de fotos. Sube fotos primero.', { tono: 'aviso', titulo: 'Sin fotos' });
       return;
     }
     setCargandoFotos(true);
     try {
       const r = await listarFotosActa(d.idCarpetaFotos);
       if (!r.ok || !r.fotos || r.fotos.length === 0) {
-        await appAlert('No se encontraron fotos en la carpeta.', { titulo: 'Sin fotos' });
+        await appAlert('No se encontraron fotos en la carpeta.', { tono: 'aviso', titulo: 'Sin fotos' });
         setCargandoFotos(false);
         return;
       }
@@ -2614,7 +2603,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       for (let w = 0; w < MAX_CONC; w++) workers.push(worker());
       Promise.all(workers); // sin await — no bloquear el cierre del try
     } catch (e) {
-      await appAlert('Error cargando fotos: ' + e.message, { titulo: 'Error' });
+      await appAlert('Error cargando fotos: ' + e.message, { tono: 'error', titulo: 'Error' });
       setCargandoFotos(false);
     }
   }
@@ -2636,14 +2625,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         await appAlert(
           (r.yaExistia ? 'El registro fotográfico ya existía en la carpeta.' : 'Registro fotográfico generado.') +
           '\n\nSe abrirá en una pestaña nueva.',
-          { titulo: 'Registro fotográfico listo' }
+          { tono: 'exito', titulo: 'Registro fotográfico listo' }
         );
         window.open(link, '_blank', 'noopener');
       } else {
-        await appAlert('Se generó pero no recibí link. Revisa Drive.', { titulo: 'Registro generado' });
+        await appAlert('Se generó pero no recibí link. Revisa Drive.', { tono: 'exito', titulo: 'Registro generado' });
       }
     } catch (e) {
-      await appAlert('Error: ' + e.message, { titulo: 'Generar registro fotográfico' });
+      await appAlert('Error: ' + e.message, { tono: 'info', titulo: 'Generar registro fotográfico' });
     }
     setGRF(false);
   }
@@ -2690,10 +2679,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         }}>
           <div className="page-title" style={{ margin: 0 }}>{tituloPantalla}</div>
           {onSalir && (
-            <button onClick={_confirmarVolver} style={{
-              background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-              padding: '6px 14px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
-            }}>&#8592; Volver</button>
+            <button onClick={_confirmarVolver} className="btn-neutro"
+              style={{ padding: '9px 14px', fontSize: 13, flexShrink: 0 }}>&#8592; Volver</button>
           )}
         </div>
         {tieneInfoSticky && (
@@ -2829,22 +2816,28 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             }, 'Refinando señal GPS… Puedes aceptar la ubicación actual o esperar mayor precisión.')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-            <_BtnAccion busy={false} onClick={usarMiUbicacion}>
+            {/* NO lleva `busy`: mientras busca, este botón es justamente el que
+                acepta la lectura actual ("Usar esta ubicación"). Deshabilitarlo
+                dejaría al inspector esperando los 30 s completos sin salida.
+                El estado se comunica con el spinner y aria-live, no con disabled. */}
+            <_BtnAccion onClick={usarMiUbicacion}
+              aria-live="polite"
+              style={busyGeo && gpsAccuracy != null
+                ? { background: 'var(--green-bg)', borderColor: 'var(--green)', color: 'var(--green-ink)' }
+                : undefined}>
               {busyGeo
                 ? (gpsAccuracy != null
                     ? React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
                         React.createElement(Icon.Check, { size: 14 }), 'Usar esta ubicación')
                     : React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
-                        React.createElement(Icon.Clock, { size: 14 }), 'Buscando señal…'))
+                        React.createElement('span', { className: 'spinner-btn', 'aria-hidden': 'true' }), 'Buscando señal…'))
                 : React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
                     React.createElement(Icon.Pin, { size: 14 }), 'Capturar mi ubicación')}
             </_BtnAccion>
             {busyGeo && React.createElement('button', {
               onClick: function() { _detenerGeoWatch(); setBusyGeo(false); setGpsAccuracy(null); },
-              style: { background: 'none', border: 'none', color: 'var(--texto-suave)', fontSize: 12,
-                cursor: 'pointer', padding: '2px 6px',
-                display: 'inline-flex', alignItems: 'center', gap: 4 }
-            }, React.createElement(Icon.Close, { size: 12 }), 'Cancelar')}
+              className: 'btn-texto', type: 'button'
+            }, React.createElement(Icon.Close, { size: 14 }), 'Cancelar')}
           </div>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
@@ -2864,11 +2857,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* 3. PERSONA QUE ATIENDE ──────────────────────────── */}
       <_Seccion titulo="Persona que atiende" color="azul">
         <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: d.noAtiende ? 'var(--rojo)' : 'var(--texto-2)' }}>
+          <label className="check-tap" style={{ fontWeight: 600, color: d.noAtiende ? 'var(--amarillo)' : 'var(--texto-2)' }}>
             <input type="checkbox"
               checked={d.noAtiende}
               onChange={e => setCampo('noAtiende', e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: 'var(--rojo)', cursor: 'pointer' }}
             />
             No se atiende / No suministra datos
           </label>
@@ -2905,11 +2897,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </_Campo>
         <_Campo label={<>Dirección de notificación <_CheckNoAporta checked={d.dirNoAporta} onChange={v => { setCampo('dirNoAporta', v); if (v) setCampo('dirNotifIgual', false); }} /></>} fullWidth>
           {!d.dirNoAporta && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--texto-suave)', cursor: 'pointer' }}>
+            <label className="check-tap" style={{ marginBottom: 4 }}>
               <input type="checkbox"
                 checked={d.dirNotifIgual}
                 onChange={e => setCampo('dirNotifIgual', e.target.checked)}
-                style={{ accentColor: 'var(--brand-accent)' }}
               />
               Misma dirección del inmueble
             </label>
@@ -3043,7 +3034,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           <_BtnAccion busy={busyMejora} onClick={ejecutarMejora}>
             {busyMejora ? 'Mejorando...' : 'Mejorar texto'}
           </_BtnAccion>
-          <_BtnAccion onClick={toggleDictado} busy={false}>
+          <_BtnAccion onClick={toggleDictado} aria-pressed={dictando}>
             {dictando ? 'Detener dictado' : 'Dictar'}
           </_BtnAccion>
           {dictando && (
@@ -3088,10 +3079,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 style={{ margin: 0, fontSize: 13, padding: '8px 18px' }}>
                 Usar esta versión
               </button>
-              <button type="button" onClick={descartarSugerenciaIA} style={{
-                background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-                padding: '8px 16px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-              }}>Descartar</button>
+              <button type="button" onClick={descartarSugerenciaIA} className="btn-neutro"
+                style={{ fontSize: 13, padding: '9px 16px' }}>Descartar</button>
               <span style={{ fontSize: 11, color: 'var(--texto-suave)', marginLeft: 'auto' }}>
                 Al usarla, reemplaza el texto original.
               </span>
@@ -3145,12 +3134,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                       <Icon.Check size={14} /> Aplicar sugerencia
                     </button>
                     <button type="button" onClick={() => setAdvertTipifIgnorada(true)}
-                      style={{
-                        background: 'transparent', color: 'var(--cafe)',
-                        border: '1px solid var(--amarillo)', borderRadius: 8,
-                        padding: '8px 14px', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-                        cursor: 'pointer',
-                      }}>
+                      className="btn-neutro" style={{ fontSize: 13, padding: '9px 14px' }}>
                       No aplicar
                     </button>
                   </div>
@@ -3164,14 +3148,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           />
         </_Campo>
         <_Campo label="Área de contravención (m²)">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--texto-suave)', cursor: 'pointer' }}>
+          <label className="check-tap" style={{ marginBottom: 4 }}>
             <input type="checkbox"
               checked={d.areaNoMedible}
               onChange={e => {
                 setCampo('areaNoMedible', e.target.checked);
                 if (e.target.checked) setCampo('area', '');
               }}
-              style={{ accentColor: 'var(--brand-accent)' }}
             />
             No se pudo medir
           </label>
@@ -3214,7 +3197,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         )}
 
         <_Campo label="Citación" fullWidth>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--texto-suave)', cursor: 'pointer' }}>
+          <label className="check-tap" style={{ marginBottom: 4 }}>
             <input type="checkbox"
               checked={d.noCitacion}
               onChange={e => {
@@ -3224,7 +3207,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   setCampo('citacionHora', '');
                 }
               }}
-              style={{ accentColor: 'var(--brand-accent)' }}
             />
             No se deja citación
           </label>
@@ -3275,16 +3257,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         {/* Búsqueda automática primero (al inicio del bloque, ancho completo,
             centrado y con icono que indica que rellena código catastral y ficha). */}
         <div style={{ gridColumn: '1 / -1' }}>
+          {/* El borde PUNTEADO significa "placeholder / incompleto" en cualquier
+              gramática visual; aquí marcaba una acción real. Sólido + spinner. */}
           <button type="button" onClick={() => ejecutarBusquedaCatastral()} disabled={busyCat}
-            style={{
-              width: '100%',
-              background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-              border: '1.5px dashed var(--brand-accent)', borderRadius: 10,
-              padding: '12px 16px', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-              cursor: busyCat ? 'not-allowed' : 'pointer', opacity: busyCat ? 0.6 : 1,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-            {busyCat ? 'Buscando...' : 'Buscar datos catastrales'}
+            aria-busy={busyCat} className="btn-accion"
+            style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}>
+            {busyCat
+              ? <><span className="spinner-btn" aria-hidden="true" /> Buscando en catastro…</>
+              : 'Buscar datos catastrales'}
           </button>
           <div style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginTop: 4 }}>
             Llena automáticamente código catastral y ficha usando las coordenadas GPS.
@@ -3339,7 +3319,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </_Campo>
         <div style={{ gridColumn: '1 / -1' }}>
           <_BtnAccion busy={busyPOT} onClick={() => ejecutarPOT()}>
-            {busyPOT ? '...' : 'Consultar POT por coordenadas'}
+            {busyPOT ? 'Consultando POT…' : 'Consultar POT por coordenadas'}
           </_BtnAccion>
         </div>
       </_Seccion>
@@ -3383,33 +3363,35 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               - Con acta: dos botones lado a lado — 'Ver acta' (relleno) y
                 'Regenerar' (outlined punteado, llama backend con regenerar=true). */}
           {d.linkXlsxActa ? (
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" onClick={() => window.open(d.linkXlsxActa, '_blank', 'noopener')}
-                className="btn-principal" style={{ fontSize: 15, flex: 2 }}>
+                className="btn-principal secundario" style={{ margin: 0, fontSize: 15, flex: 1 }}>
                 <Icon.Eye size={16} /> Ver acta F-GGO-46
               </button>
+              {/* Regenerar rehace el acta en Drive: separado del botón de solo
+                  lectura y reducido a icono con nombre accesible, en vez de
+                  competir a su lado con un outline punteado. */}
               <button type="button" onClick={regenerarActa} disabled={generandoActa}
-                style={{
-                  background: 'transparent', color: 'var(--brand-accent)',
-                  border: '1.5px dashed var(--brand-accent)', borderRadius: 10,
-                  padding: '12px 14px', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-                  cursor: generandoActa ? 'not-allowed' : 'pointer',
-                  opacity: generandoActa ? 0.6 : 1, flex: 1,
-                }}>
-                {generandoActa ? '...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon.Refresh size={14} /> Regenerar</span>}
+                className="btn-icono" aria-label="Regenerar el acta F-GGO-46"
+                aria-busy={generandoActa} title="Regenerar acta">
+                {generandoActa
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Refresh size={18} />}
               </button>
             </div>
           ) : (
             <button onClick={generarActa} disabled={generandoActa} className="btn-principal"
-              style={{ fontSize: 15 }}>
-              {generandoActa ? 'Generando acta...' : 'Generar acta F-GGO-46'}
+              aria-busy={generandoActa} style={{ fontSize: 15 }}>
+              {generandoActa
+                ? <><span className="spinner-btn" aria-hidden="true" /> Generando acta...</>
+                : 'Generar acta F-GGO-46'}
             </button>
           )}
 
           {/* Informe F-GGO-43: estilo outlined para diferenciarlo del acta */}
           <button onClick={async () => {
             if (typeof window.abrirInformeF43 !== 'function') {
-              appAlert('El generador de informe no cargó.', { titulo: 'Error' });
+              appAlert('El generador de informe no cargó.', { tono: 'error', titulo: 'Error' });
               return;
             }
             // Mismo control estricto que para el acta: el informe F-GGO-43 se nutre
@@ -3423,7 +3405,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 'No se puede generar el informe F-GGO-43: faltan ' + faltanInf.length + ' campo(s) por diligenciar:\n\n' +
                 lista + extra +
                 '\n\nVuelve al formulario, complétalos y guarda antes de generar el informe.',
-                { titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
+                { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
               );
               return;
             }
@@ -3546,12 +3528,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               infraccion:       d.infraccion,
               ...potExtra,
             });
-          }} style={{
-            background: 'transparent', color: 'var(--brand-accent)',
-            border: '1.5px solid var(--brand-accent)', borderRadius: 10,
-            padding: '12px 16px', fontFamily: 'inherit', fontSize: 15, fontWeight: 600,
-            cursor: 'pointer',
-          }}>
+          }} className="btn-principal secundario" style={{ margin: 0, fontSize: 15 }}>
             Generar informe F-GGO-43
           </button>
         </div>
@@ -3568,7 +3545,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       )}
       {filaEditando && (
         <button onClick={abrirModalFotos} disabled={generandoRF || cargandoFotos}
-          className="btn-principal" style={{ fontSize: 15, marginTop: 14 }}>
+          aria-busy={generandoRF || cargandoFotos}
+          className="btn-principal secundario" style={{ fontSize: 15, marginTop: 14 }}>
           {cargandoFotos ? 'Cargando fotos...' : generandoRF ? 'Generando...' : 'Generar registro fotográfico'}
         </button>
       )}
@@ -3775,29 +3753,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                             return next;
                           });
                         },
-                        style: {
-                          width: '100%', border: '1px solid var(--borde)', borderRadius: 6,
-                          padding: '6px 8px', fontSize: 13, boxSizing: 'border-box',
-                          fontFamily: 'inherit',
-                        }
+                        // Reimplementaba .input-campo a ~28px de alto, justo al
+                        // lado del botón de eliminar la foto.
+                        className: 'input-campo',
+                        style: { width: '100%', fontSize: 14, padding: '9px 12px' }
                       })
                     ),
                     // Eliminar foto
                     React.createElement('button', {
+                      type: 'button',
+                      className: 'btn-icono peligro',
                       title: 'Quitar del registro',
+                      'aria-label': 'Quitar del registro la foto ' + (idx + 1),
                       onClick: function(e) {
                         e.stopPropagation();
                         setModalFotos(function(prev) {
                           return prev.filter(function(_, i) { return i !== idx; });
                         });
                       },
-                      style: {
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--rojo)', fontSize: 18, lineHeight: 1,
-                        padding: '4px 6px', flexShrink: 0, borderRadius: 4,
-                        display: 'inline-flex', alignItems: 'center',
-                      }
-                    }, React.createElement(Icon.Close, { size: 16 }))
+                      style: { marginLeft: 4 }
+                    }, React.createElement(Icon.Close, { size: 18 }))
                   ),
                   // ── Línea de inserción ABAJO ──
                   showLineBelow && React.createElement('div', { style: {
@@ -3809,19 +3784,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              {/* La acción principal del modal iba en outline y el cancelar sin
+                  borde al lado. Ahora el peso corresponde a la consecuencia. */}
+              <button onClick={function() { setModalFotos(null); }}
+                className="btn-neutro" style={{ flex: 1 }}>Cancelar</button>
               <button onClick={confirmarYGenerarRF}
                 disabled={modalFotos.length === 0 || modalFotos.some(function(f) { return f.descBusy; })}
-                className="btn-principal secundario" style={{ flex: 1, margin: 0, padding: 12, fontSize: 14 }}>
+                aria-busy={modalFotos.some(function(f) { return f.descBusy; })}
+                className="btn-principal" style={{ flex: 2, margin: 0, padding: 12, fontSize: 14 }}>
                 {modalFotos.length === 0
                   ? 'No hay fotos'
                   : modalFotos.some(function(f) { return f.descBusy; })
-                    ? 'Generando descripciones...'
+                    ? <><span className="spinner-btn" aria-hidden="true" /> Generando descripciones…</>
                     : 'Confirmar y generar'}
               </button>
-              <button onClick={function() { setModalFotos(null); }} style={{
-                background: 'var(--gris-bg)', border: 'none', borderRadius: 8,
-                padding: 12, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-              }}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -3910,7 +3886,7 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
     const validos = archivos.filter(function(f) { return f.size <= 8 * 1024 * 1024; });
     const rechazados = archivos.length - validos.length;
     if (rechazados > 0) {
-      appAlert(rechazados + ' foto(s) superan 8MB y fueron excluidas.', { titulo: 'Fotos grandes' });
+      appAlert(rechazados + ' foto(s) superan 8MB y fueron excluidas.', { tono: 'aviso', titulo: 'Fotos grandes' });
     }
     if (validos.length === 0) return;
     // Acumular en lugar de sobrescribir: si el inspector selecciona más fotos
@@ -3966,7 +3942,7 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
       // sin avisar y el inspector creía que estaba en Drive.
       if (!cancelado && fallidas.length) {
         appAlert('No se pudieron subir ' + fallidas.length + ' foto(s):\n• ' + fallidas.join('\n• ') +
-                 '\n\nVuelva a seleccionarlas para reintentar.', { titulo: 'Fotos no subidas' });
+                 '\n\nVuelva a seleccionarlas para reintentar.', { tono: 'error', titulo: 'Fotos no subidas' });
       }
     }
     subirTodos();
@@ -4003,11 +3979,16 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
         )}
 
         <label style={{
-          display: 'block', padding: 14, border: '1.5px dashed var(--borde-med)',
-          borderRadius: 10, textAlign: 'center', cursor: subiendo ? 'wait' : 'pointer',
-          background: 'var(--gris-bg)', fontSize: 13, color: 'var(--texto-suave)',
-          opacity: subiendo ? 0.5 : 1,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          minHeight: 'var(--tap)', padding: '14px 16px',
+          border: '1px solid var(--brand)', borderRadius: 'var(--r)',
+          textAlign: 'center', cursor: subiendo ? 'wait' : 'pointer',
+          background: 'var(--brand-bg)', fontSize: 14, fontWeight: 600,
+          color: 'var(--brand-ink)', opacity: subiendo ? 0.55 : 1,
         }}>
+          {subiendo
+            ? <span className="spinner-btn" aria-hidden="true" />
+            : <Icon.Plus size={18} />}
           {subiendo ? progreso : 'Toca para seleccionar fotos'}
           <input ref={inputRef} type="file" accept="image/*" multiple
             onChange={alSeleccionar} disabled={subiendo} style={{ display: 'none' }} />

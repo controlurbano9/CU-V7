@@ -77,7 +77,7 @@ function TabVigilancia() {
 
   async function generar(f) {
     const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
-    if (!idCarpeta) { await appAlert('La visita no tiene carpeta de Drive asociada.', { titulo: 'Sin carpeta' }); return; }
+    if (!idCarpeta) { await appAlert('La visita no tiene carpeta de Drive asociada.', { tono: 'aviso', titulo: 'Sin carpeta' }); return; }
     setBusyFila(f._idx);
     try {
       const r = await generarSolicitudVigilancia({
@@ -93,7 +93,7 @@ function TabVigilancia() {
       await cargar(true);
       if (r.linkDoc) window.open(r.linkDoc, '_blank', 'noopener,noreferrer');
     } catch (e) {
-      await appAlert('Error generando solicitud: ' + e.message, { titulo: 'Error' });
+      await appAlert('Error generando solicitud: ' + e.message, { tono: 'error', titulo: 'Error' });
     }
     setBusyFila(null);
   }
@@ -205,7 +205,7 @@ function TabUsuarios() {
     try {
       await toggleActivo(u.fila, u.activo ? 'NO' : 'SI');
       await cargar();
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }
 

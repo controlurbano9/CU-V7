@@ -57,14 +57,14 @@ function AgendaScreen({ usuario, onContinuar }) {
     if (item.requiereVigilancia) {
       const generar = await appConfirm(
         'Esta visita tiene orden de suspensión preventiva y aún no se ha generado el oficio de Vigilancia Policía.\n\n¿Generar el oficio antes de completar?',
-        { titulo: 'Solicitud de vigilancia pendiente', btnOk: 'Generar oficio', btnCancel: 'Completar sin oficio' }
+        { tono: 'aviso', titulo: 'Solicitud de vigilancia pendiente', btnOk: 'Generar oficio', btnCancel: 'Completar sin oficio' }
       );
       if (generar) {
         setBusyFila(item.fila);
         try {
           const idCarpeta = extraerIdCarpetaDrive(item.linkDrive || '');
           if (!idCarpeta) {
-            await appAlert('La visita no tiene carpeta de Drive asociada.', { titulo: 'Sin carpeta' });
+            await appAlert('La visita no tiene carpeta de Drive asociada.', { tono: 'aviso', titulo: 'Sin carpeta' });
             setBusyFila(null);
             return;
           }
@@ -78,7 +78,7 @@ function AgendaScreen({ usuario, onContinuar }) {
             barrio:        item.barrio || '',
           });
         } catch (e) {
-          await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { titulo: 'Error' });
+          await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
           setBusyFila(null);
           return;
         }
@@ -105,7 +105,7 @@ function AgendaScreen({ usuario, onContinuar }) {
       });
       invalidarCache('visitas');
       await cargar();
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }
 
@@ -122,7 +122,7 @@ function AgendaScreen({ usuario, onContinuar }) {
       if (!fila) throw new Error('No se encontró la visita en BD VISITAS.');
       onContinuar(item.fila, fila);
     } catch (e) {
-      await appAlert('No se pudo abrir la visita: ' + e.message, { titulo: 'Error' });
+      await appAlert('No se pudo abrir la visita: ' + e.message, { tono: 'error', titulo: 'Error' });
     }
     setBusyFila(null);
   }
@@ -140,7 +140,7 @@ function AgendaScreen({ usuario, onContinuar }) {
       invalidarCache('visitas');
       setAsignandoFila(null);
       await cargar();
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }
 
@@ -153,7 +153,7 @@ function AgendaScreen({ usuario, onContinuar }) {
     const label = jornadaKey === 'manana' ? 'mañana' : 'tarde';
     const ok = await appConfirm(
       `¿Confirmar ${items.length} visita(s) de la jornada de la ${label} y asignarlas a ${inspector}?`,
-      { titulo: 'Confirmar agenda', btnOk: 'Confirmar' }
+      { tono: 'info', titulo: 'Confirmar agenda', btnOk: 'Confirmar' }
     );
     if (!ok) return;
     setConfirmando(true);
@@ -166,10 +166,10 @@ function AgendaScreen({ usuario, onContinuar }) {
       invalidarCache('visitas');
       setInspectorSel(s => Object.assign({}, s, { [jornadaKey]: '' }));
       if (r && r.errores && r.errores.length) {
-        await appAlert('No se pudieron confirmar: ' + r.errores.join(', '), { titulo: 'Confirmado parcialmente' });
+        await appAlert('No se pudieron confirmar: ' + r.errores.join(', '), { tono: 'aviso', titulo: 'Confirmado parcialmente' });
       }
       await cargar();
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setConfirmando(false);
   }
 

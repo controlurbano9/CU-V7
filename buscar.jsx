@@ -121,7 +121,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       invalidarCache('visitas');
       setAsignandoFila(null);
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }, [cargar]);
 
@@ -140,8 +140,8 @@ function BuscarScreen({ usuario, onContinuar }) {
       setAsignandoFila(null);
       await cargar(true);
       await appAlert('Visita N°' + (r.nVisita || '?') + ' creada y asignada a ' + inspector + '.',
-        { titulo: 'Nueva visita asignada' });
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+        { tono: 'exito', titulo: 'Nueva visita asignada' });
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }, [cargar]);
 
@@ -156,7 +156,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       await gasPost({ accion: 'desasignarRadicado', fila });
       invalidarCache('visitas');
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }, [cargar]);
 
@@ -173,14 +173,14 @@ function BuscarScreen({ usuario, onContinuar }) {
     if (requiereVigilancia) {
       const generar = await appConfirm(
         'Esta visita tiene orden de suspensión preventiva y aún no se ha generado el oficio de Vigilancia Policía.\n\n¿Generar el oficio antes de completar?',
-        { titulo: 'Solicitud de vigilancia pendiente', btnOk: 'Generar oficio', btnCancel: 'Completar sin oficio' }
+        { tono: 'aviso', titulo: 'Solicitud de vigilancia pendiente', btnOk: 'Generar oficio', btnCancel: 'Completar sin oficio' }
       );
       if (generar) {
         setBusyFila(fila);
         try {
           const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || '');
           if (!idCarpeta) {
-            await appAlert('La visita no tiene carpeta de Drive asociada.', { titulo: 'Sin carpeta' });
+            await appAlert('La visita no tiene carpeta de Drive asociada.', { tono: 'aviso', titulo: 'Sin carpeta' });
             setBusyFila(null);
             return;
           }
@@ -194,7 +194,7 @@ function BuscarScreen({ usuario, onContinuar }) {
             barrio:          f['BARRIO/VEREDA'] || f['BARRIO'] || '',
           });
         } catch (e) {
-          await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { titulo: 'Error' });
+          await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
           setBusyFila(null);
           return;
         }
@@ -203,7 +203,7 @@ function BuscarScreen({ usuario, onContinuar }) {
     }
 
     const ok = await appConfirm('¿Marcar como COMPLETADO?', {
-      titulo: 'Completar visita', btnOk: 'Completar',
+      tono: 'info', titulo: 'Completar visita', btnOk: 'Completar',
     });
     if (!ok) return;
     setBusyFila(fila);
@@ -226,7 +226,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       }
       invalidarCache('visitas');
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { titulo: 'Error' }); }
+    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setBusyFila(null);
   }, [cargar, datos]);
 
@@ -418,10 +418,9 @@ function BuscarScreen({ usuario, onContinuar }) {
               ? `${filtrados.length} de ${datos.length}`
               : `${datos.length} registros`}
           </span>
-          <button onClick={() => cargar(true)} style={{
-            marginLeft: 'auto', background: 'var(--gris-bg)', border: '1px solid var(--borde)',
-            borderRadius: 8, padding: '4px 10px', fontFamily: 'inherit', fontSize: 11, cursor: 'pointer',
-          }} title="Refetch ignorando caché">Recargar</button>
+          <button onClick={() => cargar(true)} className="btn-texto"
+            style={{ marginLeft: 'auto', fontSize: 12 }}
+            title="Refetch ignorando caché">Recargar</button>
         </div>
       </div>
 

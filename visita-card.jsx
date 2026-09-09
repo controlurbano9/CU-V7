@@ -247,7 +247,7 @@ function BotonesEntregables({ f, usuario }) {
       {!linkInforme && (
         <button type="button" onClick={() => {
           if (typeof window.abrirInformeF43 !== 'function') {
-            appAlert('El generador de informes no está disponible.', { titulo: 'Error' });
+            appAlert('El generador de informes no está disponible.', { tono: 'error', titulo: 'Error' });
             return;
           }
           window.abrirInformeF43(paramsInformeF43(f, usuario));

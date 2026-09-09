@@ -51,7 +51,7 @@ function InformeModalHost() {
         // El BD cambió (LINK_INFORME_F43, etc.) → invalidar caché.
         if (typeof invalidarCache === 'function') invalidarCache('visitas');
         if (typeof appAlert === 'function') {
-          appAlert('Informe subido a Drive correctamente.', { titulo: 'Listo' });
+          appAlert('Informe subido a Drive correctamente.', { tono: 'exito', titulo: 'Listo' });
         }
       }
     }

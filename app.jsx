@@ -186,7 +186,7 @@ function OfflineColaBadge() {
     if (sincronizando) return;
     if (!navigator.onLine) {
       appAlert('Sin conexión: no se puede sincronizar ahora. Se reintentará automáticamente.',
-        { titulo: 'Cola offline' });
+        { tono: 'error', titulo: 'Cola offline' });
       return;
     }
     setSinc(true);
@@ -197,10 +197,10 @@ function OfflineColaBadge() {
           'Sincronización completada.\n\n' +
           '✓ Exitosos: ' + (r.exito || 0) + '\n' +
           (r.fallo ? '✕ Fallidos: ' + r.fallo + ' (quedan en cola para reintentar)' : ''),
-          { titulo: 'Cola offline' });
+          { tono: 'error', titulo: 'Cola offline' });
       }
     } catch (e) {
-      await appAlert('Error al sincronizar: ' + e.message, { titulo: 'Cola offline' });
+      await appAlert('Error al sincronizar: ' + e.message, { tono: 'error', titulo: 'Cola offline' });
     }
     setSinc(false);
   }
@@ -460,7 +460,7 @@ function AppV6() {
   useEffectApp(() => {
     if (!usuario) return;
     const id = setInterval(() => {
-      if (!SESSION_V6.leer()) { setUsuario(null); appAlert('Tu sesión ha expirado.', { titulo: 'Sesión expirada' }); }
+      if (!SESSION_V6.leer()) { setUsuario(null); appAlert('Tu sesión ha expirado.', { tono: 'error', titulo: 'Sesión expirada' }); }
     }, 60000);
     return () => clearInterval(id);
   }, [usuario]);

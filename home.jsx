@@ -272,12 +272,9 @@ function HomeScreen({ usuario, onContinuar }) {
 
       {/* ── Footer: recargar datos ── */}
       <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <button onClick={() => cargar(true)} style={{
-          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-          padding: '6px 14px', fontFamily: 'inherit', fontSize: 11, cursor: 'pointer',
-          color: 'var(--texto-suave)',
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}><Icon.Refresh size={12} /> Recargar datos</button>
+        <button onClick={() => cargar(true)} className="btn-texto">
+          <Icon.Refresh size={14} /> Recargar datos
+        </button>
       </div>
     </div>
   );

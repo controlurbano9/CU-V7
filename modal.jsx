@@ -1,12 +1,19 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/modal.jsx — Modal in-app + API Promise-based reemplazando
 // window.confirm/alert. Expone:
-//   await appConfirm(mensaje, {titulo, btnOk, btnCancel})  → bool
-//   await appAlert(mensaje, {titulo, btnOk})               → true
+//   await appConfirm(msg, {titulo, btnOk, btnCancel, peligro, tono}) → bool
+//   await appAlert(msg,   {titulo, btnOk, tono})                     → true
+//
+// `tono`: 'info' (defecto) | 'exito' | 'aviso' | 'error'
+//   El icono comunica QUÉ PASÓ; el botón comunica QUÉ VAS A HACER.
+//   Un aviso de error NO pinta el botón de rojo (el botón solo cierra);
+//   el rojo del botón queda reservado a `peligro: true`, donde la acción
+//   que se dispara sí destruye algo.
+//
 // Si <ModalHost /> aún no se ha montado (boot temprano), cae en
 // el confirm/alert nativo del browser para no perder mensajes.
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateM, useEffect: useEffectM } = React;
+const { useState: useStateM, useEffect: useEffectM, useRef: useRefM } = React;
 
 // Bridge entre la API global y el state del Host. Se setea al montar
 // el ModalHost; null mientras no exista.
@@ -23,6 +30,16 @@ function ModalHost() {
     };
     return function() { _pushModal = null; };
   }, []);
+
+  // Bloqueo de scroll del fondo mientras haya algún diálogo abierto.
+  // Sin esto, en móvil el dedo arrastra la página detrás del sheet y el
+  // formulario pierde la posición de lectura.
+  useEffectM(function() {
+    if (!modales.length) return;
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return function() { document.body.style.overflow = previo; };
+  }, [modales.length]);
 
   // El resolver de la promesa es un efecto: ejecutarlo dentro del updater de
   // setModales lo hacía correr dos veces en StrictMode y en cualquier
@@ -45,93 +62,113 @@ function ModalHost() {
   );
 }
 
-function ModalUI({ tipo, titulo, mensaje, btnOk, btnCancel, peligro, esUltimo, onResolver }) {
-  // Esc cancela (confirm) o cierra (alert). Enter acepta.
-  // Solo el modal superior escucha el teclado: antes cada modal apilado
-  // registraba su propio listener y un Esc los resolvía todos de golpe.
+// Iconos de tono — Heroicons outline, stroke unificado con `.ico` del sistema.
+function _DlgIcono({ tono }) {
+  const comun = {
+    viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+  };
+  if (tono === 'exito') {
+    return <svg {...comun}><path d="M4.5 12.75l6 6 9-13.5" /></svg>;
+  }
+  if (tono === 'error') {
+    return <svg {...comun}><path d="M6 18L18 6M6 6l12 12" /></svg>;
+  }
+  if (tono === 'aviso') {
+    return (
+      <svg {...comun}>
+        <path d="M12 9v4.5m0 3.75h.008" />
+        <path d="M10.34 3.94a1.92 1.92 0 013.32 0l7.4 12.82a1.92 1.92 0 01-1.66 2.87H4.6a1.92 1.92 0 01-1.66-2.87l7.4-12.82z" />
+      </svg>
+    );
+  }
+  // info (defecto)
+  return (
+    <svg {...comun}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11.25v4.5M12 8.25h.008" />
+    </svg>
+  );
+}
+
+function ModalUI({ tipo, titulo, mensaje, btnOk, btnCancel, peligro, tono, esUltimo, onResolver }) {
+  const cardRef  = useRefM(null);
+  const okRef    = useRefM(null);
+  const previoRef = useRefM(null);
+
+  const esConfirm = tipo === 'confirm';
+  // Un confirm destructivo se lee siempre como aviso, aunque no lo declaren.
+  const tonoFinal = tono || (peligro ? 'aviso' : 'info');
+
+  // Teclado: Esc cancela (confirm) o cierra (alert); Enter acepta; Tab
+  // queda atrapado dentro del diálogo. Solo el modal superior escucha:
+  // antes cada modal apilado registraba su propio listener y un Esc los
+  // resolvía todos de golpe.
   useEffectM(function() {
     if (esUltimo === false) return;
     function onKey(e) {
-      if (e.key === 'Escape') { e.preventDefault(); onResolver(tipo === 'confirm' ? false : true); }
-      else if (e.key === 'Enter') { e.preventDefault(); onResolver(true); }
+      if (e.key === 'Escape') { e.preventDefault(); onResolver(esConfirm ? false : true); return; }
+      if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); onResolver(true); return; }
+      if (e.key !== 'Tab') return;
+      // Focus trap: sin esto, Tab saca el foco al formulario de atrás, que
+      // sigue en el DOM y es operable con teclado bajo el overlay.
+      const foco = cardRef.current && cardRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!foco || !foco.length) return;
+      const primero = foco[0], ultimo = foco[foco.length - 1];
+      if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+      else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
     }
     window.addEventListener('keydown', onKey);
     return function() { window.removeEventListener('keydown', onKey); };
-  }, [onResolver, tipo, esUltimo]);
+  }, [onResolver, esConfirm, esUltimo]);
 
-  // Detecta viewport móvil para renderizar como bottom sheet (patrón nativo
-  // móvil con gesto de descarte) en lugar de center modal.
-  const [esMovil, setEsMovil] = useStateM(typeof window !== 'undefined' && window.innerWidth < 640);
+  // Foco al abrir y devolución al cerrar.
+  // NO se autoenfoca el botón de acción en un confirm destructivo: un Enter
+  // reflejo (muy común tras teclear en el formulario) confirmaba el borrado.
+  // En ese caso el foco arranca en la tarjeta, y Enter sigue funcionando
+  // por el handler de teclado solo si el foco no está en un botón.
   useEffectM(function() {
-    function onResize() { setEsMovil(window.innerWidth < 640); }
-    window.addEventListener('resize', onResize);
-    return function() { window.removeEventListener('resize', onResize); };
-  }, []);
+    if (esUltimo === false) return;
+    previoRef.current = document.activeElement;
+    const destino = (esConfirm && peligro) ? cardRef.current : okRef.current;
+    if (destino) destino.focus();
+    return function() {
+      const p = previoRef.current;
+      if (p && typeof p.focus === 'function' && document.contains(p)) p.focus();
+    };
+  }, [esUltimo, esConfirm, peligro]);
 
-  // Overlay: en móvil alinea al fondo (sheet); en desktop al centro
-  const overlayStyle = {
-    position: 'fixed', inset: 0, background: 'rgba(31,27,22,0.45)',
-    zIndex: 9999, display: 'flex', justifyContent: 'center',
-    alignItems: esMovil ? 'flex-end' : 'center',
-    padding: esMovil ? 0 : 16,
-    backdropFilter: 'blur(2px)',
-  };
-
-  // Card: en móvil 100% ancho con esquinas superiores redondeadas;
-  // en desktop centrado con esquinas redondeadas completas
-  const cardStyle = {
-    background: 'var(--superficie, #FFFBF5)',
-    borderRadius: esMovil ? '20px 20px 0 0' : 'var(--r-md, 14px)',
-    boxShadow: 'var(--sombra, 0 10px 30px rgba(0,0,0,0.2))',
-    maxWidth: esMovil ? '100%' : 440,
-    width: '100%',
-    padding: esMovil ? '22px 22px calc(22px + env(safe-area-inset-bottom)) 22px' : '22px 24px',
-    fontFamily: 'var(--font-sans, sans-serif)',
-    border: '1px solid var(--borde, rgba(31,27,22,0.08))',
-    animation: esMovil ? 'slideUpSheet 0.25s cubic-bezier(0.32,0.72,0,1)' : 'fadeIn 0.18s ease-out',
-  };
+  const clases = 'dlg dlg-' + tonoFinal + (peligro ? ' dlg-peligro' : '');
+  const tituloId  = 'dlg-t-' + tonoFinal;
+  const mensajeId = 'dlg-m-' + tonoFinal;
 
   return (
-    <div onClick={function() { onResolver(tipo === 'confirm' ? false : true); }} style={overlayStyle}>
-      <div onClick={function(e) { e.stopPropagation(); }} style={cardStyle}>
-        {/* Grip indicador en móvil — pista visual de que es sheet desclickable */}
-        {esMovil && (
-          <div style={{
-            width: 36, height: 4, borderRadius: 2,
-            background: 'var(--borde-med, rgba(31,27,22,0.16))',
-            margin: '-6px auto 14px', flexShrink: 0,
-          }} />
-        )}
-        {titulo && (
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10, color: 'var(--texto, #1F1B16)' }}>
-            {titulo}
+    <div className="dlg-overlay" onClick={function() { onResolver(esConfirm ? false : true); }}>
+      <div ref={cardRef} className={clases} tabIndex={-1}
+        role={esConfirm ? 'alertdialog' : 'dialog'} aria-modal="true"
+        aria-labelledby={titulo ? tituloId : undefined}
+        aria-describedby={mensajeId}
+        onClick={function(e) { e.stopPropagation(); }}>
+        {/* Grip: pista de que en móvil es un sheet descartable */}
+        <div className="dlg-grip" aria-hidden="true" />
+        <div className="dlg-head">
+          <div className="dlg-icono"><_DlgIcono tono={tonoFinal} /></div>
+          <div className="dlg-cuerpo">
+            {titulo && <div className="dlg-titulo" id={tituloId}>{titulo}</div>}
+            <div className="dlg-mensaje" id={mensajeId}>{mensaje}</div>
           </div>
-        )}
-        <div style={{
-          fontSize: 13, lineHeight: 1.55, color: 'var(--texto-2, #2A2520)',
-          whiteSpace: 'pre-wrap', marginBottom: 20,
-        }}>
-          {mensaje}
         </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          {tipo === 'confirm' && (
-            <button onClick={function() { onResolver(false); }} style={{
-              background: 'var(--gris-bg, #F5F1EB)',
-              border: '1px solid var(--borde, rgba(31,27,22,0.08))',
-              borderRadius: 8, padding: '8px 16px',
-              fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-              color: 'var(--texto-suave, #5C5142)',
-            }}>{btnCancel || 'Cancelar'}</button>
+        <div className="dlg-acciones">
+          {esConfirm && (
+            <button type="button" className="dlg-btn dlg-btn-cancel"
+              onClick={function() { onResolver(false); }}>
+              {btnCancel || 'Cancelar'}
+            </button>
           )}
-          {/* peligro=true → variante destructiva (rojo). Antes toda confirmación,
-              incluida "Desasignar" o "Eliminar atascados", usaba el mismo botón
-              terracotta que un simple "Aceptar". */}
-          <button onClick={function() { onResolver(true); }} autoFocus style={{
-            background: peligro ? 'var(--rojo, #B43A2E)' : 'var(--brand-accent, #C96442)',
-            color: 'white', border: 'none',
-            borderRadius: 8, padding: '8px 16px',
-            fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}>{btnOk || 'Aceptar'}</button>
+          <button type="button" ref={okRef} className="dlg-btn dlg-btn-ok"
+            onClick={function() { onResolver(true); }}>
+            {btnOk || (esConfirm ? 'Aceptar' : 'Entendido')}
+          </button>
         </div>
       </div>
     </div>
