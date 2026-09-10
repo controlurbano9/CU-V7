@@ -230,10 +230,16 @@
 
   // ── Helper público: ¿es error de red? ──
   // Lo exportamos para que api.js pueda decidir si encolar o relanzar.
+  // Incluye los fallos de la capa de Google (HTTP 404/5xx, página HTML en vez
+  // de JSON) y el aviso "sigue en curso" del dedup por requestId: antes
+  // contaban como error persistente y, tras 5, dejaban el ítem atascado —
+  // con el trabajo de campo en riesgo de "Eliminar atascados" — aunque la
+  // escritura ya se hubiera hecho. Reencolar es seguro porque las escrituras
+  // de la cola llevan requestId/clientId (ver _llamarWebhook en api.js).
   function _esErrorDeRed(e) {
     if (!navigator.onLine) return true;
     const m = (e && e.message) || '';
-    return /failed to fetch|networkerror|network error|load failed|aborted|timeout/i.test(m);
+    return /failed to fetch|networkerror|network error|load failed|aborted|timeout|^HTTP (404|408|429|5\d\d)$|respuesta no v[aá]lida|todav[ií]a se est[aá] procesando/i.test(m);
   }
 
   // ── Auto-flush ──

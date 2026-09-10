@@ -135,27 +135,110 @@ function _conCredencialesSesion(obj) {
   return Object.assign({ sesionUsuario: s.usuario, sesionHash: s.hash }, obj);
 }
 
+// ── Resiliencia del webhook (2026-09-10) ───────────────────────
+// Google pierde a veces la respuesta DESPUÉS de que el script terminó: /exec
+// responde 302 en ~2 s y el salto a script.googleusercontent.com/macros/echo
+// se cuelga ~30 s y da 404 (en el navegador suele llegar como "Failed to
+// fetch", porque esa página de error no trae CORS). Medido el 2026-09-10:
+// 13 de 141 peticiones, en ráfagas de hasta 8 de 14, con el panel de
+// Ejecuciones mostrándolas todas Completadas. Antes cada una llegaba al
+// inspector como "Error de conexión".
+//
+// Se reintenta solo lo que se puede repetir sin efectos:
+//   - las lecturas de _ACCIONES_SOLO_LECTURA (login solo valida);
+//   - las escrituras que llevan requestId o clientId: el backend reconoce el
+//     reintento y devuelve el resultado ya guardado (_dedupRequestInicio en
+//     Apps Script; 'agregar' con su dedup por clientId).
+// El resto (generar actas, asignar, completar...) sigue con un solo intento.
+const _PAUSAS_REINTENTO_MS = [1500, 4000]; // 3 intentos en total
+const _ACCIONES_SOLO_LECTURA = {
+  leerHoja: true, listarInspectoresActivos: true, login: true,
+  listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
+  obtenerIdFotos: true, geocode: true,
+};
+// Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
+// no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
+// señal débil, tarda más en bajar.
+const _TIMEOUT_LECTURA_MS = 20000;
+const _TIMEOUT_POR_ACCION_MS = { login: 15000, leerHoja: 45000 };
+
+function _politicaReintento(body) {
+  const accion = body && body.accion;
+  if (_ACCIONES_SOLO_LECTURA[accion]) {
+    return { reintentable: true, timeoutMs: _TIMEOUT_POR_ACCION_MS[accion] || _TIMEOUT_LECTURA_MS };
+  }
+  if (body && (body.requestId || body.clientId)) return { reintentable: true, timeoutMs: 0 };
+  return { reintentable: false, timeoutMs: 0 };
+}
+
+// Fallo que puede no repetirse: red, tiempo agotado, error HTTP de la capa de
+// Google, respuesta que no es JSON, o el backend avisando que el intento
+// anterior con el mismo requestId sigue corriendo.
+function _esFalloTransitorio(e) {
+  const m = (e && e.message) || '';
+  return /failed to fetch|networkerror|network error|load failed|aborted|timeout|^HTTP (404|408|429|5\d\d)$|respuesta no v[aá]lida|sigue en curso|todav[ií]a se est[aá] procesando/i.test(m);
+}
+
+// Identificador único por operación de escritura: el mismo body (y por tanto
+// el mismo id) viaja en cada reintento y en la cola offline.
+function _nuevoRequestId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+
+async function _llamarWebhook(hacerFetch, body) {
+  const pol = _politicaReintento(body);
+  const intentos = pol.reintentable ? _PAUSAS_REINTENTO_MS.length + 1 : 1;
+  let ultimoError = null;
+  for (let i = 0; i < intentos; i++) {
+    if (i > 0) await new Promise(res => setTimeout(res, _PAUSAS_REINTENTO_MS[i - 1]));
+    const ctrl  = (pol.timeoutMs && typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const reloj = ctrl ? setTimeout(() => ctrl.abort(), pol.timeoutMs) : null;
+    try {
+      const r = await hacerFetch(ctrl ? ctrl.signal : undefined);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      let d;
+      try { d = await r.json(); }
+      catch (eJson) {
+        if (eJson && eJson.name === 'AbortError') throw eJson;
+        // Página HTML de error de Google en vez del JSON del script.
+        throw new Error('Respuesta no válida del servidor');
+      }
+      if (!d.ok) {
+        const err = new Error(d.error || 'Apps Script error');
+        // Una respuesta del script es definitiva (credenciales, conflicto,
+        // validación...), salvo el aviso de "sigue en curso" del dedup.
+        err.definitivo = !d.enCurso;
+        throw err;
+      }
+      return d;
+    } catch (e) {
+      const err = (e && e.name === 'AbortError') ? new Error('Tiempo de espera agotado (timeout)') : e;
+      if (err.definitivo || !_esFalloTransitorio(err)) throw err;
+      ultimoError = err;
+      if (i < intentos - 1) console.warn('[webhook] ' + (body && body.accion) + ': ' + err.message + ' — reintento ' + (i + 1));
+    } finally {
+      if (reloj) clearTimeout(reloj);
+    }
+  }
+  throw ultimoError;
+}
+
 // ── GET con accion ─────────────────────────────────────────────
 async function gasGet(params) {
   const qs = new URLSearchParams(_conCredencialesSesion(params)).toString();
-  const r = await fetch(CFG.webhook + '?' + qs);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const d = await r.json();
-  if (!d.ok) throw new Error(d.error || 'Apps Script error');
-  return d;
+  return _llamarWebhook(signal => fetch(CFG.webhook + '?' + qs, { signal }), params);
 }
 
 // ── POST text/plain (sin preflight) ────────────────────────────
 async function gasPost(payload) {
-  const r = await fetch(CFG.webhook, {
+  const cuerpo = JSON.stringify(_conCredencialesSesion(payload));
+  return _llamarWebhook(signal => fetch(CFG.webhook, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-    body: JSON.stringify(_conCredencialesSesion(payload)),
-  });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const d = await r.json();
-  if (!d.ok) throw new Error(d.error || 'Apps Script error');
-  return d;
+    body: cuerpo,
+    signal,
+  }), payload);
 }
 
 // ── Leer hoja → array de filas crudas ──────────────────────────
@@ -243,8 +326,9 @@ async function login(nombre, pin) {
     // (ej. 'Credenciales inválidas' o el aviso de rate-limit): ese mensaje
     // es útil y debe llegar al usuario. Antes el catch devolvía siempre
     // "Error de conexión" — un PIN equivocado parecía un problema de red.
+    // Para llegar aquí gasPost ya reintentó 3 veces (ver _llamarWebhook).
     const m = (e && e.message) || '';
-    const esRed = !m || /failed to fetch|networkerror|network error|load failed|aborted|timeout|HTTP \d/i.test(m);
+    const esRed = !m || /HTTP \d/.test(m) || _esFalloTransitorio(e);
     return { ok: false, error: esRed ? 'Error de conexión. Intenta de nuevo.' : m };
   }
 }
@@ -424,6 +508,10 @@ async function guardarVisita(payload) {
   // backend lo compara contra el valor actual en BD para detectar si otro
   // co-asignado guardó cambios en el medio (ver ULTIMA_MODIFICACION).
   if (payload.fila && payload.ultimaModConocida) body.ultimaModConocida = payload.ultimaModConocida;
+  // requestId solo para 'actualizar': si Google pierde la respuesta de un
+  // guardado que sí se escribió, el reintento (o la cola) recibe el resultado
+  // ya hecho en vez de un conflicto falso por ULTIMA_MODIFICACION.
+  if (payload.fila) body.requestId = _nuevoRequestId();
   // clientId solo aplica para 'agregar': permite a AS deduplicar reintentos
   // offline (misma sesión → mismo clientId → siempre devuelve la misma fila).
   if (!payload.fila && payload.clientId) body.clientId = payload.clientId;
@@ -466,6 +554,7 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
     base64: base64,
     mime: mime,
     descripcion: descripcion || '',
+    requestId: _nuevoRequestId(), // un reintento no duplica la foto en Drive
   };
   try {
     return await gasPost(body);
@@ -494,6 +583,7 @@ async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden) {
     base64: base64,
     nombre: nombre,
     orden: orden || '',
+    requestId: _nuevoRequestId(),
   };
   try {
     return await gasPost(body);

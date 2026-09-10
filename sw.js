@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v114';
+const CACHE_NAME = 'cu-v6-cache-v115';
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -186,14 +186,18 @@ async function _swGasPost(body) {
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error('HTTP ' + r.status);
-  const d = await r.json();
+  let d;
+  try { d = await r.json(); }
+  catch (e) { throw new Error('Respuesta no válida del servidor'); } // página HTML de error de Google
   if (!d.ok) throw new Error(d.error || 'Apps Script error');
   return d;
 }
 
+// Mismo criterio que _esErrorDeRed de offline-queue.js: los fallos de la capa
+// de Google no son errores persistentes y no deben sumar intentos.
 function _esErrorDeRedSW(e) {
   const m = (e && e.message) || '';
-  return /failed to fetch|networkerror|network error|load failed|aborted|timeout/i.test(m);
+  return /failed to fetch|networkerror|network error|load failed|aborted|timeout|^HTTP (404|408|429|5\d\d)$|respuesta no v[aá]lida|todav[ií]a se est[aá] procesando/i.test(m);
 }
 
 // Procesa la cola completa, devuelve true si todo se sincronizó.
