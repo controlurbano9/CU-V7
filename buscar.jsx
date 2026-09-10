@@ -514,9 +514,14 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
           }}>
           <span>
             <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</span>
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
-              {filas.length} {filas.length === 1 ? 'visita' : 'visitas'}
-            </span>
+            {/* Solo cuentan las visitas reales (ASIGNADO/INICIADO/COMPLETADO):
+                un radicado con única fila PENDIENTE no es visita y no muestra
+                nada (2026-09-09, antes decía "1 visita"). */}
+            {totalVisitas > 0 && (
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
+                {totalVisitas} {totalVisitas === 1 ? 'visita' : 'visitas'}
+              </span>
+            )}
           </span>
           <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
             {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}

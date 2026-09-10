@@ -1,13 +1,26 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/agenda.jsx — Agenda diaria (ADMIN)
 //   POST obtenerAgenda → { dia, fecha, esRural, manana[], tarde[], totalPendientes }
-//   Por ítem: completar (calcula días) / asignar visitador individual
+//   Por ítem: iniciar visita / asignar visitador individual
+//   ("Cerrar sin visita" retirado 2026-09-09 por decisión del usuario)
 //   (BotonesAdminVisita + PanelSeleccionInspector, reusados de visita-card.jsx)
 //   Por jornada: "Confirmar agenda" — asigna todas de un click (accion confirmarAgenda)
 //   Reemplazos: confirm → appConfirm; alert → appAlert
 //   Mutaciones invalidan la caché de visitas para que el resto de la app vea el cambio.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateG, useEffect: useEffectG } = React;
+
+// Regla 2026-09-09 (usuario): las visitas de la agenda solo se asignan a
+// Mauricio, Alejandro y Daniel. El resto de usuarios activos de USUARIOS
+// (coordinación, apoyo) no recibe visitas de campo. Coincidencia por palabra
+// completa, case-insensitive, para que "Mauricio Pérez" también pase.
+const INSPECTORES_AGENDA = ['MAURICIO', 'ALEJANDRO', 'DANIEL'];
+function esInspectorAgenda(nombre) {
+  const n = String(nombre || '').trim().toUpperCase();
+  if (!n) return false;
+  return INSPECTORES_AGENDA.some(k =>
+    n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 || n.lastIndexOf(' ' + k) === n.length - k.length - 1);
+}
 
 function AgendaScreen({ usuario, onContinuar }) {
   const [data, setData]         = useStateG(null);
@@ -29,7 +42,9 @@ function AgendaScreen({ usuario, onContinuar }) {
 
   useEffectG(() => {
     if (usuario.rol !== 'ADMIN') return;
-    listarInspectoresActivos().then(lista => setInspectores(lista || [])).catch(() => {});
+    listarInspectoresActivos()
+      .then(lista => setInspectores((lista || []).filter(i => esInspectorAgenda(i.nombre))))
+      .catch(() => {});
   }, [usuario.rol]);
 
   if (usuario.rol !== 'ADMIN') {
@@ -51,63 +66,10 @@ function AgendaScreen({ usuario, onContinuar }) {
   // calendario), así que la misma columna DIAS se escribía con dos criterios
   // distintos según desde dónde se completara la visita.
 
-  async function completar(item) {
-    // Paridad con buscar.jsx: SUSPENSION=SI + orden de policía + sin oficio
-    // generado aún → ofrecer generarlo antes de completar.
-    if (item.requiereVigilancia) {
-      const generar = await appConfirm(
-        'Esta visita tiene orden de suspensión preventiva y aún no se ha generado el oficio de Vigilancia Policía.\n\n¿Generar el oficio antes de completar?',
-        { tono: 'aviso', titulo: 'Solicitud de vigilancia pendiente', btnOk: 'Generar oficio', btnCancel: 'Completar sin oficio' }
-      );
-      if (generar) {
-        setBusyFila(item.fila);
-        try {
-          const idCarpeta = extraerIdCarpetaDrive(item.linkDrive || '');
-          if (!idCarpeta) {
-            await appAlert('La visita no tiene carpeta de Drive asociada.', { tono: 'aviso', titulo: 'Sin carpeta' });
-            setBusyFila(null);
-            return;
-          }
-          await generarSolicitudVigilancia({
-            fila: item.fila,
-            idCarpetaVisita: idCarpeta,
-            radicado:      item.radicado || '',
-            fechaVisita:   item.fechaVisita || '',
-            nOrdenPolicia: item.ordenPolicia || '',
-            direccion:     item.direccion || '',
-            barrio:        item.barrio || '',
-          });
-        } catch (e) {
-          await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
-          setBusyFila(null);
-          return;
-        }
-        setBusyFila(null);
-      }
-    }
-
-    // Todos los ítems de la Agenda están en PENDIENTE (ESTADOS_AGENDA en el
-    // backend), así que completar desde aquí cierra una visita que nunca se
-    // diligenció: no habrá acta, informe ni fotos. Se avisa explícitamente en
-    // vez de esconderlo tras un "¿Marcar como COMPLETADO?" genérico.
-    const ok = await appConfirm(
-      'Esta visita está PENDIENTE y se cerrará sin diligenciar: no tendrá acta, informe ni fotos.\n\n' +
-      'Si la visita se hizo, use "Iniciar visita" y complete el formulario.\n\n¿Cerrarla de todos modos?',
-      { titulo: 'Completar sin diligenciar', btnOk: 'Cerrar visita', peligro: true });
-    if (!ok) return;
-    setBusyFila(item.fila);
-    try {
-      await gasPost({
-        accion: 'completarRegistro',
-        fila: item.fila,
-        dias: item.fechaAsignacion ? diasDesde(item.fechaAsignacion) : '',
-        fecha: hoyDDMMAAAA(),
-      });
-      invalidarCache('visitas');
-      await cargar();
-    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
-    setBusyFila(null);
-  }
+  // Nota 2026-09-09 (usuario): el botón "Cerrar sin visita" (heredado del
+  // viejo "Completar" de la auditoría UX 2253c68) se eliminó — una visita
+  // PENDIENTE no debe poder cerrarse sin diligenciar desde la Agenda. Para
+  // cerrarla hay que iniciarla y llenar el formulario.
 
   // Abrir la visita en el formulario. Los ítems de la Agenda son objetos
   // sintéticos (radicado/direccion/score), no filas de BD, así que hay que
@@ -257,7 +219,6 @@ function AgendaScreen({ usuario, onContinuar }) {
                   items={items}
                   busyFila={busyFila}
                   onAbrir={onContinuar ? abrirVisita : null}
-                  onCompletar={completar}
                   inspectores={inspectores}
                   asignandoFila={asignandoFila}
                   setAsignandoFila={setAsignandoFila}
@@ -272,7 +233,7 @@ function AgendaScreen({ usuario, onContinuar }) {
   );
 }
 
-function ItemsLista({ items, busyFila, onAbrir, onCompletar, inspectores, asignandoFila, setAsignandoFila, onAsignar }) {
+function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setAsignandoFila, onAsignar }) {
   if (!items.length) {
     return (
       <div className="card agenda-empty">
@@ -325,15 +286,12 @@ function ItemsLista({ items, busyFila, onAbrir, onCompletar, inspectores, asigna
                 {busyFila === it.fila ? '...' : 'Iniciar visita'}
               </button>
             )}
-            <button onClick={() => onCompletar(it)} disabled={busyFila === it.fila}
-              className="btn-sm gris" style={{ minWidth: 96, padding: '8px 12px', fontSize: 12.5 }}>
-              {busyFila === it.fila ? '...' : 'Cerrar sin visita'}
-            </button>
             {/* Reusa BotonesAdminVisita (visita-card.jsx): solo se activa su rama
-                "Asignar". Nunca "Desasignar": ESTADOS_AGENDA (backend) admite
-                únicamente PENDIENTE, y desasignar deja la fila en PENDIENTE con
-                VISITADOR(ES) vacío — no hay asignación que quitar. Por eso aquí
-                no se pasa onDesasignar. */}
+                "Asignar" (todo ítem de la Agenda es PENDIENTE). Sin
+                onDesasignar (no hay asignación que quitar) y sin onCompletar:
+                cerrar sin diligenciar se retiró el 2026-09-09 por decisión del
+                usuario — una visita se completa iniciándola y llenando el
+                formulario, no desde aquí. */}
             <BotonesAdminVisita
               f={{ _idx: it.fila, 'RADICADO': it.radicado,
                    'ESTADO VISITA': it.estado || 'PENDIENTE',
@@ -342,8 +300,6 @@ function ItemsLista({ items, busyFila, onAbrir, onCompletar, inspectores, asigna
               busy={busyFila === it.fila}
               abierto={asignandoFila === it.fila}
               onAbrirAsignar={() => setAsignandoFila(asignandoFila === it.fila ? null : it.fila)}
-              onCompletar={() => onCompletar({ fila: it.fila, radicado: it.radicado,
-                                               fechaAsignacion: it.fechaAsignacion })}
             />
           </div>
 

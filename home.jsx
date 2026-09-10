@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/home.jsx — Pantalla Inicio: dashboard tipo Asana
 //   - Estadísticas compactas (2×2)
+//   - Solo visitas asignadas hoy (iniciables desde aquí, antes de las alertas)
 //   - Alertas urgentes (audiencia en ≤3 días hábiles, +5 días sin completar)
-//   - Solo visitas asignadas hoy (iniciables desde aquí)
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 
@@ -228,25 +228,9 @@ function HomeScreen({ usuario, onContinuar }) {
         </div>
       )}
 
-      {/* ── Alertas urgentes ── */}
-      {!cargando && alertas.total > 0 && (
-        <div style={{ marginBottom: 18 }}>
-          <SeccionHeader
-            titulo="Alertas"
-            count={alertas.total}
-            tono={alertas.rojas.length > 0 ? 'rojo' : 'amarillo'}
-          />
-          {alertas.rojas.map((a, i) => (
-            <AlertaCard key={'r' + (a.f._idx || i)} alerta={a} tipo="rojo" onContinuar={onContinuar} />
-          ))}
-          {alertas.amarillas.map((a, i) => (
-            <AlertaCard key={'a' + (a.f._idx || i)} alerta={a} tipo="amarillo" onContinuar={onContinuar} />
-          ))}
-        </div>
-      )}
-
-      {/* ── Asignadas hoy ── */}
-      <div style={{ marginBottom: 8 }}>
+      {/* ── Asignadas hoy (antes de las alertas: es lo primero que el
+          inspector debe ver al abrir la app, 2026-09-09) ── */}
+      <div style={{ marginBottom: 18 }}>
         <SeccionHeader
           titulo="Asignadas hoy"
           count={cargando ? null : asignadasHoy.length}
@@ -269,6 +253,23 @@ function HomeScreen({ usuario, onContinuar }) {
           </div>
         ))}
       </div>
+
+      {/* ── Alertas urgentes ── */}
+      {!cargando && alertas.total > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <SeccionHeader
+            titulo="Alertas"
+            count={alertas.total}
+            tono={alertas.rojas.length > 0 ? 'rojo' : 'amarillo'}
+          />
+          {alertas.rojas.map((a, i) => (
+            <AlertaCard key={'r' + (a.f._idx || i)} alerta={a} tipo="rojo" onContinuar={onContinuar} />
+          ))}
+          {alertas.amarillas.map((a, i) => (
+            <AlertaCard key={'a' + (a.f._idx || i)} alerta={a} tipo="amarillo" onContinuar={onContinuar} />
+          ))}
+        </div>
+      )}
 
       {/* ── Footer: recargar datos ── */}
       <div style={{ textAlign: 'center', marginTop: 16 }}>
