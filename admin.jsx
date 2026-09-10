@@ -4,7 +4,7 @@
 const { useState: useStateA, useEffect: useEffectA } = React;
 
 function AdminScreen({ usuario }) {
-  const [tab, setTab] = useStateA('usuarios'); // usuarios | pin | log | vigilancia
+  const [tab, setTab] = useStateA('usuarios'); // usuarios | pin | agenda | vigilancia | log
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
   }
@@ -18,13 +18,15 @@ function AdminScreen({ usuario }) {
             { k: 'usuarios',   l: 'Usuarios' },
             { k: 'pin',        l: 'Reset PIN' },
             { k: 'vigilancia', l: 'Vigilancia' },
+            { k: 'agenda',     l: 'Agenda' },
             { k: 'log',        l: 'Auditoría' },
           ].map(t => (
             <button key={t.k} onClick={() => setTab(t.k)} style={{
-              flex: 1, padding: '12px 14px', background: 'none', border: 'none',
+              flex: 1, padding: '12px 8px', background: 'none', border: 'none',
               borderBottom: tab === t.k ? '2px solid var(--brand-accent)' : '2px solid transparent',
               color: tab === t.k ? 'var(--brand-accent)' : 'var(--texto-suave)',
-              fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}>{t.l}</button>
           ))}
         </div>
@@ -33,6 +35,7 @@ function AdminScreen({ usuario }) {
       {tab === 'usuarios'   && <TabUsuarios />}
       {tab === 'pin'        && <TabResetPin />}
       {tab === 'vigilancia' && <TabVigilancia />}
+      {tab === 'agenda'     && <TabConfigAgenda />}
       {tab === 'log'        && <TabLog />}
     </div>
   );
@@ -330,6 +333,190 @@ function TabResetPin() {
           background: msg.t === 'ok' ? 'rgba(107,122,58,0.12)' : 'rgba(168,52,43,0.12)',
           color: msg.t === 'ok' ? 'var(--verde)' : 'var(--rojo)',
         }}>{msg.m}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Pestaña Agenda: reglas de la agenda diaria (hoja CONFIG_AGENDA) ───
+// Máx. visitas por jornada, reparto de comunas mañana/tarde e inspectores
+// habilitados. La validación real vive en el backend (guardarConfigAgenda);
+// la UI solo presenta y muestra el error que aquel devuelva.
+function TabConfigAgenda() {
+  const COMUNAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+  const [maxVisitas, setMaxVisitas]     = useStateA(4);
+  const [jornadas, setJornadas]         = useStateA({});   // {comuna: 'manana'|'tarde'}
+  const [seleccion, setSeleccion]       = useStateA({});   // {nombreUsuario: bool}
+  const [inspectores, setInspectores]   = useStateA([]);
+  const [cargando, setCargando]         = useStateA(true);
+  const [error, setError]               = useStateA('');
+  const [busy, setBusy]                 = useStateA(false);
+  const [msg, setMsg]                   = useStateA(null);
+
+  // La config guarda palabras clave ("MAURICIO" casa con "Mauricio Pérez");
+  // el checkbox marca al usuario cuyo nombre case con alguna palabra clave.
+  function _casa(nombre, palabra) {
+    const n = String(nombre || '').trim().toUpperCase();
+    const k = String(palabra || '').trim().toUpperCase();
+    if (!n || !k) return false;
+    return n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 ||
+           n.lastIndexOf(' ' + k) === n.length - k.length - 1;
+  }
+
+  useEffectA(() => { cargar(); }, []);
+
+  async function cargar() {
+    setCargando(true); setError(''); setMsg(null);
+    try {
+      const [cfg, lista] = await Promise.all([
+        leerConfigAgenda(),
+        listarInspectoresActivos({ forzar: true }),
+      ]);
+      setMaxVisitas(cfg.maxVisitasJornada);
+      const j = {};
+      COMUNAS.forEach(c => {
+        if ((cfg.comunasManana || []).indexOf(c) !== -1) j[c] = 'manana';
+        else if ((cfg.comunasTarde || []).indexOf(c) !== -1) j[c] = 'tarde';
+      });
+      setJornadas(j);
+      const activos = lista || [];
+      setInspectores(activos);
+      const sel = {};
+      activos.forEach(i => {
+        sel[i.nombre] = (cfg.inspectoresAgenda || []).some(k => _casa(i.nombre, k));
+      });
+      setSeleccion(sel);
+    } catch (e) { setError(e.message); }
+    setCargando(false);
+  }
+
+  function cambiarJornada(comuna, valor) {
+    setJornadas(j => Object.assign({}, j, { [comuna]: valor }));
+  }
+
+  function toggleInspector(nombre) {
+    setSeleccion(s => Object.assign({}, s, { [nombre]: !s[nombre] }));
+  }
+
+  async function guardar() {
+    setMsg(null);
+    const manana = COMUNAS.filter(c => jornadas[c] === 'manana');
+    const tarde  = COMUNAS.filter(c => jornadas[c] === 'tarde');
+    const insp   = inspectores.filter(i => seleccion[i.nombre]).map(i => i.nombre);
+    if (!manana.length || !tarde.length) {
+      setMsg({ t: 'error', m: 'Cada jornada necesita al menos una comuna.' });
+      return;
+    }
+    if (!insp.length) {
+      setMsg({ t: 'error', m: 'Marca al menos un inspector habilitado.' });
+      return;
+    }
+    const ok = await appConfirm(
+      `Máx. ${maxVisitas} visitas/jornada\n` +
+      `Mañana: comunas ${manana.join(', ')}\n` +
+      `Tarde: comunas ${tarde.join(', ')}\n` +
+      `Inspectores: ${insp.join(', ')}\n\n¿Guardar?`,
+      { titulo: 'Guardar reglas de agenda', btnOk: 'Guardar' });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await guardarConfigAgenda({
+        maxVisitasJornada: maxVisitas,
+        comunasManana: manana,
+        comunasTarde: tarde,
+        inspectoresAgenda: insp,
+      });
+      await cargar();
+      setMsg({ t: 'ok', m: 'Reglas de agenda actualizadas.' });
+    } catch (e) { setMsg({ t: 'error', m: e.message }); }
+    setBusy(false);
+  }
+
+  const estiloSelect = {
+    padding: '6px 8px', borderRadius: 6, border: '1px solid var(--borde)',
+    background: 'var(--superficie)', fontFamily: 'inherit', fontSize: 12,
+  };
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="card-titulo" style={{ margin: 0 }}>Reglas de la agenda</div>
+        <button onClick={cargar} disabled={cargando} style={{
+          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
+          padding: '6px 12px', fontFamily: 'inherit', fontSize: 12,
+          cursor: cargando ? 'not-allowed' : 'pointer', opacity: cargando ? 0.5 : 1,
+        }}>{cargando ? '...' : 'Recargar'}</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 12 }}>
+        Estos valores definen cómo se arma la agenda diaria (hoja CONFIG_AGENDA).
+        La zona rural mantiene su jornada fija: primer viernes del mes.
+      </div>
+      {cargando && <div style={{ padding: 20, textAlign: 'center', color: 'var(--texto-suave)' }}>Cargando...</div>}
+      {error && <div style={{ color: 'var(--rojo)', fontSize: 13 }}>Error al cargar configuración: {error}</div>}
+      {!cargando && !error && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          <div>
+            <label htmlFor="admin-agenda-max" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
+              Máximo de visitas por jornada (1–10)
+            </label>
+            <input id="admin-agenda-max" type="number" min={1} max={10} value={maxVisitas}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10);
+                setMaxVisitas(isNaN(n) ? 1 : Math.min(10, Math.max(1, n)));
+              }}
+              style={{
+                width: 90, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--borde)',
+                background: 'var(--superficie)', fontFamily: 'var(--font-mono)', fontSize: 15,
+              }} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 6 }}>Comunas por jornada</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 6 }}>
+              {COMUNAS.map(c => (
+                <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, width: 22 }}>C{c}</span>
+                  <select value={jornadas[c] || ''} onChange={e => cambiarJornada(c, e.target.value)} style={estiloSelect}>
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 6 }}>
+              Inspectores habilitados para recibir visitas de la agenda
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {inspectores.map(i => (
+                <label key={i.nombre} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+                  padding: '6px 8px', background: 'var(--gris-bg)', borderRadius: 8, cursor: 'pointer',
+                }}>
+                  <input type="checkbox" checked={!!seleccion[i.nombre]}
+                    onChange={() => toggleInspector(i.nombre)} style={{ accentColor: 'var(--brand-accent)' }} />
+                  <span>{i.nombre}</span>
+                  {i.cargo && <span style={{ fontSize: 11, color: 'var(--texto-suave)' }}>· {i.cargo}</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={guardar} disabled={busy} className="btn-principal secundario">
+            {busy ? 'Guardando...' : 'Guardar reglas'}
+          </button>
+          {msg && (
+            <div style={{
+              padding: 10, borderRadius: 8, fontSize: 13,
+              background: msg.t === 'ok' ? 'rgba(107,122,58,0.12)' : 'rgba(168,52,43,0.12)',
+              color: msg.t === 'ok' ? 'var(--verde)' : 'var(--rojo)',
+            }}>{msg.m}</div>
+          )}
+        </div>
       )}
     </div>
   );

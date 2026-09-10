@@ -10,16 +10,17 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateG, useEffect: useEffectG } = React;
 
-// Regla 2026-09-09 (usuario): las visitas de la agenda solo se asignan a
-// Mauricio, Alejandro y Daniel. El resto de usuarios activos de USUARIOS
-// (coordinación, apoyo) no recibe visitas de campo. Coincidencia por palabra
-// completa, case-insensitive, para que "Mauricio Pérez" también pase.
-const INSPECTORES_AGENDA = ['MAURICIO', 'ALEJANDRO', 'DANIEL'];
-function esInspectorAgenda(nombre) {
+// Inspectores habilitados para la agenda: se definen en ⚙ Admin → Agenda
+// (hoja CONFIG_AGENDA; valores iniciales 2026-09-09: Mauricio, Alejandro
+// y Daniel). La config guarda palabras clave; se casa por palabra completa,
+// case-insensitive, para que "MAURICIO" también pase con "Mauricio Pérez".
+function esInspectorAgenda(nombre, palabrasClave) {
   const n = String(nombre || '').trim().toUpperCase();
   if (!n) return false;
-  return INSPECTORES_AGENDA.some(k =>
-    n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 || n.lastIndexOf(' ' + k) === n.length - k.length - 1);
+  return (palabrasClave || []).some(k => {
+    k = String(k || '').trim().toUpperCase();
+    return n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 || n.lastIndexOf(' ' + k) === n.length - k.length - 1;
+  });
 }
 
 function AgendaScreen({ usuario, onContinuar }) {
@@ -42,9 +43,14 @@ function AgendaScreen({ usuario, onContinuar }) {
 
   useEffectG(() => {
     if (usuario.rol !== 'ADMIN') return;
-    listarInspectoresActivos()
-      .then(lista => setInspectores((lista || []).filter(i => esInspectorAgenda(i.nombre))))
-      .catch(() => {});
+    Promise.all([
+      listarInspectoresActivos(),
+      // Si la config no carga, se muestran todos los activos: el filtro
+      // visual no es la restricción real (asignar sigue siendo ADMIN).
+      leerConfigAgenda().catch(() => null),
+    ]).then(([lista, cfg]) => {
+      setInspectores((lista || []).filter(i => esInspectorAgenda(i.nombre, cfg && cfg.inspectoresAgenda)));
+    }).catch(() => {});
   }, [usuario.rol]);
 
   if (usuario.rol !== 'ADMIN') {

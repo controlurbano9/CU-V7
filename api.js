@@ -286,6 +286,19 @@ async function resetPin(fila, pin) {
   return gasPost({ accion: 'resetPin', fila, hash: pinHash });
 }
 
+// ── ADMIN: reglas de agenda (hoja CONFIG_AGENDA) ────────────────
+// Solo el backend con rol ADMIN responde; el resto recibe "Acceso restringido".
+async function leerConfigAgenda() {
+  const d = await gasPost({ accion: 'leerConfigAgenda' });
+  return d.config || null;
+}
+
+async function guardarConfigAgenda(config) {
+  const r = await gasPost(Object.assign({ accion: 'guardarConfigAgenda' }, config));
+  invalidarCache('inspectores'); // el filtro de agenda.jsx depende de esta config
+  return r;
+}
+
 async function registrarLog(usuario, texto) {
   const fecha = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });
   try {
@@ -922,6 +935,7 @@ Object.assign(window, {
   hashPin, gasGet, gasPost, leerHoja, leerVisitas, normalizarEstado,
   login, listarInspectoresActivos, listarUsuariosAdmin,
   toggleActivo, resetPin, registrarLog, leerLogAuditoria,
+  leerConfigAgenda, guardarConfigAgenda,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,
