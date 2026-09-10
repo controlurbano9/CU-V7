@@ -75,12 +75,22 @@ function BotonPdfRadicado({ f, titulo }) {
 //   mostrarFecha     bool — meta línea "Fecha: dd/mm/yyyy"
 //   mostrarInspector bool — meta línea "Inspector: <primero>"
 //   mostrarAsignado  bool — meta línea "Asignado: dd/mm/yyyy"
-//   labelBadge       string opcional override del label del badge
+//   mostrarOrden     bool — meta línea "Orden: YYYY-09-XXX" (solo si hay orden real)
+//   labelBadge      string opcional override del label del badge
 //                    (ej: en home pasamos 'Asignada' fijo aunque sea PENDIENTE/ASIGNADO)
 //   children         JSX adicional (botones, panel) — se renderiza debajo del header
 //   accionesMt       margin-top del bloque de children (default 12)
 // ═══════════════════════════════════════════════════════════════
-function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, labelBadge, children, accionesMt }) {
+// N° de orden de policía de la fila, '' si no tiene. El encabezado llega con
+// y sin "°" según la hoja, y las filas migradas de V2 traen 'N/A' en vez de
+// vacío (mismo criterio que _hayOrdenReal de nueva-visita.jsx).
+function ordenPoliciaDe(f) {
+  const s = ((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').toString().trim();
+  const u = s.toUpperCase();
+  return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
+}
+
+function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, labelBadge, children, accionesMt }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const tono = TONOS_VISITA[est] || { cls: '', label: est || '—' };
   const textoBadge = labelBadge != null ? labelBadge : tono.label;
@@ -94,13 +104,14 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, labelB
   const inspector = mostrarInspector && f['VISITADOR(ES)']
     ? _primerVisitador(f)
     : '';
+  const orden = mostrarOrden ? ordenPoliciaDe(f) : '';
 
   // ULTIMA_MODIFICACION viene del backend como ISO (AP2); el autor, de
   // ULTIMA_MODIFICACION_POR. Ambas columnas son opcionales en la hoja.
   const ultimaMod = formatearFechaHora(f['ULTIMA_MODIFICACION'] || '');
   const ultimaModPor = (f['ULTIMA_MODIFICACION_POR'] || '').toString().trim();
 
-  const tieneMeta = fechaVisita || inspector || fechaAsig || ultimaMod;
+  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || ultimaMod;
   const mt = (accionesMt != null) ? accionesMt : 12;
 
   return (
@@ -138,6 +149,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, labelB
               {fechaVisita && <span><span style={{ opacity: 0.7 }}>Fecha:</span> {fechaVisita}</span>}
               {inspector   && <span><span style={{ opacity: 0.7 }}>Inspector:</span> {inspector}</span>}
               {fechaAsig   && <span><span style={{ opacity: 0.7 }}>Asignado:</span> {fechaAsig}</span>}
+              {orden       && <span><span style={{ opacity: 0.7 }}>Orden:</span> {orden}</span>}
               {ultimaMod   && (
                 <span><span style={{ opacity: 0.7 }}>Editado:</span> {ultimaMod}
                   {ultimaModPor && ' · ' + titleCaseNombre(ultimaModPor)}

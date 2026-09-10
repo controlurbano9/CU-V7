@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/buscar.jsx — Pantalla Buscar / Visitas (fusionadas como en V5)
-//   - Búsqueda libre (radicado / dirección / barrio)
+//   - Búsqueda libre (radicado / orden de policía / dirección / barrio)
 //   - Filtros estado (multi)
 //   - Filtros comuna (dinámicos)
 //   - Filtro visitador (solo ADMIN)
@@ -263,10 +263,17 @@ function BuscarScreen({ usuario, onContinuar }) {
   // Filtros combinados
   const filtrados = useMemoB(() => {
     const lq = q.trim().toUpperCase();
+    // La orden se compara además sin ceros a la izquierda en cada tramo
+    // numérico: en BD va "2026-09-015" y el inspector suele teclear
+    // "2026-9-15" o "15", tal como la escribió en el papel.
+    const _sinCeros = s => s.replace(/\d+/g, n => String(parseInt(n, 10)));
+    const lqOrden = _sinCeros(lq);
     return datos.filter(f => {
       if (lq) {
+        const orden = ordenPoliciaDe(f).toUpperCase();
         const hay = ['RADICADO', 'DIRECCION INFRACCION', 'DIRECCION', 'BARRIO/VEREDA', 'BARRIO']
-          .some(k => (f[k] || '').toString().toUpperCase().includes(lq));
+          .some(k => (f[k] || '').toString().toUpperCase().includes(lq))
+          || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)));
         if (!hay) return false;
       }
       if (filtrosEstado.length) {
@@ -321,7 +328,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="input-grupo" style={{ marginBottom: 10 }}>
           <input type="text" className="input-campo"
-            placeholder="Radicado, dirección, barrio..."
+            placeholder="Radicado, orden de policía, dirección, barrio..."
             value={qInput} onChange={e => setQInput(e.target.value)} />
         </div>
 
@@ -597,7 +604,7 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
         </div>
       )}
       <VisitaCard f={f}
-        mostrarFecha mostrarInspector mostrarAsignado
+        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden
         labelBadge={est || '—'}
         accionesMt={10}>
         {/* Botones inline en una sola fila — orden contextual por estado */}
