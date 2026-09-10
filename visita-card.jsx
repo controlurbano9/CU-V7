@@ -105,6 +105,9 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
     ? _primerVisitador(f)
     : '';
   const orden = mostrarOrden ? ordenPoliciaDe(f) : '';
+  // Fecha del radicado — siempre visible junto al número, no depende de prop.
+  // Para Oficio, FECHA RADICADO = fecha de la visita (mismo valor, ver CLAUDE.md).
+  const fechaRadicado = formatearFecha(f['FECHA RADICADO'] || '');
 
   // ULTIMA_MODIFICACION viene del backend como ISO (AP2); el autor, de
   // ULTIMA_MODIFICACION_POR. Ambas columnas son opcionales en la hoja.
@@ -126,6 +129,11 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
             display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
           }}>
             {f['RADICADO'] || '—'}
+            {fechaRadicado && (
+              <span style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 10 }}>
+                {fechaRadicado}
+              </span>
+            )}
             <BotonPdfRadicado f={f} />
           </div>
 

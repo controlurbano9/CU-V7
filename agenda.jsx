@@ -5,10 +5,58 @@
 //   ("Cerrar sin visita" retirado 2026-09-09 por decisión del usuario)
 //   (BotonesAdminVisita + PanelSeleccionInspector, reusados de visita-card.jsx)
 //   Por jornada: "Confirmar agenda" — asigna todas de un click (accion confirmarAgenda)
+//   Por jornada: el sistema sugiere la comuna; el admin puede elegir otra y
+//     cambiar el número de visitas (2026-09-10). El backend manda las
+//     candidatas agrupadas por comuna (jornadas.<j>.comunas), así que el
+//     ajuste es local e instantáneo; solo "Confirmar agenda" escribe.
 //   Reemplazos: confirm → appConfirm; alert → appAlert
 //   Mutaciones invalidan la caché de visitas para que el resto de la app vea el cambio.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateG, useEffect: useEffectG } = React;
+
+// Tope del ajuste manual = candidatas por comuna que envía el backend
+// (AGENDA_TOPE_POR_COMUNA) = máximo que acepta ⚙ Admin → Agenda.
+const AGENDA_MAX_VISITAS = 10;
+
+// Ajuste manual del día (comuna / número de visitas por jornada). Vive en
+// localStorage para que sobreviva a "Iniciar visita" y volver; al cambiar
+// de día se descarta solo.
+const AGENDA_AJUSTE_KEY = 'cu_agenda_ajuste_v1';
+
+function leerAjusteAgenda() {
+  try {
+    const g = JSON.parse(localStorage.getItem(AGENDA_AJUSTE_KEY) || 'null');
+    if (g && g.fecha === hoyDDMMAAAA() && g.ajuste) return g.ajuste;
+  } catch (e) {}
+  return { manana: null, tarde: null };
+}
+
+function guardarAjusteAgenda(ajuste) {
+  try {
+    localStorage.setItem(AGENDA_AJUSTE_KEY, JSON.stringify({ fecha: hoyDDMMAAAA(), ajuste }));
+  } catch (e) {}
+}
+
+function etiquetaComuna(c) {
+  return c === 'RURAL' ? 'Rural' : 'C' + c;
+}
+
+// Resuelve qué se muestra en una jornada: comuna elegida (o la sugerida,
+// que es la primera del backend) y sus primeras n candidatas. Si la comuna
+// elegida ya no tiene pendientes (se asignaron), vuelve a la sugerida.
+// grupos === null → backend anterior sin `comunas`: se muestra la
+// selección fija del servidor y se oculta el ajuste.
+function resolverJornada(jornada, ajuste, maxConfig) {
+  if (!jornada) return { items: [], grupos: null };
+  const grupos = Array.isArray(jornada.comunas) ? jornada.comunas : null;
+  if (!grupos) return { items: jornada.visitas || [], grupos: null };
+  const n = Math.min(AGENDA_MAX_VISITAS, Math.max(1, (ajuste && ajuste.n) || maxConfig));
+  if (!grupos.length) return { items: [], grupos, n, grupo: null, sugerida: null };
+  const elegido = ajuste && ajuste.comuna != null
+    ? grupos.find(g => String(g.comuna) === String(ajuste.comuna)) : null;
+  const grupo = elegido || grupos[0];
+  return { items: grupo.visitas.slice(0, n), grupos, n, grupo, sugerida: grupos[0].comuna };
+}
 
 // Inspectores habilitados para la agenda: se definen en ⚙ Admin → Agenda
 // (hoja CONFIG_AGENDA; valores iniciales 2026-09-09: Mauricio, Alejandro
@@ -38,6 +86,8 @@ function AgendaScreen({ usuario, onContinuar }) {
   const [asignandoFila, setAsignandoFila] = useStateG(null);
   const [inspectorSel, setInspectorSel] = useStateG({ manana: '', tarde: '' });
   const [confirmando, setConfirmando]   = useStateG(false);
+  // Ajuste manual por jornada: { comuna, n } o null (= sugerencia + máx. config)
+  const [ajuste, setAjuste]             = useStateG(leerAjusteAgenda);
 
   useEffectG(() => { cargar(); }, []);
 
@@ -115,12 +165,14 @@ function AgendaScreen({ usuario, onContinuar }) {
   // Confirmar jornada completa: asigna de un solo click todas las visitas
   // visibles de la jornada al inspector elegido (accion 'confirmarAgenda',
   // ya existente en el backend pero nunca cableada hasta ahora).
-  async function confirmarJornada(jornadaKey, items) {
+  async function confirmarJornada(jornadaKey, items, comuna) {
     const inspector = inspectorSel[jornadaKey];
     if (!inspector || !items.length) return;
     const label = jornadaKey === 'manana' ? 'mañana' : 'tarde';
+    const deComuna = comuna == null ? ''
+      : comuna === 'RURAL' ? ' de zona rural' : ` de la comuna ${comuna}`;
     const ok = await appConfirm(
-      `¿Confirmar ${items.length} visita(s) de la jornada de la ${label} y asignarlas a ${inspector}?`,
+      `¿Confirmar ${items.length} visita(s)${deComuna} en la jornada de la ${label} y asignarlas a ${inspector}?`,
       { tono: 'info', titulo: 'Confirmar agenda', btnOk: 'Confirmar' }
     );
     if (!ok) return;
@@ -140,6 +192,23 @@ function AgendaScreen({ usuario, onContinuar }) {
     } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
     setConfirmando(false);
   }
+
+  // cambios = { comuna } o { n }; null restablece la sugerencia.
+  function ajustarJornada(jornadaKey, cambios) {
+    setAjuste(prev => {
+      const next = Object.assign({}, prev, {
+        [jornadaKey]: cambios ? Object.assign({}, prev[jornadaKey], cambios) : null,
+      });
+      guardarAjusteAgenda(next);
+      return next;
+    });
+  }
+
+  const maxConfig = (data && data.maxVisitasJornada) || 4;
+  const sel = {
+    manana: resolverJornada(data && data.jornadas && data.jornadas.manana, ajuste.manana, maxConfig),
+    tarde:  resolverJornada(data && data.jornadas && data.jornadas.tarde,  ajuste.tarde,  maxConfig),
+  };
 
   const diasLabel = { lunes: 'Lunes', martes: 'Martes', 'miércoles': 'Miércoles',
     jueves: 'Jueves', viernes: 'Viernes', sábado: 'Sábado', domingo: 'Domingo' };
@@ -185,18 +254,29 @@ function AgendaScreen({ usuario, onContinuar }) {
         <>
           <div className="agenda-tabs">
             <button className={'agenda-tab' + (tab === 'manana' ? ' activo' : '')} onClick={() => setTab('manana')}>
-              Mañana {data.jornadas && `(${data.jornadas.manana.visitas.length})`}
+              Mañana {data.jornadas && `(${sel.manana.items.length})`}
             </button>
             <button className={'agenda-tab' + (tab === 'tarde' ? ' activo' : '')} onClick={() => setTab('tarde')}>
-              Tarde {data.jornadas && `(${data.jornadas.tarde.visitas.length})`}
+              Tarde {data.jornadas && `(${sel.tarde.items.length})`}
             </button>
           </div>
 
           {(() => {
             const jornada = data.jornadas && data.jornadas[tab];
-            const items = jornada ? jornada.visitas : [];
+            const s = sel[tab];
+            const items = s.items;
             return (
               <>
+                {jornada && jornada.activa && s.grupo && (
+                  <AjusteJornada
+                    s={s}
+                    ajustada={String(s.grupo.comuna) !== String(s.sugerida) || s.n !== maxConfig}
+                    onComuna={c => ajustarJornada(tab, { comuna: c })}
+                    onNumero={n => ajustarJornada(tab, { n })}
+                    onRestablecer={() => ajustarJornada(tab, null)}
+                  />
+                )}
+
                 {jornada && jornada.activa && items.length > 0 && (
                   <div className="card">
                     <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
@@ -213,7 +293,7 @@ function AgendaScreen({ usuario, onContinuar }) {
                     </div>
                     <div className="agenda-confirmar-bar">
                       <button className="btn-principal" disabled={!inspectorSel[tab] || confirmando}
-                        onClick={() => confirmarJornada(tab, items)}
+                        onClick={() => confirmarJornada(tab, items, s.grupo ? s.grupo.comuna : null)}
                         style={{ flex: 1, margin: 0 }}>
                         {confirmando ? 'Confirmando...' : `Confirmar agenda (${items.length})`}
                       </button>
@@ -235,6 +315,61 @@ function AgendaScreen({ usuario, onContinuar }) {
           })()}
         </>
       )}
+    </div>
+  );
+}
+
+// Selector de comuna + número de visitas de una jornada. La sugerida (la
+// del radicado más urgente) va primera y marcada con ★; elegirla de nuevo
+// guarda comuna null para que siga a la sugerencia si esta cambia al
+// asignarse visitas.
+function AjusteJornada({ s, ajustada, onComuna, onNumero, onRestablecer }) {
+  const g = s.grupo;
+  // El backend manda hasta AGENDA_MAX_VISITAS candidatas por comuna; si el
+  // n guardado supera lo que hay, se muestra (y se ajusta desde) lo que hay.
+  const mostradas = Math.min(s.n, g.visitas.length);
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="agenda-ajuste-fila">
+        <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
+          Comuna · sugerida <strong>{etiquetaComuna(s.sugerida)}</strong> (radicado más urgente)
+        </div>
+        {ajustada && (
+          <button type="button" className="agenda-restablecer" onClick={onRestablecer}>
+            Restablecer
+          </button>
+        )}
+      </div>
+      <div className="inspector-chips" role="group" aria-label="Comuna de la jornada">
+        {s.grupos.map(gr => {
+          const activa = String(gr.comuna) === String(g.comuna);
+          const esSugerida = String(gr.comuna) === String(s.sugerida);
+          return (
+            <button key={gr.comuna} type="button" aria-pressed={activa}
+              className={'inspector-chip' + (activa ? ' sel' : '')}
+              title={`${gr.comuna === 'RURAL' ? 'Zona rural' : 'Comuna ' + gr.comuna}: ${gr.total} pendiente(s)${esSugerida ? ' · sugerida' : ''}`}
+              onClick={() => onComuna(esSugerida ? null : gr.comuna)}>
+              {esSugerida && '★ '}{etiquetaComuna(gr.comuna)}
+              <span className="agenda-comuna-total">{gr.total}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="agenda-ajuste-fila" style={{ marginTop: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>Visitas en la jornada</div>
+          <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
+            {g.total} pendiente(s) en {g.comuna === 'RURAL' ? 'zona rural' : 'la comuna ' + g.comuna}
+          </div>
+        </div>
+        <div className="agenda-stepper">
+          <button type="button" aria-label="Una visita menos" disabled={mostradas <= 1}
+            onClick={() => onNumero(mostradas - 1)}>−</button>
+          <span aria-live="polite">{mostradas}</span>
+          <button type="button" aria-label="Una visita más" disabled={mostradas >= g.visitas.length}
+            onClick={() => onNumero(mostradas + 1)}>+</button>
+        </div>
+      </div>
     </div>
   );
 }
