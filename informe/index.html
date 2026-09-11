@@ -891,8 +891,16 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <script>
-// Webhook único — única fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
-var WH = CU_WEBHOOK_URL;
+// Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
+// Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
+// sin él `CU_WEBHOOK_URL` lanzaba ReferenceError aquí, matando TODO este
+// script — el selector se quedaba en "Cargando inspectores...", no se
+// prellenaba nada y no se podía generar el informe (2026-09-11). Mismo
+// criterio que api.js: NO eliminar, solo avisar en consola.
+if (typeof CU_WEBHOOK_URL === 'undefined') {
+  console.warn('[informe] CU_WEBHOOK_URL indefinida (env.js no cargo). Usando URL de PRODUCCION como fallback.');
+}
+var WH = (typeof CU_WEBHOOK_URL !== 'undefined' ? CU_WEBHOOK_URL : 'https://script.google.com/macros/s/AKfycbzKgiwc4AWAvNMMYWwU2Q0ir1V6R9GVbjQo7w2W4AowU9--0_IdJc6dSH8enBil54jr3w/exec');
 
 // AP1 (auditoría 2026-07): esta página corre fuera de api.js (iframe o
 // pestaña nueva) y no comparte su auto-adjunto de credenciales de sesión.
@@ -1304,12 +1312,36 @@ function activarV2() {
 // del sistema no aparecen aquí.
 var INSPECTORES_CARGOS = {};
 
+// Lectura con reintentos — mismo criterio que _llamarWebhook de api.js: el
+// salto script.googleusercontent.com/macros/echo de Google se cuelga ~30 s
+// o da 404 en ráfagas, aunque el script haya terminado bien. Es una lectura,
+// así que repetirla es seguro. Una respuesta ok:false del script es
+// definitiva (no se reintenta).
+async function _leerWebhookConReintentos(url, limiteMs) {
+  var pausas = [1500, 4000];
+  var ultimoError = null;
+  for (var intento = 0; intento <= pausas.length; intento++) {
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, limiteMs) : null;
+    try {
+      var r = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      ultimoError = e;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (intento < pausas.length) await new Promise(function(res) { setTimeout(res, pausas[intento]); });
+  }
+  throw ultimoError || new Error('Sin respuesta');
+}
+
 async function cargarInspectoresDesdeBD() {
   var sel = document.getElementById('inspector');
   if (!sel) return;
   try {
-    var r = await fetch(WH + '?accion=listarInspectoresActivos');
-    var d = await r.json();
+    var d = await _leerWebhookConReintentos(WH + '?accion=listarInspectoresActivos', 20000);
     if (!d.ok) throw new Error(d.error || 'Sin datos');
     var inspectores = d.inspectores || [];
     sel.innerHTML = '<option value="">Seleccione...</option>';
