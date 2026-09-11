@@ -9,13 +9,16 @@
      CDNs realmente usados (React/unpkg, turf.js/cdnjs, Google Maps, Google Fonts,
      webhook Apps Script, GeoJSONs POT en raw.githubusercontent). 'unsafe-inline' en
      script-src es necesario por el <script> inline de registro del Service Worker;
-     'unsafe-eval' por la API JS de Google Maps (histórico). -->
+     'unsafe-eval' por la API JS de Google Maps (histórico).
+     *.googleusercontent.com en img-src: drive.google.com/thumbnail responde 302 a
+     lh3.googleusercontent.com, y la CSP también se aplica al destino de la
+     redirección — sin él no salen las miniaturas del modal de registro fotográfico. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com https://*.googleapis.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
-  img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://drive.google.com;
+  img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://drive.google.com https://*.googleusercontent.com;
   connect-src 'self' https://script.google.com https://script.googleusercontent.com https://raw.githubusercontent.com https://*.googleapis.com;
   frame-src 'self';
   object-src 'none';

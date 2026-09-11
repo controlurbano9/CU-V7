@@ -6,13 +6,15 @@
 <!-- QW32 (auditoría 2026-07): CSP básica — restringe scripts/estilos/conexiones a los
      CDNs realmente usados (docx.js/jsdelivr, Google Maps Static API, Drive thumbnails,
      Google Fonts, webhook Apps Script). 'unsafe-inline' en script-src es necesario por
-     el <script> inline con la lógica del generador (no está modularizado). -->
+     el <script> inline con la lógica del generador (no está modularizado).
+     *.googleusercontent.com en img-src: drive.google.com/thumbnail responde 302 a
+     lh3.googleusercontent.com y la CSP también se aplica al destino de la redirección. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
-  img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://drive.google.com;
+  img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://drive.google.com https://*.googleusercontent.com;
   connect-src 'self' https://script.google.com https://script.googleusercontent.com;
   frame-src 'self';
   object-src 'none';
