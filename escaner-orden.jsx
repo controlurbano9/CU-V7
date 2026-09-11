@@ -236,24 +236,13 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
 
   const bloqueado = !!ocupado;
 
+  // Va embebido en el renglón "Orden de policía" de la zona de entregables
+  // de nueva-visita: sin tarjeta propia (tarjeta dentro de tarjeta) ni
+  // título. El link al PDF ya escaneado vive en el renglón; aquí solo el
+  // aviso de "en cola", que el renglón no puede conocer.
   return (
-    <div className="form-seccion" style={{ marginTop: 14 }}>
-      <span className="form-seccion-titulo">Orden de policía escaneada</span>
-
-      <div style={{ marginTop: 12 }}>
-        {link && (
-          <div style={{
-            marginBottom: 12, padding: '10px 12px', background: 'var(--gris-bg)',
-            borderRadius: 8, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <Icon.File size={16} />
-            <a href={link} target="_blank" rel="noopener noreferrer"
-              style={{ color: 'var(--brand-accent)', textDecoration: 'none', fontWeight: 600 }}>
-              Ver orden {orden || ''} en Drive
-            </a>
-          </div>
-        )}
-
+    <div className="ent-slot-orden">
+      <div>
         {pendiente && (
           <div style={{
             marginBottom: 12, padding: '10px 12px', background: 'var(--amarillo-bg)',

@@ -121,6 +121,11 @@ const Icon = {
     React.createElement('path',     { key: 1, d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
     React.createElement('polyline', { key: 2, points: '14 2 14 8 20 8' }),
   ], p?.size),
+  // Cámara — renglón de fotos en la zona de entregables de nueva-visita
+  Camera:  (p) => _svg([
+    React.createElement('path',   { key: 1, d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
+    React.createElement('circle', { key: 2, cx: 12, cy: 13, r: 4 }),
+  ], p?.size),
 };
 
 // Export al global scope (mismo patrón que el resto del bundle)

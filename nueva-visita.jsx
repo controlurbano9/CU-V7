@@ -410,6 +410,10 @@ function _estadoInicial(datosIniciales) {
     // sincronización del módulo de priorización desde las carpetas de Drive
     // del scraper; el formulario solo lo lee para ofrecer el botón de consulta.
     linkPdfRadicado: d['LINK_PDF_RADICADO'] || '',
+    // Informe F-GGO-43 (col LINK_DOCX_INFORME). Antes no se leía: al reabrir
+    // una visita con informe ya generado, la zona de entregables no lo sabía
+    // y ofrecía "generar" como si no existiera.
+    linkDocxInforme: d['LINK_DOCX_INFORME'] || '',
   };
 }
 function _idCarpetaDeLink(url) {
@@ -1374,6 +1378,108 @@ function ModalInicioVisita({ onResult, onCancelar }) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//   CENTRO DE CONTROL DE LA VISITA
+//   Panel de estado (arriba) + renglones de entregables (abajo):
+//   el inspector lee el estado completo en <5 s sin recorrer el form.
+//   Componentes puramente presentacionales — sin hooks ni estado propio.
+// ══════════════════════════════════════════════════════════════
+
+// Tono del badge según el punto del ciclo de vida (mismos colores
+// semánticos del resto de la app, no una paleta nueva).
+function _tonoEstadoVisita(estado) {
+  switch (String(estado || '').toUpperCase()) {
+    case 'COMPLETADO': return 'verde';
+    case 'INICIADO':   return 'naranja';
+    case 'ASIGNADO':   return 'azul';
+    default:           return 'amarillo'; // PENDIENTE o desconocido
+  }
+}
+
+// Panel superior: identidad + estado + resumen de progreso. Reemplaza la
+// caja de info del header, que decía qué visita era pero no cómo va.
+function PanelEstadoVisita(p) {
+  return (
+    <div className="estado-panel" role="status" aria-label="Estado de la visita">
+      <div className="estado-panel-top">
+        <span className={'estado-badge ep-' + _tonoEstadoVisita(p.estadoVisita)}>
+          {String(p.estadoVisita || '—').toUpperCase()}
+        </span>
+        <span className="estado-id">{p.identificador}</span>
+        {p.nVisita > 1 && <span className="estado-visita-n">Visita N°{p.nVisita}</span>}
+      </div>
+      {p.direccion && (
+        <div className="estado-dir">
+          {p.direccion}{p.barrio && p.barrio !== '__otro__' ? ' · ' + p.barrio : ''}
+          {p.comuna ? ' · Comuna ' + p.comuna : ''}
+          {p.fechaVisita ? ' · ' + p.fechaVisita : ''}
+        </div>
+      )}
+      <div className="estado-resumen" aria-label="Progreso de la visita">
+        <span className={'resumen-chip rc-' + (p.faltan === 0 ? 'ok' : 'pend')}>
+          <span className="rc-dot" aria-hidden="true" />
+          {p.faltan === 0 ? 'Formulario completo' : 'Faltan ' + p.faltan + ' campos'}
+        </span>
+        <span className={'resumen-chip rc-' + (p.fotos.enCola > 0 ? 'cola' : (p.fotos.subidas > 0 ? 'ok' : 'apagado'))}>
+          <span className="rc-dot" aria-hidden="true" />
+          {p.fotos.enCola > 0
+            ? '⇡ ' + p.fotos.enCola + ' foto' + (p.fotos.enCola === 1 ? '' : 's') + ' en cola'
+            : (p.fotos.subidas > 0
+                ? p.fotos.subidas + ' foto' + (p.fotos.subidas === 1 ? '' : 's')
+                : (p.filaEditando ? 'Sin fotos' : 'Fotos tras guardar'))}
+        </span>
+        {p.ordenRelevante && (
+          <span className={'resumen-chip rc-' + (p.ordenEscaneada ? 'ok' : 'apagado')}>
+            <span className="rc-dot" aria-hidden="true" />
+            {p.ordenEscaneada ? 'Orden escaneada' : 'Orden sin escanear'}
+          </span>
+        )}
+        <span className={'resumen-chip rc-' + (p.tieneActa ? 'ok' : 'apagado')}>
+          <span className="rc-dot" aria-hidden="true" />
+          {p.tieneActa ? 'Acta generada' : 'Acta pendiente'}
+        </span>
+        <span className={'resumen-chip rc-' + (p.tieneInforme ? 'ok' : 'apagado')}>
+          <span className="rc-dot" aria-hidden="true" />
+          {p.tieneInforme ? 'Informe generado' : 'Informe pendiente'}
+        </span>
+      </div>
+      {!p.filaEditando && (
+        <div className="estado-aviso">
+          Visita sin guardar: al guardar se crea la carpeta en Drive y se habilitan
+          fotos, orden escaneada y documentos.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Renglón de entregable: nombre+meta a la izquierda, estado y acciones a la
+// derecha. Un renglón por pieza en vez de un botón a ancho completo por
+// pieza — la pila anterior obligaba a escanear ~4 bloques iguales.
+// `slot` (opcional) renderiza un widget debajo del renglón (subida de
+// fotos, escáner de orden), pegado a la pieza que le da sentido.
+function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, procesando, children, slot }) {
+  return (
+    <div className="ent-fila-wrap">
+      <div className="ent-fila">
+        <span className="ent-icono" aria-hidden="true">{icono}</span>
+        <div className="ent-cuerpo">
+          <span className="ent-nombre">{nombre}</span>
+          {meta && <span className="ent-meta">{meta}</span>}
+        </div>
+        {estadoTexto && (
+          <span className={'ent-estado et-' + (estadoTono || 'apagado')} aria-busy={procesando || undefined}>
+            {procesando && <span className="spinner-btn" aria-hidden="true" />}
+            {estadoTexto}
+          </span>
+        )}
+        {children && <div className="ent-acciones">{children}</div>}
+      </div>
+      {slot && <div className="ent-slot">{slot}</div>}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 //   PANTALLA
 // ══════════════════════════════════════════════════════════════
 function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
@@ -1393,6 +1499,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [guardando, setGuard]   = useStateNV(false);
   const [generandoActa, setGA]  = useStateNV(false);
   const [generandoRF,  setGRF]  = useStateNV(false);
+  // Informe F-GGO-43: la "generación" es abrir informe/index.html (pestaña o
+  // iframe); este flag solo marca el tramo validación→apertura.
+  const [abriendoInforme, setAI] = useStateNV(false);
   const [modalFotos,  setModalFotos] = useStateNV(null); // null o [{id, nombre, link, descripcion, mimeType}]
   const [cargandoFotos, setCargandoFotos] = useStateNV(false);
   const [dragIdx, setDragIdx]   = useStateNV(null); // indice de la foto siendo arrastrada
@@ -1509,6 +1618,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const _guardandoRef      = React.useRef(guardando);
   const _generandoActaRef  = React.useRef(generandoActa);
   const _generandoRFRef    = React.useRef(generandoRF);
+  // Guarda compartida de documentos: bloquea el doble lanzamiento incluido
+  // el doble clic rápido (los flags de estado solo cortan tras el re-render,
+  // la ref corta en el mismo tick) y evita correr acta+informe/RF a la vez.
+  const _docOcupadoRef     = React.useRef(false);
   React.useEffect(function() {
     _dRef.current     = d;
     _bOtroRef.current = barrioOtro;
@@ -1527,7 +1640,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   function _snapshotLimpia(dObj) {
     const _servidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                        'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                       'linkPdfRadicado', 'ultimaModConocida'];
+                       'linkPdfRadicado', 'linkDocxInforme', 'ultimaModConocida'];
     const out = {};
     Object.keys(dObj).forEach(function(k) {
       if (_servidor.indexOf(k) < 0) out[k] = dObj[k];
@@ -1540,6 +1653,17 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
 
   const [ultimoGuardadoMs, setUltimoGuardadoMs] = useStateNV(null);
+
+  // ═══ Centro de control de la visita ═══
+  // Estados que alimentan el panel superior y la barra fija inferior.
+  // Todos DEBEN declararse antes del early return de fase=modal (React #310).
+  // dirty: hay cambios sin guardar (comparación contra _lastSavedRef).
+  // enColaGuardado: el guardado de ESTA visita está en la cola offline.
+  // fotosInfo: resumen de evidencia fotográfica para el panel de estado.
+  const [dirty, setDirty]               = useStateNV(false);
+  const [errorGuardar, setErrorGuardar] = useStateNV('');
+  const [enColaGuardado, setEnColaGuardado] = useStateNV(false);
+  const [fotosInfo, setFotosInfo]       = useStateNV({ subidas: 0, enCola: 0 });
 
   // (1) Restaurar borrador local en el primer render del formulario.
   React.useEffect(function() {
@@ -1575,6 +1699,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setTimeout(function() {
       if (_lastSavedRef.current === '') {
         _lastSavedRef.current = JSON.stringify({ d: _snapshotLimpia(_dRef.current), b: _bOtroRef.current });
+        setDirty(false); // el estado restaurado es la línea base, no "cambios"
       }
     }, 0);
   }, [fase, _draftKey]);
@@ -1600,7 +1725,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // más hubiera tocado la fila. Siempre debe venir fresco de BD.
         const _dServidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                             'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                            'linkPdfRadicado', 'ultimaModConocida'];
+                            'linkPdfRadicado', 'linkDocxInforme', 'ultimaModConocida'];
         const _dSafe = {};
         Object.keys(d).forEach(function(k){
           if (_dServidor.indexOf(k) < 0) _dSafe[k] = d[k];
@@ -1638,6 +1763,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
         setUltimoGuardadoMs(Date.now());
+        setDirty(false); // sin este reset la barra seguía en "cambios sin guardar"
       } catch(e) {
         console.warn('[autoguardado] remoto falló (reintenta en 60s):', e.message);
       }
@@ -1657,6 +1783,72 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     window.addEventListener('beforeunload', _bu);
     return function() { window.removeEventListener('beforeunload', _bu); };
   }, [fase]);
+
+  // (5) Estado "dirty" reactivo para la barra fija de guardado: la misma
+  // definición de _hayCambiosSinGuardar(), pero como state para poder
+  // pintarla. _lastSavedRef muta sin re-render (tras guardar/autoguardar),
+  // por eso guardar() y el autoguardado también hacen setDirty(false)
+  // explícito.
+  React.useEffect(function() {
+    if (fase !== 'formulario') return;
+    if (!_restauradoRef.current) return; // antes de aterrizar la restauración daría falso positivo
+    setDirty(JSON.stringify({ d: _snapshotLimpia(d), b: barrioOtro }) !== _lastSavedRef.current);
+  }, [fase, d, barrioOtro]);
+
+  // (6) ¿El guardado de ESTA visita está en la cola offline? La barra fija
+  // lo anuncia como estado propio (⇡ en cola), no solo como "sin conexión".
+  React.useEffect(function() {
+    if (fase !== 'formulario') return;
+    function _actualizar() {
+      if (typeof offlineListar !== 'function') return;
+      offlineListar().then(function(lista) {
+        const mios = (lista || []).some(function(it) {
+          if (!it || it.tipo !== 'guardarVisita' || !it.body) return false;
+          return (filaEditando && it.body.fila === filaEditando) ||
+                 (it.body.clientId && it.body.clientId === clientId);
+        });
+        setEnColaGuardado(mios);
+      }).catch(function() { /* sin IDB: la barra cae al estado sin conexión */ });
+    }
+    _actualizar();
+    const _off = (typeof offlineOnChange === 'function') ? offlineOnChange(_actualizar) : null;
+    return function() { if (typeof _off === 'function') _off(); };
+  }, [fase, filaEditando, clientId]);
+
+  // (7) El informe F-GGO-43 se genera en informe/index.html (pestaña o
+  // iframe) y al subir avisa por postMessage {tipo:'informe-f43-subido'}.
+  // Escucharlo aquí permite marcar el renglón del informe como generado sin
+  // recargar la visita (antes nadie escuchaba este mensaje en esta pantalla).
+  React.useEffect(function() {
+    function _onMsg(e) {
+      const m = e && e.data;
+      if (!m || m.tipo !== 'informe-f43-subido') return;
+      if (filaEditando && m.fila === filaEditando && m.link) {
+        setD(function(prev) { return Object.assign({}, prev, { linkDocxInforme: m.link }); });
+      }
+    }
+    window.addEventListener('message', _onMsg);
+    return function() { window.removeEventListener('message', _onMsg); };
+  }, [filaEditando]);
+
+  // (8) Contar las fotos que ya viven en Drive al abrir la visita (una sola
+  // lectura). Sin esto, reabrir una visita con 18 fotos mostraría "sin fotos"
+  // en el panel de estado: SeccionFotos solo conoce lo subido en esta sesión.
+  React.useEffect(function() {
+    if (fase !== 'formulario' || !filaEditando || !d.idCarpetaFotos) return;
+    if (typeof listarFotosActa !== 'function') return;
+    let cancelado = false;
+    listarFotosActa(d.idCarpetaFotos).then(function(r) {
+      if (cancelado || !r || !r.ok) return;
+      const n = (r.fotos || []).length;
+      // max(): no pisar un conteo más fresco de esta sesión (borradores
+      // concurrentes no existen aquí, la sesión siempre suma o iguala).
+      setFotosInfo(function(prev) {
+        return { subidas: Math.max(prev.subidas, n), enCola: prev.enCola };
+      });
+    }).catch(function() { /* offline: SeccionFotos reporta lo suyo */ });
+    return function() { cancelado = true; };
+  }, [fase, filaEditando, d.idCarpetaFotos]);
 
   // ── Callback del modal: configura el formulario según la elección ──
   function handleModalResult(res) {
@@ -2240,6 +2432,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       return;
     }
     setGuard(true);
+    setErrorGuardar('');
     try {
       // Resolver barrio final (si es "Otro", usar el texto libre)
       const barrioFinal = d.barrio === '__otro__' ? (barrioOtro || '') : d.barrio;
@@ -2270,7 +2463,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           await appAlert(
             'La visita se guardó, pero no se pudo crear la carpeta de Drive ' +
             '(' + (eDrive && eDrive.message ? eDrive.message : 'error de conexión') + ').\n\n' +
-            'Vuelve a abrir la visita y toca "Actualizar" para reintentar la ' +
+            'Vuelve a abrir la visita y toca "Guardar cambios" para reintentar la ' +
             'creación de la carpeta antes de generar acta o subir fotos.',
             { tono: 'aviso', titulo: 'Carpeta Drive no creada' }
           );
@@ -2300,6 +2493,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       // hasta que el inspector vuelva a tocar un campo.
       _lastSavedRef.current = JSON.stringify({ d: _snapshotLimpia(dPersistido), b: barrioOtro });
       setUltimoGuardadoMs(Date.now());
+      setDirty(false);
+      if (r && r.encolado) setEnColaGuardado(true);
 
       if (r && r.encolado) {
         // Visita guardada en cola offline. Acta/RF/informe NO se pueden
@@ -2310,17 +2505,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         await appAlert(
           'Sin conexión: la visita quedó guardada en este dispositivo (#' + r.localId + ').\n\n' +
           'Se sincronizará automáticamente cuando vuelva la señal. ' +
-          'Al recuperar conexión, vuelve a abrir la visita y toca "Actualizar" ' +
+          'Al recuperar conexión, vuelve a abrir la visita y toca "Guardar cambios" ' +
           'para crear la carpeta Drive y poder generar acta y subir fotos.',
           { tono: 'exito', titulo: 'Guardado local' }
         );
       } else {
         await appAlert(filaEditando
           ? 'Registro actualizado correctamente.'
-          : 'Visita guardada. Ya puedes generar el acta F-GGO-46.',
+          : 'Visita guardada. Ya puedes subir fotos y generar los documentos en «Entregables».',
           { tono: 'exito', titulo: 'Guardado' });
       }
     } catch (e) {
+      setErrorGuardar(e && e.message ? e.message : 'error desconocido');
       await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error al guardar' });
     }
     setGuard(false);
@@ -2536,7 +2732,164 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     await _ejecutarGenerarActa(true);
   }
 
+  // Informe F-GGO-43: la "generación" abre informe/index.html (pestaña nueva
+  // en móvil, iframe en escritorio) con los datos de la visita. Antes era un
+  // onClick inline de ~140 líneas sin disabled ni guarda: un doble clic
+  // rápido abría el generador dos veces, y podía correr junto al acta o al RF.
+  async function generarInforme() {
+    if (_docOcupadoRef.current) return;
+    if (typeof window.abrirInformeF43 !== 'function') {
+      appAlert('El generador de informe no cargó.', { tono: 'error', titulo: 'Error' });
+      return;
+    }
+    // Mismo control estricto que para el acta: el informe F-GGO-43 se nutre
+    // de los mismos campos del formulario y un dato faltante se traduce en
+    // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
+    const faltanInf = _validarAntesDeActa();
+    if (faltanInf.length > 0) {
+      const lista = faltanInf.slice(0, 20).map(s => '• ' + s).join('\n');
+      const extra = faltanInf.length > 20 ? '\n... y ' + (faltanInf.length - 20) + ' más' : '';
+      await appAlert(
+        'No se puede generar el informe F-GGO-43: faltan ' + faltanInf.length + ' campo(s) por diligenciar:\n\n' +
+        lista + extra +
+        '\n\nVuelve al formulario, complétalos y guarda antes de generar el informe.',
+        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
+      );
+      return;
+    }
+    _docOcupadoRef.current = true;
+    setAI(true);
+    try {
+      // Si hay coordenadas, consultar POT completo para enriquecer
+      // (clasificacion, tratamiento, intensidad) además de los campos de BD.
+      let potExtra = {};
+      if (d.lat != null && d.lon != null && typeof consultarPOT === 'function') {
+        try {
+          const r = await consultarPOT(d.lat, d.lon);
+          // ── Mapear valores GDB → opciones del <select> del informe ──
+          const _norm = s => (s||'').toString().toLowerCase()
+            .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i')
+            .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u');
+
+          // Clasificación: "Suelo urbano" → "Urbano", etc.
+          let clas = '';
+          const cn = _norm(r.clasificacion);
+          if (cn.includes('expansion'))      clas = 'De expansion urbana';
+          else if (cn.includes('suburban'))  clas = 'Suburbano';
+          else if (cn.includes('urbano'))    clas = 'Urbano';
+          else if (cn.includes('rural'))     clas = 'Rural';
+          else                               clas = r.clasificacion || '';
+
+          // Tratamiento: GDB devuelve "CN3, Consolidación Nivel 3" o similar
+          let trat = '';
+          const tn = _norm(r.tratamiento);
+          if (tn.includes('consolid')) {
+            if (tn.includes('1') || tn.includes('uno'))      trat = 'Consolidacion nivel 1';
+            else if (tn.includes('2') || tn.includes('dos')) trat = 'Consolidacion nivel 2';
+            else if (tn.includes('3') || tn.includes('tres'))trat = 'Consolidacion nivel 3';
+            else                                              trat = 'Consolidacion nivel 3';
+          } else if (tn.includes('mejoram')) {
+            trat = tn.includes('rural') ? 'Mejoramiento integral rural' : 'Mejoramiento integral';
+          } else if (tn.includes('renovac')) {
+            if (tn.includes('redesarrollo')) trat = 'Renovacion urbana - redesarrollo';
+            else if (tn.includes('reactiv')) trat = 'Renovacion urbana - reactivacion';
+            else                              trat = 'Renovacion urbana - redesarrollo';
+          } else if (tn.includes('desarrollo')) {
+            trat = tn.includes('restring') ? 'Desarrollo restringido' : 'Desarrollo';
+          } else if (tn.includes('conserv')) {
+            if (tn.includes('historic'))      trat = 'Conservacion historica';
+            else if (tn.includes('arquitect'))trat = 'Conservacion arquitectonica';
+            else if (tn.includes('activ'))    trat = 'Conservacion activa';
+            else if (tn.includes('estric'))   trat = 'Conservacion estricta';
+            else                              trat = 'Conservacion activa';
+          } else if (tn.includes('restaur'))  trat = 'Restauracion de actividades rurales';
+          else if (tn.includes('recupera') && tn.includes('forest')) trat = 'Recuperacion para la produccion forestal';
+          else if (tn.includes('recupera'))   trat = 'Recuperacion ambiental';
+          else if (tn.includes('suburban'))   trat = 'Suburbanizacion restringida';
+          else if (tn.includes('produccion') || tn.includes('agric')) trat = 'Produccion agricola, ganadera y forestal';
+          else                                trat = r.tratamiento || '';
+
+          // Franja de intensidad: mapear NMG / densidad → baja/media/alta
+          let franja = '';
+          const fn = _norm(r.intensidad);
+          if (fn.includes('alta'))      franja = 'Franja alta';
+          else if (fn.includes('media'))franja = 'Franja media';
+          else if (fn.includes('baja')) franja = 'Franja baja';
+          else if (r.intensidad)        franja = r.intensidad;  // raw para fallback
+
+          potExtra = {
+            poligono:      d.poligono || r.poligono || '',
+            amenaza:       d.amenaza || r.amenaza || '',
+            sueloProt:     d.sueloProt || r.sueloProt || '',
+            clasificacion: clas,
+            tratamiento:   trat,
+            franja:        franja,
+          };
+          // Derivar proteccion para el <select> del informe
+          const sp = r.sueloProt === 'SI' || d.sueloProt === 'SI';
+          const am = r.amenaza === 'SI' || d.amenaza === 'SI';
+          if (am) {
+            const tipo = _norm(r.amenazaTipo);
+            if (tipo.includes('inunda')) potExtra.proteccion = 'Si - amenaza por inundacion';
+            else if (tipo.includes('movim') || tipo.includes('masa')) potExtra.proteccion = 'Si - amenaza por movimiento en masa';
+            else potExtra.proteccion = 'Si - amenaza por movimiento en masa';
+          } else if (sp) {
+            potExtra.proteccion = 'Si - area protegida';
+          } else if (r.enRetiro === 'SI') {
+            potExtra.proteccion = 'Si - ronda hidrica';
+          } else {
+            potExtra.proteccion = 'No';
+          }
+        } catch(e) { /* silencioso: el informe queda sin POT auto */ }
+      }
+      window.abrirInformeF43({
+        fila: filaEditando,
+        idCarpeta: d.idCarpetaVisita,
+        // Oficio: el radicado no vive en el state, se deriva de la orden
+        // (mismo criterio que _construirPayload y _construirDatosF46).
+        // Sin esta derivación, abrirInformeF43 recibe '' y aborta con
+        // "faltan params obligatorios" en toda visita de oficio.
+        radicado: d.esOficio ? ('OFICIO-' + d.orden) : d.radicado,
+        fechaVisita: d.fechaVisita,
+        direccion: d.direccion,
+        barrio: d.barrio,
+        comuna: d.comuna,
+        catastral: d.catastral,
+        lat: d.lat, lon: d.lon,
+        inspector: usuario?.usuario || '',
+        cargo: usuario?.cargo || '',
+        seAportoLicencia: d.licenciaAportada,
+        numRes:           d.licencia,
+        fechaEjec:        d.fechaLicencia,
+        tipoModalidad:    d.tipoLicencia,
+        pisos:            d.pisos,
+        dest:             d.destinaciones,
+        cubierta:         d.cubierta,
+        sist:             d.sistema,
+        obsLicencia:      d.obsLicencia,
+        poligono:         d.poligono,
+        amenaza:          d.amenaza,
+        sueloProt:        d.sueloProt,
+        observaciones:    d.actuacion,
+        areas:            d.area,
+        // Comportamientos contrarios (Art.135) ya marcados en la visita
+        // (columna BD "TIPO DE INFRACCION") — informe/index.html los
+        // matchea por codigo (A1, C9, ...) contra sus propios .comp-ac,
+        // que usan un texto mas largo/distinto al de estos chips.
+        infraccion:       d.infraccion,
+        ...potExtra,
+      });
+    } finally {
+      _docOcupadoRef.current = false;
+      setAI(false);
+    }
+  }
+
   async function _ejecutarGenerarActa(regenerar) {
+    // Guarda de doble lanzamiento: cubre el doble clic rápido (disabled
+    // llega tras el re-render) y que corra a la vez que el informe o el RF.
+    if (_docOcupadoRef.current) return;
+    _docOcupadoRef.current = true;
     setGA(true);
     try {
       const payload = Object.assign({ accion: 'generarActa' }, _construirDatosF46());
@@ -2570,6 +2923,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       await appAlert('Error: ' + e.message, { titulo: regenerar ? 'Regenerar acta' : 'Generar acta' });
     }
     setGA(false);
+    _docOcupadoRef.current = false;
   }
 
   // Paso 2 del F-GGO-46: Doc REGISTRO FOTOGRÁFICO con las fotos
@@ -2638,6 +2992,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Confirmar y generar RF con las fotos en el orden del modal
   async function confirmarYGenerarRF() {
     if (!modalFotos || modalFotos.length === 0) return;
+    // Misma guarda compartida de documentos que el acta (ver _ejecutarGenerarActa).
+    if (_docOcupadoRef.current) return;
+    _docOcupadoRef.current = true;
     setGRF(true);
     setModalFotos(null);
     try {
@@ -2662,18 +3019,28 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       await appAlert('Error: ' + e.message, { tono: 'info', titulo: 'Generar registro fotográfico' });
     }
     setGRF(false);
+    _docOcupadoRef.current = false;
   }
 
   // ── Render ─────────────────────────────────────────────────
   // nVisita puede venir como string del Sheet ("2") o number (1). Normalizar
   // antes de comparar para evitar la coerción frágil "10" > 1 (=true) vs "2" > 1 (=true por casualidad).
   const _nVisitaNum = parseInt(d.nVisita, 10) || 0;
-  const nVisitaLabel = _nVisitaNum > 1 ? ' · Visita N°' + _nVisitaNum : '';
   const tituloPantalla = filaEditando
     ? 'Continuar visita'
     : (d.esOficio ? 'Visita de oficio' : 'Nueva visita');
 
-  const tieneInfoSticky = d.direccion || d.radicado || d.esOficio;
+  // Insumos del centro de control: campos faltantes para documentos y
+  // bloqueo compartido de generadores (una sola acción de documento a la vez).
+  const faltanActa = filaEditando ? _validarAntesDeActa() : [];
+  const docOcupado = generandoActa || generandoRF || abriendoInforme;
+  // Callback para que SeccionFotos reporte su conteo al panel de estado.
+  // max(): el conteo de Drive (efecto 8) puede llegar después del de sesión.
+  function _reportarFotos(info) {
+    setFotosInfo(function(prev) {
+      return { subidas: Math.max(prev.subidas, info.subidas || 0), enCola: info.enCola || 0 };
+    });
+  }
 
   // Devuelve true si se puede abandonar el formulario. Se usa tanto desde el
   // botón "Volver" como desde el botón atrás del navegador (app.jsx la lee en
@@ -2702,7 +3069,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       }}>
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 12, marginBottom: tieneInfoSticky ? 10 : 0,
+          gap: 12, marginBottom: 10,
         }}>
           <div className="page-title" style={{ margin: 0 }}>{tituloPantalla}</div>
           {onSalir && (
@@ -2710,40 +3077,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               style={{ padding: '9px 14px', fontSize: 13, flexShrink: 0 }}>&#8592; Volver</button>
           )}
         </div>
-        {tieneInfoSticky && (
-          <div style={{
-            background: 'var(--superficie)', borderRadius: 'var(--r-md)',
-            border: '0.5px solid var(--borde)', padding: '10px 14px',
-            display: 'flex', flexDirection: 'column', gap: 4,
-          }}>
-            {d.direccion && (
-              <div>
-                <span style={{
-                  color: 'var(--texto-suave)', fontSize: 10, textTransform: 'uppercase',
-                  letterSpacing: '0.5px', fontWeight: 600, marginRight: 6,
-                }}>Visita en</span>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>
-                  {d.direccion}{d.barrio && d.barrio !== '__otro__' ? ' · ' + d.barrio : ''}
-                </span>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {d.radicado && <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand-accent)', fontWeight: 600,
-              }}>RAD {d.radicado}</span>}
-              {d.esOficio && d.orden && <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand-accent)', fontWeight: 600,
-              }}>OFICIO {d.orden}</span>}
-              {_nVisitaNum > 1 && (
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                  background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-                  border: '1px solid var(--brand-accent)',
-                }}>Visita N°{_nVisitaNum}</span>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Centro de control: estado + identidad + qué falta, visible sin
+            scroll. Antes esta caja solo decía qué visita era. */}
+        <PanelEstadoVisita
+          estadoVisita={estadoVisita}
+          identificador={d.esOficio
+            ? (d.orden ? 'OFICIO ' + d.orden : 'OFICIO')
+            : (d.radicado ? 'RAD ' + d.radicado : 'Sin radicado')}
+          direccion={d.direccion || ''}
+          barrio={d.barrio || ''}
+          comuna={d.comuna || ''}
+          fechaVisita={_isoAFecha(d.fechaVisita) || ''}
+          nVisita={_nVisitaNum}
+          filaEditando={filaEditando}
+          faltan={faltanActa.length}
+          fotos={fotosInfo}
+          ordenRelevante={_hayOrdenReal(d.orden)}
+          ordenEscaneada={!!d.linkOrdenPolicia}
+          tieneActa={!!d.linkXlsxActa}
+          tieneInforme={!!d.linkDocxInforme}
+        />
       </div>
 
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
@@ -3390,241 +3743,183 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           (ver final del componente). En campo el inspector tenía que recorrer
           ~3000px de formulario para llegar a la acción principal. */}
 
-      {/* Botones de documentos generados (solo con fila guardada) */}
-      {filaEditando && (
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Acta e informe exigen el formulario completo (_validarAntesDeActa).
-              El aviso lista los campos que faltan: antes decía "pulsa un botón
-              para ver cuáles" y obligaba a intentar generar el acta solo para
-              enterarse de qué faltaba. */}
-          {(() => {
-            const faltan = _validarAntesDeActa();
-            if (faltan.length === 0) return null;
-            return (
-              <div style={{
-                fontSize: 12, color: 'var(--amber)', background: 'var(--amber-bg)',
-                border: '1px solid rgba(184,135,58,.25)', borderRadius: 8, padding: '8px 10px',
-              }}>
-                <div style={{ fontWeight: 600 }}>
-                  Falta{faltan.length === 1 ? '' : 'n'} {faltan.length} campo{faltan.length === 1 ? '' : 's'} para generar el acta o el informe:
-                </div>
-                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                  {faltan.map(x => <li key={x}>{x}</li>)}
-                </ul>
-              </div>
-            );
-          })()}
-          {/* Acta F-GGO-46:
-              - Sin acta: un solo boton 'Generar acta F-GGO-46' (relleno).
-              - Con acta: dos botones lado a lado — 'Ver acta' (relleno) y
-                'Regenerar' (outlined punteado, llama backend con regenerar=true). */}
-          {d.linkXlsxActa ? (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button type="button" onClick={() => window.open(d.linkXlsxActa, '_blank', 'noopener')}
-                className="btn-principal secundario" style={{ margin: 0, fontSize: 15, flex: 1 }}>
-                <Icon.Eye size={16} /> Ver acta F-GGO-46
-              </button>
-              {/* Regenerar rehace el acta en Drive: separado del botón de solo
-                  lectura y reducido a icono con nombre accesible, en vez de
-                  competir a su lado con un outline punteado. */}
-              <button type="button" onClick={regenerarActa} disabled={generandoActa}
+      {/* ── ENTREGABLES DE LA VISITA ──────────────────────────────
+          Centro de control del cierre: evidencia primero (carpeta, PQR,
+          fotos, orden), después los documentos que se generan de ella.
+          Cada pieza es un renglón con estado + acciones; el único botón
+          relleno de la pantalla es "Guardar cambios" (barra fija). Antes
+          eran hasta 4 botones a ancho completo compitiendo entre sí. */}
+      <div className="form-seccion" style={{ marginTop: 14 }}>
+        <span className="form-seccion-titulo">Entregables de la visita</span>
+
+        {/* Antes del primer guardado no hay entregables: la transición se
+            cuenta, no se oculta (documentos, fotos y escáner dependen de la
+            carpeta de Drive, que nace al guardar). */}
+        {!filaEditando ? (
+          <div className="ent-aviso">
+            Guarda la visita para crear su carpeta en Drive. Después podrás subir
+            fotos, escanear la orden de policía y generar el acta y el informe.
+          </div>
+        ) : (<>
+          {/* Lista de campos faltantes plegada por defecto: el número ya
+              avisa en el panel superior y en cada renglón; el detalle se
+              abre solo cuando se necesita. */}
+          {faltanActa.length > 0 && (
+            <details className="ent-faltan">
+              <summary>Faltan {faltanActa.length} campo{faltanActa.length === 1 ? '' : 's'} para generar el acta o el informe</summary>
+              <ul>
+                {faltanActa.map(function(x) { return <li key={x}>{x}</li>; })}
+              </ul>
+            </details>
+          )}
+
+          {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
+              final del formulario y dentro de la sección de fotos). */}
+          <FilaEntregable
+            icono={<Icon.Folder size={18} />}
+            nombre="Carpeta en Drive"
+            meta={d.linkDrive ? 'Todos los archivos de la visita' : 'Se crea al guardar con conexión'}
+            estadoTono={d.linkDrive ? 'ok' : 'pend'}
+            estadoTexto={d.linkDrive ? 'Creada' : 'Pendiente'}
+          >
+            {d.linkDrive && (
+              <a href={d.linkDrive} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+            )}
+          </FilaEntregable>
+
+          {/* PDF de la PQR tal como la radicó el ciudadano */}
+          {d.linkPdfRadicado && (
+            <FilaEntregable
+              icono={<Icon.File size={18} />}
+              nombre="PQR radicada"
+              meta="PDF original del gestor documental"
+              estadoTono="ok"
+              estadoTexto="Disponible"
+            >
+              <a href={d.linkPdfRadicado} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+            </FilaEntregable>
+          )}
+
+          {/* Fotos de evidencia: la subida vive pegada a su renglón */}
+          <FilaEntregable
+            icono={<Icon.Camera size={18} />}
+            nombre="Fotos de la visita"
+            meta={d.idCarpetaFotos ? 'Suben a la subcarpeta /Fotos en Drive' : 'Disponibles al crear la carpeta de Drive'}
+            estadoTono={fotosInfo.enCola > 0 ? 'cola' : (fotosInfo.subidas > 0 ? 'ok' : 'apagado')}
+            estadoTexto={fotosInfo.enCola > 0
+              ? '⇡ ' + fotosInfo.enCola + ' en cola'
+              : (fotosInfo.subidas > 0
+                  ? fotosInfo.subidas + ' subida' + (fotosInfo.subidas === 1 ? '' : 's')
+                  : 'Sin fotos')}
+            slot={d.idCarpetaFotos ? (
+              <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
+            ) : undefined}
+          />
+
+          {/* Orden de policía escaneada. Va entre los entregables, y no junto
+              al campo del N° de orden: `d.orden` se captura en dos sitios
+              distintos (arriba en visita de oficio, en Suspensión para PQR) y
+              duplicar el componente daría dos escáneres para el mismo PDF.
+              Exige carpeta de Drive: la orden se sube a la carpeta de la
+              visita, que solo existe después del primer guardado. */}
+          {_hayOrdenReal(d.orden) && (
+            <>
+              <FilaEntregable
+                icono={<Icon.File size={18} />}
+                nombre={'Orden de policía ' + d.orden}
+                meta={d.idCarpetaVisita ? 'Escanear el papel firmado (formato oficio) — sube como PDF' : 'Requiere carpeta de Drive'}
+                estadoTono={d.linkOrdenPolicia ? 'ok' : 'apagado'}
+                estadoTexto={d.linkOrdenPolicia ? 'Escaneada' : 'Sin escanear'}
+              >
+                {d.linkOrdenPolicia && (
+                  <a href={d.linkOrdenPolicia} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+                )}
+              </FilaEntregable>
+              {d.idCarpetaVisita && (
+                <EscanerOrdenPolicia
+                  idCarpetaVisita={d.idCarpetaVisita}
+                  fila={filaEditando}
+                  orden={d.orden}
+                  linkInicial={d.linkOrdenPolicia}
+                  onSubido={link => setCampo('linkOrdenPolicia', link)}
+                />
+              )}
+            </>
+          )}
+
+          {/* Acta F-GGO-46 (paso 1: hoja de caracterización) */}
+          <FilaEntregable
+            icono={<Icon.File size={18} />}
+            nombre="Acta de caracterización"
+            meta="F-GGO-46 · hoja de cálculo + PDF"
+            estadoTono={d.linkXlsxActa ? 'ok' : (faltanActa.length > 0 ? 'pend' : 'apagado')}
+            estadoTexto={d.linkXlsxActa
+              ? 'Generada'
+              : (generandoActa ? 'Generando…'
+                : (faltanActa.length > 0 ? 'Faltan ' + faltanActa.length + ' campos' : 'Lista para generar'))}
+            procesando={generandoActa}
+          >
+            {d.linkXlsxActa ? (<>
+              <a href={d.linkXlsxActa} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+              {/* Regenerar rehace el acta en Drive: separado del acceso de
+                  solo lectura y reducido a icono con nombre accesible. */}
+              <button type="button" onClick={regenerarActa} disabled={docOcupado}
                 className="btn-icono" aria-label="Regenerar el acta F-GGO-46"
                 aria-busy={generandoActa} title="Regenerar acta">
                 {generandoActa
                   ? <span className="spinner-btn" aria-hidden="true" />
                   : <Icon.Refresh size={18} />}
               </button>
-            </div>
-          ) : (
-            <button onClick={generarActa} disabled={generandoActa} className="btn-principal"
-              aria-busy={generandoActa} style={{ fontSize: 15 }}>
-              {generandoActa
-                ? <><span className="spinner-btn" aria-hidden="true" /> Generando acta...</>
-                : 'Generar acta F-GGO-46'}
+            </>) : (
+              <button onClick={generarActa} disabled={docOcupado} aria-busy={generandoActa}
+                className="btn-accion ent-btn">
+                {generandoActa ? 'Generando…' : 'Generar acta'}
+              </button>
+            )}
+          </FilaEntregable>
+
+          {/* Registro fotográfico (paso 2 del F-GGO-46): abre el modal de
+              revisión/reordenamiento y genera el Doc con las fotos. */}
+          <FilaEntregable
+            icono={<Icon.File size={18} />}
+            nombre="Registro fotográfico"
+            meta="Documento con las fotos y sus descripciones"
+            estadoTono={(fotosInfo.subidas + fotosInfo.enCola) > 0 ? 'ok' : 'pend'}
+            estadoTexto={generandoRF ? 'Generando…'
+              : ((fotosInfo.subidas + fotosInfo.enCola) > 0 ? 'Con fotos' : 'Requiere fotos')}
+            procesando={generandoRF}
+          >
+            <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+              aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
+              {cargandoFotos ? 'Cargando fotos…' : generandoRF ? 'Generando…' : 'Generar'}
             </button>
+          </FilaEntregable>
+
+          {/* Informe F-GGO-43: oculto en visitas COMPLETADAS — la visita
+              está cerrada y su informe ya se subió (LINK_DOCX_INFORME). */}
+          {estadoVisita !== 'COMPLETADO' && (
+            <FilaEntregable
+              icono={<Icon.File size={18} />}
+              nombre="Informe de inspección"
+              meta="F-GGO-43 · documento de texto"
+              estadoTono={d.linkDocxInforme ? 'ok' : (faltanActa.length > 0 ? 'pend' : 'apagado')}
+              estadoTexto={d.linkDocxInforme
+                ? 'Generado'
+                : (abriendoInforme ? 'Abriendo…'
+                  : (faltanActa.length > 0 ? 'Faltan ' + faltanActa.length + ' campos' : 'Lista para generar'))}
+              procesando={abriendoInforme}
+            >
+              {d.linkDocxInforme && (
+                <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+              )}
+              <button onClick={generarInforme} disabled={docOcupado} aria-busy={abriendoInforme}
+                className="btn-accion ent-btn">
+                {abriendoInforme ? 'Abriendo…' : 'Generar informe'}
+              </button>
+            </FilaEntregable>
           )}
-
-          {/* Informe F-GGO-43: estilo outlined para diferenciarlo del acta.
-              Oculto en visitas COMPLETADAS: la visita está cerrada y su
-              informe ya se subió a Drive (LINK_DOCX_INFORME) — regenerarlo
-              desde aquí no tiene sentido. */}
-          {estadoVisita !== 'COMPLETADO' && (<button onClick={async () => {
-            if (typeof window.abrirInformeF43 !== 'function') {
-              appAlert('El generador de informe no cargó.', { tono: 'error', titulo: 'Error' });
-              return;
-            }
-            // Mismo control estricto que para el acta: el informe F-GGO-43 se nutre
-            // de los mismos campos del formulario y un dato faltante se traduce en
-            // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
-            const faltanInf = _validarAntesDeActa();
-            if (faltanInf.length > 0) {
-              const lista = faltanInf.slice(0, 20).map(s => '• ' + s).join('\n');
-              const extra = faltanInf.length > 20 ? '\n... y ' + (faltanInf.length - 20) + ' más' : '';
-              await appAlert(
-                'No se puede generar el informe F-GGO-43: faltan ' + faltanInf.length + ' campo(s) por diligenciar:\n\n' +
-                lista + extra +
-                '\n\nVuelve al formulario, complétalos y guarda antes de generar el informe.',
-                { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
-              );
-              return;
-            }
-            // Si hay coordenadas, consultar POT completo para enriquecer
-            // (clasificacion, tratamiento, intensidad) además de los campos de BD.
-            let potExtra = {};
-            if (d.lat != null && d.lon != null && typeof consultarPOT === 'function') {
-              try {
-                const r = await consultarPOT(d.lat, d.lon);
-                // ── Mapear valores GDB → opciones del <select> del informe ──
-                const _norm = s => (s||'').toString().toLowerCase()
-                  .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i')
-                  .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u');
-
-                // Clasificación: "Suelo urbano" → "Urbano", etc.
-                let clas = '';
-                const cn = _norm(r.clasificacion);
-                if (cn.includes('expansion'))      clas = 'De expansion urbana';
-                else if (cn.includes('suburban'))  clas = 'Suburbano';
-                else if (cn.includes('urbano'))    clas = 'Urbano';
-                else if (cn.includes('rural'))     clas = 'Rural';
-                else                               clas = r.clasificacion || '';
-
-                // Tratamiento: GDB devuelve "CN3, Consolidación Nivel 3" o similar
-                let trat = '';
-                const tn = _norm(r.tratamiento);
-                if (tn.includes('consolid')) {
-                  if (tn.includes('1') || tn.includes('uno'))      trat = 'Consolidacion nivel 1';
-                  else if (tn.includes('2') || tn.includes('dos')) trat = 'Consolidacion nivel 2';
-                  else if (tn.includes('3') || tn.includes('tres'))trat = 'Consolidacion nivel 3';
-                  else                                              trat = 'Consolidacion nivel 3';
-                } else if (tn.includes('mejoram')) {
-                  trat = tn.includes('rural') ? 'Mejoramiento integral rural' : 'Mejoramiento integral';
-                } else if (tn.includes('renovac')) {
-                  if (tn.includes('redesarrollo')) trat = 'Renovacion urbana - redesarrollo';
-                  else if (tn.includes('reactiv')) trat = 'Renovacion urbana - reactivacion';
-                  else                              trat = 'Renovacion urbana - redesarrollo';
-                } else if (tn.includes('desarrollo')) {
-                  trat = tn.includes('restring') ? 'Desarrollo restringido' : 'Desarrollo';
-                } else if (tn.includes('conserv')) {
-                  if (tn.includes('historic'))      trat = 'Conservacion historica';
-                  else if (tn.includes('arquitect'))trat = 'Conservacion arquitectonica';
-                  else if (tn.includes('activ'))    trat = 'Conservacion activa';
-                  else if (tn.includes('estric'))   trat = 'Conservacion estricta';
-                  else                              trat = 'Conservacion activa';
-                } else if (tn.includes('restaur'))  trat = 'Restauracion de actividades rurales';
-                else if (tn.includes('recupera') && tn.includes('forest')) trat = 'Recuperacion para la produccion forestal';
-                else if (tn.includes('recupera'))   trat = 'Recuperacion ambiental';
-                else if (tn.includes('suburban'))   trat = 'Suburbanizacion restringida';
-                else if (tn.includes('produccion') || tn.includes('agric')) trat = 'Produccion agricola, ganadera y forestal';
-                else                                trat = r.tratamiento || '';
-
-                // Franja de intensidad: mapear NMG / densidad → baja/media/alta
-                let franja = '';
-                const fn = _norm(r.intensidad);
-                if (fn.includes('alta'))      franja = 'Franja alta';
-                else if (fn.includes('media'))franja = 'Franja media';
-                else if (fn.includes('baja')) franja = 'Franja baja';
-                else if (r.intensidad)        franja = r.intensidad;  // raw para fallback
-
-                potExtra = {
-                  poligono:      d.poligono || r.poligono || '',
-                  amenaza:       d.amenaza || r.amenaza || '',
-                  sueloProt:     d.sueloProt || r.sueloProt || '',
-                  clasificacion: clas,
-                  tratamiento:   trat,
-                  franja:        franja,
-                };
-                // Derivar proteccion para el <select> del informe
-                const sp = r.sueloProt === 'SI' || d.sueloProt === 'SI';
-                const am = r.amenaza === 'SI' || d.amenaza === 'SI';
-                if (am) {
-                  const tipo = _norm(r.amenazaTipo);
-                  if (tipo.includes('inunda')) potExtra.proteccion = 'Si - amenaza por inundacion';
-                  else if (tipo.includes('movim') || tipo.includes('masa')) potExtra.proteccion = 'Si - amenaza por movimiento en masa';
-                  else potExtra.proteccion = 'Si - amenaza por movimiento en masa';
-                } else if (sp) {
-                  potExtra.proteccion = 'Si - area protegida';
-                } else if (r.enRetiro === 'SI') {
-                  potExtra.proteccion = 'Si - ronda hidrica';
-                } else {
-                  potExtra.proteccion = 'No';
-                }
-              } catch(e) { /* silencioso: el informe queda sin POT auto */ }
-            }
-            window.abrirInformeF43({
-              fila: filaEditando,
-              idCarpeta: d.idCarpetaVisita,
-              // Oficio: el radicado no vive en el state, se deriva de la orden
-              // (mismo criterio que _construirPayload y _construirDatosF46).
-              // Sin esta derivación, abrirInformeF43 recibe '' y aborta con
-              // "faltan params obligatorios" en toda visita de oficio.
-              radicado: d.esOficio ? ('OFICIO-' + d.orden) : d.radicado,
-              fechaVisita: d.fechaVisita,
-              direccion: d.direccion,
-              barrio: d.barrio,
-              comuna: d.comuna,
-              catastral: d.catastral,
-              lat: d.lat, lon: d.lon,
-              inspector: usuario?.usuario || '',
-              cargo: usuario?.cargo || '',
-              seAportoLicencia: d.licenciaAportada,
-              numRes:           d.licencia,
-              fechaEjec:        d.fechaLicencia,
-              tipoModalidad:    d.tipoLicencia,
-              pisos:            d.pisos,
-              dest:             d.destinaciones,
-              cubierta:         d.cubierta,
-              sist:             d.sistema,
-              obsLicencia:      d.obsLicencia,
-              poligono:         d.poligono,
-              amenaza:          d.amenaza,
-              sueloProt:        d.sueloProt,
-              observaciones:    d.actuacion,
-              areas:            d.area,
-              // Comportamientos contrarios (Art.135) ya marcados en la visita
-              // (columna BD "TIPO DE INFRACCION") — informe/index.html los
-              // matchea por codigo (A1, C9, ...) contra sus propios .comp-ac,
-              // que usan un texto mas largo/distinto al de estos chips.
-              infraccion:       d.infraccion,
-              ...potExtra,
-            });
-          }} className="btn-principal secundario" style={{ margin: 0, fontSize: 15 }}>
-            Generar informe F-GGO-43
-          </button>)}
-        </div>
-      )}
-
-      {/* Registro fotográfico al final: primero el panel con las fotos,
-          después el botón para generar el documento RF. */}
-      {d.idCarpetaFotos && filaEditando && (
-        <SeccionFotos
-          idCarpetaFotos={d.idCarpetaFotos}
-          fila={filaEditando}
-          linkDrive={d.linkDrive}
-        />
-      )}
-      {filaEditando && (
-        <button onClick={abrirModalFotos} disabled={generandoRF || cargandoFotos}
-          aria-busy={generandoRF || cargandoFotos}
-          className="btn-principal secundario" style={{ fontSize: 15, marginTop: 14 }}>
-          {cargandoFotos ? 'Cargando fotos...' : generandoRF ? 'Generando...' : 'Generar registro fotográfico'}
-        </button>
-      )}
-
-      {/* Escáner de la orden de policía. Va aquí, entre los entregables, y no
-          junto al campo del N° de orden: `d.orden` se captura en dos sitios
-          distintos (arriba en visita de oficio, en Suspensión para PQR) y
-          duplicar el componente daría dos escáneres para el mismo PDF.
-          Exige carpeta de Drive + fila: la orden se sube a la carpeta de la
-          visita, que solo existe después del primer guardado. */}
-      {_hayOrdenReal(d.orden) && filaEditando && d.idCarpetaVisita && (
-        <EscanerOrdenPolicia
-          idCarpetaVisita={d.idCarpetaVisita}
-          fila={filaEditando}
-          orden={d.orden}
-          linkInicial={d.linkOrdenPolicia}
-          onSubido={link => setCampo('linkOrdenPolicia', link)}
-        />
-      )}
+        </>)}
+      </div>
 
       {/* Modal de revision de fotos antes de generar RF */}
       {modalFotos && (
@@ -3878,19 +4173,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </div>
       )}
 
-      {/* Botón "Ver carpeta Drive" al final del formulario */}
-      {d.linkDrive && (
-        <a href={d.linkDrive} target="_blank" rel="noopener noreferrer" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          marginTop: 16, padding: '14px 16px',
-          background: 'var(--gris-bg)', color: 'var(--texto)',
-          border: '1.5px solid var(--borde-med)',
-          borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-          textDecoration: 'none', cursor: 'pointer',
-        }}>
-          <Icon.Folder size={18} /> Ver carpeta Drive de la visita
-        </a>
-      )}
+      {/* El acceso a la carpeta de Drive ya no se duplica al final del
+          formulario: vive como renglón de la zona de entregables. */}
 
       {/* ── Barra fija: acción principal siempre alcanzable ─────────
           El nav inferior está oculto mientras se edita una visita
@@ -3902,32 +4186,32 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ maxWidth: 'var(--content-max)', margin: '0 auto' }}>
-          {/* Estado: offline o última hora de autoguardado */}
-          {!enLinea && !guardando && (
-            <div style={{
-              fontSize: 11, color: 'var(--cafe)', textAlign: 'center', marginBottom: 6,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amarillo)' }} />
-              Sin conexión — los datos se enviarán cuando vuelva la red.
-            </div>
-          )}
-          {enLinea && ultimoGuardadoMs && !guardando && (
-            <div style={{
-              fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 6,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--verde-dark)' }} />
-              Autoguardado &middot; {new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          )}
-          <button onClick={guardar} disabled={guardando} className="btn-principal"
+          {/* Estado de guardado permanente: el inspector no debe descubrir
+              al final del scroll que había cambios sin guardar. Prioridad:
+              guardando > error > cambios sin guardar > en cola > sin
+              conexión > guardado HH:MM. aria-live para lectores. */}
+          <div className={
+            'barra-estado-gs' +
+            (guardando ? ' bgs-guardando' : errorGuardar ? ' bgs-error' : dirty ? ' bgs-pendiente' : enColaGuardado ? ' bgs-cola' : '')
+          } aria-live="polite">
+            {guardando ? (<>
+              <span className="spinner-btn" aria-hidden="true" /> Guardando…
+            </>)
+            : errorGuardar ? '✕ No se pudo guardar — reintenta con el botón'
+            : dirty ? '● Cambios sin guardar'
+            : enColaGuardado ? '⇡ Guardado en cola — se envía al recuperar conexión'
+            : !enLinea ? 'Sin conexión — guarda y se enviará al recuperar la señal'
+            : ultimoGuardadoMs
+              ? '✓ Guardado · ' + new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+              : 'Sin cambios'}
+          </div>
+          <button onClick={guardar} disabled={guardando} aria-busy={guardando} className="btn-principal"
             style={{ margin: 0, fontSize: 16 }}>
             {guardando
-              ? 'Guardando...'
+              ? 'Guardando…'
               : (filaEditando
-                  ? (enLinea ? 'Actualizar visita' : 'Actualizar (se sincronizará)')
-                  : (enLinea ? 'Guardar visita'    : 'Guardar (se sincronizará)'))}
+                  ? (enLinea ? 'Guardar cambios' : 'Guardar (se envía con señal)')
+                  : (enLinea ? 'Guardar visita' : 'Guardar (se envía con señal)'))}
           </button>
         </div>
       </div>
@@ -3938,7 +4222,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 // ══════════════════════════════════════════════════════════════
 //   SECCIÓN FOTOS — subida + descripción IA
 // ══════════════════════════════════════════════════════════════
-function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
+function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
   const [subiendo, setSubiendo] = useStateNV(false);
   const [fotos, setFotos]       = useStateNV([]);  // [{ nombre, link, descripcion }]
   const [cola, setCola]         = useStateNV([]);   // archivos pendientes de subir
@@ -4041,17 +4325,26 @@ function SeccionFotos({ idCarpetaFotos, fila, linkDrive }) {
     return unsub;
   }, []);
 
+  // Reportar el conteo (subidas vs en cola) al panel de estado de la
+  // visita. En ref con effect: llamar al callback directo dentro del render
+  // dispararía setState ajeno durante el render de este componente.
+  const onFotosChangeRef = React.useRef(onFotosChange);
+  onFotosChangeRef.current = onFotosChange;
+  React.useEffect(function() {
+    if (typeof onFotosChangeRef.current !== 'function') return;
+    onFotosChangeRef.current({
+      subidas: fotos.filter(function(f) { return !f.pendiente; }).length,
+      enCola:  fotos.filter(function(f) { return !!f.pendiente; }).length,
+    });
+  }, [fotos]);
+
+  // Va embebido en el renglón "Fotos de la visita" de la zona de
+  // entregables: sin tarjeta propia (sería tarjeta dentro de tarjeta) y
+  // sin título (el renglón ya nombra la pieza) ni link a Drive (el
+  // renglón de la carpeta es el único acceso).
   return (
-    <div className="form-seccion" style={{ marginTop: 14 }}>
-      <span className="form-seccion-titulo">Registro fotográfico</span>
-      <div style={{ marginTop: 12 }}>
-        {linkDrive && (
-          <div style={{ marginBottom: 12 }}>
-            <a href={linkDrive} target="_blank" rel="noopener noreferrer" style={{
-              fontSize: 12, color: 'var(--brand-accent)', textDecoration: 'none',
-            }}>Abrir carpeta Drive de la visita</a>
-          </div>
-        )}
+    <div className="ent-slot-fotos">
+      <div>
 
         <label style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
