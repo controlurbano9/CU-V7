@@ -192,3 +192,22 @@ test('numerarVisitasRadicado — orden estable, no depende del orden de entrada'
   assert.equal(clave(ra), clave(rb), 'mismo array ordenado por n (desempate _idx)');
   assert.deepEqual(ra.map(x => x.n), [1, 2, 3, null]);
 });
+
+// ── normalizarCoord (2026-09-10) ──────────────────────────────
+// El locale del Sheet se comía el punto decimal de las coordenadas escritas
+// como texto; cada reguardado repetía el daño (×10^6 acumulativo).
+test('normalizarCoord — repara coordenadas con el decimal comido por el Sheet', () => {
+  const { normalizarCoord } = require('../utils.js');
+  // Caso real reportado: CR 52 64-134, lat dañada dos veces y lon una.
+  assert.equal(normalizarCoord(6345587000000, 'lat').toFixed(6), '6.345587');
+  assert.equal(normalizarCoord(-75559763, 'lon').toFixed(6), '-75.559763');
+  assert.equal(normalizarCoord(6345587, 'lat').toFixed(6), '6.345587');
+  // Una coordenada sana pasa intacta, venga como número, texto o con coma.
+  assert.equal(normalizarCoord(6.345587, 'lat'), 6.345587);
+  assert.equal(normalizarCoord('-75.559763', 'lon'), -75.559763);
+  assert.equal(normalizarCoord('6,345587', 'lat').toFixed(6), '6.345587');
+  // Vacíos y basura no inventan un punto en el mapa.
+  assert.equal(normalizarCoord('', 'lat'), null);
+  assert.equal(normalizarCoord(null, 'lon'), null);
+  assert.equal(normalizarCoord(0, 'lat'), null);
+});

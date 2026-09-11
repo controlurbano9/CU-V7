@@ -320,8 +320,10 @@ function _estadoInicial(datosIniciales) {
     direccion:      d['DIRECCION INFRACCION'] || d['DIRECCION']         || '',
     barrio:         d['BARRIO/VEREDA']        || d['BARRIO']            || '',
     comuna:         d['COMUNA']               || '',
-    lat:            d['LATITUD']              || null,
-    lon:            d['LONGITUD']             || null,
+    // normalizarCoord repara las filas que quedaron con el decimal comido
+    // por el locale del Sheet (ver utils.js); una coordenada sana pasa igual.
+    lat:            normalizarCoord(d['LATITUD'], 'lat'),
+    lon:            normalizarCoord(d['LONGITUD'], 'lon'),
     // Persona
     noAtiende:      (d['NOMBRE PERSONA ATIENDE'] || '').includes('No se atiende'),
     atiendeNombre:  d['NOMBRE PERSONA ATIENDE']  || '',
@@ -513,8 +515,10 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
     citFmt,                                       // AT FECHA CITACION
     _primeraMayus(d.actuacion) + (d.obsConclusion ? '\n══CONCLUSIONES══\n' + d.obsConclusion : ''), // AU ACTUACION / OBSERVACIONES (incluye conclusiones)
     '',                                           // AV RADICADOS REITERADOS
-    d.lat != null ? Number(d.lat).toFixed(6) : '',  // AW LATITUD
-    d.lon != null ? Number(d.lon).toFixed(6) : '',  // AX LONGITUD
+    // Número, NUNCA string: un "6.345587" escrito como texto lo reinterpreta
+    // el locale del Sheet (punto = separador de miles) y queda 6345587.
+    d.lat != null ? Number(Number(d.lat).toFixed(6)) : '',  // AW LATITUD
+    d.lon != null ? Number(Number(d.lon).toFixed(6)) : '',  // AX LONGITUD
     d.lat != null ? 'https://maps.google.com/?q=' + Number(d.lat).toFixed(6) + ',' + Number(d.lon).toFixed(6) : '', // AY MAPA
     _soloMay(d.poligono),                         // AZ POLIGONO USO SUELO
     d.amenaza || '',                              // BA AMENAZA

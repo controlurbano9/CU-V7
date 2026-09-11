@@ -47,6 +47,13 @@ function _g(f, ...keys) {
   }
   return '';
 }
+// Mismo saneo que nueva-visita: las filas viejas traen el decimal comido por
+// el locale del Sheet (ver normalizarCoord en utils.js).
+function _coordsVD(f) {
+  const lat = normalizarCoord(_g(f, 'LATITUD', 48), 'lat');
+  const lon = normalizarCoord(_g(f, 'LONGITUD', 49), 'lon');
+  return (lat != null && lon != null) ? `${lat.toFixed(6)}, ${lon.toFixed(6)}` : '—';
+}
 function _fmt(v) {
   if (v == null || v === '') return '—';
   // Fecha tipo "2026-05-19T..." → formato local
@@ -166,7 +173,7 @@ function VisitaDetailUI({ f, onCerrar }) {
             <_CampoVD l="Dirección"           v={_g(f, 'DIRECCION INFRACCION', 'DIRECCION', 3)} />
             <_CampoVD l="Barrio / Vereda"     v={_g(f, 'BARRIO/VEREDA', 'BARRIO', 4)} />
             <_CampoVD l="Comuna"              v={_g(f, 'COMUNA', 5)} />
-            <_CampoVD l="Coordenadas"         v={(_g(f, 'LATITUD', 48) && _g(f, 'LONGITUD', 49)) ? `${_g(f, 'LATITUD', 48)}, ${_g(f, 'LONGITUD', 49)}` : '—'} />
+            <_CampoVD l="Coordenadas"         v={_coordsVD(f)} />
             <_CampoVD l="Código catastral"    v={_g(f, 'CODIGO CATASTRAL', 'CATASTRAL', 32)} />
             <_CampoVD l="N° ficha predial"    v={_g(f, 'N° FICHA PREDIAL', 'N FICHA PREDIAL', 33)} />
           </_SeccionVD>

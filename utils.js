@@ -280,6 +280,29 @@ function linkPdfRadicado(f) {
   return '';
 }
 
+// ── Coordenadas de BD ─────────────────────────────────────────
+// Durante años lat/lon se escribieron en el Sheet como TEXTO
+// ("6.345587"). En una hoja cuyo locale toma el punto como separador de
+// miles, Sheets lo interpreta al escribirlo y se come el decimal:
+// 6.345587 → 6345587. Cada guardado posterior repite la operación
+// (6345587 → 6345587000000), y con esas cifras el mapa queda en gris.
+// Desde 2026-09-10 se escriben como número (nueva-visita.jsx y
+// actualizarCoordenadasEnBD), así que esto solo repara filas viejas:
+// se reescala por potencias de 10 hasta caer en el rango de Bello, que
+// es lo bastante estrecho para que solo una potencia encaje.
+var _RANGO_COORD = { lat: [5.8, 6.8], lon: [-76.5, -75.0] };
+function normalizarCoord(v, tipo) {
+  var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+  if (!isFinite(n) || n === 0) return null;
+  var r = _RANGO_COORD[tipo === 'lat' ? 'lat' : 'lon'];
+  for (var i = 0; i < 15 && (n < r[0] || n > r[1]); i++) n /= 10;
+  if (n >= r[0] && n <= r[1]) return n;
+  // Fuera de Bello pero geográficamente posible (visita en el límite,
+  // dato cargado a mano): se devuelve tal cual, no se inventa nada.
+  var orig = parseFloat(String(v).replace(',', '.'));
+  return Math.abs(orig) <= (tipo === 'lat' ? 90 : 180) ? orig : null;
+}
+
 // ── Numeración de visitas de un radicado (Buscar) ─────────────
 // Una fila PENDIENTE es la queja sin atender, no una visita: sale con
 // n = null y nunca lleva el rótulo "Visita N de M". Solo ASIGNADO,
@@ -348,6 +371,7 @@ var _cuUtilsExports = {
   puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,
+  normalizarCoord: normalizarCoord,
   numerarVisitasRadicado: numerarVisitasRadicado,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
