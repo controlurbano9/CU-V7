@@ -186,12 +186,115 @@ function _nuevoRequestId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
 }
 
+// ── Pedido de respaldo (hedging) para las lecturas que bloquean pantalla ──
+// Medido 2026-09-11: el script responde en 2,6 s (p50) y 5 s como máximo, pero
+// cuando el salto /macros/echo de Google se cuelga tarda ~30 s en dar 404. Con
+// un solo pedido y 45 s de límite, Inicio podía quedarse ~140 s en "Cargando…".
+// Ahora, si a los 8 s no hay respuesta sale un segundo pedido idéntico y gana
+// el primero que llegue: un cuelgue cuesta ~12 s en vez de 45. Solo para
+// lecturas puras — login queda fuera porque cada intento fallido suma al
+// bloqueo por intentos (LOGIN_MAX_INTENTOS).
+const _ACCIONES_CON_RESPALDO = { leerHoja: true, listarInspectoresActivos: true };
+const _RESPALDO_TRAS_MS    = 8000;
+// Límite hasta recibir la respuesta (cabeceras). El echo colgado da 404 ~30 s.
+const _LIMITE_CABECERAS_MS = 30000;
+// Ya en descarga, se aborta solo si pasan 12 s sin llegar ningún byte: con
+// señal débil una BD de 1,1 MB puede tardar, y mientras avance no se corta.
+const _LIMITE_SIN_BYTES_MS = 12000;
+
+function _parsearRespuesta(texto) {
+  let d;
+  try { d = JSON.parse(texto); }
+  catch (e) { throw new Error('Respuesta no válida del servidor'); } // página HTML de error de Google
+  if (!d || !d.ok) {
+    const err = new Error((d && d.error) || 'Apps Script error');
+    err.definitivo = !(d && d.enCurso);
+    throw err;
+  }
+  return d;
+}
+
+// Lee el cuerpo reiniciando el vigía con cada trozo recibido.
+async function _leerTextoVigilado(r, ctrl) {
+  if (!r.body || typeof r.body.getReader !== 'function' || typeof TextDecoder === 'undefined') {
+    const t = setTimeout(() => ctrl.abort(), _LIMITE_CABECERAS_MS);
+    try { return await r.text(); } finally { clearTimeout(t); }
+  }
+  const lector = r.body.getReader();
+  const dec = new TextDecoder();
+  let texto = '';
+  let vigia = setTimeout(() => ctrl.abort(), _LIMITE_SIN_BYTES_MS);
+  try {
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      clearTimeout(vigia);
+      vigia = setTimeout(() => ctrl.abort(), _LIMITE_SIN_BYTES_MS);
+      texto += dec.decode(value, { stream: true });
+    }
+    return texto + dec.decode();
+  } finally { clearTimeout(vigia); }
+}
+
+function _pedidoVigilado(hacerFetch) {
+  const ctrl = new AbortController();
+  const reloj = setTimeout(() => ctrl.abort(), _LIMITE_CABECERAS_MS);
+  const promesa = (async () => {
+    try {
+      const r = await hacerFetch(ctrl.signal);
+      clearTimeout(reloj);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return _parsearRespuesta(await _leerTextoVigilado(r, ctrl));
+    } catch (e) {
+      throw (e && e.name === 'AbortError') ? new Error('Tiempo de espera agotado (timeout)') : e;
+    } finally { clearTimeout(reloj); }
+  })();
+  return { promesa, cancelar: () => ctrl.abort() };
+}
+
+function _conRespaldo(hacerFetch) {
+  return new Promise((resolve, reject) => {
+    const pedidos = [];
+    let fallos = 0, terminado = false, relojRespaldo = null;
+    const cerrar = () => { terminado = true; clearTimeout(relojRespaldo); };
+    const lanzar = () => {
+      const p = _pedidoVigilado(hacerFetch);
+      pedidos.push(p);
+      p.promesa.then(d => {
+        if (terminado) return;
+        cerrar();
+        pedidos.forEach(o => { if (o !== p) o.cancelar(); });
+        resolve(d);
+      }, e => {
+        if (terminado) return;
+        fallos++;
+        if (e && e.definitivo) { cerrar(); pedidos.forEach(o => o.cancelar()); reject(e); return; }
+        // El primero cayó antes de que saliera el respaldo: sale ya.
+        if (pedidos.length < 2) { clearTimeout(relojRespaldo); lanzar(); return; }
+        if (fallos >= pedidos.length) { cerrar(); reject(e); }
+      });
+    };
+    lanzar();
+    relojRespaldo = setTimeout(() => { if (!terminado && pedidos.length < 2) lanzar(); }, _RESPALDO_TRAS_MS);
+  });
+}
+
 async function _llamarWebhook(hacerFetch, body) {
   const pol = _politicaReintento(body);
   const intentos = pol.reintentable ? _PAUSAS_REINTENTO_MS.length + 1 : 1;
+  const conRespaldo = !!(body && _ACCIONES_CON_RESPALDO[body.accion]) && typeof AbortController !== 'undefined';
   let ultimoError = null;
   for (let i = 0; i < intentos; i++) {
     if (i > 0) await new Promise(res => setTimeout(res, _PAUSAS_REINTENTO_MS[i - 1]));
+    if (conRespaldo) {
+      try { return await _conRespaldo(hacerFetch); }
+      catch (e) {
+        if (e.definitivo || !_esFalloTransitorio(e)) throw e;
+        ultimoError = e;
+        if (i < intentos - 1) console.warn('[webhook] ' + body.accion + ': ' + e.message + ' — reintento ' + (i + 1));
+        continue;
+      }
+    }
     const ctrl  = (pol.timeoutMs && typeof AbortController !== 'undefined') ? new AbortController() : null;
     const reloj = ctrl ? setTimeout(() => ctrl.abort(), pol.timeoutMs) : null;
     try {
@@ -227,7 +330,9 @@ async function _llamarWebhook(hacerFetch, body) {
 // ── GET con accion ─────────────────────────────────────────────
 async function gasGet(params) {
   const qs = new URLSearchParams(_conCredencialesSesion(params)).toString();
-  return _llamarWebhook(signal => fetch(CFG.webhook + '?' + qs, { signal }), params);
+  // no-store: sin él, Chrome serializa dos GET idénticos en vuelo (cache lock)
+  // y el pedido de respaldo esperaría al colgado en vez de correr en paralelo.
+  return _llamarWebhook(signal => fetch(CFG.webhook + '?' + qs, { signal, cache: 'no-store' }), params);
 }
 
 // ── POST text/plain (sin preflight) ────────────────────────────
@@ -266,24 +371,65 @@ function _cacheSet(key, data) {
   CACHE[key] = { data, expiraEn: Date.now() + CACHE_TTL_MS };
 }
 function invalidarCache(key) {
-  if (key) { CACHE[key] = { data: null, expiraEn: 0 }; return; }
-  Object.keys(CACHE).forEach(k => { CACHE[k] = { data: null, expiraEn: 0 }; });
+  const claves = key ? [key] : Object.keys(CACHE);
+  claves.forEach(k => { CACHE[k] = { data: null, expiraEn: 0 }; });
+  // Tras una escritura la copia local ya no refleja la BD: la siguiente
+  // lectura va primero a la red (con la copia solo como plan B sin conexión).
+  if (claves.indexOf('visitas') >= 0) { _genVisitas++; _visitasSucias = true; }
+  // Solo por clave explícita: el logout (sin clave) no cambia la lista pública.
+  if (key === 'inspectores') _inspectoresSucios = true;
 }
 
-// ── Leer BD VISITAS con headers → datos[{header:val, _idx}] ────
-// Por defecto usa caché (TTL 60s). Pase { forzar:true } para refetch.
-async function leerVisitas(opts) {
-  const forzar = !!(opts && opts.forzar);
-  if (!forzar) {
-    const hit = _cacheGet('visitas');
-    if (hit) return hit;
+// ── Copia local de datos (IndexedDB) ───────────────────────────
+// Base propia, separada de cu_offline_v1: esa la versionan offline-queue.js
+// y el Service Worker, y compartirla obligaría a coordinar sus upgrades.
+const _SNAP_DB = 'cu_datos_v1';
+const _SNAP_STORE = 'kv';
+const _SNAP_VISITAS = 'bd_visitas';
+let _snapDbPromesa = null;
+function _snapDb() {
+  if (!_snapDbPromesa) {
+    _snapDbPromesa = new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') { reject(new Error('sin IndexedDB')); return; }
+      const req = indexedDB.open(_SNAP_DB, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(_SNAP_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }).catch(e => { _snapDbPromesa = null; throw e; });
   }
-  const filas = await leerHoja(CFG.hoja);
-  if (!filas.length) {
-    const vacio = { headers: [], datos: [] };
-    _cacheSet('visitas', vacio);
-    return vacio;
-  }
+  return _snapDbPromesa;
+}
+async function _snapOperar(modo, fn) {
+  try {
+    const db = await _snapDb();
+    return await new Promise(res => {
+      const req = fn(db.transaction(_SNAP_STORE, modo).objectStore(_SNAP_STORE));
+      req.onsuccess = () => res(req.result === undefined ? null : req.result);
+      req.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+const _snapLeer    = clave        => _snapOperar('readonly',  s => s.get(clave));
+const _snapGuardar = (clave, val) => _snapOperar('readwrite', s => s.put(val, clave));
+const _snapBorrar  = clave        => _snapOperar('readwrite', s => s.delete(clave));
+
+// ── Estado de BD VISITAS en la pestaña ─────────────────────────
+// Inicio pinta al instante con la última copia conocida (memoria o IndexedDB)
+// y la refresca por detrás; si la BD cambió, avisa con el evento
+// 'cu-visitas-actualizadas' (ver suscribirVisitas). Antes cada arranque bajaba
+// 1,1 MB por el salto de Google que se cuelga, sin nada que mostrar mientras.
+let _visitasUltimas = null;   // último resultado servido (red o copia local)
+let _visitasDeRed = false;    // _visitasUltimas vino de la red en esta pestaña
+let _firmaVisitas = '';       // JSON de los values de _visitasUltimas
+let _visitasSucias = false;   // hubo escritura desde la última descarga
+let _genVisitas = 0;          // sube con cada invalidarCache('visitas')
+let _visitasEnVuelo = null;   // { gen, promesa } — una sola descarga compartida
+let _snapVisitasLeida = null; // promesa de la lectura única de IndexedDB
+let _resolverPrimeraCarga = null;
+const _primeraCargaVisitas = new Promise(res => { _resolverPrimeraCarga = res; });
+
+function _procesarVisitas(filas) {
+  if (!filas || !filas.length) return { headers: [], datos: [] };
   const headers = filas[0];
   const datos = filas.slice(1)
     .map((fila, i) => {
@@ -296,9 +442,107 @@ async function leerVisitas(opts) {
       return obj;
     })
     .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '');
-  const result = { headers, datos };
-  _cacheSet('visitas', result);
-  return result;
+  return { headers, datos };
+}
+
+// Última copia conocida sin tocar la red: memoria o, al arrancar, IndexedDB.
+function _visitasLocales() {
+  if (_visitasUltimas) return Promise.resolve(_visitasUltimas);
+  if (!_snapVisitasLeida) {
+    _snapVisitasLeida = _snapLeer(_SNAP_VISITAS).then(reg => {
+      if (_visitasUltimas) return _visitasUltimas; // la red ganó mientras se leía
+      if (!reg || typeof reg.json !== 'string') return null;
+      _visitasUltimas = _procesarVisitas(JSON.parse(reg.json));
+      _firmaVisitas = reg.json;
+      return _visitasUltimas;
+    }).catch(() => null);
+  }
+  return _snapVisitasLeida;
+}
+
+function _descargarVisitas() {
+  const gen = _genVisitas;
+  // Todas las pantallas (y "Recargar") comparten la descarga en curso, salvo
+  // que haya habido una escritura después de lanzarla: esa podría no incluirla.
+  if (_visitasEnVuelo && _visitasEnVuelo.gen === gen) return _visitasEnVuelo.promesa;
+  const promesa = leerHoja(CFG.hoja).then(values => {
+    if (gen !== _genVisitas) return _procesarVisitas(values); // se entrega, no se guarda como vigente
+    const json = JSON.stringify(values);
+    const cambio = json !== _firmaVisitas || !_visitasUltimas;
+    if (cambio) _visitasUltimas = _procesarVisitas(values);
+    _firmaVisitas = json;
+    _visitasDeRed = true;
+    _visitasSucias = false;
+    _cacheSet('visitas', _visitasUltimas);
+    if (cambio) {
+      _snapGuardar(_SNAP_VISITAS, { json, ts: Date.now() });
+      try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
+    }
+    return _visitasUltimas;
+  }).finally(() => {
+    if (_visitasEnVuelo && _visitasEnVuelo.promesa === promesa) _visitasEnVuelo = null;
+    _resolverPrimeraCarga();
+  });
+  _visitasEnVuelo = { gen, promesa };
+  return promesa;
+}
+
+// ── Leer BD VISITAS con headers → datos[{header:val, _idx}] ────
+// Sin opciones: copia de red de hace <60 s, o la última copia conocida al
+// instante (refrescándola por detrás). { forzar:true } espera a la red.
+async function leerVisitas(opts) {
+  if (opts && opts.forzar) return _descargarVisitas();
+  const hit = _cacheGet('visitas');
+  if (hit) return hit;
+  const local = await _visitasLocales();
+  if (local && !_visitasSucias) {
+    _descargarVisitas().catch(e => console.warn('[visitas] actualización en segundo plano: ' + e.message));
+    return local;
+  }
+  try { return await _descargarVisitas(); }
+  catch (e) { if (local) return local; throw e; } // sin red: mejor la copia que nada
+}
+
+// Las pantallas que listan visitas se re-pintan cuando la actualización en
+// segundo plano trae cambios. Devuelve la función para desuscribirse.
+function suscribirVisitas(fn) {
+  const h = () => fn();
+  window.addEventListener('cu-visitas-actualizadas', h);
+  return () => window.removeEventListener('cu-visitas-actualizadas', h);
+}
+
+// Resuelve cuando termina (bien o mal) la primera descarga de la BD: las
+// precargas pesadas de app.jsx esperan a esto para no quitarle ancho de banda.
+function esperarPrimeraCargaVisitas() { return _primeraCargaVisitas; }
+
+// Fila con la que se abre el formulario. Si la lista se pintó con la copia
+// local y la red aún no confirmó, espera la descarga en curso (máx. 12 s):
+// abrir el formulario con datos viejos haría que el Guardar chocara con el
+// control de conflictos. Sin red, sigue con la fila que se tocó.
+async function obtenerFilaVigente(fila, respaldo) {
+  const buscar = res => {
+    const f = res && res.datos.find(x => x._idx === fila);
+    // Si alguien borró u ordenó filas en el Sheet, el _idx ya es otra visita.
+    return (f && respaldo && f['RADICADO'] === respaldo['RADICADO']) ? f : respaldo;
+  };
+  if (!fila) return respaldo;
+  if (_visitasDeRed && !_visitasSucias) return buscar(_visitasUltimas);
+  // En campo sin señal no hay nada que confirmar: los reintentos solo
+  // retrasarían ~6 s la apertura.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return respaldo;
+  try {
+    const res = await Promise.race([
+      _descargarVisitas(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('espera agotada')), 12000)),
+    ]);
+    return buscar(res);
+  } catch (e) { return respaldo; }
+}
+
+function _olvidarVisitasLocales() {
+  _visitasUltimas = null; _visitasDeRed = false; _firmaVisitas = '';
+  _snapVisitasLeida = null;
+  _snapBorrar(_SNAP_VISITAS);
 }
 
 // ── Normalizar estado (igual que app.js) ───────────────────────
@@ -336,16 +580,42 @@ async function login(nombre, pin) {
 // ── Inspectores activos (público, para combo del login) ────────
 // El backend devuelve solo {nombre, cargo, rol} — sin hashes.
 // Cacheado en memoria (TTL 60s). { forzar:true } para refetch.
+// También en localStorage (son datos públicos: nombre, cargo, rol): la pantalla
+// de login quedaba con el combo deshabilitado hasta que respondiera el webhook.
+// Ahora sale al instante con la última lista y la refresca por detrás;
+// { onActualizado } recibe la lista nueva si cambió.
+const _LS_INSPECTORES = 'cu_inspectores_v1';
+let _inspectoresSucios = false;
+let _inspectoresEnVuelo = null;
+
+function _descargarInspectores() {
+  if (_inspectoresEnVuelo) return _inspectoresEnVuelo;
+  _inspectoresEnVuelo = gasGet({ accion: 'listarInspectoresActivos' }).then(d => {
+    const lista = d.inspectores || [];
+    _cacheSet('inspectores', lista);
+    _inspectoresSucios = false;
+    try { localStorage.setItem(_LS_INSPECTORES, JSON.stringify(lista)); } catch (e) {}
+    return lista;
+  }).finally(() => { _inspectoresEnVuelo = null; });
+  return _inspectoresEnVuelo;
+}
+
 async function listarInspectoresActivos(opts) {
   const forzar = !!(opts && opts.forzar);
   if (!forzar) {
     const hit = _cacheGet('inspectores');
     if (hit) return hit;
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(_LS_INSPECTORES) || 'null'); } catch (e) {}
+    if (Array.isArray(local) && local.length && !_inspectoresSucios) {
+      const cb = opts && opts.onActualizado;
+      _descargarInspectores().then(lista => {
+        if (cb && JSON.stringify(lista) !== JSON.stringify(local)) cb(lista);
+      }).catch(() => {});
+      return local;
+    }
   }
-  const d = await gasGet({ accion: 'listarInspectoresActivos' });
-  const lista = d.inspectores || [];
-  _cacheSet('inspectores', lista);
-  return lista;
+  return _descargarInspectores();
 }
 
 // ── ADMIN: usuarios completos ──────────────────────────────────
@@ -931,6 +1201,10 @@ const SESSION = {
     sessionStorage.removeItem('cu_hash');
     // Higiene: el caché de datos del usuario actual no debe vivir a la sesión.
     invalidarCache();
+    // La copia local de la BD lleva datos de denunciantes: mismo criterio que
+    // los borradores, no sobrevive al logout explícito (sí al vencimiento de
+    // la sesión, que no pasa por aquí).
+    _olvidarVisitasLocales();
   },
 };
 

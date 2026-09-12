@@ -235,6 +235,10 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
   }
 
   const bloqueado = !!ocupado;
+  // Con la orden ya subida, el renglón de arriba ya muestra «Escaneada» +
+  // «Ver»: el control pasa a peso secundario y dice «Reemplazar escaneo»,
+  // para no parecer trabajo pendiente ni competir como segundo CTA primario.
+  const reemplazo = !!link && paginas.length === 0;
 
   // Va embebido en el renglón "Orden de policía" de la zona de entregables
   // de nueva-visita: sin tarjeta propia (tarjeta dentro de tarjeta) ni
@@ -254,16 +258,26 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
           </div>
         )}
 
-        <label style={{
+        <label style={Object.assign({
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          minHeight: 'var(--tap)', padding: '14px 16px',
-          border: '1px solid var(--brand)', borderRadius: 'var(--r)',
+          minHeight: 'var(--tap)',
+          padding: reemplazo ? '9px 14px' : '14px 16px',
+          borderRadius: reemplazo ? 'var(--r-sm)' : 'var(--r)',
           textAlign: 'center', cursor: bloqueado ? 'wait' : 'pointer',
-          background: 'var(--brand-bg)', fontSize: 14, fontWeight: 600,
-          color: 'var(--brand-ink)', opacity: bloqueado ? 0.55 : 1,
-        }}>
-          {bloqueado ? <span className="spinner-btn" aria-hidden="true" /> : <Icon.Plus size={18} />}
-          {bloqueado ? ocupado : (paginas.length ? 'Agregar otra página' : 'Escanear orden de policía')}
+          fontSize: reemplazo ? 13 : 14, fontWeight: reemplazo ? 500 : 600,
+          opacity: bloqueado ? 0.55 : 1,
+        }, reemplazo ? {
+          border: '1px solid var(--borde-med)',
+          background: 'var(--surface-2)', color: 'var(--ink)',
+        } : {
+          border: '1px solid var(--brand)',
+          background: 'var(--brand-bg)', color: 'var(--brand-ink)',
+        })}>
+          {bloqueado ? <span className="spinner-btn" aria-hidden="true" />
+            : (reemplazo ? <Icon.Refresh size={16} /> : <Icon.Plus size={18} />)}
+          {bloqueado ? ocupado
+            : (paginas.length ? 'Agregar otra página'
+              : (reemplazo ? 'Reemplazar escaneo' : 'Escanear orden de policía'))}
           {/* capture="environment" abre la cámara trasera directo, sin pasar
               por el selector de galería (que es lo que hace la sección de
               fotos, donde sí hace falta poder elegir tomas previas). */}

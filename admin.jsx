@@ -52,9 +52,10 @@ function TabVigilancia() {
   const [busyFila, setBusyFila] = useStateA(null);
 
   useEffectA(() => { cargar(); }, []);
+  useEffectA(() => suscribirVisitas(() => cargar(false, true)), []);
 
-  async function cargar(forzar) {
-    setCargando(true); setError('');
+  async function cargar(forzar, silencioso) {
+    if (!silencioso) { setCargando(true); setError(''); }
     try {
       const { datos } = await leerVisitas({ forzar: !!forzar });
       const susp = datos.filter(d => {
@@ -67,7 +68,7 @@ function TabVigilancia() {
       // parseamos a timestamp para que "02/02/2026" > "10/01/2026" como debe ser.
       susp.sort((a, b) => _ts(b['FECHA DE VISITA']) - _ts(a['FECHA DE VISITA']));
       setFilas(susp);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
   }
 

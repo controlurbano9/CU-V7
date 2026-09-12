@@ -6,7 +6,25 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v119';
+const CACHE_NAME = 'cu-v6-cache-v121';
+
+// Cachés de datos con nombre fijo: NO se borran al bumpar CACHE_NAME. Hasta
+// v119 todo vivía en CACHE_NAME y cada despliegue (casi diario) tiraba
+// catastro.json (37 MB), las capas POT y los tiles del mapa, mientras las
+// marcas de precarga de app.jsx seguían en 'done': el modo offline quedaba
+// roto sin aviso y el catastro se volvía a bajar al primer uso.
+const DATA_CACHE  = 'cu-datos-v1';
+const TILES_CACHE = 'cu-tiles-v1';
+const CACHES_VIGENTES = [CACHE_NAME, DATA_CACHE, TILES_CACHE];
+
+// El SWR revalidaba en CADA petición: cada consulta de catastro volvía a bajar
+// 37 MB por detrás, compitiendo con el webhook. Ahora como mucho una vez al día.
+const SWR_REVALIDAR_MS = 24 * 60 * 60 * 1000;
+function _conMarcaDeTiempo(response) {
+  const h = new Headers(response.headers);
+  h.set('x-cu-guardado', String(Date.now()));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: h });
+}
 
 // URL del webhook unificado de Apps Script — única fuente: env.js
 // (auditoría 2026-07, hallazgo Arch#6/MP1: antes vivía copiada 3 veces).
@@ -260,7 +278,7 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys
-        .filter(k => k !== CACHE_NAME)
+        .filter(k => CACHES_VIGENTES.indexOf(k) === -1)
         .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
@@ -278,12 +296,13 @@ self.addEventListener('fetch', event => {
   // El <img> del SDK los pide en no-cors, y una respuesta opaca no se puede
   // cachear (`response.ok` es false). /maps/vt sí responde con CORS, así que
   // se re-pide en modo cors sólo cuando hay que ir a la red.
-  // ponytail: la caché de tiles crece sin tope; se purga sola en cada bump de
-  // CACHE_NAME. Si eso deja de bastar, hace falta LRU por fecha de uso.
+  // ponytail: la caché de tiles crece sin tope y ya no se purga con los bumps
+  // de CACHE_NAME (acotada por la grilla de Bello). Si crece de más, hace
+  // falta LRU por fecha de uso.
   const claveT = claveTile(url);
   if (claveT) {
     event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
+      caches.open(TILES_CACHE).then(cache =>
         cache.match(claveT).then(cached => {
           if (cached) return cached;
           return fetch(new Request(url, { mode: 'cors', credentials: 'omit' }))
@@ -303,13 +322,24 @@ self.addEventListener('fetch', event => {
   // offline, pero también deben actualizarse cuando llegan cambios.
   if (isSWR(url)) {
     event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
+      caches.open(DATA_CACHE).then(cache =>
         cache.match(event.request).then(cached => {
-          const fetched = fetch(event.request).then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
-            return response;
-          }).catch(() => cached);  // sin red: usa el cached existente
-          return cached || fetched;
+          const edad = cached ? Date.now() - Number(cached.headers.get('x-cu-guardado') || 0) : Infinity;
+          if (cached && edad < SWR_REVALIDAR_MS) return cached;
+          const red = fetch(event.request).then(response => {
+            const guardado = response.ok
+              ? cache.put(event.request, _conMarcaDeTiempo(response.clone())).catch(() => {})
+              : Promise.resolve();
+            return { response, guardado };
+          });
+          // waitUntil: sin él el navegador puede matar el SW antes de terminar
+          // de guardar un archivo de 37 MB.
+          if (cached) {
+            event.waitUntil(red.then(x => x.guardado).catch(() => {}));
+            return cached;
+          }
+          return red.then(x => { event.waitUntil(x.guardado); return x.response; })
+            .catch(() => cached);  // sin red ni copia: error de red, igual que antes
         })
       )
     );

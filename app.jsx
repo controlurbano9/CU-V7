@@ -13,7 +13,11 @@ const { useState: useStateApp, useEffect: useEffectApp, useRef: useRefApp } = Re
 // cada tile y lo cachea con estrategia cache-first.
 // Se ejecuta UNA VEZ tras el login; localStorage guarda el flag.
 // ═══════════════════════════════════════════════════════════════
-var MAP_PRECACHE_KEY = 'cu_map_precache_v2'; // bumpar si cambia la grilla
+// v3 (2026-09-11): hasta sw.js v119 cada despliegue borraba la caché de tiles
+// pero esta marca seguía en 'done' y no se volvían a precargar. Ahora viven en
+// una caché que sobrevive a los despliegues (cu-tiles-v1); se bumpa una vez
+// para repoblarla.
+var MAP_PRECACHE_KEY = 'cu_map_precache_v3'; // bumpar si cambia la grilla
 var BELLO_BOUNDS = { north: 6.395, south: 6.300, west: -75.600, east: -75.510 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -23,7 +27,8 @@ var BELLO_BOUNDS = { north: 6.395, south: 6.300, west: -75.600, east: -75.510 };
 // stale-while-revalidate, así que estas peticiones también lo poblan.
 // Una vez completado, se guarda flag en localStorage para no repetir.
 // ═══════════════════════════════════════════════════════════════
-var DATA_PRECACHE_KEY = 'cu_data_precache_v1'; // bumpar al cambiar la lista de capas
+// v2: mismo motivo que MAP_PRECACHE_KEY — ahora en cu-datos-v1, que sobrevive a los despliegues.
+var DATA_PRECACHE_KEY = 'cu_data_precache_v2'; // bumpar al cambiar la lista de capas
 var POT_BASE_URL = 'https://raw.githubusercontent.com/controlurbano9/pot-bello/main/';
 var CAPAS_POT_PRECACHE = [
   'ClasificacionSueloMunicipal.geojson',
@@ -57,6 +62,31 @@ async function _precacheDatos(onProgress) {
     .finally(function() { hecho++; onProgress(hecho, total); });
 
   try { localStorage.setItem(DATA_PRECACHE_KEY, 'done'); } catch (e) {}
+}
+
+async function _catastroEnCache() {
+  try {
+    if (typeof caches === 'undefined') return false;
+    return !!(await caches.match(new URL('catastro.json', location.href).href));
+  } catch (e) { return false; }
+}
+
+// Las precargas (catastro 37 MB, capas POT, librerías, ~140 vistas de mapa)
+// comparten el ancho de banda con la descarga de la BD que espera Inicio.
+// Arrancan cuando esa termina (o a los 45 s como máximo) + `ms`.
+function _trasPrimeraCarga(ms) {
+  var primera = (typeof esperarPrimeraCargaVisitas === 'function') ? esperarPrimeraCargaVisitas() : Promise.resolve();
+  return Promise.race([primera, new Promise(function(r) { setTimeout(r, 45000); })])
+    .then(function() { return new Promise(function(r) { setTimeout(r, ms); }); });
+}
+
+// Con ahorro de datos o conexión de 3G para abajo, las precargas de decenas de
+// MB se dejan para una sesión con mejor señal.
+function _redAguantaPrecargaPesada() {
+  var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!c) return true;
+  if (c.saveData) return false;
+  return ['slow-2g', '2g', '3g'].indexOf(c.effectiveType) === -1;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -500,19 +530,19 @@ function AppV6() {
   const [dataPrecache, setDataPrecache] = useStateApp(null); // null | {progreso, total} | 'done'
   useEffectApp(() => {
     if (!usuario) return;
-    if (!navigator.onLine) return;
-    // turf + SDK de Maps: fuera de la ruta crítica de arranque, pero
-    // necesarias offline. Se traen siempre (son cache-first en el SW, así
-    // que a partir de la 2ª vez no cuestan red) y sin bloquear la UI.
-    var libs = setTimeout(_precargarLibsPesadas, 3000);
-    try {
-      if (localStorage.getItem(DATA_PRECACHE_KEY) === 'done') {
-        return function() { clearTimeout(libs); };
-      }
-    } catch (e) {}
     var cancelado = false;
-    var timer = setTimeout(function() {
-      if (cancelado) return;
+    // Antes arrancaba a los 3 s del login, en plena descarga de la BD que
+    // espera Inicio. Ahora espera a que esa termine.
+    _trasPrimeraCarga(2000).then(async function() {
+      if (cancelado || !navigator.onLine) return;
+      // turf + SDK de Maps: necesarias offline. Se traen siempre (son
+      // cache-first en el SW, a partir de la 2ª vez no cuestan red).
+      _precargarLibsPesadas();
+      var hecho = false;
+      try { hecho = localStorage.getItem(DATA_PRECACHE_KEY) === 'done'; } catch (e) {}
+      // La marca no basta: el navegador puede desalojar la caché por su cuenta.
+      if (hecho && await _catastroEnCache()) return;
+      if (cancelado || !_redAguantaPrecargaPesada()) return;
       setDataPrecache({ progreso: 0, total: CAPAS_POT_PRECACHE.length + 1 });
       _precacheDatos(function(p, t) {
         if (!cancelado) setDataPrecache({ progreso: p, total: t });
@@ -521,26 +551,29 @@ function AppV6() {
         setDataPrecache('done');
         setTimeout(function() { if (!cancelado) setDataPrecache(null); }, 4000);
       });
-    }, 3000);
-    return function() { cancelado = true; clearTimeout(timer); clearTimeout(libs); };
+    });
+    return function() { cancelado = true; };
   }, [usuario]);
 
   // ── Precarga automática de mapa offline (una vez tras login) ──
   // Solo corre si: hay usuario + hay conexión + localStorage no tiene 'done'
-  // + no hay otro precache corriendo. Delay 5s para no competir con carga inicial.
+  // + no hay otro precache corriendo.
   const [mapPrecache, setMapPrecache] = useStateApp(null); // null | {progreso, total} | 'done'
   const precacheCancelRef = useRefApp(false);
   const precacheRunningRef = useRefApp(false); // evita doble ejecución
+  const abriendoVisitaRef = useRefApp(false);  // evita doble apertura mientras se confirma la fila
   useEffectApp(() => {
     if (!usuario) return;
     // No repetir si ya se completó antes en este navegador
     try { if (localStorage.getItem(MAP_PRECACHE_KEY) === 'done') return; } catch(e) {}
     // No repetir si ya está en curso
     if (precacheRunningRef.current) return;
-    // Necesita conexión y Google Maps cargado
-    if (!navigator.onLine) return;
-    // Delay 5s para no competir con la carga inicial de la app
-    var timer = setTimeout(async function() {
+    // Espera a que termine la primera descarga de la BD (antes: 5 s fijos
+    // tras el login, compitiendo con ella) y a una conexión que aguante
+    // ~140 vistas satelitales.
+    var cancelado = false;
+    _trasPrimeraCarga(8000).then(async function() {
+      if (cancelado || !navigator.onLine || !_redAguantaPrecargaPesada()) return;
       // Antes: `if (typeof google === 'undefined') return;` — un abandono
       // silencioso. Con el SDK cargándose bajo demanda esa rama se cumpliría
       // siempre y los tiles offline no se precargarían nunca.
@@ -554,7 +587,7 @@ function AppV6() {
         }
         if (typeof google === 'undefined' || !google.maps) return;
       }
-      if (precacheCancelRef.current) return;
+      if (cancelado) return;
       if (precacheRunningRef.current) return;
       precacheRunningRef.current = true;
       precacheCancelRef.current = false;
@@ -572,8 +605,8 @@ function AppV6() {
         },
         precacheCancelRef
       );
-    }, 5000);
-    return function() { clearTimeout(timer); precacheCancelRef.current = true; };
+    });
+    return function() { cancelado = true; precacheCancelRef.current = true; };
   }, [usuario]);
 
   if (!usuario) {
@@ -633,9 +666,17 @@ function AppV6() {
     saltarGuardRef.current = true;
     history.back();
   }
-  function irContinuar(fila, datos) {
-    setContextoNueva({ fila, datos });
-    navegar('nueva-visita');
+  // Las listas pueden venir de la copia local (IndexedDB) mientras la red
+  // confirma: obtenerFilaVigente() entrega la fila de BD al día para que el
+  // formulario no abra con datos viejos.
+  async function irContinuar(fila, datos) {
+    if (abriendoVisitaRef.current) return;
+    abriendoVisitaRef.current = true;
+    try {
+      const vigente = (typeof obtenerFilaVigente === 'function') ? await obtenerFilaVigente(fila, datos) : datos;
+      setContextoNueva({ fila, datos: vigente });
+      navegar('nueva-visita');
+    } finally { abriendoVisitaRef.current = false; }
   }
 
   // Pestañas según rol — Icono es un componente de Icon.* (icons.jsx)

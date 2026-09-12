@@ -14,3 +14,7 @@ env.js
 
 # Caché intermedia del skill /graphify (AST/semántica) — regenerable, no es el grafo
 graphify-out/
+
+# QA visual: capturas y perfil temporal del MCP de Playwright
+cc-*.png
+.playwright-mcp/

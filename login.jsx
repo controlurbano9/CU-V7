@@ -20,7 +20,9 @@ function LoginScreen({ onLogin }) {
     setCargandoLista(true);
     setFallóLista(false);
     setError('');
-    listarInspectoresActivos()
+    // Sale al instante con la última lista guardada; si el webhook trae una
+    // distinta, se reemplaza sin tocar la selección.
+    listarInspectoresActivos({ onActualizado: setInspectores })
       .then(list => {
         setInspectores(list);
         setCargandoLista(false);

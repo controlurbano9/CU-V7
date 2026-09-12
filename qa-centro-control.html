@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!-- ═══════════════════════════════════════════════════════════════
+     Banco de pruebas del «Centro de control de la visita».
+     Monta NuevaVisitaScreen con datos falsos y TODA la red stubeada:
+     el formulario real dispara autoguardado remoto cada 60 s, así que
+     abrir una visita de verdad para revisar la UI escribiría en la BD.
+     Escenario por query param: ?e=nueva|faltantes|completa|offline
+     No se enlaza desde la app; es solo para QA visual local.
+     ═══════════════════════════════════════════════════════════════ -->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QA — Centro de control de la visita</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="env.js"></script>
+<script src="offline-queue.js"></script>
+<script src="api.js"></script>
+<script src="utils.js"></script>
+<script src="bundle.min.js"></script>
+
+<script>
+// ── Stubs: nada sale a la red ─────────────────────────────────
+// Se pisan DESPUÉS de cargar api.js para conservar el resto del módulo.
+const _params   = new URLSearchParams(location.search);
+const ESCENARIO = _params.get('e') || 'faltantes';
+
+window.fetch = function () {
+  return Promise.reject(new Error('QA: red deshabilitada en el banco de pruebas'));
+};
+window.guardarVisita = function () {
+  return Promise.resolve({ ok: true, fila: 742, linkDrive: 'https://drive.google.com/drive/folders/QA' });
+};
+window.listarFotosActa = function () {
+  return Promise.resolve({
+    ok: true,
+    fotos: ESCENARIO === 'completa'
+      ? Array.from({ length: 18 }, function (_, i) {
+          return { nombre: 'IMG_' + (i + 1) + '.jpg', link: '#', descripcion: 'Vista ' + (i + 1) + ' de la construcción' };
+        })
+      : [],
+  });
+};
+// La BD solo persiste LINK_DRIVE: la subcarpeta /Fotos se descubre por
+// webhook (`nueva-visita.jsx:1984`), así que sin este stub la fila de fotos
+// queda en «Sin fotos» y su control de subida nunca se monta — no basta con
+// poner ID_CARPETA_FOTOS en el fixture, que `_estadoInicial` ignora.
+window.obtenerIdFotos = function () {
+  return Promise.resolve(
+    (ESCENARIO === 'completa' || ESCENARIO === 'offline') ? 'QA-FOTOS' : ''
+  );
+};
+window.consultarPOT       = function () { return Promise.resolve({}); };
+window.buscarCatastroGPS  = function () { return Promise.resolve({ ok: true, resultados: [] }); };
+window.abrirInformeF43    = function () { console.log('[QA] abrirInformeF43 llamado'); };
+
+// Sin conexión: el navegador no deja escribir navigator.onLine directo.
+if (ESCENARIO === 'offline') {
+  Object.defineProperty(window.navigator, 'onLine', { get: function () { return false; }, configurable: true });
+}
+
+// ── Datos de las visitas de prueba ────────────────────────────
+const BASE = {
+  'ATENCION PQR': 'PQR',
+  'RADICADO': '2026-749',
+  'FECHA RADICADO': '05/08/2026',
+  'DIRECCION INFRACCION': 'CR 52 64-134',
+  'BARRIO/VEREDA': 'NIQUIA',
+  'COMUNA': '4',
+  'ESTADO VISITA': 'INICIADO',
+  'VISITADOR(ES)': 'DANIEL PEDRAZA',
+  'FECHA DE VISITA': '09/08/2026',
+  'LATITUD': 6.345587,
+  'LONGITUD': -75.554,
+};
+
+const ESCENARIOS = {
+  // Formulario en blanco: no hay fila, así que no hay entregables todavía.
+  nueva: { fila: null, datos: null },
+
+  // Visita iniciada a medio diligenciar — el caso más común en campo.
+  faltantes: { fila: 742, datos: BASE },
+
+  // Visita con todo generado y 18 fotos ya en Drive.
+  completa: {
+    fila: 742,
+    datos: Object.assign({}, BASE, {
+      'N° ORDEN DE POLICIA': '2026-09-015',
+      'SUSPENSION': 'SI',
+      'LINK_DRIVE': 'https://drive.google.com/drive/folders/QA',
+      'LINK_XLSX_ACTA': 'https://docs.google.com/spreadsheets/d/QA',
+      'LINK_DOCX_INFORME': 'https://docs.google.com/document/d/QA',
+      'LINK_ORDEN_POLICIA': 'https://drive.google.com/file/d/QA',
+      'LINK_PDF_RADICADO': 'https://drive.google.com/file/d/QA-PQR',
+      'NOMBRE PERSONA ATIENDE': 'Juan Pérez',
+      'ACTUACION / OBSERVACIONES': 'Se evidencia construcción de tres niveles sin licencia.',
+    }),
+  },
+
+  // Sin conexión, con carpeta creada: debe verse el estado "en cola".
+  offline: {
+    fila: 742,
+    datos: Object.assign({}, BASE, {
+      'LINK_DRIVE': 'https://drive.google.com/drive/folders/QA',
+    }),
+  },
+};
+
+const _e = ESCENARIOS[ESCENARIO] || ESCENARIOS.faltantes;
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  React.createElement('div', { className: 'app-contenido', style: { padding: 16, paddingBottom: 120 } },
+    React.createElement(window.NuevaVisitaScreen, {
+      usuario: { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Inspector de Control Urbano' },
+      filaInicial: _e.fila,
+      datosIniciales: _e.datos,
+      onSalir: function () { console.log('[QA] onSalir'); },
+    })
+  )
+);
+</script>
+</body>
+</html>

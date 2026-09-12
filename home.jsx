@@ -18,13 +18,16 @@ function HomeScreen({ usuario, onContinuar }) {
   const miNombre = usuario.usuario.toUpperCase();
 
   useEffectH(() => { cargar(); }, []);
+  // La lista sale de la copia local al instante; si la red trae cambios se
+  // re-pinta sin spinner.
+  useEffectH(() => suscribirVisitas(() => cargar(false, true)), []);
 
-  async function cargar(forzar) {
-    setCargando(true); setError('');
+  async function cargar(forzar, silencioso) {
+    if (!silencioso) { setCargando(true); setError(''); }
     try {
       const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
       setDatos(all);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
   }
 

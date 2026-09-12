@@ -1499,6 +1499,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [guardando, setGuard]   = useStateNV(false);
   const [generandoActa, setGA]  = useStateNV(false);
   const [generandoRF,  setGRF]  = useStateNV(false);
+  // Link del registro fotográfico generado en ESTA sesión (no viaja por BD):
+  // activa el patrón «Ver» + ↻ en el renglón. Ver comentario en confirmarYGenerarRF.
+  const [linkRegistroFotos, setLinkRegistroFotos] = useStateNV('');
   // Informe F-GGO-43: la "generación" es abrir informe/index.html (pestaña o
   // iframe); este flag solo marca el tramo validación→apertura.
   const [abriendoInforme, setAI] = useStateNV(false);
@@ -3006,6 +3009,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const r = await gasPost(payload);
       const link = r.linkDoc;
       if (link) {
+        setLinkRegistroFotos(link);
         await appAlert(
           (r.yaExistia ? 'El registro fotográfico ya existía en la carpeta.' : 'Registro fotográfico generado.') +
           '\n\nSe abrirá en una pestaña nueva.',
@@ -3433,8 +3437,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* 6. DESCRIPCIÓN ──────────────────────────────────── */}
       <_Seccion titulo="Descripción de la situación encontrada" color="gris">
         <_Campo label="Actuación / Observaciones" fullWidth
-          hint="Texto descriptivo de lo encontrado en sitio. Usa el botón IA para pulir la redacción.">
-          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} />
+          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} />
         </_Campo>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap' }}>
           <_BtnAccion busy={busyMejora} onClick={ejecutarMejora}>
@@ -3763,10 +3766,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         ) : (<>
           {/* Lista de campos faltantes plegada por defecto: el número ya
               avisa en el panel superior y en cada renglón; el detalle se
-              abre solo cuando se necesita. */}
-          {faltanActa.length > 0 && (
+              abre solo cuando se necesita. Si un documento ya está generado,
+              el aviso nombra únicamente el que falta; si ya están ambos, no
+              hay nada que pedir y no se muestra (antes contradecía a las
+              pills «Generada»/«Generado» de sus renglones). */}
+          {faltanActa.length > 0 && !(d.linkXlsxActa && d.linkDocxInforme) && (
             <details className="ent-faltan">
-              <summary>Faltan {faltanActa.length} campo{faltanActa.length === 1 ? '' : 's'} para generar el acta o el informe</summary>
+              <summary>Faltan {faltanActa.length} campo{faltanActa.length === 1 ? '' : 's'} para generar {d.linkXlsxActa ? 'el informe' : (d.linkDocxInforme ? 'el acta' : 'el acta o el informe')}</summary>
               <ul>
                 {faltanActa.map(function(x) { return <li key={x}>{x}</li>; })}
               </ul>
@@ -3889,10 +3895,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               : ((fotosInfo.subidas + fotosInfo.enCola) > 0 ? 'Con fotos' : 'Requiere fotos')}
             procesando={generandoRF}
           >
-            <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
-              aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
-              {cargandoFotos ? 'Cargando fotos…' : generandoRF ? 'Generando…' : 'Generar'}
-            </button>
+            {linkRegistroFotos ? (<>
+              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+              {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
+                  accesible, nunca un CTA de texto junto a la pill de listo.
+                  El link del RF no viaja por BD, así que el estado «generado»
+                  solo vive en esta sesión; al reabrir la visita vuelve al
+                  botón de texto (regenerar es idempotente en el backend). */}
+              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                className="btn-icono" aria-label="Regenerar el registro fotográfico"
+                aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
+                {(generandoRF || cargandoFotos)
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Refresh size={18} />}
+              </button>
+            </>) : (
+              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
+                {cargandoFotos ? 'Cargando fotos…' : generandoRF ? 'Generando…' : 'Generar registro'}
+              </button>
+            )}
           </FilaEntregable>
 
           {/* Informe F-GGO-43: oculto en visitas COMPLETADAS — la visita
@@ -3909,13 +3931,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   : (faltanActa.length > 0 ? 'Faltan ' + faltanActa.length + ' campos' : 'Lista para generar'))}
               procesando={abriendoInforme}
             >
-              {d.linkDocxInforme && (
+              {d.linkDocxInforme ? (<>
                 <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+                {/* Mismo patrón de regeneración del acta: el informe ya
+                    generado no vuelve a ofrecer un CTA de texto completo. */}
+                <button type="button" onClick={generarInforme} disabled={docOcupado}
+                  className="btn-icono" aria-label="Regenerar el informe F-GGO-43"
+                  aria-busy={abriendoInforme} title="Regenerar informe">
+                  {abriendoInforme
+                    ? <span className="spinner-btn" aria-hidden="true" />
+                    : <Icon.Refresh size={18} />}
+                </button>
+              </>) : (
+                <button onClick={generarInforme} disabled={docOcupado} aria-busy={abriendoInforme}
+                  className="btn-accion ent-btn">
+                  {abriendoInforme ? 'Abriendo…' : 'Generar informe'}
+                </button>
               )}
-              <button onClick={generarInforme} disabled={docOcupado} aria-busy={abriendoInforme}
-                className="btn-accion ent-btn">
-                {abriendoInforme ? 'Abriendo…' : 'Generar informe'}
-              </button>
             </FilaEntregable>
           )}
         </>)}

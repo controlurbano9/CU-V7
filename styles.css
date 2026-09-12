@@ -1049,9 +1049,18 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ent-faltan {
   font-size: 12px; color: var(--amber); background: var(--amber-bg);
   border: 1px solid rgba(184,135,58,0.25); border-radius: var(--r-sm);
-  padding: 8px 10px; margin-bottom: 10px;
+  padding: 0 10px; margin-bottom: 10px;
 }
-.ent-faltan summary { font-weight: 600; cursor: pointer; }
+/* El summary es el único control de la zona: su área pulsable debe llegar a
+   var(--tap). display:flex centra el texto pero elimina el marcador nativo,
+   así que el triángulo se dibuja con ::before. */
+.ent-faltan summary {
+  font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  min-height: var(--tap);
+}
+.ent-faltan summary::before { content: '▸'; font-size: 10px; }
+.ent-faltan[open] summary::before { content: '▾'; }
 .ent-faltan ul { margin: 6px 0 0; padding-left: 18px; }
 .ent-fila {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;

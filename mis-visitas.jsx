@@ -50,15 +50,16 @@ function MisVisitasScreen({ usuario, onContinuar }) {
 
   // ── Carga de datos ──
   useEffectMV(() => { cargar(); }, []);
+  // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
+  useEffectMV(() => suscribirVisitas(() => cargar(false, true)), []);
 
-  async function cargar(forzar) {
-    setCargando(true);
-    setError('');
+  async function cargar(forzar, silencioso) {
+    if (!silencioso) { setCargando(true); setError(''); }
     try {
       const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
       setDatos(all);
     } catch (e) {
-      setError(e.message);
+      if (!silencioso) setError(e.message);
     }
     setCargando(false);
   }

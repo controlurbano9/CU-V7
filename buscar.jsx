@@ -69,8 +69,8 @@ function BuscarScreen({ usuario, onContinuar }) {
   // Declarada ANTES de las acciones admin de abajo: sus useCallback dependen
   // de `cargar` en el array de deps, y siendo const, referenciarla antes de
   // su propia declaración revienta con "Cannot access before initialization".
-  const cargar = useCallbackB(async (forzar) => {
-    setCargando(true); setError('');
+  const cargar = useCallbackB(async (forzar, silencioso) => {
+    if (!silencioso) { setCargando(true); setError(''); }
     try {
       const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
       const mios = esAdmin ? all : all.filter(f => {
@@ -79,9 +79,12 @@ function BuscarScreen({ usuario, onContinuar }) {
         return vis.includes(usuario.usuario.toUpperCase()) || est === 'PENDIENTE' || est === 'COMPLETADO';
       });
       setDatos(mios);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
   }, [esAdmin, usuario]);
+
+  // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
+  useEffectB(() => suscribirVisitas(() => cargar(false, true)), [cargar]);
 
   // ── Acciones admin: asignar, desasignar, completar ──
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
