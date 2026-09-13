@@ -1550,6 +1550,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // iframe); este flag solo marca el tramo validación→apertura.
   const [abriendoInforme, setAI] = useStateNV(false);
   const [modalFotos,  setModalFotos] = useStateNV(null); // null o [{id, nombre, link, descripcion, mimeType}]
+  // Total de fotos que trajo listarFotosActa al abrir el modal. Se fija una sola
+  // vez y no se recalcula: la lista se va modificando al quitar fotos y el botón
+  // de confirmar necesita el total original para avisar cuántas se excluyeron.
+  const [modalFotosTotal, setModalFotosTotal] = useStateNV(0);
   const [cargandoFotos, setCargandoFotos] = useStateNV(false);
   const [dragIdx, setDragIdx]   = useStateNV(null); // indice de la foto siendo arrastrada
   const [dropTarget, setDropTarget] = useStateNV(null); // {idx, pos:'above'|'below'} — indicador de inserción
@@ -3006,6 +3010,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       _modalFotosSesionRef.current++;
       const sesion = _modalFotosSesionRef.current;
       setModalFotos(lista);
+      setModalFotosTotal(lista.length);
       setCargandoFotos(false);
       // Throttle: hasta 3 descripciones simultaneas (Gemini rate-limit friendly).
       // Mismo comportamiento que describirFotosConIA() en informe/index.html
@@ -3047,7 +3052,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setGRF(true);
     setModalFotos(null);
     try {
-      const payload = Object.assign({ accion: 'generarRegistroFotos', regenerar: true }, _construirDatosF46());
+      // seleccionExplicita: un humano revisó esta lista en el modal y la confirmó;
+      // el backend la toma como definitiva y NO vuelve a recorrer la carpeta de
+      // Drive re-metiendo al final las fotos quitadas. Solo aquí: es el único
+      // punto del código donde la lista pasa por revisión humana.
+      const payload = Object.assign({ accion: 'generarRegistroFotos', regenerar: true, seleccionExplicita: true }, _construirDatosF46());
       // Enviar array de fotos con fileId y descripcion editada
       payload.fotos = modalFotos.map(function(f) {
         return { fileId: f.id, descripcion: f.descripcion || '' };
@@ -3839,57 +3848,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             )}
           </FilaEntregable>
 
-          {/* Registro fotográfico: fotos y documento en un solo renglón —
-              las fotos existen para alimentar el registro, dos renglones
-              contaban la misma pieza. La subida vive en el slot; el conteo
-              es el único texto de estado visible de toda la zona y solo
-              aparece cuando hay fotos. El PDF de la PQR NO va aquí: es un
-              insumo de la visita, no algo que esta produzca — su acceso
-              sigue junto al campo Radicado. */}
-          <FilaEntregable
-            icono={<Icon.Camera size={18} />}
-            nombre="Registro fotográfico"
-            meta={d.idCarpetaFotos
-              ? 'Fotos de la visita · documento F-GGO-46'
-              : 'Disponible al crear la carpeta de Drive'}
-            estadoTono={linkRegistroFotos ? 'ok' : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado')}
-            estadoTexto={linkRegistroFotos
-              ? 'Generado'
-              : (fotosInfo.enCola > 0
-                  ? 'Fotos en cola'
-                  : (fotosInfo.subidas > 0 ? 'Pendiente de generar' : 'Requiere fotos'))}
-            nota={fotosInfo.enCola > 0
-              ? '⇡ ' + fotosInfo.enCola + ' en cola'
-              : (fotosInfo.subidas > 0
-                  ? fotosInfo.subidas + ' foto' + (fotosInfo.subidas === 1 ? '' : 's')
-                  : null)}
-            procesando={generandoRF || cargandoFotos}
-            slot={d.idCarpetaFotos ? (
-              <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
-            ) : undefined}
-          >
-            {linkRegistroFotos ? (<>
-              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
-              {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
-                  accesible. El link del RF no viaja por BD, así que el estado
-                  «generado» solo vive en esta sesión; al reabrir la visita
-                  vuelve a «Generar» (regenerar es idempotente en el backend). */}
-              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
-                className="btn-icono" aria-label="Regenerar el registro fotográfico"
-                aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
-                {(generandoRF || cargandoFotos)
-                  ? <span className="spinner-btn" aria-hidden="true" />
-                  : <Icon.Refresh size={18} />}
-              </button>
-            </>) : (
-              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
-                aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
-                {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
-                Generar
-              </button>
-            )}
-          </FilaEntregable>
-
           {/* Orden de policía escaneada. Va entre los entregables, y no junto
               al campo del N° de orden: `d.orden` se captura en dos sitios
               distintos (arriba en visita de oficio, en Suspensión para PQR) y
@@ -3968,6 +3926,61 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               )}
             </FilaEntregable>
           )}
+
+          {/* Va al final de los entregables: es el único renglón con control
+              de subida en el slot, así que su alto variable no debe empujar a
+              los demás. */}
+          {/* Registro fotográfico: fotos y documento en un solo renglón —
+              las fotos existen para alimentar el registro, dos renglones
+              contaban la misma pieza. La subida vive en el slot; el conteo
+              es el único texto de estado visible de toda la zona y solo
+              aparece cuando hay fotos. El PDF de la PQR NO va aquí: es un
+              insumo de la visita, no algo que esta produzca — su acceso
+              sigue junto al campo Radicado. */}
+          <FilaEntregable
+            icono={<Icon.Camera size={18} />}
+            nombre="Registro fotográfico"
+            meta={d.idCarpetaFotos
+              ? 'Fotos de la visita · documento F-GGO-46'
+              : 'Disponible al crear la carpeta de Drive'}
+            estadoTono={linkRegistroFotos ? 'ok' : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado')}
+            estadoTexto={linkRegistroFotos
+              ? 'Generado'
+              : (fotosInfo.enCola > 0
+                  ? 'Fotos en cola'
+                  : (fotosInfo.subidas > 0 ? 'Pendiente de generar' : 'Requiere fotos'))}
+            nota={fotosInfo.enCola > 0
+              ? '⇡ ' + fotosInfo.enCola + ' en cola'
+              : (fotosInfo.subidas > 0
+                  ? fotosInfo.subidas + ' foto' + (fotosInfo.subidas === 1 ? '' : 's')
+                  : null)}
+            procesando={generandoRF || cargandoFotos}
+            slot={d.idCarpetaFotos ? (
+              <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
+            ) : undefined}
+          >
+            {linkRegistroFotos ? (<>
+              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+              {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
+                  accesible. El link del RF no viaja por BD, así que el estado
+                  «generado» solo vive en esta sesión; al reabrir la visita
+                  vuelve a «Generar» (regenerar es idempotente en el backend). */}
+              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                className="btn-icono" aria-label="Regenerar el registro fotográfico"
+                aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
+                {(generandoRF || cargandoFotos)
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Refresh size={18} />}
+              </button>
+            </>) : (
+              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
+                {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
+                Generar
+              </button>
+            )}
+          </FilaEntregable>
+
         </>)}
       </div>
 
@@ -4216,7 +4229,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   ? 'No hay fotos'
                   : modalFotos.some(function(f) { return f.descBusy; })
                     ? <><span className="spinner-btn" aria-hidden="true" /> Generando descripciones…</>
-                    : 'Confirmar y generar'}
+                    // Si se quitaron fotos, el texto lo dice: sin esto el inspector
+                    // quitaba 13 de 25 y el botón seguía igual — nada confirmaba
+                    // que la exclusión surtiría efecto en el documento.
+                    : modalFotos.length < modalFotosTotal
+                      ? 'Generar con ' + modalFotos.length + ' de ' + modalFotosTotal + ' fotos'
+                      : 'Confirmar y generar'}
               </button>
             </div>
           </div>
@@ -4289,7 +4307,7 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
     listarFotosActa(idCarpetaFotos).then(function(r) {
       if (cancelado || !r || !r.ok) return;
       const previas = (r.fotos || []).map(function(f) {
-        return { nombre: f.nombre, link: f.link, descripcion: f.descripcion || '', enDrive: true };
+        return { id: f.id, nombre: f.nombre, link: f.link, descripcion: f.descripcion || '', enDrive: true };
       });
       // Las de esta sesión van después y sin repetir: la lectura puede llegar
       // cuando ya se subió algo (o incluirlo, si Drive alcanzó a indexarlo).
@@ -4416,30 +4434,37 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
   // sin título (el renglón ya nombra la pieza) ni link a Drive (el
   // renglón de la carpeta es el único acceso).
   //
-  // Las fotos ya en Drive van plegadas por defecto: con 18 fotos la lista
-  // empujaba todo el formulario hacia abajo. Las pendientes (en cola, sin
-  // subir) se muestran siempre fuera del plegable — son las que necesitan
-  // atención.
-  const subidas   = fotos.filter(function (f) { return !f.pendiente; });
-  const pendientes = fotos.filter(function (f) { return !!f.pendiente; });
+  // Las fotos van en grilla de miniaturas, no en lista: con 18 fotos la lista
+  // medía ~790 px y empujaba todo el formulario hacia abajo.
 
-  function _filaFoto(f, i) {
+  // Id de Drive para la miniatura: `listarFotosActa` lo trae; para una foto
+  // recién subida se saca del link (`.../d/<id>/view`) sin pedir nada más.
+  function _idFoto(f) {
+    if (f.id) return f.id;
+    const m = (f.link || '').match(/[-\w]{25,}/);
+    return m ? m[0] : '';
+  }
+
+  // Miniatura w160, la misma fuente que el modal de registro fotográfico. Una
+  // foto en cola no tiene id de Drive todavía: se marca con ⇡ sobre ámbar, que
+  // es lo que el inspector necesita saber de ella (falta subirla).
+  function _celdaFoto(f, i) {
+    const id = f.pendiente ? '' : _idFoto(f);
+    const etiqueta = (f.pendiente ? 'Pendiente de subir: ' : '') + f.nombre +
+                     (f.descripcion ? ' — ' + f.descripcion : '');
+    const clase = 'fg-celda' + (f.pendiente ? ' fg-pendiente' : '');
+    const key   = f.link || f.localId || (f.nombre + '_' + i);
+    const cuerpo = [
+      id ? <img key="i" src={'https://drive.google.com/thumbnail?id=' + id + '&sz=w160'}
+                alt="" loading="lazy" /> : null,
+      <span key="n" className="fg-num" aria-hidden="true">{f.pendiente ? '⇡' : (i + 1)}</span>,
+    ];
+    if (f.pendiente || !f.link) {
+      return <div key={key} className={clase} title={etiqueta} aria-label={etiqueta}>{cuerpo}</div>;
+    }
     return (
-      <div key={f.link || (f.nombre + '_' + i)} style={{
-        padding: '8px 12px',
-        background: f.pendiente ? 'var(--amarillo-bg)' : 'var(--gris-bg)',
-        border: f.pendiente ? '1px dashed var(--amarillo)' : 'none',
-        borderRadius: 8, fontSize: 12,
-      }}>
-        <div style={{ fontWeight: 600 }}>
-          {f.pendiente && <span title="Pendiente de subir a Drive" style={{ marginRight: 6, color: 'var(--amarillo)', display: 'inline-flex', verticalAlign: 'middle' }}><Icon.ArrowUp size={12} /></span>}
-          {f.nombre}
-          {f.pendiente && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--cafe)', fontWeight: 400 }}>· pendiente</span>}
-        </div>
-        {f.descripcion && (
-          <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>{f.descripcion}</div>
-        )}
-      </div>
+      <a key={key} className={clase} title={etiqueta} aria-label={etiqueta}
+         href={f.link} target="_blank" rel="noopener noreferrer">{cuerpo}</a>
     );
   }
 
@@ -4465,19 +4490,8 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
             onChange={alSeleccionar} disabled={subiendo} style={{ display: 'none' }} />
         </label>
 
-        {pendientes.length > 0 && (
-          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {pendientes.map(_filaFoto)}
-          </div>
-        )}
-
-        {subidas.length > 0 && (
-          <details className="ent-fotos">
-            <summary>Ver {subidas.length} {subidas.length === 1 ? 'foto' : 'fotos'}</summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 0 10px' }}>
-              {subidas.map(_filaFoto)}
-            </div>
-          </details>
+        {fotos.length > 0 && (
+          <div className="fotos-grilla">{fotos.map(_celdaFoto)}</div>
         )}
       </div>
     </div>
