@@ -235,63 +235,44 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
   }
 
   const bloqueado = !!ocupado;
-  // Con la orden ya subida, el renglón de arriba ya muestra «Escaneada» +
-  // «Ver»: el control pasa a peso secundario y dice «Reemplazar escaneo»,
-  // para no parecer trabajo pendiente ni competir como segundo CTA primario.
-  const reemplazo = !!link && paginas.length === 0;
+  // Sesión de escaneo abierta: hay páginas capturadas pendientes de revisar
+  // y subir. Solo entonces el slot muestra algo — el escáner no es un
+  // bloque permanente colgando del renglón.
+  const sesionAbierta = paginas.length > 0;
 
-  // Va embebido en el renglón "Orden de policía" de la zona de entregables
-  // de nueva-visita: sin tarjeta propia (tarjeta dentro de tarjeta) ni
-  // título. El link al PDF ya escaneado vive en el renglón; aquí solo el
-  // aviso de "en cola", que el renglón no puede conocer.
+  // El componente renderiza su propio FilaEntregable: es quien conoce el
+  // link, las páginas y el estado de la sesión, así que ser dueño del
+  // renglón evita coordinar dos piezas (antes renglón y escáner eran
+  // bloques hermanos y el escáner colgaba aparte).
   return (
-    <div className="ent-slot-orden">
-      <div>
-        {pendiente && (
-          <div style={{
-            marginBottom: 12, padding: '10px 12px', background: 'var(--amarillo-bg)',
-            border: '1px dashed var(--amarillo)', borderRadius: 8, fontSize: 12,
-            display: 'flex', alignItems: 'center', gap: 8, color: 'var(--cafe)',
-          }}>
-            <Icon.ArrowUp size={14} />
-            Orden en cola — se sube sola al recuperar conexión.
-          </div>
-        )}
+    <FilaEntregable
+      icono={<Icon.File size={18} />}
+      nombre={'Orden de policía ' + orden}
+      meta={idCarpetaVisita
+        ? 'Papel firmado (formato oficio) — se escanea y sube como PDF'
+        : 'Requiere carpeta de Drive'}
+      estadoTono={link ? 'ok' : (pendiente ? 'pend' : (idCarpetaVisita ? 'pend' : 'apagado'))}
+      estadoTexto={pendiente ? 'En cola' : (link ? 'Escaneada' : 'Sin escanear')}
+      procesando={bloqueado && !sesionAbierta}
+      slot={(pendiente || sesionAbierta) && idCarpetaVisita ? (
+        <div className="ent-slot-orden">
+          {pendiente && (
+            <div style={{
+              marginBottom: 12, padding: '10px 12px', background: 'var(--amarillo-bg)',
+              border: '1px dashed var(--amarillo)', borderRadius: 8, fontSize: 12,
+              display: 'flex', alignItems: 'center', gap: 8, color: 'var(--cafe)',
+            }}>
+              <Icon.ArrowUp size={14} />
+              Orden en cola — se sube sola al recuperar conexión.
+            </div>
+          )}
 
-        <label style={Object.assign({
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          minHeight: 'var(--tap)',
-          padding: reemplazo ? '9px 14px' : '14px 16px',
-          borderRadius: reemplazo ? 'var(--r-sm)' : 'var(--r)',
-          textAlign: 'center', cursor: bloqueado ? 'wait' : 'pointer',
-          fontSize: reemplazo ? 13 : 14, fontWeight: reemplazo ? 500 : 600,
-          opacity: bloqueado ? 0.55 : 1,
-        }, reemplazo ? {
-          border: '1px solid var(--borde-med)',
-          background: 'var(--surface-2)', color: 'var(--ink)',
-        } : {
-          border: '1px solid var(--brand)',
-          background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-        })}>
-          {bloqueado ? <span className="spinner-btn" aria-hidden="true" />
-            : (reemplazo ? <Icon.Refresh size={16} /> : <Icon.Plus size={18} />)}
-          {bloqueado ? ocupado
-            : (paginas.length ? 'Agregar otra página'
-              : (reemplazo ? 'Reemplazar escaneo' : 'Escanear orden de policía'))}
-          {/* capture="environment" abre la cámara trasera directo, sin pasar
-              por el selector de galería (que es lo que hace la sección de
-              fotos, donde sí hace falta poder elegir tomas previas). */}
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple
-            onChange={alSeleccionar} disabled={bloqueado} style={{ display: 'none' }} />
-        </label>
+          {sesionAbierta && (<>
+            <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 8 }}>
+              Formato oficio (8.5 × 13"). Encuadre la hoja completa, de frente y con buena luz.
+            </div>
 
-        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center' }}>
-          Formato oficio (8.5 × 13"). Encuadre la hoja completa, de frente y con buena luz.
-        </div>
-
-        {paginas.length > 0 && (
-          <>
-            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--texto-suave)' }}>
                 {paginas.length} página(s) — revise antes de subir
               </div>
@@ -349,9 +330,29 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
               className="btn-principal secundario" style={{ fontSize: 15, marginTop: 14 }}>
               {bloqueado ? ocupado : 'Generar PDF y subir a Drive'}
             </button>
-          </>
-        )}
-      </div>
-    </div>
+          </>)}
+        </div>
+      ) : undefined}
+    >
+      {link && (
+        <a href={link} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+      )}
+      {idCarpetaVisita && (
+        <button type="button" className="btn-accion ent-btn" disabled={bloqueado}
+          aria-busy={bloqueado}
+          onClick={function () { if (inputRef.current) inputRef.current.click(); }}>
+          {bloqueado && <span className="spinner-btn" aria-hidden="true" />}
+          {link ? 'Reemplazar' : 'Escanear'}
+        </button>
+      )}
+      {/* Fuera del botón (input dentro de button es HTML inválido).
+          capture="environment" abre la cámara trasera directo, sin pasar por
+          el selector de galería (que es lo que hace la sección de fotos,
+          donde sí hace falta poder elegir tomas previas). */}
+      {idCarpetaVisita && (
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple
+          onChange={alSeleccionar} disabled={bloqueado} style={{ display: 'none' }} />
+      )}
+    </FilaEntregable>
   );
 }

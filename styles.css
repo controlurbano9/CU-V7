@@ -453,6 +453,10 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    en vez de truncarse. Un radio que no se puede leer no se puede elegir. */
 .radio-opcion {
   flex: 1 1 auto; min-width: 68px;
+  /* 36-37 px de alto quedaban bajo el mínimo táctil; el inspector marca estos
+     chips en campo, con guantes y una sola mano. */
+  min-height: var(--tap);
+  display: flex; align-items: center; justify-content: center;
   padding: 10px 12px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
@@ -965,6 +969,15 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   border: 1px solid var(--borde);
   overflow: hidden;
 }
+/* Sin mapa (cargando o sin señal): caja baja con el aviso dentro, en vez de
+   220-500 px de gris vacío y el texto suelto encima. */
+.mapa-gps.mapa-gps-sin {
+  height: auto; min-height: 72px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; text-align: center;
+  background: var(--surface-2); color: var(--ink-3);
+  font-size: 12px;
+}
 .mapa-norma { width: 100%; height: 380px; }
 @media (min-width: 768px) {
   .mapa-gps   { height: 420px; }
@@ -1073,20 +1086,39 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ent-cuerpo { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ent-nombre { font-size: 13px; font-weight: 600; color: var(--ink); }
 .ent-meta { font-size: 11px; color: var(--ink-4); }
-.ent-estado {
-  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-  font-size: 11px; font-weight: 600; padding: 3px 9px;
-  border-radius: var(--r-full); white-space: nowrap;
+/* Estado por color, no por texto: un punto pequeño con el estado como
+   title + sr-only (el color solo no alcanza para lector de pantalla).
+   Verde=listo, ámbar=pendiente o en cola, gris=todavía no aplica, rojo=
+   error. Mientras procesa, el spinner reemplaza al punto. `ent-nota` es
+   el único texto de estado visible permitido (conteo de fotos). */
+.ent-estado-wrap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ent-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface-3); flex-shrink: 0;
 }
-.ent-estado.et-ok       { background: var(--green-bg); color: var(--green-ink); }
-.ent-estado.et-pend     { background: var(--amber-bg); color: var(--amber); }
-.ent-estado.et-cola     { background: var(--amber-bg); color: var(--amber); border: 1px dashed var(--amber); }
-.ent-estado.et-apagado  { background: var(--surface-2); color: var(--ink-4); }
+.ent-dot.ed-ok    { background: var(--green); }
+.ent-dot.ed-pend  { background: var(--amber); }
+.ent-dot.ed-error { background: var(--red); }
+.ent-nota { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .ent-acciones { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.ent-btn { font-size: 12px; padding: 8px 12px; }   /* acción de renglón: compacta */
+/* Acción de renglón: «Generar»/«Abrir» — .btn-accion ya asegura el alto
+   táctil (var(--tap)); el min-width común las alinea en columna entre
+   renglones. */
+.ent-btn { min-width: 92px; }
 .ent-slot { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .ent-slot-fotos,
 .ent-slot-orden { margin-top: 2px; }
+/* Fotos ya en Drive, plegadas por defecto: con 18 fotos la lista abierta
+   empujaba todo el formulario hacia abajo. Mismo tratamiento táctil que
+   .ent-faltan summary. */
+.ent-fotos { font-size: 12px; margin-top: 10px; }
+.ent-fotos summary {
+  font-weight: 600; color: var(--ink-3); cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  min-height: var(--tap);
+}
+.ent-fotos summary::before { content: '▸'; font-size: 10px; }
+.ent-fotos[open] summary::before { content: '▾'; }
 .ent-aviso {
   font-size: 13px; color: var(--ink-3); background: var(--surface-2);
   border: 1px dashed var(--line-2); border-radius: var(--r-sm);

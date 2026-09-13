@@ -768,9 +768,19 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
     }
   }
 
-  // Determinar si el valor actual viene de la lista o es personalizado
-  const valorEnLista = BARRIOS_POR_COMUNA.some(g => g.barrios.includes(barrio));
-  const valorSelect = valorEnLista ? barrio : (barrio && barrio !== '__otro__' && barrio !== '' ? '__otro__' : barrio);
+  // Determinar si el valor actual viene de la lista o es personalizado.
+  // La comparación ignora mayúsculas y tildes: la BD guarda 'NIQUIA' y la
+  // lista dice 'Niquía', y con `includes` exacto todo barrio venido de BD
+  // caía a «Otro...» como si no se reconociera.
+  const _canonBarrio = s => _quitarTildes(s).trim().toUpperCase();
+  const barrioCanon = _canonBarrio(barrio);
+  const barrioDeLista = barrioCanon
+    ? (BARRIOS_POR_COMUNA.reduce((acc, g) => acc.concat(g.barrios), [])
+        .find(b => _canonBarrio(b) === barrioCanon) || '')
+    : '';
+  const valorEnLista = !!barrioDeLista;
+  // El <select> necesita el texto exacto de la opción, no el de la BD.
+  const valorSelect = valorEnLista ? barrioDeLista : (barrio && barrio !== '__otro__' && barrio !== '' ? '__otro__' : barrio);
 
   return (
     <div>
@@ -837,6 +847,9 @@ function _cuandoGoogleMapsListo(cb, timeoutMs) {
   // etiqueta <script>. El sondeo de abajo sigue igual porque el SDK se
   // anuncia listo por su cuenta, no por el onload del script.
   if (typeof cargarMapsJS === 'function') cargarMapsJS();
+  // Sin señal no hay SDK que esperar: rendirse ya en vez de tener al inspector
+  // 20 s frente a un recuadro gris vacío. `_MapaGPS` reintenta al reconectar.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) { cb(false); return function () {}; }
   var limite = Date.now() + (timeoutMs || 20000);
   var id = setInterval(function () {
     if (typeof google !== 'undefined' && google.maps) { clearInterval(id); cb(true); }
@@ -874,6 +887,15 @@ function _MapaGPS({ lat, lon, onMove }) {
     if (gmListo !== null) return;
     return _cuandoGoogleMapsListo(setGmListo);
   }, [gmListo]);
+
+  // Reintentar al recuperar señal: el caso de campo es entrar sin cobertura y
+  // recuperarla después, y hasta ahora el mapa se quedaba rendido para siempre.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffectNV(() => {
+    function _alVolver() { setGmListo(function (prev) { return prev === false ? null : prev; }); }
+    window.addEventListener('online', _alVolver);
+    return function () { window.removeEventListener('online', _alVolver); };
+  }, []);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffectNV(() => {
@@ -926,15 +948,24 @@ function _MapaGPS({ lat, lon, onMove }) {
     };
   }, []);
 
+  // Sin mapa, el aviso va DENTRO del recuadro y a su altura: antes quedaba una
+  // caja gris alta y vacía con un microtexto suelto encima.
   return (
     <div>
-      <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
-        {gmListo === null ? 'Cargando mapa…'
-          : gmListo === false ? 'No se pudo cargar el mapa (sin conexión o Maps bloqueado). Las coordenadas sí se guardan.'
-          : tieneCoords ? 'Arrastra el pin para corregir la ubicación'
-          : 'Captura tu ubicación para colocar el pin'}
+      {gmListo === true && (
+        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
+          {tieneCoords ? 'Arrastra el pin para corregir la ubicación' : 'Captura tu ubicación para colocar el pin'}
+        </div>
+      )}
+      <div ref={mapRef} className={'mapa-gps' + (gmListo === true ? '' : ' mapa-gps-sin')}>
+        {gmListo !== true && (
+          <span>
+            {gmListo === null
+              ? 'Cargando mapa…'
+              : 'Mapa no disponible sin conexión. Las coordenadas sí se capturan y se guardan.'}
+          </span>
+        )}
       </div>
-      <div ref={mapRef} className="mapa-gps" />
     </div>
   );
 }
@@ -1395,7 +1426,22 @@ function _tonoEstadoVisita(estado) {
   }
 }
 
-// Panel superior: identidad + estado + resumen de progreso. Reemplaza la
+// Entregables pendientes para el panel superior: solo los que aplican.
+// El informe no aplica en visitas COMPLETADAS (su renglón tampoco se
+// muestra) y el registro fotográfico solo cuando ya hay fotos que lo
+// alimenten.
+function _pendientesPanel(p) {
+  const pendientes = [];
+  if (!p.tieneActa) pendientes.push('Acta sin generar');
+  if (!p.tieneInforme && String(p.estadoVisita || '').toUpperCase() !== 'COMPLETADO') {
+    pendientes.push('Informe sin generar');
+  }
+  if (p.ordenRelevante && !p.ordenEscaneada) pendientes.push('Orden sin escanear');
+  if (p.fotos && p.fotos.subidas > 0 && !p.tieneRF) pendientes.push('Registro fotográfico sin generar');
+  return pendientes;
+}
+
+// Panel superior: identidad + estado + entregables pendientes. Reemplaza la
 // caja de info del header, que decía qué visita era pero no cómo va.
 function PanelEstadoVisita(p) {
   return (
@@ -1414,34 +1460,25 @@ function PanelEstadoVisita(p) {
           {p.fechaVisita ? ' · ' + p.fechaVisita : ''}
         </div>
       )}
-      <div className="estado-resumen" aria-label="Progreso de la visita">
-        <span className={'resumen-chip rc-' + (p.faltan === 0 ? 'ok' : 'pend')}>
-          <span className="rc-dot" aria-hidden="true" />
-          {p.faltan === 0 ? 'Formulario completo' : 'Faltan ' + p.faltan + ' campos'}
-        </span>
-        <span className={'resumen-chip rc-' + (p.fotos.enCola > 0 ? 'cola' : (p.fotos.subidas > 0 ? 'ok' : 'apagado'))}>
-          <span className="rc-dot" aria-hidden="true" />
-          {p.fotos.enCola > 0
-            ? '⇡ ' + p.fotos.enCola + ' foto' + (p.fotos.enCola === 1 ? '' : 's') + ' en cola'
-            : (p.fotos.subidas > 0
-                ? p.fotos.subidas + ' foto' + (p.fotos.subidas === 1 ? '' : 's')
-                : (p.filaEditando ? 'Sin fotos' : 'Fotos tras guardar'))}
-        </span>
-        {p.ordenRelevante && (
-          <span className={'resumen-chip rc-' + (p.ordenEscaneada ? 'ok' : 'apagado')}>
-            <span className="rc-dot" aria-hidden="true" />
-            {p.ordenEscaneada ? 'Orden escaneada' : 'Orden sin escanear'}
-          </span>
-        )}
-        <span className={'resumen-chip rc-' + (p.tieneActa ? 'ok' : 'apagado')}>
-          <span className="rc-dot" aria-hidden="true" />
-          {p.tieneActa ? 'Acta generada' : 'Acta pendiente'}
-        </span>
-        <span className={'resumen-chip rc-' + (p.tieneInforme ? 'ok' : 'apagado')}>
-          <span className="rc-dot" aria-hidden="true" />
-          {p.tieneInforme ? 'Informe generado' : 'Informe pendiente'}
-        </span>
-      </div>
+      {/* El panel solo lista lo que falta: un entregable resuelto no deja
+          chip y el conteo de campos faltantes vive en el plegable de la zona
+          de entregables, no bajo la dirección. Antes de guardar no hay
+          entregables que pedir — el aviso inferior ya lo explica. */}
+      {p.filaEditando && (
+        <div className="estado-resumen" aria-label="Progreso de la visita">
+          {_pendientesPanel(p).length === 0
+            ? <span className="resumen-chip rc-ok">
+                <span className="rc-dot" aria-hidden="true" />Entregables completos
+              </span>
+            : _pendientesPanel(p).map(function (t) {
+                return (
+                  <span key={t} className="resumen-chip rc-pend">
+                    <span className="rc-dot" aria-hidden="true" />{t}
+                  </span>
+                );
+              })}
+        </div>
+      )}
       {!p.filaEditando && (
         <div className="estado-aviso">
           Visita sin guardar: al guardar se crea la carpeta en Drive y se habilitan
@@ -1452,12 +1489,16 @@ function PanelEstadoVisita(p) {
   );
 }
 
-// Renglón de entregable: nombre+meta a la izquierda, estado y acciones a la
-// derecha. Un renglón por pieza en vez de un botón a ancho completo por
-// pieza — la pila anterior obligaba a escanear ~4 bloques iguales.
+// Renglón de entregable: nombre+meta a la izquierda, punto de estado y
+// acciones a la derecha. Un renglón por pieza en vez de un botón a ancho
+// completo por pieza — la pila anterior obligaba a escanear ~4 bloques
+// iguales. El estado se lee por color (verde=listo, ámbar=pendiente o en
+// cola, gris=todavía no aplica), nunca por texto: el color viaja con
+// `title` + sr-only para lector de pantalla. `nota` es el único texto de
+// estado visible permitido (el conteo de fotos, solo cuando hay).
 // `slot` (opcional) renderiza un widget debajo del renglón (subida de
 // fotos, escáner de orden), pegado a la pieza que le da sentido.
-function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, procesando, children, slot }) {
+function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, nota, procesando, children, slot }) {
   return (
     <div className="ent-fila-wrap">
       <div className="ent-fila">
@@ -1466,10 +1507,13 @@ function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, procesan
           <span className="ent-nombre">{nombre}</span>
           {meta && <span className="ent-meta">{meta}</span>}
         </div>
-        {estadoTexto && (
-          <span className={'ent-estado et-' + (estadoTono || 'apagado')} aria-busy={procesando || undefined}>
-            {procesando && <span className="spinner-btn" aria-hidden="true" />}
-            {estadoTexto}
+        {(estadoTexto || nota) && (
+          <span className="ent-estado-wrap" title={estadoTexto || undefined} aria-busy={procesando || undefined}>
+            {procesando
+              ? <span className="spinner-btn" aria-hidden="true" />
+              : <span className={'ent-dot ed-' + (estadoTono || 'apagado')} aria-hidden="true" />}
+            {nota && <span className="ent-nota">{nota}</span>}
+            {estadoTexto && <span className="sr-only"> — {estadoTexto}</span>}
           </span>
         )}
         {children && <div className="ent-acciones">{children}</div>}
@@ -1834,24 +1878,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     return function() { window.removeEventListener('message', _onMsg); };
   }, [filaEditando]);
 
-  // (8) Contar las fotos que ya viven en Drive al abrir la visita (una sola
-  // lectura). Sin esto, reabrir una visita con 18 fotos mostraría "sin fotos"
-  // en el panel de estado: SeccionFotos solo conoce lo subido en esta sesión.
+  // (8) El conteo de fotos ya en Drive lo trae SeccionFotos con su propia
+  // lectura (las lista, no solo las cuenta) y lo reporta por onFotosChange.
+
+  // (9) Un guardado que salió de la cola trae el timestamp nuevo de BD. Sin
+  // esto el formulario abierto seguía con el `ultimaModConocida` de antes de
+  // perder la señal, y el siguiente guardado (o el autoguardado, cada 60 s)
+  // chocaba contra su propia escritura con un conflicto falso.
   React.useEffect(function() {
-    if (fase !== 'formulario' || !filaEditando || !d.idCarpetaFotos) return;
-    if (typeof listarFotosActa !== 'function') return;
-    let cancelado = false;
-    listarFotosActa(d.idCarpetaFotos).then(function(r) {
-      if (cancelado || !r || !r.ok) return;
-      const n = (r.fotos || []).length;
-      // max(): no pisar un conteo más fresco de esta sesión (borradores
-      // concurrentes no existen aquí, la sesión siempre suma o iguala).
-      setFotosInfo(function(prev) {
-        return { subidas: Math.max(prev.subidas, n), enCola: prev.enCola };
-      });
-    }).catch(function() { /* offline: SeccionFotos reporta lo suyo */ });
-    return function() { cancelado = true; };
-  }, [fase, filaEditando, d.idCarpetaFotos]);
+    if (typeof offlineOnItemSynced !== 'function') return;
+    return offlineOnItemSynced(function(evt) {
+      if (evt.tipo !== 'guardarVisita') return;
+      const r = evt.resultado;
+      if (!r || !r.ultimaModConocida) return;
+      // La cola es global: ignorar la sincronización de otra visita.
+      if (r.fila && filaEditando && r.fila !== filaEditando) return;
+      setD(function(prev) { return Object.assign({}, prev, { ultimaModConocida: r.ultimaModConocida }); });
+      setEnColaGuardado(false);
+      setUltimoGuardadoMs(Date.now());
+    });
+  }, [filaEditando]);
 
   // ── Callback del modal: configura el formulario según la elección ──
   function handleModalResult(res) {
@@ -3038,12 +3084,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // bloqueo compartido de generadores (una sola acción de documento a la vez).
   const faltanActa = filaEditando ? _validarAntesDeActa() : [];
   const docOcupado = generandoActa || generandoRF || abriendoInforme;
-  // Callback para que SeccionFotos reporte su conteo al panel de estado.
-  // max(): el conteo de Drive (efecto 8) puede llegar después del de sesión.
+  // Callback para que SeccionFotos reporte su conteo al panel de estado. Su
+  // lista ya incluye las de Drive y las de esta sesión, así que el número
+  // llega completo (sin max()).
   function _reportarFotos(info) {
-    setFotosInfo(function(prev) {
-      return { subidas: Math.max(prev.subidas, info.subidas || 0), enCola: info.enCola || 0 };
-    });
+    setFotosInfo({ subidas: info.subidas || 0, enCola: info.enCola || 0 });
   }
 
   // Devuelve true si se puede abandonar el formulario. Se usa tanto desde el
@@ -3094,12 +3139,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           fechaVisita={_isoAFecha(d.fechaVisita) || ''}
           nVisita={_nVisitaNum}
           filaEditando={filaEditando}
-          faltan={faltanActa.length}
           fotos={fotosInfo}
           ordenRelevante={_hayOrdenReal(d.orden)}
           ordenEscaneada={!!d.linkOrdenPolicia}
           tieneActa={!!d.linkXlsxActa}
           tieneInforme={!!d.linkDocxInforme}
+          tieneRF={!!linkRegistroFotos}
         />
       </div>
 
@@ -3141,7 +3186,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                     title="Abrir el PDF de la PQR radicada (pestaña nueva)"
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '10px 12px', borderRadius: 8,
+                      minHeight: 'var(--tap)', padding: '10px 12px', borderRadius: 8,
                       background: 'var(--brand-bg)', color: 'var(--brand-ink)',
                       border: '1px solid var(--brand-accent)',
                       fontSize: 12, fontWeight: 600, textDecoration: 'none',
@@ -3764,15 +3809,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             fotos, escanear la orden de policía y generar el acta y el informe.
           </div>
         ) : (<>
-          {/* Lista de campos faltantes plegada por defecto: el número ya
-              avisa en el panel superior y en cada renglón; el detalle se
-              abre solo cuando se necesita. Si un documento ya está generado,
-              el aviso nombra únicamente el que falta; si ya están ambos, no
-              hay nada que pedir y no se muestra (antes contradecía a las
-              pills «Generada»/«Generado» de sus renglones). */}
+          {/* Lista de campos faltantes plegada por defecto: el punto ámbar
+              de cada renglón ya avisa; el detalle se abre solo cuando se
+              necesita. Si ambos documentos están generados no hay nada que
+              pedir y no se muestra. */}
           {faltanActa.length > 0 && !(d.linkXlsxActa && d.linkDocxInforme) && (
             <details className="ent-faltan">
-              <summary>Faltan {faltanActa.length} campo{faltanActa.length === 1 ? '' : 's'} para generar {d.linkXlsxActa ? 'el informe' : (d.linkDocxInforme ? 'el acta' : 'el acta o el informe')}</summary>
+              {/* Sin repetir el conteo: ya lo dicen el chip del panel y las
+                  pills de los renglones de acta e informe. Aquí lo único
+                  propio es la lista de qué falta. */}
+              <summary>Ver qué campos faltan</summary>
               <ul>
                 {faltanActa.map(function(x) { return <li key={x}>{x}</li>; })}
               </ul>
@@ -3793,80 +3839,86 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             )}
           </FilaEntregable>
 
-          {/* PDF de la PQR tal como la radicó el ciudadano */}
-          {d.linkPdfRadicado && (
-            <FilaEntregable
-              icono={<Icon.File size={18} />}
-              nombre="PQR radicada"
-              meta="PDF original del gestor documental"
-              estadoTono="ok"
-              estadoTexto="Disponible"
-            >
-              <a href={d.linkPdfRadicado} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
-            </FilaEntregable>
-          )}
-
-          {/* Fotos de evidencia: la subida vive pegada a su renglón */}
+          {/* Registro fotográfico: fotos y documento en un solo renglón —
+              las fotos existen para alimentar el registro, dos renglones
+              contaban la misma pieza. La subida vive en el slot; el conteo
+              es el único texto de estado visible de toda la zona y solo
+              aparece cuando hay fotos. El PDF de la PQR NO va aquí: es un
+              insumo de la visita, no algo que esta produzca — su acceso
+              sigue junto al campo Radicado. */}
           <FilaEntregable
             icono={<Icon.Camera size={18} />}
-            nombre="Fotos de la visita"
-            meta={d.idCarpetaFotos ? 'Suben a la subcarpeta /Fotos en Drive' : 'Disponibles al crear la carpeta de Drive'}
-            estadoTono={fotosInfo.enCola > 0 ? 'cola' : (fotosInfo.subidas > 0 ? 'ok' : 'apagado')}
-            estadoTexto={fotosInfo.enCola > 0
+            nombre="Registro fotográfico"
+            meta={d.idCarpetaFotos
+              ? 'Fotos de la visita · documento F-GGO-46'
+              : 'Disponible al crear la carpeta de Drive'}
+            estadoTono={linkRegistroFotos ? 'ok' : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado')}
+            estadoTexto={linkRegistroFotos
+              ? 'Generado'
+              : (fotosInfo.enCola > 0
+                  ? 'Fotos en cola'
+                  : (fotosInfo.subidas > 0 ? 'Pendiente de generar' : 'Requiere fotos'))}
+            nota={fotosInfo.enCola > 0
               ? '⇡ ' + fotosInfo.enCola + ' en cola'
               : (fotosInfo.subidas > 0
-                  ? fotosInfo.subidas + ' subida' + (fotosInfo.subidas === 1 ? '' : 's')
-                  : 'Sin fotos')}
+                  ? fotosInfo.subidas + ' foto' + (fotosInfo.subidas === 1 ? '' : 's')
+                  : null)}
+            procesando={generandoRF || cargandoFotos}
             slot={d.idCarpetaFotos ? (
               <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
             ) : undefined}
-          />
+          >
+            {linkRegistroFotos ? (<>
+              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+              {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
+                  accesible. El link del RF no viaja por BD, así que el estado
+                  «generado» solo vive en esta sesión; al reabrir la visita
+                  vuelve a «Generar» (regenerar es idempotente en el backend). */}
+              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                className="btn-icono" aria-label="Regenerar el registro fotográfico"
+                aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
+                {(generandoRF || cargandoFotos)
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Refresh size={18} />}
+              </button>
+            </>) : (
+              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+                aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
+                {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
+                Generar
+              </button>
+            )}
+          </FilaEntregable>
 
           {/* Orden de policía escaneada. Va entre los entregables, y no junto
               al campo del N° de orden: `d.orden` se captura en dos sitios
               distintos (arriba en visita de oficio, en Suspensión para PQR) y
               duplicar el componente daría dos escáneres para el mismo PDF.
-              Exige carpeta de Drive: la orden se sube a la carpeta de la
-              visita, que solo existe después del primer guardado. */}
+              El renglón lo renderiza el propio EscanerOrdenPolicia, que es
+              quien conoce el link, las páginas y el estado de la sesión. */}
           {_hayOrdenReal(d.orden) && (
-            <>
-              <FilaEntregable
-                icono={<Icon.File size={18} />}
-                nombre={'Orden de policía ' + d.orden}
-                meta={d.idCarpetaVisita ? 'Escanear el papel firmado (formato oficio) — sube como PDF' : 'Requiere carpeta de Drive'}
-                estadoTono={d.linkOrdenPolicia ? 'ok' : 'apagado'}
-                estadoTexto={d.linkOrdenPolicia ? 'Escaneada' : 'Sin escanear'}
-              >
-                {d.linkOrdenPolicia && (
-                  <a href={d.linkOrdenPolicia} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
-                )}
-              </FilaEntregable>
-              {d.idCarpetaVisita && (
-                <EscanerOrdenPolicia
-                  idCarpetaVisita={d.idCarpetaVisita}
-                  fila={filaEditando}
-                  orden={d.orden}
-                  linkInicial={d.linkOrdenPolicia}
-                  onSubido={link => setCampo('linkOrdenPolicia', link)}
-                />
-              )}
-            </>
+            <EscanerOrdenPolicia
+              idCarpetaVisita={d.idCarpetaVisita}
+              fila={filaEditando}
+              orden={d.orden}
+              linkInicial={d.linkOrdenPolicia}
+              onSubido={link => setCampo('linkOrdenPolicia', link)}
+            />
           )}
 
-          {/* Acta F-GGO-46 (paso 1: hoja de caracterización) */}
+          {/* Acta de Inspección Ocular — F-GGO-46, paso 1: hoja de
+              caracterización (así la llama la inspección, no "acta de
+              caracterización" a secas). */}
           <FilaEntregable
             icono={<Icon.File size={18} />}
-            nombre="Acta de caracterización"
+            nombre="Acta de Inspección Ocular"
             meta="F-GGO-46 · hoja de cálculo + PDF"
-            estadoTono={d.linkXlsxActa ? 'ok' : (faltanActa.length > 0 ? 'pend' : 'apagado')}
-            estadoTexto={d.linkXlsxActa
-              ? 'Generada'
-              : (generandoActa ? 'Generando…'
-                : (faltanActa.length > 0 ? 'Faltan ' + faltanActa.length + ' campos' : 'Lista para generar'))}
+            estadoTono={d.linkXlsxActa ? 'ok' : 'pend'}
+            estadoTexto={d.linkXlsxActa ? 'Generada' : (generandoActa ? 'Generando…' : 'Pendiente')}
             procesando={generandoActa}
           >
             {d.linkXlsxActa ? (<>
-              <a href={d.linkXlsxActa} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+              <a href={d.linkXlsxActa} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
               {/* Regenerar rehace el acta en Drive: separado del acceso de
                   solo lectura y reducido a icono con nombre accesible. */}
               <button type="button" onClick={regenerarActa} disabled={docOcupado}
@@ -3879,40 +3931,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             </>) : (
               <button onClick={generarActa} disabled={docOcupado} aria-busy={generandoActa}
                 className="btn-accion ent-btn">
-                {generandoActa ? 'Generando…' : 'Generar acta'}
-              </button>
-            )}
-          </FilaEntregable>
-
-          {/* Registro fotográfico (paso 2 del F-GGO-46): abre el modal de
-              revisión/reordenamiento y genera el Doc con las fotos. */}
-          <FilaEntregable
-            icono={<Icon.File size={18} />}
-            nombre="Registro fotográfico"
-            meta="Documento con las fotos y sus descripciones"
-            estadoTono={(fotosInfo.subidas + fotosInfo.enCola) > 0 ? 'ok' : 'pend'}
-            estadoTexto={generandoRF ? 'Generando…'
-              : ((fotosInfo.subidas + fotosInfo.enCola) > 0 ? 'Con fotos' : 'Requiere fotos')}
-            procesando={generandoRF}
-          >
-            {linkRegistroFotos ? (<>
-              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
-              {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
-                  accesible, nunca un CTA de texto junto a la pill de listo.
-                  El link del RF no viaja por BD, así que el estado «generado»
-                  solo vive en esta sesión; al reabrir la visita vuelve al
-                  botón de texto (regenerar es idempotente en el backend). */}
-              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
-                className="btn-icono" aria-label="Regenerar el registro fotográfico"
-                aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
-                {(generandoRF || cargandoFotos)
-                  ? <span className="spinner-btn" aria-hidden="true" />
-                  : <Icon.Refresh size={18} />}
-              </button>
-            </>) : (
-              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
-                aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
-                {cargandoFotos ? 'Cargando fotos…' : generandoRF ? 'Generando…' : 'Generar registro'}
+                {generandoActa && <span className="spinner-btn" aria-hidden="true" />}
+                Generar
               </button>
             )}
           </FilaEntregable>
@@ -3924,15 +3944,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               icono={<Icon.File size={18} />}
               nombre="Informe de inspección"
               meta="F-GGO-43 · documento de texto"
-              estadoTono={d.linkDocxInforme ? 'ok' : (faltanActa.length > 0 ? 'pend' : 'apagado')}
-              estadoTexto={d.linkDocxInforme
-                ? 'Generado'
-                : (abriendoInforme ? 'Abriendo…'
-                  : (faltanActa.length > 0 ? 'Faltan ' + faltanActa.length + ' campos' : 'Lista para generar'))}
+              estadoTono={d.linkDocxInforme ? 'ok' : 'pend'}
+              estadoTexto={d.linkDocxInforme ? 'Generado' : (abriendoInforme ? 'Abriendo…' : 'Pendiente')}
               procesando={abriendoInforme}
             >
               {d.linkDocxInforme ? (<>
-                <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Ver</a>
+                <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 {/* Mismo patrón de regeneración del acta: el informe ya
                     generado no vuelve a ofrecer un CTA de texto completo. */}
                 <button type="button" onClick={generarInforme} disabled={docOcupado}
@@ -3945,7 +3962,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               </>) : (
                 <button onClick={generarInforme} disabled={docOcupado} aria-busy={abriendoInforme}
                   className="btn-accion ent-btn">
-                  {abriendoInforme ? 'Abriendo…' : 'Generar informe'}
+                  {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
+                  Generar
                 </button>
               )}
             </FilaEntregable>
@@ -4261,6 +4279,29 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
   const [progreso, setProgreso] = useStateNV('');   // "Subiendo 2/5..."
   const inputRef = React.useRef(null);
 
+  // Fotos que ya viven en Drive: al reabrir una visita con 18 fotos, la lista
+  // arrancaba vacía y el inspector solo podía verlas abriendo el modal del
+  // registro fotográfico. Una sola lectura; el conteo del panel de estado sale
+  // de aquí vía onFotosChange.
+  React.useEffect(function() {
+    if (!idCarpetaFotos || typeof listarFotosActa !== 'function') return;
+    let cancelado = false;
+    listarFotosActa(idCarpetaFotos).then(function(r) {
+      if (cancelado || !r || !r.ok) return;
+      const previas = (r.fotos || []).map(function(f) {
+        return { nombre: f.nombre, link: f.link, descripcion: f.descripcion || '', enDrive: true };
+      });
+      // Las de esta sesión van después y sin repetir: la lectura puede llegar
+      // cuando ya se subió algo (o incluirlo, si Drive alcanzó a indexarlo).
+      setFotos(function(prev) {
+        const yaEstan = {};
+        prev.forEach(function(f) { yaEstan[f.nombre] = true; });
+        return previas.filter(function(f) { return !yaEstan[f.nombre]; }).concat(prev);
+      });
+    }).catch(function() { /* offline: solo se ve lo de esta sesión */ });
+    return function() { cancelado = true; };
+  }, [idCarpetaFotos]);
+
   async function _aBase64(file) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -4370,10 +4411,38 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
     });
   }, [fotos]);
 
-  // Va embebido en el renglón "Fotos de la visita" de la zona de
+  // Va embebido en el renglón "Registro fotográfico" de la zona de
   // entregables: sin tarjeta propia (sería tarjeta dentro de tarjeta) y
   // sin título (el renglón ya nombra la pieza) ni link a Drive (el
   // renglón de la carpeta es el único acceso).
+  //
+  // Las fotos ya en Drive van plegadas por defecto: con 18 fotos la lista
+  // empujaba todo el formulario hacia abajo. Las pendientes (en cola, sin
+  // subir) se muestran siempre fuera del plegable — son las que necesitan
+  // atención.
+  const subidas   = fotos.filter(function (f) { return !f.pendiente; });
+  const pendientes = fotos.filter(function (f) { return !!f.pendiente; });
+
+  function _filaFoto(f, i) {
+    return (
+      <div key={f.link || (f.nombre + '_' + i)} style={{
+        padding: '8px 12px',
+        background: f.pendiente ? 'var(--amarillo-bg)' : 'var(--gris-bg)',
+        border: f.pendiente ? '1px dashed var(--amarillo)' : 'none',
+        borderRadius: 8, fontSize: 12,
+      }}>
+        <div style={{ fontWeight: 600 }}>
+          {f.pendiente && <span title="Pendiente de subir a Drive" style={{ marginRight: 6, color: 'var(--amarillo)', display: 'inline-flex', verticalAlign: 'middle' }}><Icon.ArrowUp size={12} /></span>}
+          {f.nombre}
+          {f.pendiente && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--cafe)', fontWeight: 400 }}>· pendiente</span>}
+        </div>
+        {f.descripcion && (
+          <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>{f.descripcion}</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="ent-slot-fotos">
       <div>
@@ -4389,34 +4458,26 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
           {subiendo
             ? <span className="spinner-btn" aria-hidden="true" />
             : <Icon.Plus size={18} />}
-          {subiendo ? progreso : 'Toca para seleccionar fotos'}
+          {/* «Seleccionar fotos» y no «Toca para…»: la misma pantalla se usa en
+              escritorio, donde no se toca nada. */}
+          {subiendo ? progreso : 'Seleccionar fotos'}
           <input ref={inputRef} type="file" accept="image/*" multiple
             onChange={alSeleccionar} disabled={subiendo} style={{ display: 'none' }} />
         </label>
 
-        {fotos.length > 0 && (
+        {pendientes.length > 0 && (
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--texto-suave)', marginBottom: 2 }}>
-              {fotos.length} foto(s) subida(s)
-            </div>
-            {fotos.map((f, i) => (
-              <div key={f.link || (f.nombre + '_' + i)} style={{
-                padding: '8px 12px',
-                background: f.pendiente ? 'var(--amarillo-bg)' : 'var(--gris-bg)',
-                border: f.pendiente ? '1px dashed var(--amarillo)' : 'none',
-                borderRadius: 8, fontSize: 12,
-              }}>
-                <div style={{ fontWeight: 600 }}>
-                  {f.pendiente && <span title="Pendiente de subir a Drive" style={{ marginRight: 6, color: 'var(--amarillo)', display: 'inline-flex', verticalAlign: 'middle' }}><Icon.ArrowUp size={12} /></span>}
-                  {f.nombre}
-                  {f.pendiente && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--cafe)', fontWeight: 400 }}>· pendiente</span>}
-                </div>
-                {f.descripcion && (
-                  <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>{f.descripcion}</div>
-                )}
-              </div>
-            ))}
+            {pendientes.map(_filaFoto)}
           </div>
+        )}
+
+        {subidas.length > 0 && (
+          <details className="ent-fotos">
+            <summary>Ver {subidas.length} {subidas.length === 1 ? 'foto' : 'fotos'}</summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 0 10px' }}>
+              {subidas.map(_filaFoto)}
+            </div>
+          </details>
         )}
       </div>
     </div>
