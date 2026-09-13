@@ -337,14 +337,26 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
       {link && (
         <a href={link} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
       )}
-      {idCarpetaVisita && (
+      {/* Con la orden ya escaneada, reemplazarla es la misma acción que
+          regenerar un documento: mismo icono ↻ que acta, registro e informe,
+          no un botón de texto aparte. Sin escanear sí es acción principal. */}
+      {idCarpetaVisita && (link ? (
+        <button type="button" className="btn-icono" disabled={bloqueado}
+          aria-label="Reemplazar el escaneo de la orden de policía"
+          aria-busy={bloqueado} title="Reemplazar escaneo"
+          onClick={function () { if (inputRef.current) inputRef.current.click(); }}>
+          {bloqueado
+            ? <span className="spinner-btn" aria-hidden="true" />
+            : <Icon.Refresh size={18} />}
+        </button>
+      ) : (
         <button type="button" className="btn-accion ent-btn" disabled={bloqueado}
           aria-busy={bloqueado}
           onClick={function () { if (inputRef.current) inputRef.current.click(); }}>
           {bloqueado && <span className="spinner-btn" aria-hidden="true" />}
-          {link ? 'Reemplazar' : 'Escanear'}
+          Escanear
         </button>
-      )}
+      ))}
       {/* Fuera del botón (input dentro de button es HTML inválido).
           capture="environment" abre la cámara trasera directo, sin pasar por
           el selector de galería (que es lo que hace la sección de fotos,

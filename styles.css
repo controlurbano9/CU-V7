@@ -1108,17 +1108,37 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ent-slot { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .ent-slot-fotos,
 .ent-slot-orden { margin-top: 2px; }
-/* Fotos ya en Drive, plegadas por defecto: con 18 fotos la lista abierta
-   empujaba todo el formulario hacia abajo. Mismo tratamiento táctil que
-   .ent-faltan summary. */
-.ent-fotos { font-size: 12px; margin-top: 10px; }
-.ent-fotos summary {
-  font-weight: 600; color: var(--ink-3); cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-  min-height: var(--tap);
+/* Fotos en grilla y no en lista: 18 renglones de texto medían ~790 px de alto
+   y empujaban el resto del formulario; en celdas de 56 px son ~3 filas. Sin
+   plegar: el alto ya no es el problema y esconderlas obligaba a un clic para
+   confirmar lo único que importa (que subieron). */
+.fotos-grilla {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
 }
-.ent-fotos summary::before { content: '▸'; font-size: 10px; }
-.ent-fotos[open] summary::before { content: '▾'; }
+.fg-celda {
+  position: relative; display: block;
+  aspect-ratio: 1;
+  border-radius: 8px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.fg-celda img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* El número va encima de la miniatura y sobrevive a que la imagen no cargue
+   (en campo, sin señal): la cuenta se sigue leyendo aunque no haya foto. */
+.fg-celda .fg-num {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  font-size: 10px; line-height: 1.7; text-align: center;
+  color: var(--ink-3); background: rgba(255, 255, 255, 0.82);
+}
+.fg-celda.fg-pendiente {
+  border: 1px dashed var(--amarillo); background: var(--amarillo-bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.fg-celda.fg-pendiente .fg-num {
+  position: static; background: none; font-size: 15px; color: var(--amarillo);
+}
 .ent-aviso {
   font-size: 13px; color: var(--ink-3); background: var(--surface-2);
   border: 1px dashed var(--line-2); border-radius: var(--r-sm);
