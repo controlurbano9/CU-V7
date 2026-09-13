@@ -76,6 +76,9 @@
   /* Padding superior del área de contenido, por ancho. Lo necesita
      .nv-header para taparlo cuando queda fija. */
   --content-pad-top: 16px;
+  /* Alto de la cabecera fija de la visita, contando el .app-header que
+     tiene encima en móvil. Lo usan el scroll a sección y el tablero. */
+  --nv-header-h: 210px;
 
   /* ── Piso táctil ─────────────────────────────────────────────
      App de campo: el inspector la usa de pie, en la calle, con una
@@ -1004,6 +1007,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   border-radius: var(--r-lg);
   padding: 16px;
   margin-bottom: 10px;
+  /* Al saltar desde la lista de campos faltantes, descuenta la cabecera
+     fija: sin esto el título de la sección queda debajo de ella. */
+  scroll-margin-top: var(--nv-header-h);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--line);
 }
@@ -1068,7 +1074,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    a 1200 el formulario caería a ~510 px, más estrecho que un móvil
    ancho, y el formulario manda sobre el tablero. */
 @media (min-width: 1440px) {
-  :root { --nv-header-h: 200px; }
   /* .pantalla.activa fija display:block con dos clases: hay que igualar
      esa especificidad o el grid no se aplica. */
   .pantalla.nv-pantalla {
@@ -1159,6 +1164,41 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ent-faltan summary::before { content: '▸'; font-size: 10px; }
 .ent-faltan[open] summary::before { content: '▾'; }
 .ent-faltan ul { margin: 6px 0 0; padding-left: 18px; }
+/* Cada campo faltante lleva a su sección: la fila entera es el objetivo
+   táctil, con la sección de destino a la derecha para que el salto no
+   sorprenda. Sin viñeta: con el botón a ancho completo estorba. */
+.ent-faltan li { list-style: none; margin-left: -18px; }
+.ent-falta-link {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; width: 100%;
+  min-height: var(--tap);
+  padding: 6px 4px;
+  background: none; border: 0;
+  font: inherit; color: inherit; text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(184,135,58,0.18);
+}
+.ent-faltan li:last-child .ent-falta-link { border-bottom: 0; }
+.ent-falta-link:hover, .ent-falta-link:focus-visible {
+  background: rgba(184,135,58,0.10);
+}
+.ent-falta-sec {
+  font-size: 11px; font-weight: 600; opacity: 0.75;
+  flex-shrink: 0; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Destello al llegar: sin él, en una pantalla larga no se sabe qué se
+   movió. Se quita solo a los 1,6 s (nueva-visita.jsx). */
+.seccion-destacada {
+  animation: seccionDestaca 1.6s ease-out;
+}
+@keyframes seccionDestaca {
+  0%, 40% { box-shadow: 0 0 0 3px var(--amber); }
+  100%    { box-shadow: 0 0 0 3px rgba(184,135,58,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seccion-destacada { animation: none; box-shadow: 0 0 0 3px var(--amber); }
+}
 .ent-fila {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 2px; min-height: var(--tap);
@@ -1698,7 +1738,7 @@ body.is-offline .header {
     margin: 6px 4px;
   }
 
-  :root { --content-pad-top: 24px; }
+  :root { --content-pad-top: 24px; --nv-header-h: 200px; }
   #content-desktop {
     padding: var(--content-pad-top) 32px 40px;
     overflow-y: auto;

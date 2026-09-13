@@ -2657,7 +2657,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // campos pendientes. El usuario puede cancelar o continuar igualmente.
   function _validarAntesDeActa() {
     const faltan = [];
-    function req(cond, nombre) { if (!cond) faltan.push(nombre); }
+    // Cada faltante viaja con la sección donde se diligencia, para que la
+    // lista del plegable lleve hasta ella. La sección se declara una vez
+    // por bloque en vez de campo por campo: los bloques ya siguen el orden
+    // del formulario. El texto debe ser el título exacto de la sección
+    // (_Seccion), que es el ancla de _irASeccion.
+    let sec = 'Identificación del caso';
+    function req(cond, nombre) { if (!cond) faltan.push({ nombre: nombre, seccion: sec }); }
 
     // Identificación
     if (d.esOficio) {
@@ -2668,12 +2674,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }
     req(d.fechaVisita, 'Fecha de la visita');
 
+    sec = 'Ubicación del inmueble';
     // Ubicación
     req(d.direccion, 'Dirección');
     req(d.barrio && d.barrio !== '__otro__', 'Barrio / Vereda');
     req(d.comuna, 'Comuna');
     req(d.lat != null && d.lon != null, 'Coordenadas GPS (capturar ubicación)');
 
+    sec = 'Persona que atiende';
     // Persona que atiende (si se marcó "No se atiende", la sección
     // queda cerrada y estos campos no se diligencian — no bloquear).
     if (!d.noAtiende) {
@@ -2682,6 +2690,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       req(d.atiendeRelacion, 'Relación con el evento');
     }
 
+    sec = 'Características de la edificación';
     // Características de la edificación
     req(d.estadoObra, 'Estado de la obra');
     req(d.habitado, 'Habitado');
@@ -2690,6 +2699,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(d.usos, 'Usos actuales');
     req(d.cubiertaActual, 'Tipo cubierta actual');
 
+    sec = 'Verificación documental';
     // Verificación documental
     req(d.licenciaAportada, '¿Se aportó licencia? (SI/NO)');
     if (d.licenciaAportada === 'SI') {
@@ -2702,11 +2712,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       req(d.sistema, 'Sistema estructural');
     }
 
+    sec = 'Descripción de la situación encontrada';
     // Descripción / conclusiones
     req(d.actuacion, 'Descripción de la situación encontrada');
+    sec = 'Tipificación y medidas';
     req(d.infraccion, 'Tipo de contravención');
     req(d.area || d.areaNoMedible, 'Área de contravención (m² o marca "no se pudo medir")');
 
+    sec = 'Tipificación y medidas';
     // Suspensión / citación
     if (d.estadoObra !== 'Terminada') {
       req(d.suspension, '¿Se decreta suspensión?');
@@ -2717,9 +2730,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       req(d.citacionHora,  'Hora de citación');
     }
 
+    sec = 'Funcionarios que realizan la inspección';
     // Funcionarios
     req(d.visitador, 'Visitador(es) que realizan la inspección');
 
+    sec = 'Consulta norma POT';
     // POT
     req(d.catastral, 'Código catastral');
     req(d.ficha, 'N° ficha predial');
@@ -2744,7 +2759,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // si falta cualquier dato obligatorio, NO se permite generar.
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
-      const lista = faltan.slice(0, 20).map(s => '• ' + s).join('\n');
+      const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
       await appAlert(
         'No se puede generar el acta: faltan ' + faltan.length + ' campo(s) por diligenciar:\n\n' +
@@ -2767,7 +2782,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
-      const lista = faltan.slice(0, 20).map(s => '• ' + s).join('\n');
+      const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
       await appAlert(
         'No se puede regenerar el acta: faltan ' + faltan.length + ' campo(s):\n\n' +
@@ -2800,7 +2815,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
     const faltanInf = _validarAntesDeActa();
     if (faltanInf.length > 0) {
-      const lista = faltanInf.slice(0, 20).map(s => '• ' + s).join('\n');
+      const lista = faltanInf.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltanInf.length > 20 ? '\n... y ' + (faltanInf.length - 20) + ' más' : '';
       await appAlert(
         'No se puede generar el informe F-GGO-43: faltan ' + faltanInf.length + ' campo(s) por diligenciar:\n\n' +
@@ -3122,6 +3137,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   async function _confirmarVolver() {
     if (await _puedeSalir()) onSalir();
+  }
+
+  // Lleva la vista a una sección del formulario desde la lista de campos
+  // faltantes. El ancla es el título de la sección, que es texto visible y
+  // único; los campos no sirven de ancla porque su id lo genera React.useId
+  // en cada render (_Campo).
+  function _irASeccion(titulo) {
+    const titulos = document.querySelectorAll('.form-seccion-titulo');
+    let sec = null;
+    for (let i = 0; i < titulos.length; i++) {
+      if (titulos[i].textContent.trim() === titulo) { sec = titulos[i].closest('.form-seccion'); break; }
+    }
+    if (!sec) return;
+    const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 'start' con el scroll-margin-top de .form-seccion, que descuenta la
+    // cabecera fija; con 'center' una sección larga deja su título debajo
+    // de la cabecera y parece que no pasó nada.
+    sec.scrollIntoView({ behavior: quieto ? 'auto' : 'smooth', block: 'start' });
+    sec.classList.add('seccion-destacada');
+    setTimeout(function () { sec.classList.remove('seccion-destacada'); }, 1600);
   }
 
   return (
@@ -3843,8 +3878,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   pills de los renglones de acta e informe. Aquí lo único
                   propio es la lista de qué falta. */}
               <summary>Ver qué campos faltan</summary>
+              {/* Cada campo lleva a su sección: leer qué falta y luego
+                  buscarlo a mano en diez secciones era el trabajo real. */}
               <ul>
-                {faltanActa.map(function(x) { return <li key={x}>{x}</li>; })}
+                {faltanActa.map(function (f) {
+                  return (
+                    <li key={f.nombre}>
+                      <button
+                        type="button"
+                        className="ent-falta-link"
+                        onClick={function () { _irASeccion(f.seccion); }}
+                      >
+                        <span>{f.nombre}</span>
+                        <span className="ent-falta-sec">{f.seccion}</span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </details>
           )}
