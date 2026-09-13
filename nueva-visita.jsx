@@ -3126,15 +3126,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   return (
     <div className="pantalla activa" style={{ paddingBottom: 140 }}>
-      {/* Header unificado (NO sticky) — título + Volver + info radicado/dirección/N° visita */}
-      <div style={{
-        background: 'var(--fondo)', paddingBottom: 12, marginBottom: 14,
-        borderBottom: '1px solid var(--borde)',
-      }}>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 12, marginBottom: 10,
-        }}>
+      {/* Header unificado y FIJO (.nv-header en styles.css) — título +
+          Volver + info radicado/dirección/N° visita. Se queda arriba
+          mientras se recorre el formulario: el inspector debe saber
+          siempre qué visita está diligenciando y poder salir sin subir. */}
+      <div className="nv-header">
+        <div className="nv-header-top">
           <div className="page-title" style={{ margin: 0 }}>{tituloPantalla}</div>
           {onSalir && (
             <button onClick={_confirmarVolver} className="btn-neutro"

@@ -73,6 +73,9 @@
   --sidebar-w:   256px;
   --content-max: 740px;
   --header-h:    49px;
+  /* Padding superior del área de contenido, por ancho. Lo necesita
+     .nv-header para taparlo cuando queda fija. */
+  --content-pad-top: 16px;
 
   /* ── Piso táctil ─────────────────────────────────────────────
      App de campo: el inspector la usa de pie, en la calle, con una
@@ -1025,6 +1028,37 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    Panel de estado superior + renglones de entregables + barra de
    guardado con estado permanente. Solo variables existentes. */
 
+/* Cabecera fija de la visita.
+   Quién scrollea cambia por ancho: en móvil el documento (bajo el
+   .app-header sticky de --header-h), en escritorio #content-desktop
+   (overflow-y:auto), donde el tope es 0. El margen negativo + padding
+   del mismo valor hace que la cabecera cubra el padding superior del
+   scroller; sin eso el formulario asoma por encima al subir. */
+.nv-header {
+  position: sticky; top: var(--header-h); z-index: 30;
+  background: var(--fondo);
+  margin-top: calc(-1 * var(--content-pad-top));
+  padding-top: var(--content-pad-top);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--borde);
+}
+.nv-header-top {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; margin-bottom: 10px;
+}
+/* En móvil la cabecera completa se comía 208 px de 844 (25%), y con el
+   .app-header y la barra de guardar encima queda medio formulario. Fija
+   va solo la identidad: el título es genérico («Continuar visita») y los
+   pendientes ya están en la zona de entregables. */
+@media (max-width: 767px) {
+  .nv-header .page-title { display: none; }
+  .nv-header .estado-resumen { display: none; }
+  .nv-header .estado-dir {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+}
+
 /* Panel de estado superior */
 .estado-panel {
   background: var(--surface);
@@ -1618,11 +1652,15 @@ body.is-offline .header {
     margin: 6px 4px;
   }
 
+  :root { --content-pad-top: 24px; }
   #content-desktop {
-    padding: 24px 32px 40px;
+    padding: var(--content-pad-top) 32px 40px;
     overflow-y: auto;
     max-height: calc(100vh - var(--header-h));
   }
+  /* Aquí el scroller es #content-desktop, no el documento: el tope es su
+     propio borde, no el alto del .app-header. */
+  .nv-header { top: 0; }
   .pantalla {
     padding: 0;
     max-width: var(--content-max);
@@ -1648,8 +1686,8 @@ body.is-offline .header {
 }
 
 @media (min-width: 1200px) {
-  :root { --sidebar-w: 272px; --content-max: 1100px; }
-  #content-desktop { padding: 28px 48px 48px; }
+  :root { --sidebar-w: 272px; --content-max: 1100px; --content-pad-top: 28px; }
+  #content-desktop { padding: var(--content-pad-top) 48px 48px; }
 }
 @media (min-width: 1600px) {
   :root { --content-max: 1200px; }
