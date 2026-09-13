@@ -3093,6 +3093,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // bloqueo compartido de generadores (una sola acción de documento a la vez).
   const faltanActa = filaEditando ? _validarAntesDeActa() : [];
   const docOcupado = generandoActa || generandoRF || abriendoInforme;
+  // La fila en BD y la carpeta en Drive se crean en llamadas distintas: si
+  // crearCarpetaVisita falló (típico sin señal en campo) la visita existe
+  // pero no hay dónde poner fotos ni documentos. Los renglones que dependen
+  // de la carpeta se deshabilitan con tono apagado en vez de ofrecer un
+  // botón que el backend rechazaría con «Falta idCarpetaVisita».
+  const sinCarpetaVisita = !d.idCarpetaVisita;
   // Callback para que SeccionFotos reporte su conteo al panel de estado. Su
   // lista ya incluye las de Drive y las de esta sesión, así que el número
   // llega completo (sin max()).
@@ -3818,6 +3824,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             fotos, escanear la orden de policía y generar el acta y el informe.
           </div>
         ) : (<>
+          {/* La visita quedó guardada pero la carpeta de Drive no llegó a
+              crearse. Se cuenta, igual que la transición anterior: los
+              renglones siguen visibles (deshabilitados) y el aviso dice qué
+              pasó y qué hacer — no es un fallo del inspector. */}
+          {sinCarpetaVisita && (
+            <div className="ent-aviso">
+              La carpeta en Drive no alcanzó a crearse. Vuelve a guardar cuando
+              tengas señal para poder subir fotos y generar el acta, el informe
+              y el registro fotográfico.
+            </div>
+          )}
+
           {/* Lista de campos faltantes plegada por defecto: el punto ámbar
               de cada renglón ya avisa; el detalle se abre solo cuando se
               necesita. Si ambos documentos están generados no hay nada que
@@ -3866,20 +3884,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
           {/* Acta de Inspección Ocular — F-GGO-46, paso 1: hoja de
               caracterización (así la llama la inspección, no "acta de
-              caracterización" a secas). */}
+              caracterización" a secas). El código del formato lleva guiones
+              de no separación (U+2011): un código no se parte en dos líneas
+              en 390 px (igual en el informe F‑GGO‑43 y el registro). */}
           <FilaEntregable
             icono={<Icon.File size={18} />}
             nombre="Acta de Inspección Ocular"
-            meta="F-GGO-46 · hoja de cálculo + PDF"
-            estadoTono={d.linkXlsxActa ? 'ok' : 'pend'}
-            estadoTexto={d.linkXlsxActa ? 'Generada' : (generandoActa ? 'Generando…' : 'Pendiente')}
+            meta={'F‑GGO‑46 · hoja de cálculo + PDF'}
+            estadoTono={d.linkXlsxActa ? 'ok' : (sinCarpetaVisita ? 'apagado' : 'pend')}
+            estadoTexto={d.linkXlsxActa
+              ? 'Generada'
+              : (sinCarpetaVisita
+                  ? 'Requiere la carpeta en Drive'
+                  : (generandoActa ? 'Generando…' : 'Pendiente'))}
             procesando={generandoActa}
           >
             {d.linkXlsxActa ? (<>
               <a href={d.linkXlsxActa} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
               {/* Regenerar rehace el acta en Drive: separado del acceso de
                   solo lectura y reducido a icono con nombre accesible. */}
-              <button type="button" onClick={regenerarActa} disabled={docOcupado}
+              <button type="button" onClick={regenerarActa} disabled={docOcupado || sinCarpetaVisita}
                 className="btn-icono" aria-label="Regenerar el acta F-GGO-46"
                 aria-busy={generandoActa} title="Regenerar acta">
                 {generandoActa
@@ -3887,7 +3911,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   : <Icon.Refresh size={18} />}
               </button>
             </>) : (
-              <button onClick={generarActa} disabled={docOcupado} aria-busy={generandoActa}
+              <button onClick={generarActa} disabled={docOcupado || sinCarpetaVisita} aria-busy={generandoActa}
                 className="btn-accion ent-btn">
                 {generandoActa && <span className="spinner-btn" aria-hidden="true" />}
                 Generar
@@ -3901,16 +3925,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             <FilaEntregable
               icono={<Icon.File size={18} />}
               nombre="Informe de inspección"
-              meta="F-GGO-43 · documento de texto"
-              estadoTono={d.linkDocxInforme ? 'ok' : 'pend'}
-              estadoTexto={d.linkDocxInforme ? 'Generado' : (abriendoInforme ? 'Abriendo…' : 'Pendiente')}
+              meta={'F‑GGO‑43 · documento de texto'}
+              estadoTono={d.linkDocxInforme ? 'ok' : (sinCarpetaVisita ? 'apagado' : 'pend')}
+              estadoTexto={d.linkDocxInforme
+                ? 'Generado'
+                : (sinCarpetaVisita
+                    ? 'Requiere la carpeta en Drive'
+                    : (abriendoInforme ? 'Abriendo…' : 'Pendiente'))}
               procesando={abriendoInforme}
             >
               {d.linkDocxInforme ? (<>
                 <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 {/* Mismo patrón de regeneración del acta: el informe ya
                     generado no vuelve a ofrecer un CTA de texto completo. */}
-                <button type="button" onClick={generarInforme} disabled={docOcupado}
+                <button type="button" onClick={generarInforme} disabled={docOcupado || sinCarpetaVisita}
                   className="btn-icono" aria-label="Regenerar el informe F-GGO-43"
                   aria-busy={abriendoInforme} title="Regenerar informe">
                   {abriendoInforme
@@ -3918,7 +3946,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                     : <Icon.Refresh size={18} />}
                 </button>
               </>) : (
-                <button onClick={generarInforme} disabled={docOcupado} aria-busy={abriendoInforme}
+                <button onClick={generarInforme} disabled={docOcupado || sinCarpetaVisita} aria-busy={abriendoInforme}
                   className="btn-accion ent-btn">
                   {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
                   Generar
@@ -3941,14 +3969,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             icono={<Icon.Camera size={18} />}
             nombre="Registro fotográfico"
             meta={d.idCarpetaFotos
-              ? 'Fotos de la visita · documento F-GGO-46'
+              ? 'Fotos de la visita · documento F‑GGO‑46'
               : 'Disponible al crear la carpeta de Drive'}
-            estadoTono={linkRegistroFotos ? 'ok' : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado')}
+            estadoTono={linkRegistroFotos
+              ? 'ok'
+              : (sinCarpetaVisita
+                  ? 'apagado'
+                  : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado'))}
             estadoTexto={linkRegistroFotos
               ? 'Generado'
-              : (fotosInfo.enCola > 0
-                  ? 'Fotos en cola'
-                  : (fotosInfo.subidas > 0 ? 'Pendiente de generar' : 'Requiere fotos'))}
+              : (sinCarpetaVisita
+                  ? 'Requiere la carpeta en Drive'
+                  : (fotosInfo.enCola > 0
+                      ? 'Fotos en cola'
+                      : (fotosInfo.subidas > 0 ? 'Pendiente de generar' : 'Requiere fotos')))}
             nota={fotosInfo.enCola > 0
               ? '⇡ ' + fotosInfo.enCola + ' en cola'
               : (fotosInfo.subidas > 0
@@ -3965,7 +3999,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   accesible. El link del RF no viaja por BD, así que el estado
                   «generado» solo vive en esta sesión; al reabrir la visita
                   vuelve a «Generar» (regenerar es idempotente en el backend). */}
-              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos || sinCarpetaVisita}
                 className="btn-icono" aria-label="Regenerar el registro fotográfico"
                 aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
                 {(generandoRF || cargandoFotos)
@@ -3973,7 +4007,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   : <Icon.Refresh size={18} />}
               </button>
             </>) : (
-              <button onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos}
+              /* Sin carpeta no hay dónde escribir; con carpeta pero cero
+                 fotos, «Generar» abriría un modal vacío (P3-4 del review). */
+              <button onClick={abrirModalFotos}
+                disabled={docOcupado || cargandoFotos || sinCarpetaVisita
+                  || (!d.idCarpetaFotos && fotosInfo.subidas === 0)}
                 aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
                 {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
                 Generar
