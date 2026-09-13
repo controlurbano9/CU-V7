@@ -3125,7 +3125,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
 
   return (
-    <div className="pantalla activa" style={{ paddingBottom: 140 }}>
+    <div className="pantalla activa nv-pantalla" style={{ paddingBottom: 140 }}>
       {/* Header unificado y FIJO (.nv-header en styles.css) — título +
           Volver + info radicado/dirección/N° visita. Se queda arriba
           mientras se recorre el formulario: el inspector debe saber
@@ -3809,7 +3809,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           Cada pieza es un renglón con estado + acciones; el único botón
           relleno de la pantalla es "Guardar cambios" (barra fija). Antes
           eran hasta 4 botones a ancho completo compitiendo entre sí. */}
-      <div className="form-seccion" style={{ marginTop: 14 }}>
+      <div className="form-seccion nv-entregables" style={{ marginTop: 14 }}>
         <span className="form-seccion-titulo">Entregables de la visita</span>
 
         {/* Antes del primer guardado no hay entregables: la transición se

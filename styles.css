@@ -1059,6 +1059,52 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   }
 }
 
+/* ── Escritorio ancho: formulario + tablero de entregables ──────
+   El escritorio es la oficina: revisar, corregir y generar. En una sola
+   tira vertical hay que recorrer las diez secciones para llegar a los
+   entregables en cada vuelta. Desde 1440 px el tablero pasa a una
+   columna fija a la derecha; por debajo todo queda exactamente igual.
+   1440 y no 1200: descontando la barra lateral (272) y el padding (96),
+   a 1200 el formulario caería a ~510 px, más estrecho que un móvil
+   ancho, y el formulario manda sobre el tablero. */
+@media (min-width: 1440px) {
+  :root { --nv-header-h: 200px; }
+  /* .pantalla.activa fija display:block con dos clases: hay que igualar
+     esa especificidad o el grid no se aplica. */
+  .pantalla.nv-pantalla {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    column-gap: 24px;
+    align-items: start;
+    /* Ensancha solo esta pantalla: el formulario conserva el ancho de
+       hoy (--content-max) y el tablero se suma al lado. */
+    max-width: calc(var(--content-max) + 344px);
+  }
+  .nv-pantalla > * { grid-column: 1; }
+  .nv-header { grid-column: 1 / -1; }
+  .nv-entregables {
+    grid-column: 2;
+    /* Hasta una línea muy posterior a propósito: la celda tiene que
+       abarcar todo el alto de la columna izquierda o el sticky se
+       despegaría al acabar la primera sección. Las filas implícitas que
+       crea van vacías y miden 0 (no hay row-gap). */
+    grid-row: 2 / 200;
+    align-self: start;
+    position: sticky; top: var(--nv-header-h);
+    /* Con 18 miniaturas y el escáner abierto la columna desborda la
+       pantalla y el último botón queda inalcanzable. */
+    max-height: calc(100vh - var(--header-h) - var(--nv-header-h) - 32px);
+    overflow-y: auto;
+  }
+  /* En 320 px la miniatura de escritorio (72 px) deja 3 columnas y 533 px
+     de alto con 18 fotos; la celda de móvil deja 4 y ~330. La columna es
+     estrecha, no una pantalla ancha. */
+  .nv-entregables .fotos-grilla {
+    max-width: none;
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  }
+}
+
 /* Panel de estado superior */
 .estado-panel {
   background: var(--surface);
