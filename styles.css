@@ -1180,7 +1180,7 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
 @media (min-width: 1440px) {
   .pantalla.cn-pantalla {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 440px;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     column-gap: 24px;
     align-items: start;
     max-width: calc(var(--content-max) + 464px);
@@ -1199,7 +1199,7 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
   .home-pantalla .stats-grid-2x2 { grid-template-columns: repeat(4, 1fr); }
   .home-2col {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     column-gap: 24px;
     align-items: start;
   }
