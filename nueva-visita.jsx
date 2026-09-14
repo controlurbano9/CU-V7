@@ -454,10 +454,15 @@ function _estadoInicial(datosIniciales) {
     linkDocxInforme: d['LINK_DOCX_INFORME'] || '',
   };
 }
+// El backend siempre escribe `.../drive/folders/<id>`, pero en BD hay links de
+// carpetas creadas a mano o migradas de V2 con las otras formas que usa Drive.
+// Si el id no se extrae, `idCarpetaVisita` queda vacío mientras `linkDrive` no,
+// y la pantalla se contradice: «Carpeta en Drive · Creada» con «Abrir» y, al
+// mismo tiempo, el registro fotográfico sin control de subida.
 function _idCarpetaDeLink(url) {
   if (!url) return '';
-  const m = /folders\/([a-zA-Z0-9_-]+)/.exec(url);
-  return m ? m[1] : '';
+  const m = /(?:folders|\/d)\/([a-zA-Z0-9_-]+)|[?&]id=([a-zA-Z0-9_-]+)/.exec(url);
+  return m ? (m[1] || m[2] || '') : '';
 }
 
 // ── Parsear chips multi-select desde string guardado en BD ─────
@@ -2092,10 +2097,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (d.idCarpetaFotos) return;            // ya está cargada
     if (!d.idCarpetaVisita) return;          // necesita la carpeta padre
     let cancelado = false;
-    obtenerIdFotos(d.idCarpetaVisita).then(idF => {
-      if (cancelado) return;
-      if (idF) setCampo('idCarpetaFotos', idF);
-    });
+    // `obtenerIdFotos` se traga cualquier error y devuelve '' (api.js:765), y
+    // las dependencias no cambian: un solo fallo dejaba la visita sin control
+    // de subida hasta recargar. El backend crea /Fotos si no existe, así que
+    // vacío siempre es fallo, nunca «no hay carpeta» — reintentamos.
+    (async () => {
+      for (let intento = 0; intento < 3 && !cancelado; intento++) {
+        if (intento > 0) await new Promise(r => setTimeout(r, 3000 * intento));
+        if (cancelado) return;
+        const idF = await obtenerIdFotos(d.idCarpetaVisita);
+        if (cancelado) return;
+        if (idF) { setCampo('idCarpetaFotos', idF); return; }
+      }
+      console.warn('[fotos] no se pudo resolver la subcarpeta /Fotos de', d.idCarpetaVisita);
+    })();
     return () => { cancelado = true; };
   }, [fase, filaEditando, d.idCarpetaVisita, d.idCarpetaFotos]);
 
@@ -3928,13 +3943,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           )}
 
           {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
-              final del formulario y dentro de la sección de fotos). */}
+              final del formulario y dentro de la sección de fotos).
+              El estado sale de `idCarpetaVisita`, la misma condición que
+              habilita acta, informe y fotos (`sinCarpetaVisita`): con
+              `linkDrive` este renglón decía «Creada» y ofrecía «Abrir»
+              mientras el registro fotográfico decía «Requiere la carpeta en
+              Drive» y no montaba el control de subida. */}
           <FilaEntregable
             icono={<Icon.Folder size={18} />}
             nombre="Carpeta en Drive"
-            meta={d.linkDrive ? 'Todos los archivos de la visita' : 'Se crea al guardar con conexión'}
-            estadoTono={d.linkDrive ? 'ok' : 'pend'}
-            estadoTexto={d.linkDrive ? 'Creada' : 'Pendiente'}
+            meta={d.idCarpetaVisita ? 'Todos los archivos de la visita' : 'Se crea al guardar con conexión'}
+            estadoTono={d.idCarpetaVisita ? 'ok' : 'pend'}
+            estadoTexto={d.idCarpetaVisita ? 'Creada' : 'Pendiente'}
           >
             {d.linkDrive && (
               <a href={d.linkDrive} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
