@@ -524,6 +524,28 @@ function AppV6() {
     return () => clearInterval(id);
   }, [usuario]);
 
+  // ── Altura real de la barra superior → --header-h ──────────
+  // La barra no tiene alto fijo: crece cuando el título o el nombre del
+  // inspector envuelven (en 390 px ambos envuelven y mide ~111, no los 49
+  // que declaraba la constante). Todo lo que se pega debajo usa esa
+  // variable, así que con el valor vencido la cabecera fija de la visita
+  // se metía bajo la barra y el botón «Volver» quedaba intocable en móvil.
+  useEffectApp(() => {
+    if (!usuario) return;
+    const barra = document.querySelector('.header');
+    if (!barra) return;
+    const medir = () => {
+      const alto = Math.round(barra.getBoundingClientRect().height);
+      if (alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
+    };
+    medir();
+    // El alto cambia sin que cambie el viewport (el nombre del inspector
+    // llega después del login y reenvuelve), de ahí el observador.
+    const ro = new ResizeObserver(medir);
+    ro.observe(barra);
+    return () => ro.disconnect();
+  }, [usuario]);
+
   // ── Precarga automática de capas POT + catastro tras login ──
   // Garantiza disponibilidad offline en la primera salida a campo.
   // No bloquea la UI; corre con delay 3s tras login.

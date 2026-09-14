@@ -12,7 +12,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>QA — Centro de control de la visita</title>
-<link rel="stylesheet" href="styles.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 </head>
@@ -21,11 +20,22 @@
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-<script src="env.js"></script>
-<script src="offline-queue.js"></script>
-<script src="api.js"></script>
-<script src="utils.js"></script>
-<script src="bundle.min.js"></script>
+
+<!-- Los locales van con cache-buster por marca de tiempo: sin él el
+     navegador servía el styles.css/bundle de la sesión anterior y se
+     medía el diseño viejo creyendo medir el nuevo. Van después de React
+     (el bundle lo necesita al evaluarse) y con document.write para que
+     conserven el orden de ejecución. Aquí no importa el coste: es un
+     banco local. -->
+<script>
+(function () {
+  const v = '?b=' + Date.now();
+  document.write('<link rel="stylesheet" href="styles.css' + v + '">');
+  ['env.js', 'offline-queue.js', 'api.js', 'utils.js', 'bundle.min.js'].forEach(function (f) {
+    document.write('<scr' + 'ipt src="' + f + v + '"></scr' + 'ipt>');
+  });
+})();
+</script>
 
 <script>
 // ── Stubs: nada sale a la red ─────────────────────────────────
@@ -116,16 +126,68 @@ const ESCENARIOS = {
 
 const _e = ESCENARIOS[ESCENARIO] || ESCENARIOS.faltantes;
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  React.createElement('div', { className: 'app-contenido', style: { padding: 16, paddingBottom: 120 } },
-    React.createElement(window.NuevaVisitaScreen, {
-      usuario: { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Inspector de Control Urbano' },
-      filaInicial: _e.fila,
-      datosIniciales: _e.datos,
-      onSalir: function () { console.log('[QA] onSalir'); },
-    })
-  )
-);
+const USUARIO_QA = { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Inspector de Control Urbano' };
+
+// El banco montaba la pantalla suelta, sin la barra superior ni el
+// contenedor con scroll de la app. Eso hacía optimistas todas las medidas
+// de arriba: una cabecera fija podía "verse bien" aquí y quedar debajo de
+// la barra en la app real (pasó: el botón «Volver» intocable en móvil,
+// invisible en tres revisiones seguidas). Se replica la estructura de
+// app.jsx:715-768 — misma envoltura, mismas clases, mismo header.
+const AppQA = function () {
+  // Copia del efecto de app.jsx que publica el alto real de la barra en
+  // --header-h. Sin él, aquí se mediría la constante y no la realidad.
+  React.useEffect(function () {
+    const barra = document.querySelector('.header');
+    if (!barra) return;
+    const medir = function () {
+      const alto = Math.round(barra.getBoundingClientRect().height);
+      if (alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(barra);
+    return function () { ro.disconnect(); };
+  }, []);
+
+  return React.createElement('div', { id: 'app-principal', style: { display: 'block' } },
+    React.createElement('div', { id: 'app-wrapper' },
+      React.createElement('div', { className: 'header' },
+        React.createElement('div', { className: 'header-top' },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('img', { src: 'logo.jpg', alt: 'Alcaldía de Bello', style: {
+              width: 36, height: 36, borderRadius: 8, objectFit: 'contain',
+              background: 'white', padding: 2, flexShrink: 0,
+            } }),
+            React.createElement('div', null,
+              React.createElement('h1', null, 'Control Urbano · Insp. N°9'),
+              React.createElement('p', null, USUARIO_QA.usuario + ' · ' + USUARIO_QA.cargo)
+            )
+          ),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('button', { type: 'button', className: 'btn-logout' }, 'Salir')
+          )
+        )
+      ),
+      React.createElement('div', { id: 'content-desktop' },
+        React.createElement(window.NuevaVisitaScreen, {
+          usuario: USUARIO_QA,
+          filaInicial: _e.fila,
+          datosIniciales: _e.datos,
+          onSalir: function () { console.log('[QA] onSalir'); },
+        })
+      )
+    )
+  );
+};
+
+// ?offline=1 añade la clase que en la app pone el banner de sin conexión:
+// baja la barra 40 px y con ella todo lo que se pega debajo.
+if (new URLSearchParams(location.search).get('offline') === '1') {
+  document.body.classList.add('is-offline');
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(AppQA));
 </script>
 </body>
 </html>

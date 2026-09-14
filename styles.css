@@ -72,13 +72,18 @@
   /* ── Layout ──────────────────────────────────────────────── */
   --sidebar-w:   256px;
   --content-max: 740px;
+  /* Valor de arranque: la barra superior no tiene alto fijo (crece cuando
+     el título o el nombre del inspector envuelven), así que app.jsx mide
+     la real y reescribe esta variable. No la trates como una constante:
+     lo era, y por eso la cabecera de la visita se pegaba bajo la barra. */
   --header-h:    49px;
   /* Padding superior del área de contenido, por ancho. Lo necesita
      .nv-header para taparlo cuando queda fija. */
   --content-pad-top: 16px;
-  /* Alto de la cabecera fija de la visita, contando el .app-header que
-     tiene encima en móvil. Lo usan el scroll a sección y el tablero. */
-  --nv-header-h: 210px;
+  /* Alto de la cabecera fija de la visita (medido: 153 px en móvil, 190 en
+     escritorio). NO incluye la barra de la app: quien la necesite la suma
+     con --header-h. Lo usan el scroll a sección y el tablero. */
+  --nv-header-h: 160px;
 
   /* ── Piso táctil ─────────────────────────────────────────────
      App de campo: el inspector la usa de pie, en la calle, con una
@@ -1008,8 +1013,11 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   padding: 16px;
   margin-bottom: 10px;
   /* Al saltar desde la lista de campos faltantes, descuenta la cabecera
-     fija: sin esto el título de la sección queda debajo de ella. */
-  scroll-margin-top: var(--nv-header-h);
+     fija: sin esto el título de la sección queda debajo de ella. En móvil
+     scrollea el documento y hay DOS barras encima (la de la app y la de la
+     visita); en escritorio el scroller es #content-desktop, que ya empieza
+     debajo de la barra de la app — ver el override en el bloque ≥768. */
+  scroll-margin-top: calc(var(--header-h) + var(--nv-header-h));
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--line);
 }
@@ -1049,6 +1057,10 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   margin-bottom: 14px;
   border-bottom: 1px solid var(--borde);
 }
+/* El banner de sin conexión empuja la barra de la app 40 px hacia abajo
+   (regla `body.is-offline .header`): la cabecera de la visita tiene que
+   bajar lo mismo o se pega debajo de ella. */
+body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
 .nv-header-top {
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px; margin-bottom: 10px;
@@ -1097,9 +1109,15 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
     align-self: start;
     position: sticky; top: var(--nv-header-h);
     /* Con 18 miniaturas y el escáner abierto la columna desborda la
-       pantalla y el último botón queda inalcanzable. */
-    max-height: calc(100vh - var(--header-h) - var(--nv-header-h) - 32px);
+       pantalla y el último botón queda inalcanzable. Abajo descuenta la
+       barra fija de guardar (92 px medidos): con los 32 px de antes, el
+       borde inferior del tablero quedaba 11 px debajo de ella. */
+    max-height: calc(100vh - var(--header-h) - var(--nv-header-h) - 104px);
     overflow-y: auto;
+    /* Al tabular hacia un control del tablero cuando la página está al
+       fondo (ahí el tablero ya no está pegado), el scroll mínimo del foco
+       lo dejaba debajo de la cabecera fija. */
+    scroll-margin-top: calc(var(--nv-header-h) + 8px);
   }
   /* En 320 px la miniatura de escritorio (72 px) deja 3 columnas y 533 px
      de alto con 18 fotos; la celda de móvil deja 4 y ~330. La columna es
@@ -1182,8 +1200,13 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ent-falta-link:hover, .ent-falta-link:focus-visible {
   background: rgba(184,135,58,0.10);
 }
+/* El rótulo dice adónde lleva el salto: es la mitad de la información del
+   control, no una nota al margen. Con opacity .75 el ámbar quedaba en
+   2,90:1 sobre el fondo de la lista; este tono medido da 5,80:1. La
+   jerarquía frente al nombre del campo la marca el tamaño (11 vs 13), no
+   un color ilegible. */
 .ent-falta-sec {
-  font-size: 11px; font-weight: 600; opacity: 0.75;
+  font-size: 11px; font-weight: 600; color: rgb(120,88,38);
   flex-shrink: 0; max-width: 45%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1747,6 +1770,10 @@ body.is-offline .header {
   /* Aquí el scroller es #content-desktop, no el documento: el tope es su
      propio borde, no el alto del .app-header. */
   .nv-header { top: 0; }
+  body.is-offline .nv-header { top: 0; }
+  /* Y por lo mismo, el salto a sección solo tiene que descontar la
+     cabecera de la visita: la barra de la app queda fuera del scroller. */
+  .form-seccion { scroll-margin-top: var(--nv-header-h); }
   .pantalla {
     padding: 0;
     max-width: var(--content-max);
