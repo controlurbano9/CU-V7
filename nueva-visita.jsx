@@ -452,6 +452,10 @@ function _estadoInicial(datosIniciales) {
     // una visita con informe ya generado, la zona de entregables no lo sabía
     // y ofrecía "generar" como si no existiera.
     linkDocxInforme: d['LINK_DOCX_INFORME'] || '',
+    // Registro fotográfico (col LINK_REGISTRO_FOTOS, creada por el backend).
+    // Antes el link vivía solo en el state de la sesión: al reabrir una
+    // visita con RF ya generado el renglón ofrecía «Generar» otra vez.
+    linkRegistroFotos: d['LINK_REGISTRO_FOTOS'] || '',
   };
 }
 // El backend siempre escribe `.../drive/folders/<id>`, pero en BD hay links de
@@ -1595,9 +1599,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [guardando, setGuard]   = useStateNV(false);
   const [generandoActa, setGA]  = useStateNV(false);
   const [generandoRF,  setGRF]  = useStateNV(false);
-  // Link del registro fotográfico generado en ESTA sesión (no viaja por BD):
-  // activa el patrón «Ver» + ↻ en el renglón. Ver comentario en confirmarYGenerarRF.
-  const [linkRegistroFotos, setLinkRegistroFotos] = useStateNV('');
   // Informe F-GGO-43: la "generación" es abrir informe/index.html (pestaña o
   // iframe); este flag solo marca el tramo validación→apertura.
   const [abriendoInforme, setAI] = useStateNV(false);
@@ -1743,7 +1744,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   function _snapshotLimpia(dObj) {
     const _servidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                        'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                       'linkPdfRadicado', 'linkDocxInforme', 'ultimaModConocida'];
+                       'linkPdfRadicado', 'linkDocxInforme', 'linkRegistroFotos',
+                       'ultimaModConocida'];
     const out = {};
     Object.keys(dObj).forEach(function(k) {
       if (_servidor.indexOf(k) < 0) out[k] = dObj[k];
@@ -1833,7 +1835,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // más hubiera tocado la fila. Siempre debe venir fresco de BD.
         const _dServidor = ['linkDrive', 'idCarpetaVisita', 'idCarpetaFotos',
                             'linkXlsxActa', 'linkPdfActa', 'linkOrdenPolicia',
-                            'linkPdfRadicado', 'linkDocxInforme', 'ultimaModConocida'];
+                            'linkPdfRadicado', 'linkDocxInforme', 'linkRegistroFotos',
+                            'ultimaModConocida'];
         const _dSafe = {};
         Object.keys(d).forEach(function(k){
           if (_dServidor.indexOf(k) < 0) _dSafe[k] = d[k];
@@ -2045,13 +2048,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // Auto-recuperación de carpeta Drive faltante.
   // Si la visita se guardó offline, la cola la sincroniza sin LINK_DRIVE
-  // (crearCarpetaVisita es GET y falla offline). Al reabrirla online,
-  // creamos la carpeta automáticamente y persistimos el link.
+  // (crearCarpetaVisita es GET y falla offline). Al reabrir la visita —o al
+  // recuperar conexión con el formulario abierto— creamos la carpeta
+  // automáticamente y persistimos el link: `enLinea` (declarado arriba, lo
+  // actualizan los eventos online/offline) es dep del efecto, así el
+  // reintento no espera a que cambien los demás datos. El backend resuelve
+  // con obtenerOCrearCarpeta: un reintento después de un intento a medias
+  // no duplica carpetas.
   useEffectNV(() => {
     if (fase !== 'formulario') return;
     if (!filaEditando) return;             // solo para visitas ya en BD
     if (d.linkDrive) return;                // ya tiene carpeta
-    if (!navigator.onLine) return;          // sin red: nada que hacer
+    if (!enLinea) return;                   // sin red: nada que hacer
     if (!d.comuna || !d.direccion || !d.fechaVisita) return;
     let cancelado = false;
     (async () => {
@@ -2085,7 +2093,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       }
     })();
     return () => { cancelado = true; };
-  }, [fase, filaEditando, d.linkDrive, d.comuna, d.direccion, d.fechaVisita, estadoVisita, datosIniciales]);
+  }, [fase, filaEditando, d.linkDrive, enLinea, d.comuna, d.direccion, d.fechaVisita, estadoVisita, datosIniciales]);
 
   // Recuperar idCarpetaFotos al reabrir una visita ya guardada.
   // La BD solo persiste LINK_DRIVE (carpeta visita); la subcarpeta de Fotos
@@ -2113,6 +2121,38 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     })();
     return () => { cancelado = true; };
   }, [fase, filaEditando, d.idCarpetaVisita, d.idCarpetaFotos]);
+
+  // Recuperar links de acta y RF al reabrir una visita que ya los tiene en
+  // la carpeta de Drive. Generaciones anteriores a la persistencia
+  // server-side dejaron el archivo sin link en BD: el acta dependía de un
+  // `actualizarLinks` best-effort del cliente (si ese POST fallaba, la
+  // columna quedaba vacía para siempre) y el RF no se persistía nunca — el
+  // link vivía solo en el state de la sesión que lo generó. Un solo pedido:
+  // el backend mira la carpeta por prefijo de nombre y persiste lo que
+  // encuentre. Si no hay nada, no insiste (el «Generar» sigue funcional).
+  useEffectNV(() => {
+    if (fase !== 'formulario') return;
+    if (!filaEditando) return;
+    if (!d.idCarpetaVisita) return;
+    if (d.linkXlsxActa && d.linkRegistroFotos) return; // nada por recuperar
+    if (!enLinea) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const r = await gasPost({
+          accion: 'recuperarEntregables',
+          fila: filaEditando,
+          idCarpetaVisita: d.idCarpetaVisita,
+        });
+        if (cancelado || !r || !r.ok) return;
+        if (r.linkXlsxActa && !d.linkXlsxActa) setCampo('linkXlsxActa', r.linkXlsxActa);
+        if (r.linkRegistroFotos && !d.linkRegistroFotos) setCampo('linkRegistroFotos', r.linkRegistroFotos);
+      } catch (e) {
+        console.warn('[entregables] no se pudieron recuperar links de la carpeta:', e.message);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [fase, filaEditando, d.idCarpetaVisita, d.linkXlsxActa, d.linkRegistroFotos, enLinea]);
 
   // Cuando estadoObra cambia a "Terminada", forzar suspensión a N/A
   useEffectNV(() => {
@@ -3152,7 +3192,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const r = await gasPost(payload);
       const link = r.linkDoc;
       if (link) {
-        setLinkRegistroFotos(link);
+        // El backend ya persistió el link en LINK_REGISTRO_FOTOS; el setCampo
+        // actualiza el renglón de una vez (patrón «Abrir» + ↻) sin esperar
+        // a reabrir la visita.
+        setCampo('linkRegistroFotos', link);
         await appAlert(
           (r.yaExistia ? 'El registro fotográfico ya existía en la carpeta.' : 'Registro fotográfico generado.') +
           '\n\nSe abrirá en una pestaña nueva.',
@@ -3254,7 +3297,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           ordenEscaneada={!!d.linkOrdenPolicia}
           tieneActa={!!d.linkXlsxActa}
           tieneInforme={!!d.linkDocxInforme}
-          tieneRF={!!linkRegistroFotos}
+          tieneRF={!!d.linkRegistroFotos}
         />
       </div>
 
@@ -4066,12 +4109,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             meta={d.idCarpetaFotos
               ? 'Fotos de la visita · documento F‑GGO‑46'
               : 'Disponible al crear la carpeta de Drive'}
-            estadoTono={linkRegistroFotos
+            estadoTono={d.linkRegistroFotos
               ? 'ok'
               : (sinCarpetaVisita
                   ? 'apagado'
                   : ((fotosInfo.enCola > 0 || fotosInfo.subidas > 0) ? 'pend' : 'apagado'))}
-            estadoTexto={linkRegistroFotos
+            estadoTexto={d.linkRegistroFotos
               ? 'Generado'
               : (sinCarpetaVisita
                   ? 'Requiere la carpeta en Drive'
@@ -4088,8 +4131,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
             ) : undefined}
           >
-            {linkRegistroFotos ? (<>
-              <a href={linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+            {d.linkRegistroFotos ? (<>
+              <a href={d.linkRegistroFotos} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
               {/* Mismo patrón de regeneración del acta: icono ↻ con nombre
                   accesible. El link del RF no viaja por BD, así que el estado
                   «generado» solo vive en esta sesión; al reabrir la visita
