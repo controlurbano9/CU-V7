@@ -1728,10 +1728,17 @@ body.is-offline .header {
     overflow-y: auto;
     max-height: calc(100vh - var(--header-h));
   }
-  /* Aquí el scroller es #content-desktop, no el documento: el tope es su
-     propio borde, no el alto del .app-header. */
-  .nv-header { top: 0; }
-  body.is-offline .nv-header { top: 0; }
+  /* Aquí el scroller es #content-desktop, no el documento. Su scrollport
+     es su padding box: top:0 ancla la cabecera DEBAJO del padding superior
+     y esa banda queda descubierta, con el formulario asomando por ella al
+     scrollear (el margen negativo de la regla base no lo evita: una caja
+     sticky no colapsa márgenes). El contenedor sube hasta el borde real
+     del scrollport y la cabecera se ancla por encima del padding — las
+     dos cosas salen de la misma --content-pad-top que define el relleno,
+     que es también la que mide el aire interior de la cabecera. */
+  .pantalla.nv-pantalla { margin-top: calc(-1 * var(--content-pad-top)); }
+  .nv-header { margin-top: 0; top: calc(-1 * var(--content-pad-top)); }
+  body.is-offline .nv-header { top: calc(-1 * var(--content-pad-top)); }
   .pantalla {
     padding: 0;
     max-width: var(--content-max);
