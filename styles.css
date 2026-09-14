@@ -1651,9 +1651,15 @@ body.is-offline .header {
 
 
 /* ╔════════════════════════════════════════════════════════════╗
-   ║ 9) DESKTOP ≥ 768px                                         ║
+   ║ 9) DESKTOP ≥ 900px                                         ║
    ╚════════════════════════════════════════════════════════════╝ */
-@media (min-width: 768px) {
+/* 900 y no 768: el sidebar lo monta `isDesktop = winW >= 900`
+   (app.jsx). Con el umbral CSS en 768 el grid reservaba su columna
+   desde una tablet vertical donde nadie la ocupa — #content-desktop
+   caía en ella y quedaba del ancho del sidebar, sin navegación (la
+   nav inferior ya la escondía este bloque). Los dos umbrales van
+   juntos: si se mueve uno, se mueve el otro. */
+@media (min-width: 900px) {
   body { background: var(--paper); }
 
   .nav-inferior, .fab { display: none !important; }
