@@ -1012,14 +1012,31 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   border-radius: var(--r-lg);
   padding: 16px;
   margin-bottom: 10px;
-  /* Al saltar desde la lista de campos faltantes, descuenta la cabecera
-     fija: sin esto el título de la sección queda debajo de ella. En móvil
-     scrollea el documento y hay DOS barras encima (la de la app y la de la
-     visita); en escritorio el scroller es #content-desktop, que ya empieza
-     debajo de la barra de la app — ver el override en el bloque ≥768. */
-  scroll-margin-top: calc(var(--header-h) + var(--nv-header-h));
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--line);
+}
+/* Indicador binario a la derecha del título: check verde = completa,
+   punto ámbar = con algo pendiente (solo tras un intento de generar
+   fallido). Sin número y sin sección sin obligatorios marcada. El
+   indicador es informativo: no es botón ni foco tabulable. */
+.form-seccion-cabecera {
+  display: flex; align-items: center; gap: 8px;
+}
+.sec-ind {
+  flex-shrink: 0;
+  /* Pisa el padding de la tarjeta en vez de robarle ancho al título: el
+     título más largo («Características de la edificación», 284 px
+     naturales) solo tiene ~9 px de holgura en un 390 y con el indicador
+     en el flujo envolvería a dos líneas. Con este margen sigue dentro de
+     la tarjeta (padding 16) y el título conserva su línea. */
+  margin-right: -11px;
+}
+/* --green-ink y no --green: el ✓ es texto y la WCAG 1.4.3 pide 4.5:1
+   (el --green se queda corto); el ink de la misma familia pasa de sobra. */
+.sec-ind-ok { color: var(--green-ink); font-size: 16px; font-weight: 700; }
+.sec-ind-pend {
+  width: 10px; height: 10px; border-radius: 50%; /* mismo tamaño que .ent-dot */
+  background: var(--amber); /* mismo lenguaje que .ent-dot.ed-pend */
 }
 .form-seccion-titulo,
 .titulo-azul,
@@ -1166,62 +1183,6 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
 }
 
 /* Zona de entregables: un renglón por pieza */
-.ent-faltan {
-  font-size: 12px; color: var(--amber); background: var(--amber-bg);
-  border: 1px solid rgba(184,135,58,0.25); border-radius: var(--r-sm);
-  padding: 0 10px; margin-bottom: 10px;
-}
-/* El summary es el único control de la zona: su área pulsable debe llegar a
-   var(--tap). display:flex centra el texto pero elimina el marcador nativo,
-   así que el triángulo se dibuja con ::before. */
-.ent-faltan summary {
-  font-weight: 600; cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-  min-height: var(--tap);
-}
-.ent-faltan summary::before { content: '▸'; font-size: 10px; }
-.ent-faltan[open] summary::before { content: '▾'; }
-.ent-faltan ul { margin: 6px 0 0; padding-left: 18px; }
-/* Cada campo faltante lleva a su sección: la fila entera es el objetivo
-   táctil, con la sección de destino a la derecha para que el salto no
-   sorprenda. Sin viñeta: con el botón a ancho completo estorba. */
-.ent-faltan li { list-style: none; margin-left: -18px; }
-.ent-falta-link {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; width: 100%;
-  min-height: var(--tap);
-  padding: 6px 4px;
-  background: none; border: 0;
-  font: inherit; color: inherit; text-align: left;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(184,135,58,0.18);
-}
-.ent-faltan li:last-child .ent-falta-link { border-bottom: 0; }
-.ent-falta-link:hover, .ent-falta-link:focus-visible {
-  background: rgba(184,135,58,0.10);
-}
-/* El rótulo dice adónde lleva el salto: es la mitad de la información del
-   control, no una nota al margen. Con opacity .75 el ámbar quedaba en
-   2,90:1 sobre el fondo de la lista; este tono medido da 5,80:1. La
-   jerarquía frente al nombre del campo la marca el tamaño (11 vs 13), no
-   un color ilegible. */
-.ent-falta-sec {
-  font-size: 11px; font-weight: 600; color: rgb(120,88,38);
-  flex-shrink: 0; max-width: 45%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Destello al llegar: sin él, en una pantalla larga no se sabe qué se
-   movió. Se quita solo a los 1,6 s (nueva-visita.jsx). */
-.seccion-destacada {
-  animation: seccionDestaca 1.6s ease-out;
-}
-@keyframes seccionDestaca {
-  0%, 40% { box-shadow: 0 0 0 3px var(--amber); }
-  100%    { box-shadow: 0 0 0 3px rgba(184,135,58,0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .seccion-destacada { animation: none; box-shadow: 0 0 0 3px var(--amber); }
-}
 .ent-fila {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 2px; min-height: var(--tap);
@@ -1771,9 +1732,6 @@ body.is-offline .header {
      propio borde, no el alto del .app-header. */
   .nv-header { top: 0; }
   body.is-offline .nv-header { top: 0; }
-  /* Y por lo mismo, el salto a sección solo tiene que descontar la
-     cabecera de la visita: la barra de la app queda fuera del scroller. */
-  .form-seccion { scroll-margin-top: var(--nv-header-h); }
   .pantalla {
     padding: 0;
     max-width: var(--content-max);

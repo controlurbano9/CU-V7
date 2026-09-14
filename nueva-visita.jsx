@@ -576,10 +576,21 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
 // ══════════════════════════════════════════════════════════════
 //   PRIMITIVOS DE FORMULARIO
 // ══════════════════════════════════════════════════════════════
-function _Seccion({ titulo, color, children }) {
+// `estado`: 'ok' → check verde; 'pend' → punto ámbar (solo tras un intento
+// de generar fallido, ver `mostrarPendientes`); undefined → sin indicador
+// (secciones sin campos obligatorios, p. ej. Observaciones).
+function _Seccion({ titulo, color, estado, children }) {
   return (
     <div className="form-seccion">
-      <span className={'form-seccion-titulo titulo-' + (color || 'azul')}>{titulo}</span>
+      <div className="form-seccion-cabecera">
+        <span className={'form-seccion-titulo titulo-' + (color || 'azul')}>{titulo}</span>
+        {estado === 'ok' && (
+          <span className="sec-ind sec-ind-ok" role="img" aria-label="Sección completa" title="Sección completa">✓</span>
+        )}
+        {estado === 'pend' && (
+          <span className="sec-ind sec-ind-pend" role="img" aria-label="Faltan campos en esta sección" title="Faltan campos en esta sección" />
+        )}
+      </div>
       <div className="form-grid-2col" style={{ marginTop: 12 }}>{children}</div>
     </div>
   );
@@ -1497,8 +1508,8 @@ function PanelEstadoVisita(p) {
         </div>
       )}
       {/* El panel solo lista lo que falta: un entregable resuelto no deja
-          chip y el conteo de campos faltantes vive en el plegable de la zona
-          de entregables, no bajo la dirección. Antes de guardar no hay
+          chip, y el detalle de campos faltantes es la alerta al intentar
+          generar (no hay lista en pantalla). Antes de guardar no hay
           entregables que pedir — el aviso inferior ya lo explica. */}
       {p.filaEditando && (
         <div className="estado-resumen" aria-label="Progreso de la visita">
@@ -1751,6 +1762,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [errorGuardar, setErrorGuardar] = useStateNV('');
   const [enColaGuardado, setEnColaGuardado] = useStateNV(false);
   const [fotosInfo, setFotosInfo]       = useStateNV({ subidas: 0, enCola: 0 });
+  // Puntos ámbar de sección: ocultos mientras se diligencia (si no, diez
+  // secciones marcadas al abrir = decorado que se aprende a ignorar).
+  // Se encienden con el primer intento de generar que encuentre faltantes.
+  // Estado de sesión de pantalla: no se persiste en el borrador.
+  const [mostrarPendientes, setMostrarPendientes] = useStateNV(false);
 
   // (1) Restaurar borrador local en el primer render del formulario.
   React.useEffect(function() {
@@ -2679,18 +2695,25 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     };
   }
 
-  // Devuelve [] si el formulario está completo para generar acta;
-  // si faltan datos retorna un array con los nombres legibles de los
-  // campos pendientes. El usuario puede cancelar o continuar igualmente.
-  function _validarAntesDeActa() {
+  // Recorrido único de las validaciones del acta. Devuelve dos cosas:
+  // los campos que faltan (lista de {nombre, seccion}) y el conjunto de
+  // secciones que declararon al menos un campo obligatorio aplicable al
+  // estado actual — `req` registra la sección esté o no el campo, así el
+  // indicador distingue «completa» de «sin obligatorios». Las reglas
+  // condicionales (noAtiende, licencia, suspensión, citación) quedan
+  // dentro: si el bloque no corre, la sección no declara obligatorios.
+  function _evaluarFormulario() {
     const faltan = [];
-    // Cada faltante viaja con la sección donde se diligencia, para que la
-    // lista del plegable lleve hasta ella. La sección se declara una vez
-    // por bloque en vez de campo por campo: los bloques ya siguen el orden
-    // del formulario. El texto debe ser el título exacto de la sección
-    // (_Seccion), que es el ancla de _irASeccion.
+    const seccionesConObligatorios = new Set();
+    // Cada faltante viaja con la sección donde se diligencia. La sección
+    // se declara una vez por bloque en vez de campo por campo: los bloques
+    // ya siguen el orden del formulario. El texto debe ser el título
+    // exacto de la sección (_Seccion) — es la llave de `estadosSeccion`.
     let sec = 'Identificación del caso';
-    function req(cond, nombre) { if (!cond) faltan.push({ nombre: nombre, seccion: sec }); }
+    function req(cond, nombre) {
+      seccionesConObligatorios.add(sec);
+      if (!cond) faltan.push({ nombre: nombre, seccion: sec });
+    }
 
     // Identificación
     if (d.esOficio) {
@@ -2772,7 +2795,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
     // Observaciones (sección 10) — opcional, no bloquea acta
 
-    return faltan;
+    return { faltan: faltan, seccionesConObligatorios: seccionesConObligatorios };
+  }
+
+  // Los tres avisos de generación solo necesitan la lista de faltantes.
+  function _validarAntesDeActa() {
+    return _evaluarFormulario().faltan;
   }
 
   // Paso 1 del F-GGO-46: Sheet de CARACTERIZACIÓN.
@@ -2786,6 +2814,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // si falta cualquier dato obligatorio, NO se permite generar.
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
+      setMostrarPendientes(true); // enciende los puntos ámbar de sección
       const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
       await appAlert(
@@ -2809,6 +2838,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
+      setMostrarPendientes(true); // enciende los puntos ámbar de sección
       const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
       await appAlert(
@@ -2842,6 +2872,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
     const faltanInf = _validarAntesDeActa();
     if (faltanInf.length > 0) {
+      setMostrarPendientes(true); // enciende los puntos ámbar de sección
       const lista = faltanInf.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
       const extra = faltanInf.length > 20 ? '\n... y ' + (faltanInf.length - 20) + ' más' : '';
       await appAlert(
@@ -3131,9 +3162,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     ? 'Continuar visita'
     : (d.esOficio ? 'Visita de oficio' : 'Nueva visita');
 
-  // Insumos del centro de control: campos faltantes para documentos y
-  // bloqueo compartido de generadores (una sola acción de documento a la vez).
-  const faltanActa = filaEditando ? _validarAntesDeActa() : [];
+  // Insumos del centro de control: estado por sección y bloqueo compartido
+  // de generadores (una sola acción de documento a la vez).
+  const evaluacion = _evaluarFormulario();
+  const estadosSeccion = {};
+  evaluacion.seccionesConObligatorios.forEach(function (titulo) {
+    const pendiente = evaluacion.faltan.some(f => f.seccion === titulo);
+    // El check verde solo en las completas (nunca miente) y se ve siempre;
+    // las pendientes no llevan nada hasta que un intento de generar fallido
+    // enciende el ámbar — si no, abrir una visita nueva marcaría ocho
+    // secciones y la señal se volvería decorado.
+    if (!pendiente) estadosSeccion[titulo] = 'ok';
+    else if (mostrarPendientes) estadosSeccion[titulo] = 'pend';
+  });
   const docOcupado = generandoActa || generandoRF || abriendoInforme;
   // La fila en BD y la carpeta en Drive se crean en llamadas distintas: si
   // crearCarpetaVisita falló (típico sin señal en campo) la visita existe
@@ -3164,30 +3205,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   async function _confirmarVolver() {
     if (await _puedeSalir()) onSalir();
-  }
-
-  // Lleva la vista a una sección del formulario desde la lista de campos
-  // faltantes. El ancla es el título de la sección, que es texto visible y
-  // único; los campos no sirven de ancla porque su id lo genera React.useId
-  // en cada render (_Campo).
-  function _irASeccion(titulo) {
-    const titulos = document.querySelectorAll('.form-seccion-titulo');
-    let sec = null;
-    for (let i = 0; i < titulos.length; i++) {
-      if (titulos[i].textContent.trim() === titulo) { sec = titulos[i].closest('.form-seccion'); break; }
-    }
-    if (!sec) return;
-    // 'start' con el scroll-margin-top de .form-seccion, que descuenta la
-    // cabecera fija; con 'center' una sección larga deja su título debajo
-    // de la cabecera y parece que no pasó nada.
-    //
-    // Salto instantáneo, no 'smooth': Chrome se traga un scrollIntoView
-    // suave si otro scroll sigue en curso, y tocando dos renglones seguidos
-    // —lo normal cuando se repasa la lista— el salto no pasaba nada 3 de 22
-    // veces. El destello ya dice adónde se fue la vista.
-    sec.scrollIntoView({ behavior: 'auto', block: 'start' });
-    sec.classList.add('seccion-destacada');
-    setTimeout(function () { sec.classList.remove('seccion-destacada'); }, 1600);
   }
 
   return (
@@ -3227,7 +3244,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </div>
 
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
-      <_Seccion titulo="Identificación del caso" color="azul">
+      <_Seccion titulo="Identificación del caso"
+        estado={estadosSeccion["Identificación del caso"]} color="azul">
         {/* Indicador tipo de visita (solo lectura — se eligió en el modal) */}
         <_Campo label="Tipo de visita">
           <div style={{
@@ -3307,7 +3325,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 2. UBICACIÓN ─────────────────────────────────────── */}
-      <_Seccion titulo="Ubicación del inmueble" color="azul">
+      <_Seccion titulo="Ubicación del inmueble"
+        estado={estadosSeccion["Ubicación del inmueble"]} color="azul">
         <_Campo label="Dirección del inmueble" fullWidth>
           <_Input value={d.direccion} onChange={v => setCampo('direccion', v)}
             placeholder="Cl 50 # 32-10" />
@@ -3388,7 +3407,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 3. PERSONA QUE ATIENDE ──────────────────────────── */}
-      <_Seccion titulo="Persona que atiende" color="azul">
+      <_Seccion titulo="Persona que atiende"
+        estado={estadosSeccion["Persona que atiende"]} color="azul">
         <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
           <label className="check-tap" style={{ fontWeight: 600, color: d.noAtiende ? 'var(--amarillo)' : 'var(--texto-2)' }}>
             <input type="checkbox"
@@ -3449,7 +3469,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 4. CARACTERÍSTICAS ──────────────────────────────── */}
-      <_Seccion titulo="Características de la edificación" color="cafe">
+      <_Seccion titulo="Características de la edificación"
+        estado={estadosSeccion["Características de la edificación"]} color="cafe">
         <_Campo label="Estado de la obra" fullWidth>
           <_Radio value={d.estadoObra} onChange={v => setCampo('estadoObra', v)}
             opciones={['En proceso / iniciada', 'Terminada']} />
@@ -3503,7 +3524,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 5. VERIFICACIÓN DOCUMENTAL ──────────────────────── */}
-      <_Seccion titulo="Verificación documental" color="cafe">
+      <_Seccion titulo="Verificación documental"
+        estado={estadosSeccion["Verificación documental"]} color="cafe">
         <_Campo label="¿Se aportó licencia?" fullWidth>
           <_Radio value={d.licenciaAportada} onChange={v => setCampo('licenciaAportada', v)}
             opciones={['SI', 'NO']} />
@@ -3558,7 +3580,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 6. DESCRIPCIÓN ──────────────────────────────────── */}
-      <_Seccion titulo="Descripción de la situación encontrada" color="gris">
+      <_Seccion titulo="Descripción de la situación encontrada"
+        estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         <_Campo label="Actuación / Observaciones" fullWidth
           hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} />
         </_Campo>
@@ -3622,7 +3645,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 7B. TIPIFICACIÓN Y MEDIDAS ──────────────────────── */}
-      <_Seccion titulo="Tipificación y medidas" color="cafe">
+      <_Seccion titulo="Tipificación y medidas"
+        estado={estadosSeccion["Tipificación y medidas"]} color="cafe">
         <_Campo label="Tipo de contravención (Art. 135 Ley 1801/2016)" fullWidth>
           {/* Advertencia: si el predio es público o está en área protegida,
               sugerir el comportamiento correcto antes de que el inspector
@@ -3759,7 +3783,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 8. VISITADORES ──────────────────────────────────── */}
-      <_Seccion titulo="Funcionarios que realizan la inspección" color="azul">
+      <_Seccion titulo="Funcionarios que realizan la inspección"
+        estado={estadosSeccion["Funcionarios que realizan la inspección"]} color="azul">
         <_Campo label="Visitador(es)" fullWidth>
           <div className="chips">
             {visitadoresDin.map(v => {
@@ -3785,7 +3810,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 9. CONSULTA NORMA POT ──────────────────────────── */}
-      <_Seccion titulo="Consulta norma POT" color="gris">
+      <_Seccion titulo="Consulta norma POT"
+        estado={estadosSeccion["Consulta norma POT"]} color="gris">
         {/* Búsqueda automática primero (al inicio del bloque, ancho completo,
             centrado y con icono que indica que rellena código catastral y ficha). */}
         <div style={{ gridColumn: '1 / -1' }}>
@@ -3857,6 +3883,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       </_Seccion>
 
       {/* 10. OBSERVACIONES Y CONCLUSIONES (al final) ───────── */}
+      {/* Sin indicador a propósito: no declara obligatorios, un check aquí
+          sería mentira y un ámbar, peor. No llevar `estado`. */}
       <_Seccion titulo="Observaciones y conclusiones" color="gris">
         <_Campo label="Conclusiones generales del inspector" fullWidth
           hint="Dictamen técnico, observaciones sobre la situación encontrada y su relación con la normativa aplicable.">
@@ -3897,37 +3925,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               tengas señal para poder subir fotos y generar el acta, el informe
               y el registro fotográfico.
             </div>
-          )}
-
-          {/* Lista de campos faltantes plegada por defecto: el punto ámbar
-              de cada renglón ya avisa; el detalle se abre solo cuando se
-              necesita. Si ambos documentos están generados no hay nada que
-              pedir y no se muestra. */}
-          {faltanActa.length > 0 && !(d.linkXlsxActa && d.linkDocxInforme) && (
-            <details className="ent-faltan">
-              {/* Sin repetir el conteo: ya lo dicen el chip del panel y las
-                  pills de los renglones de acta e informe. Aquí lo único
-                  propio es la lista de qué falta. */}
-              <summary>Ver qué campos faltan</summary>
-              {/* Cada campo lleva a su sección: leer qué falta y luego
-                  buscarlo a mano en diez secciones era el trabajo real. */}
-              <ul>
-                {faltanActa.map(function (f) {
-                  return (
-                    <li key={f.nombre}>
-                      <button
-                        type="button"
-                        className="ent-falta-link"
-                        onClick={function () { _irASeccion(f.seccion); }}
-                      >
-                        <span>{f.nombre}</span>
-                        <span className="ent-falta-sec">{f.seccion}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
           )}
 
           {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
