@@ -80,10 +80,13 @@
   /* Padding superior del área de contenido, por ancho. Lo necesita
      .nv-header para taparlo cuando queda fija. */
   --content-pad-top: 16px;
-  /* Alto de la cabecera fija de la visita (medido: 153 px en móvil, 190 en
-     escritorio). NO incluye la barra de la app: quien la necesite la suma
-     con --header-h. Lo usan el scroll a sección y el tablero. */
-  --nv-header-h: 160px;
+  /* Alto de la cabecera fija de la visita, compacta en una fila (medido
+     2026-09-14 en qa-header-static, DOM real + styles.css reales: peor
+     caso con fila editada <900 es 133,5 px en 768 — los chips de
+     pendientes envuelven; +8 de margen). NO incluye la barra de la app:
+     quien la necesite la suma con --header-h. Lo usan el scroll a
+     sección y el tablero. */
+  --nv-header-h: 142px;
 
   /* ── Piso táctil ─────────────────────────────────────────────
      App de campo: el inspector la usa de pie, en la calle, con una
@@ -1082,16 +1085,39 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px; margin-bottom: 10px;
 }
+/* Cabecera compacta: una sola fila con [←][estado][guardar]. El panel de
+   estado se despinta (la cabecera ya es la caja) y ocupa el sobrante; la
+   dirección corre en la misma fila del badge con ellipsis. */
+.nv-header .estado-panel {
+  flex: 1; min-width: 0; background: transparent; border: 0;
+  padding: 0; gap: 4px;
+}
+.nv-header .estado-panel-top { flex-wrap: nowrap; min-width: 0; }
+.nv-header .estado-dir {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; font-size: 12px;
+}
+/* Columna de acciones: indicador de guardado + botón Guardar (antes barra
+   fija inferior, ~92 px que el formulario ya no pierde). */
+.nv-acciones {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 4px; flex-shrink: 0; width: 128px;
+}
+.nv-acciones .barra-estado-gs {
+  margin-bottom: 0; min-height: 0; font-size: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 /* En móvil la cabecera completa se comía 208 px de 844 (25%), y con el
-   .app-header y la barra de guardar encima queda medio formulario. Fija
-   va solo la identidad: el título es genérico («Continuar visita») y los
-   pendientes ya están en la zona de entregables. */
+   .app-header encima queda medio formulario. Fija va solo la identidad:
+   los pendientes ya están en la zona de entregables. */
 @media (max-width: 767px) {
-  .nv-header .page-title { display: none; }
   .nv-header .estado-resumen { display: none; }
-  .nv-header .estado-dir {
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  /* Medido en 360 (qa-header-static): sin wrap la fila [←][panel][acciones]
+     deja al panel ~174 px y la dirección colapsa a 0 px. Con wrap + basis
+     100 % el badge y el radicado ocupan la primera línea y la dirección
+     corre debajo, a su propia línea, con ellipsis. */
+  .nv-header .estado-panel-top { flex-wrap: wrap; }
+  .nv-header .estado-dir { flex-basis: 100%; }
 }
 
 /* ── Escritorio ancho: formulario + tablero de entregables ──────
@@ -1126,10 +1152,10 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
     align-self: start;
     position: sticky; top: var(--nv-header-h);
     /* Con 18 miniaturas y el escáner abierto la columna desborda la
-       pantalla y el último botón queda inalcanzable. Abajo descuenta la
-       barra fija de guardar (92 px medidos): con los 32 px de antes, el
-       borde inferior del tablero quedaba 11 px debajo de ella. */
-    max-height: calc(100vh - var(--header-h) - var(--nv-header-h) - 104px);
+       pantalla y el último botón queda inalcanzable. La barra fija de
+       guardar ya no existe (vive en la cabecera): abajo queda solo el
+       aire inferior del scroller. */
+    max-height: calc(100vh - var(--header-h) - var(--nv-header-h) - var(--content-pad-top));
     overflow-y: auto;
     /* Al tabular hacia un control del tablero cuando la página está al
        fondo (ahí el tablero ya no está pegado), el scroll mínimo del foco
@@ -1142,6 +1168,35 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
   .nv-entregables .fotos-grilla {
     max-width: none;
     grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  }
+}
+
+/* ── Consulta de Norma en 2 columnas ──────────────────────────
+   Búsqueda y mapa a la izquierda, resultados a la derecha. Sin
+   sticky: los resultados crecen con las fichas catastrales y un
+   sticky ahí escondería la parte baja. 1440 y no 1200: igual que
+   nv-pantalla, por debajo el mapa quedaría más angosto que un
+   móvil ancho. */
+@media (min-width: 1440px) {
+  .pantalla.cn-pantalla {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    column-gap: 24px;
+    align-items: start;
+    max-width: calc(var(--content-max) + 404px);
+  }
+}
+
+/* ── Inicio: stats en fila de 4 + dos columnas ────────────────
+   Las cuatro stats caben de sobra en 1200 y las alertas dejan de
+   empujar las asignadas hacia abajo. */
+@media (min-width: 1200px) {
+  .home-pantalla .stats-grid-2x2 { grid-template-columns: repeat(4, 1fr); }
+  .home-2col {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    column-gap: 24px;
+    align-items: start;
   }
 }
 
@@ -1728,7 +1783,9 @@ body.is-offline .header {
     margin: 6px 4px;
   }
 
-  :root { --content-pad-top: 24px; --nv-header-h: 200px; }
+  /* Cabecera compacta medida 2026-09-14: 128,2 px en el peor caso ≥900
+     (nueva con aviso, a 900 px) y 114,2 px estable desde 1366. +8. */
+  :root { --content-pad-top: 24px; --nv-header-h: 136px; }
   #content-desktop {
     padding: var(--content-pad-top) 32px 40px;
     overflow-y: auto;

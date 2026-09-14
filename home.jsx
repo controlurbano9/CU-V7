@@ -57,9 +57,12 @@ function HomeScreen({ usuario, onContinuar }) {
         }
       }
       if (e === 'PENDIENTE' || e === 'ASIGNADO') pendientes++;
-      if (e === 'COMPLETADO') {
-        const dComp = parsearFecha(f['FECHA DEVOLUCION'] || '');
-        if (dComp && dComp.getMonth() === mesActual && dComp.getFullYear() === anioActual) mes++;
+      // «Realizadas este mes» cuenta por FECHA DE VISITA (el día que el
+      // inspector salió), no por FECHA DEVOLUCION: una visita realizada a
+      // fin de mes y devuelta en el siguiente contaba en el mes equivocado.
+      if (e === 'INICIADO' || e === 'COMPLETADO') {
+        const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
+        if (dVis && dVis.getMonth() === mesActual && dVis.getFullYear() === anioActual) mes++;
       }
       if (e === 'INICIADO') {
         const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
@@ -198,7 +201,7 @@ function HomeScreen({ usuario, onContinuar }) {
   const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="pantalla activa pad-bottom">
+    <div className="pantalla activa pad-bottom home-pantalla">
       {/* ── Título ── */}
       <div className="page-title" style={{ marginBottom: 2 }}>Inicio</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
@@ -231,6 +234,9 @@ function HomeScreen({ usuario, onContinuar }) {
         </div>
       )}
 
+      {/* ── Asignadas hoy + Alertas en dos columnas ≥1200 (ver .home-2col
+          en styles.css); en móvil van apiladas como siempre ── */}
+      <div className="home-2col">
       {/* ── Asignadas hoy (antes de las alertas: es lo primero que el
           inspector debe ver al abrir la app, 2026-09-09) ── */}
       <div style={{ marginBottom: 18 }}>
@@ -273,6 +279,7 @@ function HomeScreen({ usuario, onContinuar }) {
           ))}
         </div>
       )}
+      </div>{/* .home-2col */}
 
       {/* ── Footer: recargar datos ── */}
       <div style={{ textAlign: 'center', marginTop: 16 }}>

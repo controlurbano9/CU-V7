@@ -274,7 +274,7 @@ function BuscarScreen({ usuario, onContinuar }) {
     return datos.filter(f => {
       if (lq) {
         const orden = ordenPoliciaDe(f).toUpperCase();
-        const hay = ['RADICADO', 'DIRECCION INFRACCION', 'DIRECCION', 'BARRIO/VEREDA', 'BARRIO']
+        const hay = ['RADICADO', 'DIRECCION INFRACCION', 'DIRECCION', 'BARRIO/VEREDA', 'BARRIO', 'NOMBRE PERSONA ATIENDE']
           .some(k => (f[k] || '').toString().toUpperCase().includes(lq))
           || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)));
         if (!hay) return false;
@@ -331,7 +331,7 @@ function BuscarScreen({ usuario, onContinuar }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="input-grupo" style={{ marginBottom: 10 }}>
           <input type="text" className="input-campo"
-            placeholder="Radicado, orden de policía, dirección, barrio..."
+            placeholder="Radicado, orden de policía, dirección, barrio, persona que atiende..."
             value={qInput} onChange={e => setQInput(e.target.value)} />
         </div>
 
@@ -607,7 +607,7 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
         </div>
       )}
       <VisitaCard f={f}
-        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden
+        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden mostrarPersonaAtiende
         labelBadge={est || '—'}
         accionesMt={10}>
         {/* Botones inline en una sola fila — orden contextual por estado */}

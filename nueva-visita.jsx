@@ -1510,14 +1510,17 @@ function PanelEstadoVisita(p) {
         </span>
         <span className="estado-id">{p.identificador}</span>
         {p.nVisita > 1 && <span className="estado-visita-n">Visita N°{p.nVisita}</span>}
+        {/* La dirección va dentro del top (último hijo) para que ocupe el
+            sobrante de la fila con ellipsis — la cabecera compacta mete las
+            acciones a la derecha y la dirección ya no tiene fila propia. */}
+        {p.direccion && (
+          <div className="estado-dir">
+            {p.direccion}{p.barrio && p.barrio !== '__otro__' ? ' · ' + p.barrio : ''}
+            {p.comuna ? ' · Comuna ' + p.comuna : ''}
+            {p.fechaVisita ? ' · ' + p.fechaVisita : ''}
+          </div>
+        )}
       </div>
-      {p.direccion && (
-        <div className="estado-dir">
-          {p.direccion}{p.barrio && p.barrio !== '__otro__' ? ' · ' + p.barrio : ''}
-          {p.comuna ? ' · Comuna ' + p.comuna : ''}
-          {p.fechaVisita ? ' · ' + p.fechaVisita : ''}
-        </div>
-      )}
       {/* El panel solo lista lo que falta: un entregable resuelto no deja
           chip, y el detalle de campos faltantes es la alerta al intentar
           generar (no hay lista en pantalla). Antes de guardar no hay
@@ -3218,9 +3221,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // nVisita puede venir como string del Sheet ("2") o number (1). Normalizar
   // antes de comparar para evitar la coerción frágil "10" > 1 (=true) vs "2" > 1 (=true por casualidad).
   const _nVisitaNum = parseInt(d.nVisita, 10) || 0;
-  const tituloPantalla = filaEditando
-    ? 'Continuar visita'
-    : (d.esOficio ? 'Visita de oficio' : 'Nueva visita');
 
   // Insumos del centro de control: estado por sección y bloqueo compartido
   // de generadores (una sola acción de documento a la vez).
@@ -3268,39 +3268,66 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
 
   return (
-    <div className="pantalla activa nv-pantalla" style={{ paddingBottom: 140 }}>
-      {/* Header unificado y FIJO (.nv-header en styles.css) — título +
-          Volver + info radicado/dirección/N° visita. Se queda arriba
+    <div className="pantalla activa nv-pantalla">
+      {/* Header unificado y FIJO (.nv-header en styles.css) — Volver +
+          estado/identidad + guardar, todo en una fila. Se queda arriba
           mientras se recorre el formulario: el inspector debe saber
-          siempre qué visita está diligenciando y poder salir sin subir. */}
+          siempre qué visita está diligenciando, salir sin subir y guardar
+          sin ir al fondo del scroll (antes Guardar vivía en una barra
+          fija inferior que se comía ~92 px de pantalla). */}
       <div className="nv-header">
         <div className="nv-header-top">
-          <div className="page-title" style={{ margin: 0 }}>{tituloPantalla}</div>
           {onSalir && (
             <button onClick={_confirmarVolver} className="btn-neutro"
-              style={{ padding: '9px 14px', fontSize: 13, flexShrink: 0 }}>&#8592; Volver</button>
+              aria-label="Volver" title="Volver"
+              style={{ padding: '8px 10px', fontSize: 14, flexShrink: 0 }}>&#8592;</button>
           )}
+          {/* Centro de control: estado + identidad + qué falta, visible sin
+              scroll. Antes esta caja solo decía qué visita era. */}
+          <PanelEstadoVisita
+            estadoVisita={estadoVisita}
+            identificador={d.esOficio
+              ? (d.orden ? 'OFICIO ' + d.orden : 'OFICIO')
+              : (d.radicado ? 'RAD ' + d.radicado : 'Sin radicado')}
+            direccion={d.direccion || ''}
+            barrio={d.barrio || ''}
+            comuna={d.comuna || ''}
+            fechaVisita={_isoAFecha(d.fechaVisita) || ''}
+            nVisita={_nVisitaNum}
+            filaEditando={filaEditando}
+            fotos={fotosInfo}
+            ordenRelevante={_hayOrdenReal(d.orden)}
+            ordenEscaneada={!!d.linkOrdenPolicia}
+            tieneActa={!!d.linkXlsxActa}
+            tieneInforme={!!d.linkDocxInforme}
+            tieneRF={!!d.linkRegistroFotos}
+          />
+          {/* Acción principal y estado de guardado: mismo contenido que
+              tenía la barra fija inferior, compactado en una columna. El
+              texto del botón es corto («Guardar») porque los textos largos
+              no caben; el modo offline lo comunica el indicador. */}
+          <div className="nv-acciones">
+            <div className={
+              'barra-estado-gs' +
+              (guardando ? ' bgs-guardando' : errorGuardar ? ' bgs-error' : dirty ? ' bgs-pendiente' : enColaGuardado ? ' bgs-cola' : '')
+            } aria-live="polite">
+              {guardando ? (<>
+                <span className="spinner-btn" aria-hidden="true" /> Guardando…
+              </>)
+              : errorGuardar ? '✕ No se pudo guardar — reintenta con el botón'
+              : dirty ? '● Cambios sin guardar'
+              : enColaGuardado ? '⇡ Guardado en cola — se envía al recuperar conexión'
+              : !enLinea ? 'Sin conexión — guarda y se enviará al recuperar la señal'
+              : ultimoGuardadoMs
+                ? '✓ Guardado · ' + new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+                : 'Sin cambios'}
+            </div>
+            <button onClick={guardar} disabled={guardando} aria-busy={guardando} className="btn-principal"
+              style={{ margin: 0, padding: '10px 12px', fontSize: 14 }}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
         </div>
-        {/* Centro de control: estado + identidad + qué falta, visible sin
-            scroll. Antes esta caja solo decía qué visita era. */}
-        <PanelEstadoVisita
-          estadoVisita={estadoVisita}
-          identificador={d.esOficio
-            ? (d.orden ? 'OFICIO ' + d.orden : 'OFICIO')
-            : (d.radicado ? 'RAD ' + d.radicado : 'Sin radicado')}
-          direccion={d.direccion || ''}
-          barrio={d.barrio || ''}
-          comuna={d.comuna || ''}
-          fechaVisita={_isoAFecha(d.fechaVisita) || ''}
-          nVisita={_nVisitaNum}
-          filaEditando={filaEditando}
-          fotos={fotosInfo}
-          ordenRelevante={_hayOrdenReal(d.orden)}
-          ordenEscaneada={!!d.linkOrdenPolicia}
-          tieneActa={!!d.linkXlsxActa}
-          tieneInforme={!!d.linkDocxInforme}
-          tieneRF={!!d.linkRegistroFotos}
-        />
       </div>
 
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
@@ -4410,45 +4437,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* El acceso a la carpeta de Drive ya no se duplica al final del
           formulario: vive como renglón de la zona de entregables. */}
 
-      {/* ── Barra fija: acción principal siempre alcanzable ─────────
-          El nav inferior está oculto mientras se edita una visita
-          (app.jsx: enFormulario), así que esta barra no lo tapa. */}
-      <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60,
-        background: 'var(--superficie)', borderTop: '1px solid var(--borde-med)',
-        boxShadow: '0 -6px 20px -12px rgba(31,27,22,0.35)',
-        padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
-      }}>
-        <div style={{ maxWidth: 'var(--content-max)', margin: '0 auto' }}>
-          {/* Estado de guardado permanente: el inspector no debe descubrir
-              al final del scroll que había cambios sin guardar. Prioridad:
-              guardando > error > cambios sin guardar > en cola > sin
-              conexión > guardado HH:MM. aria-live para lectores. */}
-          <div className={
-            'barra-estado-gs' +
-            (guardando ? ' bgs-guardando' : errorGuardar ? ' bgs-error' : dirty ? ' bgs-pendiente' : enColaGuardado ? ' bgs-cola' : '')
-          } aria-live="polite">
-            {guardando ? (<>
-              <span className="spinner-btn" aria-hidden="true" /> Guardando…
-            </>)
-            : errorGuardar ? '✕ No se pudo guardar — reintenta con el botón'
-            : dirty ? '● Cambios sin guardar'
-            : enColaGuardado ? '⇡ Guardado en cola — se envía al recuperar conexión'
-            : !enLinea ? 'Sin conexión — guarda y se enviará al recuperar la señal'
-            : ultimoGuardadoMs
-              ? '✓ Guardado · ' + new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-              : 'Sin cambios'}
-          </div>
-          <button onClick={guardar} disabled={guardando} aria-busy={guardando} className="btn-principal"
-            style={{ margin: 0, fontSize: 16 }}>
-            {guardando
-              ? 'Guardando…'
-              : (filaEditando
-                  ? (enLinea ? 'Guardar cambios' : 'Guardar (se envía con señal)')
-                  : (enLinea ? 'Guardar visita' : 'Guardar (se envía con señal)'))}
-          </button>
-        </div>
-      </div>
+      {/* La acción de guardar y su indicador de estado viven en la cabecera
+          (.nv-acciones): la barra fija inferior se eliminó para recuperar
+          ~92 px de formulario en campo. */}
     </div>
   );
 }

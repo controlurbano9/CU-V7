@@ -347,7 +347,11 @@ function ConsultaNormaScreen() {
   }
 
   return (
-    <div className="pantalla activa pad-bottom">
+    <div className="pantalla activa pad-bottom cn-pantalla">
+      {/* Dos columnas ≥1440 (ver .cn-pantalla en styles.css): búsqueda y
+          mapa a la izquierda, resultados (alerta municipal, catastro y
+          norma POT) a la derecha. Solo JSX movido, la lógica no cambia. */}
+      <div className="cn-col">
       <div className="page-title" style={{ marginBottom: 6 }}>Consultar norma POT</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
         Busca por dirección o coordenadas, captura tu ubicación GPS o toca el mapa.
@@ -425,8 +429,10 @@ function ConsultaNormaScreen() {
           {error}
         </div>
       )}
+      </div>{/* .cn-col */}
 
       {/* Alerta predio municipal: fuera del panel de catastro, justo después del mapa */}
+      <div className="cn-col cn-col-der">
       {!busyCat && catastro && catastro.some(r => r.municipal) && (
         <div style={{
           padding: '12px 14px', borderRadius: 'var(--r-md)', marginBottom: 12,
@@ -554,6 +560,7 @@ function ConsultaNormaScreen() {
           }}>Limpiar</button>
         </div>
       </div>
+      </div>{/* .cn-col-der */}
     </div>
   );
 }

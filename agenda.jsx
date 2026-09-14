@@ -388,8 +388,17 @@ function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setA
         <div key={it.fila || i} className="card" style={{ padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--brand-accent)' }}>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600,
+                color: 'var(--brand-accent)', display: 'flex',
+                alignItems: 'center', gap: 6, flexWrap: 'wrap',
+              }}>
                 {it.radicado || '—'}
+                {it.fechaRad && (
+                  <span style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 10 }}>
+                    {it.fechaRad}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
                 {it.direccion || 'Sin dirección'}

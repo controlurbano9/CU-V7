@@ -76,6 +76,9 @@ function BotonPdfRadicado({ f, titulo }) {
 //   mostrarInspector bool — meta línea "Inspector: <primero>"
 //   mostrarAsignado  bool — meta línea "Asignado: dd/mm/yyyy"
 //   mostrarOrden     bool — meta línea "Orden: YYYY-09-XXX" (solo si hay orden real)
+//   mostrarPersonaAtiende bool — meta línea "Atiende: <nombre>" (solo Buscar:
+//                    ahí se busca por ese campo y la tarjeta debe decir
+//                    cuál visita del grupo lo tiene; Home y Mis visitas no)
 //   labelBadge      string opcional override del label del badge
 //                    (ej: en home pasamos 'Asignada' fijo aunque sea PENDIENTE/ASIGNADO)
 //   children         JSX adicional (botones, panel) — se renderiza debajo del header
@@ -90,7 +93,7 @@ function ordenPoliciaDe(f) {
   return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
 }
 
-function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, labelBadge, children, accionesMt }) {
+function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, mostrarPersonaAtiende, labelBadge, children, accionesMt }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const tono = TONOS_VISITA[est] || { cls: '', label: est || '—' };
   const textoBadge = labelBadge != null ? labelBadge : tono.label;
@@ -105,6 +108,9 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
     ? _primerVisitador(f)
     : '';
   const orden = mostrarOrden ? ordenPoliciaDe(f) : '';
+  const personaAtiende = mostrarPersonaAtiende
+    ? ((f['NOMBRE PERSONA ATIENDE'] || '').toString().trim())
+    : '';
   // Fecha del radicado — siempre visible junto al número, no depende de prop.
   // Para Oficio, FECHA RADICADO = fecha de la visita (mismo valor, ver CLAUDE.md).
   const fechaRadicado = formatearFecha(f['FECHA RADICADO'] || '');
@@ -114,7 +120,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
   const ultimaMod = formatearFechaHora(f['ULTIMA_MODIFICACION'] || '');
   const ultimaModPor = (f['ULTIMA_MODIFICACION_POR'] || '').toString().trim();
 
-  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || ultimaMod;
+  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende || ultimaMod;
   const mt = (accionesMt != null) ? accionesMt : 12;
 
   return (
@@ -158,6 +164,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
               {inspector   && <span><span style={{ opacity: 0.7 }}>Inspector:</span> {inspector}</span>}
               {fechaAsig   && <span><span style={{ opacity: 0.7 }}>Asignado:</span> {fechaAsig}</span>}
               {orden       && <span><span style={{ opacity: 0.7 }}>Orden:</span> {orden}</span>}
+              {personaAtiende && <span><span style={{ opacity: 0.7 }}>Atiende:</span> {personaAtiende}</span>}
               {ultimaMod   && (
                 <span><span style={{ opacity: 0.7 }}>Editado:</span> {ultimaMod}
                   {ultimaModPor && ' · ' + titleCaseNombre(ultimaModPor)}
