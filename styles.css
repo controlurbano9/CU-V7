@@ -1180,11 +1180,16 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
 @media (min-width: 1440px) {
   .pantalla.cn-pantalla {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr) 440px;
     column-gap: 24px;
     align-items: start;
-    max-width: calc(var(--content-max) + 404px);
+    max-width: calc(var(--content-max) + 464px);
   }
+  /* El título y el subtítulo viven fuera de las columnas: sin esto el
+     auto-placement del grid los reparte en las celdas (el subtítulo
+     caería arriba de la columna derecha). */
+  .pantalla.cn-pantalla > div:not(.cn-col) { grid-column: 1 / -1; }
+  .mapa-norma { height: 460px; }
 }
 
 /* ── Inicio: stats en fila de 4 + dos columnas ────────────────
@@ -1830,8 +1835,11 @@ body.is-offline .header {
   :root { --sidebar-w: 272px; --content-max: 1100px; --content-pad-top: 28px; }
   #content-desktop { padding: var(--content-pad-top) 48px 48px; }
 }
+@media (min-width: 1440px) {
+  :root { --content-max: 1280px; }
+}
 @media (min-width: 1600px) {
-  :root { --content-max: 1200px; }
+  :root { --content-max: 1480px; }
 }
 
 

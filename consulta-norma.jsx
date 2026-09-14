@@ -351,11 +351,12 @@ function ConsultaNormaScreen() {
       {/* Dos columnas ≥1440 (ver .cn-pantalla en styles.css): búsqueda y
           mapa a la izquierda, resultados (alerta municipal, catastro y
           norma POT) a la derecha. Solo JSX movido, la lógica no cambia. */}
-      <div className="cn-col">
       <div className="page-title" style={{ marginBottom: 6 }}>Consultar norma POT</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
         Busca por dirección o coordenadas, captura tu ubicación GPS o toca el mapa.
       </div>
+
+      <div className="cn-col">
 
       {/* Campo unificado: dirección o coordenadas */}
       <div className="card" style={{ marginBottom: 12 }}>
