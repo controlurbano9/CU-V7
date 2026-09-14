@@ -1182,14 +1182,23 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
     display: grid;
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     column-gap: 24px;
-    align-items: start;
+    align-items: stretch;
     max-width: calc(var(--content-max) + 464px);
   }
+  /* La columna izquierda estira el mapa hasta el pie de la derecha:
+     sin esto quedaba un bloque gris entre el mapa y el final del
+     panel de resultados. min-height conserva el piso de 460px. */
+  .cn-col:not(.cn-col-der) { display: flex; flex-direction: column; }
+  .cn-col:not(.cn-col-der) .card:has(.mapa-norma) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .cn-col:not(.cn-col-der) .mapa-norma { flex: 1; height: auto; min-height: 460px; }
   /* El título y el subtítulo viven fuera de las columnas: sin esto el
      auto-placement del grid los reparte en las celdas (el subtítulo
      caería arriba de la columna derecha). */
   .pantalla.cn-pantalla > div:not(.cn-col) { grid-column: 1 / -1; }
-  .mapa-norma { height: 460px; }
 }
 
 /* ── Inicio: stats en fila de 4 + dos columnas ────────────────
