@@ -135,6 +135,21 @@ const USUARIO_QA = { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Inspector 
 // invisible en tres revisiones seguidas). Se replica la estructura de
 // app.jsx:715-768 — misma envoltura, mismas clases, mismo header.
 const AppQA = function () {
+  // `isDesktop` de app.jsx:649. El sidebar NO puede montarse siempre: a
+  // partir de 768 px #app-wrapper es un grid `var(--sidebar-w) 1fr` y la
+  // primera columna es suya, así que montarlo o no cambia en qué columna
+  // cae #content-desktop. Sin él (como estaba este banco) el contenido se
+  // iba a la columna de 272 px y a 1440 las secciones medían 41 px: toda
+  // medición de escritorio salía inválida. Con él montado de más pasaría lo
+  // simétrico entre 768 y 899, donde la app real no lo monta.
+  const [anchoVentana, setAnchoVentana] = React.useState(window.innerWidth);
+  React.useEffect(function () {
+    const alCambiar = function () { setAnchoVentana(window.innerWidth); };
+    window.addEventListener('resize', alCambiar);
+    return function () { window.removeEventListener('resize', alCambiar); };
+  }, []);
+  const isDesktop = anchoVentana >= 900;
+
   // Copia del efecto de app.jsx que publica el alto real de la barra en
   // --header-h. Sin él, aquí se mediría la constante y no la realidad.
   React.useEffect(function () {
@@ -168,6 +183,13 @@ const AppQA = function () {
             React.createElement('button', { type: 'button', className: 'btn-logout' }, 'Salir')
           )
         )
+      ),
+      isDesktop && React.createElement('div', { id: 'sidebar-desktop', style: { display: 'flex' } },
+        ['Inicio', 'Mis visitas', 'Buscar', 'Norma'].map(function (etiqueta) {
+          return React.createElement('button', {
+            key: etiqueta, type: 'button', className: 'sidebar-btn',
+          }, etiqueta);
+        })
       ),
       React.createElement('div', { id: 'content-desktop' },
         React.createElement(window.NuevaVisitaScreen, {
