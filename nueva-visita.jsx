@@ -159,16 +159,16 @@ const HORAS_CITACION = [
 const BARRIOS_POR_COMUNA = [
   { comuna: '1', label: 'Comuna 1', barrios: ['El Cafetal','Jose Antonio Galan','La Esmeralda','La Maruchenga','La Pradera','Los Sauces','Paris','Salvador Allende'] },
   { comuna: '2', label: 'Comuna 2', barrios: ['Barrio Nuevo','Gran Avenida','La Cabana','La Cabanita','La Florida','La Madera','San Jose Obrero','Zona Industrial #1'] },
-  { comuna: '3', label: 'Comuna 3', barrios: ['Amazonia','Los Bucaros','Molinares','Salento','San Simon','Santa Ana','Serramonte','Villas de Occidente','Zona Industrial #2'] },
+  { comuna: '3', label: 'Comuna 3', barrios: ['Amazonia','Hospital Mental','Los Bucaros','Molinares','Salento','San Simon','Santa Ana','Serramonte','Villas de Occidente','Zona Industrial #2'] },
   { comuna: '4', label: 'Comuna 4', barrios: ['Andalucia','Central','Centro','El Cairo','El Congolo','El Rosario','Espiritu Santo','La Estacion','La Meseta','La Milagrosa','Las Granjas','Lopez de Mesa','Manchester','Nazaret','Perez','Prado','Puerto Bello','Rincon Santos','Suarez','Zona Industrial #3'] },
   { comuna: '5', label: 'Comuna 5', barrios: ['Altavista','Aralias','Briceno','Buenos Aires','El Carmelo','El Paraiso','El Porvenir','El Trapiche','Hato Viejo','La Cumbre','La Primavera','Riachuelos','Urapanes','Valadares','Villa Maria','Villas de Comfenalco'] },
   { comuna: '6', label: 'Comuna 6', barrios: ['Bellavista','El Ducado','Girasoles','La Aldea','Los Alpes','Pachelly','Playa Rica','San Gabriel','San Martin','Tierradentro','Villa Linda','Villas del Sol'] },
   { comuna: '7', label: 'Comuna 7', barrios: ['Altos de Niquia','Altos de Quitasol','El Mirador','La Selva','Niquia Bifamiliares'] },
   { comuna: '8', label: 'Comuna 8', barrios: ['Ciudad Niquia','Ciudadela del Norte','Hermosa Provincia','Panamericano','Terranova','Zona Industrial #4'] },
-  { comuna: '9', label: 'Comuna 9', barrios: ['El Trebol','Guasimalito','La Navarra','Zona Industrial #5'] },
+  { comuna: '9', label: 'Comuna 9', barrios: ['El Trebol','Guasimalito','La Navarra','Linea Ferrea y Doble Calzada','Zona Industrial #5'] },
   { comuna: '10', label: 'Comuna 10', barrios: ['Alcala','Cinco Estrellas','Estacion Primera','Fontidueno','La Camila','La Mina','La Virginia','Las Vegas','Los Ciruelos','Marco Fidel Suarez','Zona Industrial #6'] },
   { comuna: '11', label: 'Comuna 11', barrios: ['Acevedo','Alpes del Norte','Belvedere','La Gabriela','Santa Rita','Zamora','Zona Industrial #7'] },
-  { comuna: 'Vereda', label: 'Veredas', barrios: ['Vda. Buenavista','Vda. Charco Verde','Vda. Cuartas','Vda. El Carmelo','Vda. El Tambo','Vda. Granizal','Vda. Hatoviejo','Vda. Jalisco','Vda. La China','Vda. La Meneses','Vda. La Palma','Vda. La Primavera','Vda. La Union','Vda. Los Espejos','Vda. Potrerito','Vda. Quitasol','Vda. Sabanalarga','Vda. Tierradentro'] },
+  { comuna: 'Vereda', label: 'Veredas', barrios: ['Vda. Buenavista','Vda. Cerezales','Vda. Charco Verde','Vda. Croacia','Vda. Cuartas','Vda. El Carmelo','Vda. El Tambo','Vda. Granizal','Vda. Hatoviejo','Vda. Jalisco','Vda. La China','Vda. La Meneses','Vda. La Palma','Vda. La Primavera','Vda. La Union','Vda. Los Espejos','Vda. Potrerito','Vda. Quitasol','Vda. Sabanalarga','Vda. Tierradentro'] },
 ];
 
 // Mapa plano barrio → comuna para lookup rápido
@@ -208,6 +208,44 @@ window._lookupComunaPorBarrio = function(barrio) {
   var k = _quitarTildes(barrio).toUpperCase().trim();
   return _BARRIO_A_COMUNA_NORM[k] || '';
 };
+
+// ── Resolución de nombre de barrio contra la lista ──────────────
+// La capa Barrios/Veredas del POT nombra varios barrios distinto a la lista
+// de arriba ('ZONA INDUSTRIAL Nº1' vs 'Zona Industrial #1', 'JOSE A. GALAN'
+// vs 'Jose Antonio Galan'). Sin resolverlo, la sugerencia del POT y las filas
+// viejas de BD no casaban con ninguna opción y el barrio caía a texto libre.
+// Clave de comparación: sin tildes, sin 'Vda.', sin 'Nº', sin signos ni
+// espacios ('Hatoviejo' ≡ 'Hato Viejo', 'Zona Industrial #1' ≡ '… Nº1').
+function _canonBarrio(s) {
+  return _quitarTildes(s).toUpperCase()
+    .replace(/^VDA\.?\s*/, '')
+    .replace(/N[º°]/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+}
+// Lo que la clave canónica no puede salvar: artículos, plurales y abreviaturas.
+const _ALIAS_BARRIO_POT = {
+  'JOSEAGALAN': 'Jose Antonio Galan',
+  'CONGOLO': 'El Congolo',
+  'NAZARETH': 'Nazaret',
+  'RINCONSANTO': 'Rincon Santos',
+  'LAGRANAVENIDA': 'Gran Avenida',
+  'NAVARRA': 'La Navarra',
+  'VILLADEOCCIDENTE': 'Villas de Occidente',
+  'NIQUIABIFAMILIAR': 'Niquia Bifamiliares',
+};
+const _LISTA_BARRIOS = BARRIOS_POR_COMUNA.reduce((acc, g) => acc.concat(g.barrios), []);
+const _LISTA_VEREDAS = (BARRIOS_POR_COMUNA.find(g => g.comuna === 'Vereda') || { barrios: [] }).barrios;
+// Devuelve el nombre tal cual está en la lista, o '' si no existe en ella.
+// `preferirVereda` para puntos rurales: cuatro veredas comparten nombre con un
+// barrio urbano (Tierradentro, El Carmelo, Hato Viejo, La Primavera) y sin esto
+// una visita rural terminaba con la comuna del barrio homónimo.
+function _barrioDeLista(nombre, preferirVereda) {
+  const c = _canonBarrio(nombre);
+  if (!c) return '';
+  const donde = preferirVereda ? _LISTA_VEREDAS.concat(_LISTA_BARRIOS) : _LISTA_BARRIOS;
+  return _ALIAS_BARRIO_POT[c] || donde.find(b => _canonBarrio(b) === c) || '';
+}
+window._barrioDeLista = _barrioDeLista;
 
 // ── Catálogo: Usos actuales (chips multi-select) ──────────────
 const USOS_OPCIONES = ['Residencial', 'Comercial', 'Industrial', 'Servicios', 'Institucional', 'Otro'];
@@ -769,18 +807,16 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
   }
 
   // Determinar si el valor actual viene de la lista o es personalizado.
-  // La comparación ignora mayúsculas y tildes: la BD guarda 'NIQUIA' y la
-  // lista dice 'Niquía', y con `includes` exacto todo barrio venido de BD
-  // caía a «Otro...» como si no se reconociera.
-  const _canonBarrio = s => _quitarTildes(s).trim().toUpperCase();
-  const barrioCanon = _canonBarrio(barrio);
-  const barrioDeLista = barrioCanon
-    ? (BARRIOS_POR_COMUNA.reduce((acc, g) => acc.concat(g.barrios), [])
-        .find(b => _canonBarrio(b) === barrioCanon) || '')
-    : '';
+  // `_barrioDeLista` ignora mayúsculas, tildes y la grafía del POT: la BD
+  // guarda 'NIQUIA' y la lista dice 'Niquía', y con `includes` exacto todo
+  // barrio venido de BD caía a texto libre como si no se reconociera.
+  const barrioDeLista = _barrioDeLista(barrio);
   const valorEnLista = !!barrioDeLista;
   // El <select> necesita el texto exacto de la opción, no el de la BD.
-  const valorSelect = valorEnLista ? barrioDeLista : (barrio && barrio !== '__otro__' && barrio !== '' ? '__otro__' : barrio);
+  const valorSelect = valorEnLista ? barrioDeLista : (barrio === '__otro__' ? '' : barrio);
+  // Barrio heredado (filas V2, borradores viejos) que no está en la lista: se
+  // pinta como opción propia para no perderlo ni dejar el <select> en blanco.
+  const barrioHeredado = (!valorEnLista && barrio && barrio !== '__otro__') ? barrio : '';
 
   return (
     <div>
@@ -793,7 +829,7 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
             ))}
           </optgroup>
         ))}
-        <option value="__otro__">Otro...</option>
+        {barrioHeredado && <option value={barrioHeredado}>{barrioHeredado}</option>}
       </select>
       {(esOtro || (!valorEnLista && barrio && barrio !== '')) && (
         <input
@@ -2269,23 +2305,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       if (r.amenaza)        setCampo('amenaza',   r.amenaza);     // 'SI' | 'NO'
       if (r.enRetiro)       setCampo('quebrada',  r.enRetiro);    // 'SI' | 'NO'
       // Barrio sugerido — intentar hacer match con la lista y actualizar comuna
+      // El barrio del POT prima sobre lo diligenciado a mano: el polígono
+      // manda, el inspector pudo elegir mal en el desplegable. Solo se
+      // respeta lo escrito cuando el punto no cae en ninguna capa.
       if (r.barrioSugerido) {
-        const barrioNorm = r.barrioSugerido.trim();
-        // Buscar coincidencia en la lista de barrios
-        let encontrado = false;
-        for (const grupo of BARRIOS_POR_COMUNA) {
-          const match = grupo.barrios.find(b => b.toUpperCase() === barrioNorm.toUpperCase());
-          if (match) {
-            setCampo('barrio', match);
-            setCampo('comuna', grupo.comuna);
-            encontrado = true;
-            break;
-          }
-        }
-        // Si no se encontró en la lista y el campo está vacío, poner como texto
-        if (!encontrado && !d.barrio) {
-          setCampo('barrio', barrioNorm);
-        }
+        const match = _barrioDeLista(r.barrioSugerido, r.ambito === 'Rural');
+        setCampo('barrio', match || r.barrioSugerido.trim());
+        const com = match && _BARRIO_A_COMUNA[match.toUpperCase()];
+        if (com) setCampo('comuna', com);
       }
     } catch (e) {
       // Sin conexión: no interrumpir al inspector. El botón manual
@@ -3150,11 +3177,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       if (titulos[i].textContent.trim() === titulo) { sec = titulos[i].closest('.form-seccion'); break; }
     }
     if (!sec) return;
-    const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // 'start' con el scroll-margin-top de .form-seccion, que descuenta la
     // cabecera fija; con 'center' una sección larga deja su título debajo
     // de la cabecera y parece que no pasó nada.
-    sec.scrollIntoView({ behavior: quieto ? 'auto' : 'smooth', block: 'start' });
+    //
+    // Salto instantáneo, no 'smooth': Chrome se traga un scrollIntoView
+    // suave si otro scroll sigue en curso, y tocando dos renglones seguidos
+    // —lo normal cuando se repasa la lista— el salto no pasaba nada 3 de 22
+    // veces. El destello ya dice adónde se fue la vista.
+    sec.scrollIntoView({ behavior: 'auto', block: 'start' });
     sec.classList.add('seccion-destacada');
     setTimeout(function () { sec.classList.remove('seccion-destacada'); }, 1600);
   }
