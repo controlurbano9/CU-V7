@@ -3973,18 +3973,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             fotos, escanear la orden de policía y generar el acta y el informe.
           </div>
         ) : (<>
-          {/* La visita quedó guardada pero la carpeta de Drive no llegó a
-              crearse. Se cuenta, igual que la transición anterior: los
-              renglones siguen visibles (deshabilitados) y el aviso dice qué
-              pasó y qué hacer — no es un fallo del inspector. */}
-          {sinCarpetaVisita && (
-            <div className="ent-aviso">
-              La carpeta en Drive no alcanzó a crearse. Vuelve a guardar cuando
-              tengas señal para poder subir fotos y generar el acta, el informe
-              y el registro fotográfico.
-            </div>
-          )}
-
           {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
               final del formulario y dentro de la sección de fotos).
               El estado sale de `idCarpetaVisita`, la misma condición que

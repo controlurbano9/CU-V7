@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v136';
+const CACHE_NAME = 'cu-v6-cache-v137';
 
 // Cachés de datos con nombre fijo: NO se borran al bumpar CACHE_NAME. Hasta
 // v119 todo vivía en CACHE_NAME y cada despliegue (casi diario) tiraba
