@@ -963,7 +963,9 @@ function _MapaGPS({ lat, lon, onMove }) {
 
     if (!gMapRef.current) {
       gMapRef.current = new google.maps.Map(mapRef.current, {
-        center: pos, zoom, mapTypeId: 'satellite',
+        // 'hybrid' y no 'satellite': el satélite puro no trae rótulos y el
+        // inspector no ve los nombres de las calles sobre la foto aérea.
+        center: pos, zoom, mapTypeId: 'hybrid',
         disableDefaultUI: true, zoomControl: true,
         gestureHandling: 'greedy',
       });
