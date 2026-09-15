@@ -1136,6 +1136,7 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
     grid-template-columns: minmax(0, 1fr) 320px;
     column-gap: 24px;
     align-items: start;
+    align-content: start;
     /* Ensancha solo esta pantalla: el formulario conserva el ancho de
        hoy (--content-max) y el tablero se suma al lado. */
     max-width: calc(var(--content-max) + 344px);
@@ -1183,6 +1184,10 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     column-gap: 24px;
     align-items: stretch;
+    /* .pantalla tiene min-height: el align-content por defecto del grid
+       (normal = stretch) reparte ese sobrante entre los renglones auto
+       e inflaba título y subtítulo (172/158 px medidos). */
+    align-content: start;
     max-width: calc(var(--content-max) + 464px);
   }
   /* La columna izquierda estira el mapa hasta el pie de la derecha:
