@@ -1081,6 +1081,21 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    (regla `body.is-offline .header`): la cabecera de la visita tiene que
    bajar lo mismo o se pega debajo de ella. */
 body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
+
+/* Título fijo de pantalla (Inicio, Buscar, Agenda, Mis visitas) — misma
+   mecánica de .nv-header: margen negativo + padding del mismo valor para
+   cubrir el relleno superior del scroller de turno. Debe declararse después
+   de .page-title para ganarle el margin-top por cascada; z-20 queda bajo
+   el header (z-200). No se aplica en Consulta norma (el título es grid
+   item ≥1440 y el sticky no pegaría) ni en Admin. */
+.titulo-fijo {
+  position: sticky; top: var(--header-h); z-index: 20;
+  background: var(--fondo);
+  margin-top: calc(-1 * var(--content-pad-top));
+  padding-top: var(--content-pad-top);
+  padding-bottom: 10px;
+}
+body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 .nv-header-top {
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px; margin-bottom: 10px;
@@ -1210,13 +1225,60 @@ body.is-offline .nv-header { top: calc(var(--header-h) + 40px); }
    Las cuatro stats caben de sobra en 1200 y las alertas dejan de
    empujar las asignadas hacia abajo. */
 @media (min-width: 1200px) {
+  /* Pantallas de columnas con scroll propio: lo fijo (título, stats,
+     cabeceras, footer) fuera del scroll y las zonas de columnas absorben
+     el resto. min-height:0 es obligatorio: .pantalla trae un min-height de
+     100vh-header que pisaría el max-height y dejaría barra fantasma en
+     #content-desktop. La doble clase iguala la especificidad de
+     .pantalla.activa (display:block). El 48px final es el padding inferior
+     del scroller ≥1200 (L de #content-desktop en el bloque 1200). */
+  .pantalla.home-pantalla,
+  .pantalla.buscar-pantalla,
+  .pantalla.agenda-pantalla {
+    display: flex; flex-direction: column;
+    min-height: 0;
+    max-height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
+  }
+  .pantalla.home-pantalla > *,
+  .pantalla.buscar-pantalla > *,
+  .pantalla.agenda-pantalla > * { flex-shrink: 0; }
+
   .home-pantalla .stats-grid-2x2 { grid-template-columns: repeat(4, 1fr); }
-  .home-2col {
+  /* Cada columna de Inicio scrollea por separado: grid-template-rows con
+     minmax(0,1fr) (reemplaza el align-items:start, que dejaba las columnas
+     a alto natural y sin piso para el overflow). Sin alertas queda un solo
+     hijo y abarca todo el ancho. */
+  .pantalla.home-pantalla .home-2col {
+    flex: 1 1 auto; min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-rows: minmax(0, 1fr);
     column-gap: 24px;
-    align-items: start;
   }
+  .pantalla.home-pantalla .home-2col > * { min-height: 0; overflow-y: auto; }
+  .pantalla.home-pantalla .home-2col > :only-child { grid-column: 1 / -1; }
+
+  /* Buscar: filtros a la izquierda (fijos, con scroll de seguridad por si
+     los acordeones desbordan), resultados a la derecha con scroll. */
+  .pantalla.buscar-pantalla .buscar-2col {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .buscar-col-izq, .buscar-col-der { min-height: 0; overflow-y: auto; }
+
+  /* Agenda: tabs + ajuste de jornada + confirmación a la izquierda (fijos),
+     lista de ítems a la derecha con scroll. */
+  .pantalla.agenda-pantalla .agenda-2col {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(320px, 2fr) minmax(0, 3fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .agenda-col-izq, .agenda-col-der { min-height: 0; overflow-y: auto; }
 }
 
 /* Panel de estado superior */
@@ -1821,6 +1883,11 @@ body.is-offline .header {
   .pantalla.nv-pantalla { margin-top: calc(-1 * var(--content-pad-top)); }
   .nv-header { margin-top: 0; top: calc(-1 * var(--content-pad-top)); }
   body.is-offline .nv-header { top: calc(-1 * var(--content-pad-top)); }
+  /* Mismo ajuste de .nv-header para el título fijo: aquí el scroller es
+     #content-desktop y el ancla es el borde real del scrollport. La regla
+     offline repite el valor a propósito (especificidad, igual que arriba). */
+  .titulo-fijo { margin-top: 0; top: calc(-1 * var(--content-pad-top)); }
+  body.is-offline .titulo-fijo { top: calc(-1 * var(--content-pad-top)); }
   .pantalla {
     padding: 0;
     max-width: var(--content-max);

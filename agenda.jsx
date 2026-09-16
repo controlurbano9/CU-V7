@@ -214,8 +214,8 @@ function AgendaScreen({ usuario, onContinuar }) {
     jueves: 'Jueves', viernes: 'Viernes', sábado: 'Sábado', domingo: 'Domingo' };
 
   return (
-    <div className="pantalla activa pad-bottom">
-      <div className="page-title" style={{ marginBottom: 16 }}>Agenda del día</div>
+    <div className="pantalla activa pad-bottom agenda-pantalla">
+      <div className="page-title titulo-fijo" style={{ marginBottom: 16 }}>Agenda del día</div>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -250,71 +250,71 @@ function AgendaScreen({ usuario, onContinuar }) {
         </div>
       )}
 
-      {!cargando && !error && data && (
-        <>
-          <div className="agenda-tabs">
-            <button className={'agenda-tab' + (tab === 'manana' ? ' activo' : '')} onClick={() => setTab('manana')}>
-              Mañana {data.jornadas && `(${sel.manana.items.length})`}
-            </button>
-            <button className={'agenda-tab' + (tab === 'tarde' ? ' activo' : '')} onClick={() => setTab('tarde')}>
-              Tarde {data.jornadas && `(${sel.tarde.items.length})`}
-            </button>
-          </div>
+      {!cargando && !error && data && (() => {
+        const jornada = data.jornadas && data.jornadas[tab];
+        const s = sel[tab];
+        const items = s.items;
+        return (
+          <div className="agenda-2col">
+            <div className="agenda-col-izq">
+              <div className="agenda-tabs">
+                <button className={'agenda-tab' + (tab === 'manana' ? ' activo' : '')} onClick={() => setTab('manana')}>
+                  Mañana {data.jornadas && `(${sel.manana.items.length})`}
+                </button>
+                <button className={'agenda-tab' + (tab === 'tarde' ? ' activo' : '')} onClick={() => setTab('tarde')}>
+                  Tarde {data.jornadas && `(${sel.tarde.items.length})`}
+                </button>
+              </div>
 
-          {(() => {
-            const jornada = data.jornadas && data.jornadas[tab];
-            const s = sel[tab];
-            const items = s.items;
-            return (
-              <>
-                {jornada && jornada.activa && s.grupo && (
-                  <AjusteJornada
-                    s={s}
-                    ajustada={String(s.grupo.comuna) !== String(s.sugerida) || s.n !== maxConfig}
-                    onComuna={c => ajustarJornada(tab, { comuna: c })}
-                    onNumero={n => ajustarJornada(tab, { n })}
-                    onRestablecer={() => ajustarJornada(tab, null)}
-                  />
-                )}
-
-                {jornada && jornada.activa && items.length > 0 && (
-                  <div className="card">
-                    <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
-                      Confirmar jornada — asignar todas a:
-                    </div>
-                    <div className="inspector-chips">
-                      {inspectores.map(insp => (
-                        <button key={insp.nombre} type="button"
-                          className={'inspector-chip' + (inspectorSel[tab] === insp.nombre ? ' sel' : '')}
-                          onClick={() => setInspectorSel(s => Object.assign({}, s, { [tab]: insp.nombre }))}>
-                          {insp.nombre}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="agenda-confirmar-bar">
-                      <button className="btn-principal" disabled={!inspectorSel[tab] || confirmando}
-                        onClick={() => confirmarJornada(tab, items, s.grupo ? s.grupo.comuna : null)}
-                        style={{ flex: 1, margin: 0 }}>
-                        {confirmando ? 'Confirmando...' : `Confirmar agenda (${items.length})`}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <ItemsLista
-                  items={items}
-                  busyFila={busyFila}
-                  onAbrir={onContinuar ? abrirVisita : null}
-                  inspectores={inspectores}
-                  asignandoFila={asignandoFila}
-                  setAsignandoFila={setAsignandoFila}
-                  onAsignar={adminAsignar}
+              {jornada && jornada.activa && s.grupo && (
+                <AjusteJornada
+                  s={s}
+                  ajustada={String(s.grupo.comuna) !== String(s.sugerida) || s.n !== maxConfig}
+                  onComuna={c => ajustarJornada(tab, { comuna: c })}
+                  onNumero={n => ajustarJornada(tab, { n })}
+                  onRestablecer={() => ajustarJornada(tab, null)}
                 />
-              </>
-            );
-          })()}
-        </>
-      )}
+              )}
+
+              {jornada && jornada.activa && items.length > 0 && (
+                <div className="card">
+                  <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
+                    Confirmar jornada — asignar todas a:
+                  </div>
+                  <div className="inspector-chips">
+                    {inspectores.map(insp => (
+                      <button key={insp.nombre} type="button"
+                        className={'inspector-chip' + (inspectorSel[tab] === insp.nombre ? ' sel' : '')}
+                        onClick={() => setInspectorSel(s => Object.assign({}, s, { [tab]: insp.nombre }))}>
+                        {insp.nombre}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="agenda-confirmar-bar">
+                    <button className="btn-principal" disabled={!inspectorSel[tab] || confirmando}
+                      onClick={() => confirmarJornada(tab, items, s.grupo ? s.grupo.comuna : null)}
+                      style={{ flex: 1, margin: 0 }}>
+                      {confirmando ? 'Confirmando...' : `Confirmar agenda (${items.length})`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="agenda-col-der">
+              <ItemsLista
+                items={items}
+                busyFila={busyFila}
+                onAbrir={onContinuar ? abrirVisita : null}
+                inspectores={inspectores}
+                asignandoFila={asignandoFila}
+                setAsignandoFila={setAsignandoFila}
+                onAsignar={adminAsignar}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -385,7 +385,7 @@ function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setA
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {items.map((it, i) => (
-        <div key={it.fila || i} className="card" style={{ padding: 14 }}>
+        <div key={it.fila || i} className="card" style={{ padding: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{

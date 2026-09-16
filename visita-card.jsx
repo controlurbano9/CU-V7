@@ -144,12 +144,12 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
           </div>
 
           {/* Dirección — bold, principal */}
-          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>
             {f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección'}
           </div>
 
           {/* Barrio · Comuna — siempre presente */}
-          <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 3 }}>
             {f['BARRIO/VEREDA'] || f['BARRIO'] || '—'}
             {f['COMUNA'] && (' · C' + f['COMUNA'])}
           </div>
@@ -157,7 +157,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
           {/* Meta opcional: fecha + inspector + asignado en una sola línea */}
           {tieneMeta && (
             <div style={{
-              fontSize: 11, color: 'var(--texto-suave)', marginTop: 4,
+              fontSize: 11, color: 'var(--texto-suave)', marginTop: 3,
               display: 'flex', gap: 8, flexWrap: 'wrap',
             }}>
               {fechaVisita && <span><span style={{ opacity: 0.7 }}>Fecha:</span> {fechaVisita}</span>}

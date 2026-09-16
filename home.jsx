@@ -203,7 +203,7 @@ function HomeScreen({ usuario, onContinuar }) {
   return (
     <div className="pantalla activa pad-bottom home-pantalla">
       {/* ── Título ── */}
-      <div className="page-title" style={{ marginBottom: 2 }}>Inicio</div>
+      <div className="page-title titulo-fijo" style={{ marginBottom: 2 }}>Inicio</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
         {fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}
       </div>
@@ -255,7 +255,7 @@ function HomeScreen({ usuario, onContinuar }) {
         )}
 
         {!cargando && asignadasHoy.map((f, i) => (
-          <div key={f._idx || i} className="card" style={{ padding: 14, marginBottom: 8 }}>
+          <div key={f._idx || i} className="card" style={{ padding: 12, marginBottom: 8 }}>
             <VisitaCard f={f} labelBadge="Asignada" accionesMt={10}>
               <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />
             </VisitaCard>

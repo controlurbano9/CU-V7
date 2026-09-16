@@ -323,11 +323,16 @@ function BuscarScreen({ usuario, onContinuar }) {
   const hayFiltros = !!q || filtrosEstado.length || filtroComunas.length || filtrosVisitador.length || filtroRural;
 
   return (
-    <div className="pantalla activa pad-bottom">
+    <div className="pantalla activa pad-bottom buscar-pantalla">
       {/* Mismo nombre que la pestaña del nav: antes la pestaña decía "Buscar"
           y el título de la pantalla "Visitas". */}
-      <div className="page-title" style={{ marginBottom: 16 }}>Buscar</div>
+      <div className="page-title titulo-fijo" style={{ marginBottom: 16 }}>Buscar</div>
 
+      {/* ≥1200: filtros fijos a la izquierda (.buscar-col-izq), resultados
+          con scroll a la derecha (.buscar-col-der); por debajo de 1200 los
+          wrappers son divs inertes y todo va apilado como siempre. */}
+      <div className="buscar-2col">
+      <div className="buscar-col-izq">
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="input-grupo" style={{ marginBottom: 10 }}>
           <input type="text" className="input-campo"
@@ -425,7 +430,9 @@ function BuscarScreen({ usuario, onContinuar }) {
             title="Refetch ignorando caché">Recargar</button>
         </div>
       </div>
+      </div>{/* .buscar-col-izq */}
 
+      <div className="buscar-col-der">
       {/* Lista */}
       {cargando && (
         <div className="cargando"><div className="spinner"></div>Cargando registros...</div>
@@ -471,6 +478,8 @@ function BuscarScreen({ usuario, onContinuar }) {
           </div>
         );
       })()}
+      </div>{/* .buscar-col-der */}
+      </div>{/* .buscar-2col */}
     </div>
   );
 }
@@ -596,7 +605,7 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
   // ASIGNADO, INICIADO, COMPLETADO). Preservamos ese comportamiento pasando
   // el override a VisitaCard.
   return (
-    <div style={{ padding: '12px 14px', borderTop: '1px solid var(--borde)' }}>
+    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--borde)' }}>
       {/* Qué visita del radicado es esta — sin esto dos filas idénticas del
           mismo radicado solo se distinguían por la fecha. Una PENDIENTE
           (nVisita = null) no es visita y nunca lleva el rótulo; este solo

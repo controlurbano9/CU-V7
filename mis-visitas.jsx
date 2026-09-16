@@ -128,7 +128,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   // ── Render ──
   return (
     <div className="pantalla activa pad-bottom">
-      <div className="page-title" style={{ marginBottom: 4 }}>Mis visitas</div>
+      <div className="page-title titulo-fijo" style={{ marginBottom: 4 }}>Mis visitas</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 16 }}>
         Visitas asignadas a {usuario.usuario || 'ti'}
       </div>
@@ -312,7 +312,7 @@ function TarjetaVisitaMV({ f, usuario, onContinuar }) {
   // No necesitamos override.
   return (
     <div style={{
-      padding: '14px 14px',
+      padding: '12px 12px',
       borderBottom: '1px solid var(--borde)',
     }}>
       <VisitaCard f={f} mostrarFecha accionesMt={12}>
