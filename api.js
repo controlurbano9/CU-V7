@@ -337,6 +337,16 @@ async function gasGet(params) {
 
 // ── POST text/plain (sin preflight) ────────────────────────────
 async function gasPost(payload) {
+  // Toda escritura viaja con requestId: es lo único que vuelve seguro el
+  // reintento (el backend devuelve el resultado ya guardado en vez de volver a
+  // escribir) y por tanto lo que permite absorber el 404 del salto /macros/echo.
+  // Antes solo lo llevaban tres acciones y las demás morían al primer fallo
+  // aunque el script hubiera terminado bien. Se pone aquí, no en cada llamada,
+  // para que una acción nueva quede cubierta sin acordarse de nada.
+  // 'agregar' se excluye: ya tiene su propio dedup por clientId.
+  if (!_ACCIONES_SOLO_LECTURA[payload.accion] && !payload.requestId && !payload.clientId) {
+    payload = Object.assign({}, payload, { requestId: _nuevoRequestId() });
+  }
   const cuerpo = JSON.stringify(_conCredencialesSesion(payload));
   return _llamarWebhook(signal => fetch(CFG.webhook, {
     method: 'POST',
