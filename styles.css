@@ -2077,3 +2077,19 @@ body.is-offline .header {
     scroll-behavior: auto !important;
   }
 }
+
+/* Selector de fecha programada del panel de asignación */
+.psi-fecha {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ink-3); margin-bottom: 4px;
+}
+.psi-fecha input[type="date"] {
+  min-height: var(--tap-min); padding: 4px 8px;
+  border-radius: var(--r-sm); border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2);
+  font-family: inherit; font-size: 12px;
+}
+.psi-fecha .vc-btn[aria-pressed="true"] {
+  background: var(--brand); border-color: var(--brand); color: var(--surface);
+}
+.psi-aviso { font-size: 11px; color: var(--amber, var(--ink-3)); margin-bottom: 4px; }

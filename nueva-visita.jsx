@@ -1222,34 +1222,16 @@ function ModalInicioVisita({ onResult, onCancelar }) {
     });
   }
 
-  // Crear nueva visita para el mismo radicado (incrementa N° visita)
+  // Crear nueva visita para el mismo radicado (incrementa N° visita).
+  // La limpieza de campos vive en clonarParaSeguimiento (utils.js): la
+  // comparte con el botón "+ Nueva visita" de la cabecera de grupo en Buscar.
   function crearNuevaVisitaRadicado(filaBase) {
-    // Copia datos base pero limpia campos de visita
-    const datosBase = { ...filaBase };
-    datosBase['N° VISITA'] = (resultado?.nVisitaSig || 2).toString();
-    datosBase['N VISITA'] = datosBase['N° VISITA'];
-    datosBase['ESTADO VISITA'] = 'PENDIENTE';
-    // No heredar el visitador de la visita anterior. Y tampoco prefijarlo con
-    // quien la crea: una visita de seguimiento se ASIGNA, siempre hay que
-    // elegir a quién. La marca `_seguimiento` apaga el prefijado automático;
-    // `_validar` ya exige visitador, así que no se puede guardar sin elegir.
-    datosBase['VISITADOR(ES)'] = '';
-    datosBase['_seguimiento'] = true;
-    datosBase['FECHA DE VISITA'] = '';
-    datosBase['LINK_DRIVE'] = '';
-    datosBase['ACTUACION / OBSERVACIONES'] = '';
-    datosBase['TIPO DE INFRACCION'] = '';
-    datosBase['AREA CONTRAVENCION m2'] = '';
-    datosBase['AREA CONTRAVENCION M2'] = '';
-    datosBase['SUSPENSION DE LA OBRA'] = '';
-    datosBase['N° ORDEN DE POLICIA'] = '';
-    datosBase['N ORDEN DE POLICIA'] = '';
-    datosBase['FECHA CITACION'] = '';
+    const n = resultado?.nVisitaSig || 2;
     onResult({
       tipo: 'pqr',
-      datosIniciales: datosBase,
+      datosIniciales: clonarParaSeguimiento(filaBase, n),
       fila: null, // nueva fila
-      nVisita: resultado?.nVisitaSig || 2,
+      nVisita: n,
       esNueva: true,
     });
   }

@@ -85,7 +85,7 @@ function _leerPrefsBuscar() {
   catch (e) { return {}; }
 }
 
-function BuscarScreen({ usuario, onContinuar }) {
+function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [datos, setDatos]     = useStateB([]);
   const [cargando, setCargando] = useStateB(true);
   const [error, setError]     = useStateB('');
@@ -164,7 +164,7 @@ function BuscarScreen({ usuario, onContinuar }) {
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
   // más abajo — sin esto, cada re-render de BuscarScreen (ej. un keystroke
   // en otro filtro) les pasaba callbacks con identidad nueva y anulaba el memo.
-  const adminAsignar = useCallbackB(async (fila, inspector, f) => {
+  const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion) => {
     // Relevar una visita INICIADA no es lo mismo que asignar una pendiente:
     // el backend conserva el estado, pero por la regla del diligenciador el
     // inspector anterior deja de verla, y su borrador local (localStorage)
@@ -185,7 +185,7 @@ function BuscarScreen({ usuario, onContinuar }) {
     try {
       await gasPost({
         accion: 'asignarRadicado', fila, inspector,
-        fechaAsignacion: hoyDDMMAAAA(),
+        fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
       setAsignandoFila(null);
@@ -197,12 +197,13 @@ function BuscarScreen({ usuario, onContinuar }) {
   // Crea una fila nueva en BD clonando los datos fijos del radicado y
   // dejándola ASIGNADA al inspector elegido. Útil para asignar una segunda
   // visita a un radicado ya COMPLETADO.
-  const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector) => {
+  const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector, fechaAsignacion) => {
     setBusyFila(filaOrigen);
     try {
       const r = await gasPost({
         accion: 'crearNuevaVisitaAsignada',
         fila: filaOrigen, inspector,
+        fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
       invalidarCache('visitas');
@@ -642,7 +643,8 @@ function BuscarScreen({ usuario, onContinuar }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {visibles.map(([rad, filas]) => (
               <GrupoRadicado key={rad} radicado={rad} filas={filas} usuario={usuario} onContinuar={onContinuar}
-                q={q} esAdmin={esAdmin} inspectores={inspectores} busyFila={busyFila}
+                q={q} onNuevaVisita={onNuevaVisita}
+                esAdmin={esAdmin} inspectores={inspectores} busyFila={busyFila}
                 asignandoFila={asignandoFila} setAsignandoFila={setAsignandoFila}
                 onAsignar={adminAsignar} onDesasignar={adminDesasignar} onCompletar={adminCompletar}
                 onAsignarNuevaVisita={adminAsignarNuevaVisita} />
@@ -677,7 +679,7 @@ function BuscarScreen({ usuario, onContinuar }) {
 // React.memo más abajo. Cada GrupoRadicado se re-renderiza solo si cambian
 // sus props (radicado, filas, usuario); un keystroke en el buscador que
 // reduce filtros ya no rerenderea todas las tarjetas visibles.
-function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q,
+function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q, onNuevaVisita,
   esAdmin, inspectores, busyFila, asignandoFila, setAsignandoFila,
   onAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
   const [open, setOpen] = useStateB(filas.length === 1);
@@ -739,23 +741,30 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q,
         {/* "+ Nueva visita" es del radicado, no de una fila: vive en la
             cabecera del grupo. Se apoya en la última visita para clonar los
             datos fijos (dirección, barrio, GPS...). */}
+        {/* Dos botones, un trabajo cada uno. Antes "+ Nueva visita" solo
+            abría la lista de inspectores y al tocar un nombre creaba la fila
+            ya ASIGNADA: el rótulo prometía crear y la acción era crear y
+            asignar. Ahora "+ Nueva visita" abre el formulario (la hago yo,
+            ahora) y "Asignar" abre el panel sin cambiar de pantalla. */}
         {puedeNueva && (abierta ? (
           <span style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'right' }}
             title="Completa la visita en curso antes de abrir otra">
             Visita {abierta.n} en curso
           </span>
         ) : !pendiente && (
-          <button type="button"
-            onClick={() => setAsignandoFila(panelNuevaAbierto ? null : filaBase._idx)}
-            disabled={busyFila === filaBase._idx}
-            style={{
-              background: 'var(--gris-bg)', color: 'var(--texto)',
-              border: '1px dashed var(--brand-accent)', borderRadius: 10,
-              padding: '8px 12px', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-              cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>
-            {panelNuevaAbierto ? 'Cancelar' : '+ Nueva visita'}
-          </button>
+          <>
+            <button type="button" className="vc-btn"
+              style={{ borderStyle: 'dashed', borderColor: 'var(--brand-accent)' }}
+              disabled={busyFila === filaBase._idx}
+              onClick={() => onNuevaVisita && onNuevaVisita(filaBase, totalVisitas + 1)}>
+              + Nueva visita
+            </button>
+            <button type="button" className="vc-btn"
+              disabled={busyFila === filaBase._idx}
+              onClick={() => setAsignandoFila(panelNuevaAbierto ? null : filaBase._idx)}>
+              {panelNuevaAbierto ? 'Cancelar' : 'Asignar'}
+            </button>
+          </>
         ))}
       </div>
       )}
@@ -766,7 +775,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q,
         <div style={{ padding: panelNuevaAbierto ? '0 14px 12px' : 0 }}>
           <PanelSeleccionInspector
             f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
-            inspectores={inspectores}
+            inspectores={inspectores} accion="nueva" conFecha
             onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
         </div>
       )}
@@ -832,7 +841,7 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar, q,
       {esAdmin && (
         <PanelSeleccionInspector
           f={f} busy={busy} abierto={abierto && est !== 'COMPLETADO'}
-          inspectores={inspectores} onAsignar={onAsignar}
+          inspectores={inspectores} accion="asignar" conFecha onAsignar={onAsignar}
         />
       )}
     </div>

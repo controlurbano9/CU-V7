@@ -204,13 +204,16 @@ function diasHabilesHasta(fechaTarget) {
 }
 
 // ── Días calendario desde una fecha hasta hoy ─────────────────
+// Nunca negativo: con asignación programada a futuro (el admin asigna hoy
+// para el martes) una visita completada antes de ese día daría días
+// negativos, y ese número va tal cual a la columna DIAS de BD al completar.
 function diasDesde(fecha) {
   var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
   if (!d) return null;
   var hoy = new Date();
   hoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   d = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.floor((hoy - d) / 86400000);
+  return Math.max(0, Math.floor((hoy - d) / 86400000));
 }
 
 // ── Hoy en DD/MM/AAAA ────────────────────────────────────────
@@ -429,4 +432,35 @@ if (typeof window !== 'undefined') {
   Object.assign(window, _cuUtilsExports);
 } else if (typeof module !== 'undefined' && module.exports) {
   module.exports = _cuUtilsExports;
+}
+
+// ── Clonar un radicado para una visita de seguimiento ─────────
+// Copia los datos fijos del radicado (dirección, barrio, GPS, denunciante…)
+// y limpia todo lo que pertenece a la visita anterior. Vive acá porque la
+// usan dos entradas distintas: el modal de nueva visita (buscar radicado) y
+// el botón "+ Nueva visita" de la cabecera de grupo en Buscar. Duplicar la
+// lista de campos a limpiar era garantía de que una se quedara corta.
+function clonarParaSeguimiento(filaBase, nVisita) {
+  var n = String(nVisita || 2);
+  var d = Object.assign({}, filaBase);
+  d['N° VISITA'] = n;
+  d['N VISITA']  = n;
+  d['ESTADO VISITA'] = 'PENDIENTE';
+  // No heredar el visitador de la visita anterior, ni prefijar al que la
+  // crea: una visita de seguimiento se ASIGNA, siempre hay que elegir a
+  // quién. `_seguimiento` apaga el prefijado automático.
+  d['VISITADOR(ES)'] = '';
+  d['_seguimiento'] = true;
+  ['FECHA DE VISITA', 'FECHA ASIGNACION VISITA', 'LINK_DRIVE',
+   'ACTUACION / OBSERVACIONES', 'TIPO DE INFRACCION',
+   'AREA CONTRAVENCION m2', 'AREA CONTRAVENCION M2',
+   'SUSPENSION DE LA OBRA', 'N° ORDEN DE POLICIA', 'N ORDEN DE POLICIA',
+   'FECHA CITACION',
+   // Entregables de la visita anterior: si viajan, la visita nueva nace
+   // apuntando al acta y al informe de la otra.
+   'LINK_PDF_ACTA', 'LINK_XLSX_ACTA', 'LINK_DOCX_INFORME', 'LINK_INFORME_F43',
+   'LINK_REGISTRO_FOTOS', 'LINK_SOLICITUD_VIGILANCIA', 'LINK_SOLICITUD_PDF',
+   'LINK_ORDEN_POLICIA', 'ULTIMA_MODIFICACION', 'ULTIMA_MODIFICACION_POR',
+  ].forEach(function (k) { d[k] = ''; });
+  return d;
 }

@@ -17,11 +17,15 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // Extrae del JSX solo el bloque de barrios (no hay build de módulos aquí).
+// Los patrones toleran CRLF: con core.autocrlf=true el working tree en
+// Windows queda con fin de linea CRLF, y un patron anclado al salto de
+// linea sin admitirlo no encontraba nada tras un checkout limpio: el test
+// fallaba sin que el codigo hubiera cambiado.
 function cargarResolutor() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'nueva-visita.jsx'), 'utf8');
   const trozos = [
     /const BARRIOS_POR_COMUNA = \[[\s\S]*?\n\];/,
-    /function _quitarTildes\(s\) \{[\s\S]*?\}\n/,
+    /function _quitarTildes\(s\) \{[\s\S]*?\}\r?\n/,
     /function _canonBarrio\(s\) \{[\s\S]*?\n\}/,
     /const _ALIAS_BARRIO_POT = \{[\s\S]*?\n\};/,
     /const _LISTA_BARRIOS = [^\n]*/,

@@ -701,6 +701,16 @@ function AppV6() {
     } finally { abriendoVisitaRef.current = false; }
   }
 
+  // "+ Nueva visita" desde la cabecera de un radicado en Buscar: abre el
+  // formulario con los datos fijos clonados, sin pasar por el panel de
+  // inspectores. La visita nace PENDIENTE y sin visitador; asignarla es la
+  // otra acción, la de al lado.
+  function irNuevaVisitaRadicado(filaBase, nVisita) {
+    if (!filaBase) return;
+    setContextoNueva({ fila: null, datos: clonarParaSeguimiento(filaBase, nVisita) });
+    navegar('nueva-visita');
+  }
+
   // Pestañas según rol — Icono es un componente de Icon.* (icons.jsx)
   const tabs = [];
   tabs.push({ k: 'home',          label: 'Inicio',     Icono: Icon.Home   });
@@ -769,7 +779,7 @@ function AppV6() {
           {pantalla === 'home' && <HomeScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'mis-visitas' && <MisVisitasScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
-            onContinuar={irContinuar} />}
+            onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
           {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen
             usuario={usuario}

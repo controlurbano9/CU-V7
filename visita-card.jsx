@@ -466,9 +466,41 @@ function BotonesAdminVisita({ f, esAdmin, busy, abierto,
 // donde todo está en PENDIENTE, lo ignora.
 // ═══════════════════════════════════════════════════════════════
 function PanelSeleccionInspector({ f, busy, abierto, inspectores,
-  onAsignar, onAsignarNuevaVisita }) {
+  onAsignar, onAsignarNuevaVisita, accion, conFecha }) {
+  // Hooks antes de cualquier early return (React #310).
+  const [fecha, setFecha] = useStateVC('');
+  const [aviso, setAviso] = useStateVC('');
+
   if (!abierto || !inspectores || inspectores.length === 0) return null;
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  // La acción llega explícita desde el caller. Antes se deducía del estado
+  // de la fila ("si está COMPLETADO, crear visita nueva"), que es la raíz de
+  // que un botón rotulado "+ Nueva visita" terminara asignando: el panel
+  // adivinaba. `accion` se impone; el fallback conserva el comportamiento
+  // viejo para los callers que todavía no la pasan (Agenda).
+  const esNueva = accion ? accion === 'nueva' : (est === 'COMPLETADO' && !!onAsignarNuevaVisita);
+
+  const hoyIso = _hoyIso();
+  const maxIso = _isoSumandoDias(90);
+
+  function elegir(nombre) {
+    const ddmmaaaa = fecha ? _isoADDMMAAAA(fecha) : hoyDDMMAAAA();
+    if (esNueva && onAsignarNuevaVisita) onAsignarNuevaVisita(f._idx, nombre, ddmmaaaa);
+    else onAsignar(f._idx, nombre, f, ddmmaaaa);
+  }
+
+  function cambiarFecha(v) {
+    setFecha(v);
+    if (!v) { setAviso(''); return; }
+    // Fin de semana y festivos no se bloquean: el inspector a veces va un
+    // sábado. Solo se avisa, la decisión es del admin.
+    const d = parsearFecha(_isoADDMMAAAA(v));
+    if (!d) { setAviso(''); return; }
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) setAviso('Cae en fin de semana.');
+    else if (typeof esDiaHabil === 'function' && !esDiaHabil(d)) setAviso('Es festivo.');
+    else setAviso('');
+  }
 
   return (
     <div style={{
@@ -476,20 +508,30 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
       display: 'flex', flexDirection: 'column', gap: 6,
     }}>
       <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 2 }}>
-        {est === 'COMPLETADO' ? 'Crear nueva visita y asignar a:'
+        {esNueva ? 'Crear nueva visita y asignar a:'
           : est === 'INICIADO' ? 'Reasignar (conserva el avance) a:'
           : 'Asignar a:'}
       </div>
+
+      {/* Fecha programada: asignar hoy para un día posterior. Vacío = hoy.
+          Solo donde el caller lo pide: en Agenda la jornada se programa desde
+          la agenda misma y un segundo selector ahí confundiría. */}
+      {conFecha && (
+      <div className="psi-fecha">
+        <label htmlFor={'psi-f-' + f._idx}>Para el día</label>
+        <input id={'psi-f-' + f._idx} type="date" value={fecha}
+          min={hoyIso} max={maxIso}
+          onChange={e => cambiarFecha(e.target.value)} />
+        <button type="button" className="vc-btn"
+          onClick={() => { setFecha(''); setAviso(''); }}
+          aria-pressed={!fecha}>Hoy</button>
+      </div>
+      )}
+      {conFecha && aviso && <div className="psi-aviso">{aviso}</div>}
+
       {inspectores.map(i => (
         <button key={i.nombre} type="button"
-          onClick={() => {
-            // COMPLETADO crea fila nueva; los demás reasignan la misma fila
-            if (est === 'COMPLETADO' && onAsignarNuevaVisita) {
-              onAsignarNuevaVisita(f._idx, i.nombre);
-            } else {
-              onAsignar(f._idx, i.nombre, f);
-            }
-          }} disabled={busy} style={{
+          onClick={() => elegir(i.nombre)} disabled={busy} style={{
             background: 'var(--superficie)', border: '1px solid var(--borde)', borderRadius: 6,
             padding: '8px 10px', fontFamily: 'inherit', fontSize: 13, textAlign: 'left',
             cursor: busy ? 'not-allowed' : 'pointer',
@@ -501,6 +543,25 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
     </div>
   );
 }
+
+// El <input type="date"> habla ISO; BD habla DD/MM/YYYY (regla de fechas).
+// La conversión se hace acá y nunca se manda un Date ni un ISO al backend.
+function _hoyIso() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+    '-' + String(d.getDate()).padStart(2, '0');
+}
+function _isoSumandoDias(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+    '-' + String(d.getDate()).padStart(2, '0');
+}
+function _isoADDMMAAAA(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
+}
+
 
 // Exponer al scope global del bundle (mismo patrón que el resto de los componentes)
 window.VisitaCard              = VisitaCard;
