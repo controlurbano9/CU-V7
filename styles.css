@@ -856,6 +856,80 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .filtros-comunas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .filtros-comunas .btn-filtro { padding: 5px 10px; font-size: 11px; }
 
+/* ── Buscar: barra de búsqueda a todo el ancho ──────────── */
+.buscar-barra { margin-bottom: 12px; }
+.buscar-barra-input { position: relative; margin-bottom: 10px; }
+.buscar-barra-input .input-campo { padding-left: 38px; padding-right: 38px; }
+.buscar-barra-lupa {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--ink-3); display: inline-flex; pointer-events: none;
+}
+.buscar-barra-x {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: var(--tap-min); height: var(--tap-min);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; color: var(--ink-3); cursor: pointer;
+  border-radius: var(--r-sm);
+}
+@media (hover: hover) and (pointer: fine) {
+.buscar-barra-x:hover { background: var(--surface-2); color: var(--ink-1); }
+}
+/* El conteo facetado dentro del chip de estado */
+.btn-filtro-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  opacity: 0.65; margin-left: 2px;
+}
+
+/* ── Buscar: grupos de la columna de filtros (sin acordeón) ── */
+.filtro-grupo { margin-bottom: 14px; }
+.filtro-grupo:last-child { margin-bottom: 0; }
+.filtro-grupo-titulo {
+  font-size: 11px; font-weight: 700; color: var(--ink-3);
+  letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px;
+}
+
+/* ── Buscar: cabecera de resultados ─────────────────────── */
+.buscar-resultados-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.buscar-conteo { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.chip-filtro-activo {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--line-2); background: var(--surface-2);
+  color: var(--ink-2); font-family: inherit; font-size: 11px; font-weight: 600;
+  cursor: pointer; min-height: 26px;
+}
+@media (hover: hover) and (pointer: fine) {
+.chip-filtro-activo:hover { border-color: var(--red); color: var(--red); }
+}
+.buscar-orden {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--ink-3);
+}
+.buscar-orden-lbl { letter-spacing: 0.05em; }
+.buscar-orden select {
+  min-height: var(--tap-min);
+  padding: 4px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--line-2); background: var(--surface);
+  color: var(--ink-2); font-family: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.buscar-recargar {
+  width: var(--tap-min); height: var(--tap-min);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm); border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-3); cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+.buscar-recargar:hover { background: var(--surface-2); color: var(--ink-1); }
+}
+/* En móvil el orden baja de línea: con el conteo y los chips no cabe. */
+@media (max-width: 599px) {
+  .buscar-orden { margin-left: 0; }
+}
+
 /* ── Agenda tabs (legacy) → look segmented unificado ────── */
 .agenda-tabs {
   display: flex; gap: 4px;
@@ -1259,11 +1333,15 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
   .pantalla.home-pantalla .home-2col > :only-child { grid-column: 1 / -1; }
 
   /* Buscar: filtros a la izquierda (fijos, con scroll de seguridad por si
-     los acordeones desbordan), resultados a la derecha con scroll. */
+     los grupos desbordan), resultados a la derecha con scroll. La barra de
+     búsqueda va FUERA de este grid: un sticky aquí dentro se anclaría al
+     scroller de la columna, no a la pantalla. */
   .pantalla.buscar-pantalla .buscar-2col {
     flex: 1 1 auto; min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    /* 280px fijos: antes era 2fr/3fr, que daba 390px en 1366 y 582px en 1920
+       para sostener chips de 46px. Lo que sobraba se lo lleva la lista. */
+    grid-template-columns: 280px minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     column-gap: 24px;
   }

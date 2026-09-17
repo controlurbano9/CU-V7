@@ -7,7 +7,7 @@
 //   - Filtro rural ("Vda.")
 //   - Lista agrupada por radicado
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateB, useEffect: useEffectB, useMemo: useMemoB, useCallback: useCallbackB } = React;
+const { useState: useStateB, useEffect: useEffectB, useMemo: useMemoB, useCallback: useCallbackB, useRef: useRefB } = React;
 
 // Mapeo estado → tono de chip (clases de styles.css)
 const ESTADO_CLASE = {
@@ -17,29 +17,103 @@ const ESTADO_CLASE = {
   COMPLETADO: 'activo-completado',
 };
 
+const ESTADOS_BUSCAR = ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'];
+const ESTADO_LABEL = {
+  PENDIENTE: 'Pendientes', ASIGNADO: 'Asignadas',
+  INICIADO: 'Iniciadas', COMPLETADO: 'Completadas',
+};
+
+// Antigüedad del radicado — es el criterio con el que se prioriza y hasta
+// ahora no se podía filtrar por él. Selección única: son rangos, no suman.
+const ANTIGUEDADES = [
+  { val: 'hoy', l: 'Hoy',     dias: 0 },
+  { val: '7',   l: '7 días',  dias: 7 },
+  { val: '30',  l: '30 días', dias: 30 },
+  { val: '90',  l: '3 meses', dias: 90 },
+  { val: '365', l: '>1 año',  dias: 365, mas: true },
+];
+
+// Compara por día, no por milisegundo. Una fila sin FECHA RADICADO parseable
+// no pasa ningún filtro activo. Una fecha futura (error de captura en el
+// gestor documental) cuenta como 0 días en vez de desaparecer de la lista.
+function _pasaAntiguedad(f, val) {
+  if (!val) return true;
+  const op = ANTIGUEDADES.find(a => a.val === val);
+  if (!op) return true;
+  const d = parsearFecha(f['FECHA RADICADO'] || '');
+  if (!d) return false;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const rad = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dias = Math.max(0, Math.round((hoy - rad) / 86400000));
+  return op.mas ? dias > op.dias : dias <= op.dias;
+}
+
+const ORDENES = [
+  { val: 'rad-desc', l: 'Radicado ↓' },
+  { val: 'rad-asc',  l: 'Radicado ↑' },
+  { val: 'edit',     l: 'Última edición' },
+  { val: 'dir',      l: 'Dirección' },
+];
+
+// El orden se aplica a los GRUPOS, no a las filas sueltas: la lista pagina
+// por grupo (limite). Para "edit" y "dir" manda la primera fila del grupo.
+// "Sin radicado" queda siempre al final, ordene como ordene.
+function _ordenarGrupos(entries, orden) {
+  const _dir  = ([, fs]) => (fs[0]['DIRECCION INFRACCION'] || fs[0]['DIRECCION'] || '').toString();
+  const _edit = ([, fs]) => {
+    const t = Date.parse(fs[0]['ULTIMA_MODIFICACION'] || '');
+    return isNaN(t) ? 0 : t;
+  };
+  return entries.slice().sort((a, b) => {
+    const aSin = a[0] === 'Sin radicado', bSin = b[0] === 'Sin radicado';
+    if (aSin !== bSin) return aSin ? 1 : -1;
+    switch (orden) {
+      case 'rad-asc': return a[0].localeCompare(b[0], 'es', { numeric: true });
+      case 'edit':    return _edit(b) - _edit(a);
+      case 'dir':     return _dir(a).localeCompare(_dir(b), 'es', { sensitivity: 'base' });
+      default:        return b[0].localeCompare(a[0], 'es', { numeric: true });
+    }
+  });
+}
+
+// Los filtros sobreviven a abrir una visita: BuscarScreen se desmonta al
+// navegar al formulario (app.jsx, render condicional) y el admin volvía con
+// la búsqueda en blanco. sessionStorage lanza en modo privado — try/catch.
+const BUSCAR_PREFS_KEY = 'cu_buscar_v1';
+function _leerPrefsBuscar() {
+  try { return JSON.parse(sessionStorage.getItem(BUSCAR_PREFS_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+
 function BuscarScreen({ usuario, onContinuar }) {
   const [datos, setDatos]     = useStateB([]);
   const [cargando, setCargando] = useStateB(true);
   const [error, setError]     = useStateB('');
 
-  // qInput = lo que el inspector tipea en cada keystroke (binding del input)
-  // q      = lo que efectivamente se aplica al filtro (debounce de 300ms)
-  // Separarlos evita re-renderizar la lista entera en cada tecla.
-  const [qInput, setQInput] = useStateB('');
-  const [q, setQ]           = useStateB('');
-  const [filtrosEstado, setFiltrosEstado] = useStateB([]);
-  const [filtroComunas, setFiltroComunas] = useStateB([]);
-  const [filtrosVisitador, setFiltrosVisitador] = useStateB([]);
-  const [filtroRural, setFiltroRural] = useStateB(false);
-  const [comunasOpen, setComunasOpen] = useStateB(false);
-  const [visitadorOpen, setVisitadorOpen] = useStateB(false);
-  // Lista de visitadores activos (chips de filtro admin). Se carga desde
-  // USUARIOS vía endpoint público — sin nombres hardcoded en el bundle.
-  const [visitadores, setVisitadores] = useStateB([]);
   // Paginación incremental
   const LIMITE_INICIAL = 50;
   const LIMITE_PASO    = 50;
-  const [limite, setLimite] = useStateB(LIMITE_INICIAL);
+
+  // Filtros restaurados de sessionStorage en el initializer perezoso, no en
+  // un useEffect: así no hay un primer render con la búsqueda en blanco.
+  const prefs0 = useStateB(_leerPrefsBuscar)[0];
+
+  // qInput = lo que el inspector tipea en cada keystroke (binding del input)
+  // q      = lo que efectivamente se aplica al filtro (debounce de 300ms)
+  // Separarlos evita re-renderizar la lista entera en cada tecla.
+  const [qInput, setQInput] = useStateB(prefs0.q || '');
+  const [q, setQ]           = useStateB(prefs0.q || '');
+  const [filtrosEstado, setFiltrosEstado] = useStateB(prefs0.filtrosEstado || []);
+  const [filtroComunas, setFiltroComunas] = useStateB(prefs0.filtroComunas || []);
+  const [filtrosVisitador, setFiltrosVisitador] = useStateB(prefs0.filtrosVisitador || []);
+  const [filtroRural, setFiltroRural] = useStateB(!!prefs0.filtroRural);
+  const [filtroAntiguedad, setFiltroAntiguedad] = useStateB(prefs0.filtroAntiguedad || '');
+  const [orden, setOrden] = useStateB(prefs0.orden || 'rad-desc');
+  // Lista de visitadores activos (chips de filtro admin). Se carga desde
+  // USUARIOS vía endpoint público — sin nombres hardcoded en el bundle.
+  const [visitadores, setVisitadores] = useStateB([]);
+  const [limite, setLimite] = useStateB(prefs0.limite || LIMITE_INICIAL);
+  const inputBuscarRef = useRefB(null);
 
   const esAdmin = usuario.rol === 'ADMIN';
 
@@ -236,7 +310,34 @@ function BuscarScreen({ usuario, onContinuar }) {
 
   // Resetea la paginación cuando cambia el texto efectivo o cualquier filtro.
   useEffectB(() => { setLimite(LIMITE_INICIAL); },
-    [q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural]);
+    [q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad]);
+
+  // Persiste filtros + orden + paginación para el regreso desde el formulario.
+  useEffectB(() => {
+    try {
+      sessionStorage.setItem(BUSCAR_PREFS_KEY, JSON.stringify({
+        q, filtrosEstado, filtroComunas, filtrosVisitador,
+        filtroRural, filtroAntiguedad, orden, limite,
+      }));
+    } catch (e) { /* modo privado: la búsqueda simplemente no sobrevive */ }
+  }, [q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad, orden, limite]);
+
+  // "/" enfoca el buscador, Esc lo limpia. Se ignora mientras se escribe en
+  // cualquier otro campo (el "/" es carácter válido en una dirección).
+  useEffectB(() => {
+    function onKey(e) {
+      const t = e.target;
+      const escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (e.key === '/' && !escribiendo) {
+        e.preventDefault();
+        inputBuscarRef.current && inputBuscarRef.current.focus();
+      } else if (e.key === 'Escape' && t === inputBuscarRef.current) {
+        setQInput(''); setQ('');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Escucha cuando el generador F-GGO-43 (pestaña hija) sube
   //    el informe a Drive y registra el link en BD. Refresca lista.
@@ -266,8 +367,15 @@ function BuscarScreen({ usuario, onContinuar }) {
     return [...s].sort((a, b) => Number(a) - Number(b));
   }, [datos]);
 
-  // Filtros combinados
-  const filtrados = useMemoB(() => {
+  // Filtros combinados, en DOS pasos a propósito.
+  //
+  // filtradosSinEstado aplica todo menos el estado; sobre él se cuentan los
+  // cuatro chips. Así el conteo de cada estado respeta texto, comuna,
+  // visitador, rural y antigüedad, pero IGNORA la selección de estado — que es
+  // su propia dimensión. Consecuencia buscada: activar "Pendientes" no deja
+  // los otros tres chips en 0, sigue diciendo cuántas verías si los tocas
+  // (convención de facetas de GitHub/Linear). Filtrar por C3 sí mueve los cuatro.
+  const filtradosSinEstado = useMemoB(() => {
     const lq = q.trim().toUpperCase();
     // La orden se compara además sin ceros a la izquierda en cada tramo
     // numérico: en BD va "2026-09-015" y el inspector suele teclear
@@ -282,10 +390,6 @@ function BuscarScreen({ usuario, onContinuar }) {
           || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)));
         if (!hay) return false;
       }
-      if (filtrosEstado.length) {
-        const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-        if (!filtrosEstado.includes(e)) return false;
-      }
       if (filtroComunas.length) {
         const c = (f['COMUNA'] || f[5] || '').toString().trim();
         if (!filtroComunas.includes(c)) return false;
@@ -298,9 +402,26 @@ function BuscarScreen({ usuario, onContinuar }) {
         const b = (f['BARRIO/VEREDA'] || f[4] || '').toString().trim();
         if (!b.startsWith('Vda.')) return false;
       }
+      if (!_pasaAntiguedad(f, filtroAntiguedad)) return false;
       return true;
     });
-  }, [datos, q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural]);
+  }, [datos, q, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad]);
+
+  // Conteo por estado sobre el universo SIN la selección de estado (ver arriba).
+  const conteosEstado = useMemoB(() => {
+    const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0 };
+    filtradosSinEstado.forEach(f => {
+      const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+      if (c[e] != null) c[e]++;
+    });
+    return c;
+  }, [filtradosSinEstado]);
+
+  const filtrados = useMemoB(() => {
+    if (!filtrosEstado.length) return filtradosSinEstado;
+    return filtradosSinEstado.filter(f =>
+      filtrosEstado.includes(normalizarEstado(f['ESTADO VISITA'] || f[13] || '')));
+  }, [filtradosSinEstado, filtrosEstado]);
 
   // Agrupar por radicado
   const grupos = useMemoB(() => {
@@ -320,16 +441,78 @@ function BuscarScreen({ usuario, onContinuar }) {
   }
 
   function limpiar() {
-    setQInput(''); setQ(''); setFiltrosEstado([]); setFiltroComunas([]); setFiltrosVisitador([]); setFiltroRural(false);
+    setQInput(''); setQ(''); setFiltrosEstado([]); setFiltroComunas([]);
+    setFiltrosVisitador([]); setFiltroRural(false); setFiltroAntiguedad('');
   }
 
-  const hayFiltros = !!q || filtrosEstado.length || filtroComunas.length || filtrosVisitador.length || filtroRural;
+  const hayFiltros = !!q || filtrosEstado.length || filtroComunas.length
+    || filtrosVisitador.length || filtroRural || !!filtroAntiguedad;
+
+  // Filtros activos como chips quitables en la cabecera de resultados: sin
+  // esto el contador dice "412 de 2.014" y no hay forma de saber de qué 412
+  // se habla sin volver a mirar la columna de la izquierda.
+  const chipsActivos = [];
+  if (q) chipsActivos.push({ k: 'q', l: '"' + q + '"', quitar: () => { setQInput(''); setQ(''); } });
+  filtrosEstado.forEach(e => chipsActivos.push({
+    k: 'e' + e, l: ESTADO_LABEL[e] || e,
+    quitar: () => setFiltrosEstado(filtrosEstado.filter(x => x !== e)),
+  }));
+  filtroComunas.forEach(c => chipsActivos.push({
+    k: 'c' + c, l: 'C' + c,
+    quitar: () => setFiltroComunas(filtroComunas.filter(x => x !== c)),
+  }));
+  filtrosVisitador.forEach(v => chipsActivos.push({
+    k: 'v' + v, l: titleCaseNombre(v),
+    quitar: () => setFiltrosVisitador(filtrosVisitador.filter(x => x !== v)),
+  }));
+  if (filtroRural) chipsActivos.push({ k: 'rural', l: 'Rural', quitar: () => setFiltroRural(false) });
+  if (filtroAntiguedad) {
+    const op = ANTIGUEDADES.find(a => a.val === filtroAntiguedad);
+    chipsActivos.push({ k: 'ant', l: op ? op.l : filtroAntiguedad, quitar: () => setFiltroAntiguedad('') });
+  }
 
   return (
     <div className="pantalla activa pad-bottom buscar-pantalla">
       {/* Mismo nombre que la pestaña del nav: antes la pestaña decía "Buscar"
           y el título de la pantalla "Visitas". */}
-      <div className="page-title titulo-fijo" style={{ marginBottom: 16 }}>Buscar</div>
+      <div className="page-title titulo-fijo" style={{ marginBottom: 12 }}>Buscar</div>
+
+      {/* Barra de búsqueda a todo el ancho, FUERA de .buscar-2col: es el
+          control principal de la pantalla, no un campo más de la tarjeta de
+          filtros. Fuera del grid porque un sticky dentro se ancla al scroller
+          de la columna, no a la pantalla. */}
+      <div className="buscar-barra">
+        <div className="buscar-barra-input">
+          <span className="buscar-barra-lupa" aria-hidden="true"><Icon.Search size={16} /></span>
+          <input type="text" className="input-campo" ref={inputBuscarRef}
+            aria-label="Buscar radicado, orden de policía, dirección, barrio o persona que atiende"
+            placeholder="Radicado, orden de policía, dirección, barrio, persona que atiende...   /"
+            value={qInput} onChange={e => setQInput(e.target.value)} />
+          {qInput && (
+            <button type="button" className="buscar-barra-x" aria-label="Limpiar búsqueda"
+              onClick={() => { setQInput(''); setQ(''); }}>
+              <Icon.Close size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Estado chips — "visita" es femenino en toda la app: Asignadas,
+            no "Asignados" como decía antes. El número es el conteo facetado
+            (respeta los demás filtros, ignora la selección de estado). */}
+        <div className="filtros-estado" style={{ marginBottom: 0 }}>
+          {ESTADOS_BUSCAR.map(est => {
+            const activo = filtrosEstado.includes(est);
+            return (
+              <button key={est} aria-pressed={activo}
+                className={'btn-filtro' + (activo ? ' ' + ESTADO_CLASE[est] : '')}
+                onClick={() => setFiltrosEstado(toggleEnArr(filtrosEstado, est))}>
+                {ESTADO_LABEL[est]}
+                <span className="btn-filtro-num">{conteosEstado[est].toLocaleString('es-CO')}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ≥1200: filtros fijos a la izquierda (.buscar-col-izq), resultados
           con scroll a la derecha (.buscar-col-der); por debajo de 1200 los
@@ -337,105 +520,107 @@ function BuscarScreen({ usuario, onContinuar }) {
       <div className="buscar-2col">
       <div className="buscar-col-izq">
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="input-grupo" style={{ marginBottom: 10 }}>
-          <input type="text" className="input-campo"
-            placeholder="Radicado, orden de policía, dirección, barrio, persona que atiende..."
-            value={qInput} onChange={e => setQInput(e.target.value)} />
-        </div>
-
-        {/* Estado chips — "visita" es femenino en toda la app: Asignadas,
-            no "Asignados" como decía antes */}
-        <div className="filtros-estado">
-          {['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'].map(est => {
-            const activo = filtrosEstado.includes(est);
-            const label = {
-              PENDIENTE: 'Pendientes', ASIGNADO: 'Asignadas',
-              INICIADO: 'Iniciadas', COMPLETADO: 'Completadas',
-            }[est];
-            return (
-              <button key={est}
-                className={'btn-filtro' + (activo ? ' ' + ESTADO_CLASE[est] : '')}
-                onClick={() => setFiltrosEstado(toggleEnArr(filtrosEstado, est))}>
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Comunas collapse */}
+        {/* Sin acordeones: a 280px los chips caben abiertos y plegarlos
+            escondía el estado del filtro tras un clic. Solo Antigüedad
+            conserva pliegue, por ser el último grupo. */}
         {comunas.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <button type="button" className="filtro-section-header btn-cabecera"
-              onClick={() => setComunasOpen(!comunasOpen)} aria-expanded={comunasOpen}>
-              <span className="filtro-section-titulo">
-                Comuna {filtroComunas.length > 0 && (
-                  <span style={{ color: 'var(--brand-accent)', fontSize: 11 }}>· {filtroComunas.length}</span>
-                )}
-              </span>
-              <span className="filtro-section-chevron" style={{ display: 'inline-flex' }}>
-                {comunasOpen ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
-              </span>
-            </button>
-            {comunasOpen && (
-              <div className="filtros-comunas">
-                {comunas.map(c => (
-                  <button key={c}
-                    className={'btn-filtro' + (filtroComunas.includes(c) ? ' activo-comuna' : '')}
-                    onClick={() => setFiltroComunas(toggleEnArr(filtroComunas, c))}>
-                    C{c}
-                  </button>
-                ))}
-                <button
-                  className={'btn-filtro' + (filtroRural ? ' activo-pendiente' : '')}
-                  onClick={() => setFiltroRural(!filtroRural)}>Rural</button>
-              </div>
-            )}
+          <div className="filtro-grupo">
+            <div className="filtro-grupo-titulo">
+              Comuna {filtroComunas.length > 0 && (
+                <span style={{ color: 'var(--brand-accent)' }}>· {filtroComunas.length}</span>
+              )}
+            </div>
+            <div className="filtros-comunas">
+              {comunas.map(c => (
+                <button key={c} aria-pressed={filtroComunas.includes(c)}
+                  className={'btn-filtro' + (filtroComunas.includes(c) ? ' activo-comuna' : '')}
+                  onClick={() => setFiltroComunas(toggleEnArr(filtroComunas, c))}>
+                  C{c}
+                </button>
+              ))}
+              <button aria-pressed={filtroRural}
+                className={'btn-filtro' + (filtroRural ? ' activo-pendiente' : '')}
+                onClick={() => setFiltroRural(!filtroRural)}>Rural</button>
+            </div>
           </div>
         )}
 
         {/* Visitador — solo ADMIN */}
-        {esAdmin && (
-          <div style={{ marginTop: 10 }}>
-            <button type="button" className="filtro-section-header btn-cabecera"
-              onClick={() => setVisitadorOpen(!visitadorOpen)} aria-expanded={visitadorOpen}>
-              <span className="filtro-section-titulo">
-                Visitador {filtrosVisitador.length > 0 && (
-                  <span style={{ color: 'var(--brand-accent)', fontSize: 11 }}>· {filtrosVisitador.length}</span>
-                )}
-              </span>
-              <span className="filtro-section-chevron" style={{ display: 'inline-flex' }}>
-                {visitadorOpen ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />}
-              </span>
-            </button>
-            {visitadorOpen && (
-              <div className="filtros-estado">
-                {visitadores.map(v => (
-                  <button key={v.val}
-                    className={'btn-filtro' + (filtrosVisitador.includes(v.val) ? ' activo-iniciado' : '')}
-                    onClick={() => setFiltrosVisitador(toggleEnArr(filtrosVisitador, v.val))}>
-                    {v.l}
-                  </button>
-                ))}
-              </div>
-            )}
+        {esAdmin && visitadores.length > 0 && (
+          <div className="filtro-grupo">
+            <div className="filtro-grupo-titulo">
+              Visitador {filtrosVisitador.length > 0 && (
+                <span style={{ color: 'var(--brand-accent)' }}>· {filtrosVisitador.length}</span>
+              )}
+            </div>
+            <div className="filtros-estado" style={{ marginBottom: 0 }}>
+              {visitadores.map(v => (
+                <button key={v.val} aria-pressed={filtrosVisitador.includes(v.val)}
+                  className={'btn-filtro' + (filtrosVisitador.includes(v.val) ? ' activo-iniciado' : '')}
+                  onClick={() => setFiltrosVisitador(toggleEnArr(filtrosVisitador, v.val))}>
+                  {v.l}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {hayFiltros && <button className="btn-limpiar visible" onClick={limpiar}>Limpiar filtros</button>}
-          <span style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
-            {hayFiltros
-              ? `${filtrados.length} de ${datos.length}`
-              : `${datos.length} registros`}
-          </span>
-          <button onClick={() => cargar(true)} className="btn-texto"
-            style={{ marginLeft: 'auto', fontSize: 12 }}
-            title="Refetch ignorando caché">Recargar</button>
+        {/* Antigüedad del radicado — selección única: son rangos, no suman. */}
+        <div className="filtro-grupo">
+          <div className="filtro-grupo-titulo">Antigüedad del radicado</div>
+          <div className="filtros-comunas" style={{ marginBottom: 0 }}>
+            {ANTIGUEDADES.map(a => (
+              <button key={a.val} aria-pressed={filtroAntiguedad === a.val}
+                className={'btn-filtro' + (filtroAntiguedad === a.val ? ' activo-comuna' : '')}
+                onClick={() => setFiltroAntiguedad(filtroAntiguedad === a.val ? '' : a.val)}>
+                {a.l}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {hayFiltros && (
+          <button className="btn-limpiar visible" style={{ marginTop: 12 }}
+            onClick={limpiar}>Limpiar filtros</button>
+        )}
       </div>
       </div>{/* .buscar-col-izq */}
 
       <div className="buscar-col-der">
+      {/* Cabecera de resultados: cuántas son sobre cuántas, con qué filtros,
+          en qué orden. Recargar vive aquí y no en la barra de búsqueda:
+          buscar y sincronizar no son lo mismo y no deben pesar igual. */}
+      {!cargando && !error && (
+        <div className="buscar-resultados-head">
+          <span className="buscar-conteo">
+            {hayFiltros
+              ? `${filtrados.length.toLocaleString('es-CO')} de ${datos.length.toLocaleString('es-CO')} visitas`
+              : `${datos.length.toLocaleString('es-CO')} visitas`}
+          </span>
+
+          {chipsActivos.map(c => (
+            <button key={c.k} type="button" className="chip-filtro-activo"
+              onClick={c.quitar} title={'Quitar filtro ' + c.l}
+              aria-label={'Quitar filtro ' + c.l}>
+              {c.l}<Icon.Close size={12} />
+            </button>
+          ))}
+
+          <label className="buscar-orden">
+            <span className="buscar-orden-lbl">Ordenar</span>
+            <select value={orden} onChange={e => setOrden(e.target.value)}
+              aria-label="Ordenar resultados">
+              {ORDENES.map(o => <option key={o.val} value={o.val}>{o.l}</option>)}
+            </select>
+          </label>
+
+          <button type="button" className="buscar-recargar" onClick={() => cargar(true)}
+            title="Recargar datos (ignora la copia local)" aria-label="Recargar datos">
+            <Icon.Refresh size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Lista */}
       {cargando && (
         <div className="cargando"><div className="spinner"></div>Cargando registros...</div>
@@ -449,7 +634,7 @@ function BuscarScreen({ usuario, onContinuar }) {
         </div>
       )}
       {!cargando && !error && filtrados.length > 0 && (() => {
-        const entries = Object.entries(grupos);
+        const entries = _ordenarGrupos(Object.entries(grupos), orden);
         const totalGrupos = entries.length;
         const visibles    = entries.slice(0, limite);
         const ocultos     = Math.max(0, totalGrupos - limite);
