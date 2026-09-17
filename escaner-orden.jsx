@@ -51,6 +51,26 @@ function _eoLeerImagen(file) {
 // gris. Los umbrales (110 / 175) blanquean el papel y saturan la tinta; la
 // zona intermedia se estira en lugar de binarizarse para no comerse los
 // trazos suaves del lápiz ni el sello de la Alcaldía.
+// Android suele mandar el PDF con type vacío o `application/octet-stream`
+// según la app de escaneo, así que el nombre también cuenta.
+function _eoEsPdf(f) {
+  return f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+}
+
+// Archivo → base64 pelado (sin el prefijo data:). Para el PDF que ya trae
+// escaneado el inspector: no se reprocesa nada, se sube tal cual llegó.
+function _eoBase64(file) {
+  return new Promise(function (resolve, reject) {
+    const fr = new FileReader();
+    fr.onload = function () {
+      const s = String(fr.result);
+      resolve(s.slice(s.indexOf('base64,') + 7));
+    };
+    fr.onerror = function () { reject(new Error('no se pudo leer ' + file.name)); };
+    fr.readAsDataURL(file);
+  });
+}
+
 function _eoProcesar(img, rot) {
   const girado = (rot === 90 || rot === 270);
   const origW = girado ? img.height : img.width;
@@ -106,6 +126,28 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
     const archivos = Array.from(e.target.files || []);
     if (inputRef.current) inputRef.current.value = '';   // permite reelegir la misma foto
     if (!archivos.length) return;
+
+    // Un PDF ya escaneado (app de escaneo del teléfono) se sube tal cual: es
+    // la ruta preferida en campo — esas apps corrigen perspectiva y sombra
+    // mucho mejor que nuestra curva de gris, que no sabe de degradados.
+    // Nuestro escáner por cámara sigue vivo como respaldo.
+    const pdf = archivos.find(_eoEsPdf);
+    if (pdf) {
+      if (archivos.length > 1) {
+        appAlert('Se seleccionó un PDF: se sube ese archivo y se ignora el resto. ' +
+                 'Para armar el PDF desde fotos, seleccione solo imágenes.',
+          { tono: 'aviso', titulo: 'Se usa el PDF' });
+      }
+      setOcupado('Leyendo PDF...');
+      try {
+        await subirBase64(await _eoBase64(pdf));
+      } catch (err) {
+        setOcupado('');
+        appAlert('No se pudo leer el PDF: ' + (err.message || err),
+          { tono: 'error', titulo: 'PDF ilegible' });
+      }
+      return;
+    }
 
     const validos = archivos.filter(function (f) { return f.size <= 12 * 1024 * 1024; });
     if (validos.length < archivos.length) {
@@ -167,9 +209,12 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
     });
   }
 
-  async function generarYSubir() {
-    if (!paginas.length) return;
+  // Único camino de subida: lo usan el PDF traído de la app de escaneo y el
+  // PDF que armamos con jsPDF desde las fotos. Las guardas, el reemplazo, el
+  // tope de tamaño y el encolado sin señal viven aquí una sola vez.
+  async function subirBase64(base64) {
     if (!idCarpetaVisita || !fila) {
+      setOcupado('');
       appAlert('Guarde la visita primero: la orden se sube a la carpeta de Drive de la visita, que aún no existe.',
         { tono: 'aviso', titulo: 'Falta guardar' });
       return;
@@ -177,34 +222,18 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
     if (link) {
       const ok = await appConfirm('Ya hay una orden escaneada para esta visita. El PDF anterior se reemplaza por este. ¿Continuar?',
         { titulo: 'Reemplazar orden' });
-      if (!ok) return;
+      if (!ok) { setOcupado(''); return; }
+    }
+    if (base64.length > EO_MAX_BASE64) {
+      setOcupado('');
+      appAlert('El PDF quedó demasiado pesado (' + (base64.length / 1048576).toFixed(1) +
+               ' MB). Elimine páginas repetidas, baje la calidad en la app de escaneo ' +
+               'o vuelva a tomar las fotos más de cerca.',
+        { tono: 'error', titulo: 'PDF muy pesado' });
+      return;
     }
 
     try {
-      setOcupado('Armando PDF...');
-      const JsPDF = await cargarJsPDF();
-      const doc = new JsPDF({ unit: 'mm', format: EO_PAGINA_MM, orientation: 'portrait', compress: true });
-      const [ANCHO, ALTO] = EO_PAGINA_MM;
-
-      paginas.forEach(function (p, i) {
-        if (i > 0) doc.addPage(EO_PAGINA_MM, 'portrait');
-        // Encajar sin deformar: la foto rara vez tiene la proporción exacta
-        // del oficio, y estirarla haría ilegible la letra manuscrita.
-        const escala = Math.min(ANCHO / p.w, ALTO / p.h);
-        const w = p.w * escala, h = p.h * escala;
-        doc.addImage(p.dataUrl, 'JPEG', (ANCHO - w) / 2, (ALTO - h) / 2, w, h, undefined, 'FAST');
-      });
-
-      const uri = doc.output('datauristring');
-      const base64 = uri.slice(uri.indexOf('base64,') + 7);
-      if (base64.length > EO_MAX_BASE64) {
-        setOcupado('');
-        appAlert('El PDF quedó demasiado pesado (' + (base64.length / 1048576).toFixed(1) +
-                 ' MB). Elimine páginas repetidas o vuelva a tomar las fotos más de cerca.',
-          { tono: 'error', titulo: 'PDF muy pesado' });
-        return;
-      }
-
       const nombre = 'ORDEN_POLICIA_' + String(orden || 'SN').replace(/[\/\\:*?"<>|]/g, '-') + '.pdf';
       setOcupado('Subiendo a Drive...');
       const r = await subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden || '');
@@ -234,6 +263,33 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
     }
   }
 
+  async function generarYSubir() {
+    if (!paginas.length) return;
+
+    try {
+      setOcupado('Armando PDF...');
+      const JsPDF = await cargarJsPDF();
+      const doc = new JsPDF({ unit: 'mm', format: EO_PAGINA_MM, orientation: 'portrait', compress: true });
+      const [ANCHO, ALTO] = EO_PAGINA_MM;
+
+      paginas.forEach(function (p, i) {
+        if (i > 0) doc.addPage(EO_PAGINA_MM, 'portrait');
+        // Encajar sin deformar: la foto rara vez tiene la proporción exacta
+        // del oficio, y estirarla haría ilegible la letra manuscrita.
+        const escala = Math.min(ANCHO / p.w, ALTO / p.h);
+        const w = p.w * escala, h = p.h * escala;
+        doc.addImage(p.dataUrl, 'JPEG', (ANCHO - w) / 2, (ALTO - h) / 2, w, h, undefined, 'FAST');
+      });
+
+      const uri = doc.output('datauristring');
+      await subirBase64(uri.slice(uri.indexOf('base64,') + 7));
+    } catch (err) {
+      setOcupado('');
+      appAlert('No se pudo armar el PDF: ' + (err.message || err),
+        { tono: 'error', titulo: 'Error al subir' });
+    }
+  }
+
   const bloqueado = !!ocupado;
   // Sesión de escaneo abierta: hay páginas capturadas pendientes de revisar
   // y subir. Solo entonces el slot muestra algo — el escáner no es un
@@ -249,7 +305,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
       icono={<Icon.File size={18} />}
       nombre={'Orden de policía ' + orden}
       meta={idCarpetaVisita
-        ? 'Papel firmado (formato oficio) — se escanea y sube como PDF'
+        ? 'Papel firmado (oficio) — suba el PDF de su app de escaneo o tome fotos'
         : 'Requiere carpeta de Drive'}
       estadoTono={link ? 'ok' : (pendiente ? 'pend' : (idCarpetaVisita ? 'pend' : 'apagado'))}
       estadoTexto={pendiente ? 'En cola' : (link ? 'Escaneada' : 'Sin escanear')}
@@ -358,11 +414,12 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
         </button>
       ))}
       {/* Fuera del botón (input dentro de button es HTML inválido).
-          capture="environment" abre la cámara trasera directo, sin pasar por
-          el selector de galería (que es lo que hace la sección de fotos,
-          donde sí hace falta poder elegir tomas previas). */}
+          Sin `capture`: aceptar PDF obliga a pasar por el selector del
+          sistema, y ahí el inspector elige entre la cámara y el PDF que dejó
+          su app de escaneo. Se pierde un toque hacia la cámara y se gana la
+          ruta que de verdad usan en campo. */}
       {idCarpetaVisita && (
-        <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple
+        <input ref={inputRef} type="file" accept="application/pdf,image/*" multiple
           onChange={alSeleccionar} disabled={bloqueado} style={{ display: 'none' }} />
       )}
     </FilaEntregable>

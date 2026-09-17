@@ -232,21 +232,28 @@ function TabUsuarios() {
                 <th style={{ padding: 8, textAlign: 'left' }}>Nombre</th>
                 <th style={{ padding: 8 }}>Cargo</th>
                 <th style={{ padding: 8 }}>Rol</th>
-                <th style={{ padding: 8 }}>Estado</th>
+                <th style={{ padding: 8 }}>Acción</th>
               </tr>
             </thead>
             <tbody>
               {usuarios.map(u => (
                 <tr key={u.fila} style={{ borderBottom: '1px solid var(--borde)' }}>
-                  <td style={{ padding: 8 }}>{u.nombre}</td>
+                  {/* El estado va en un punto de color antes del nombre, no en
+                      una pill de texto (mismo criterio que los entregables).
+                      Color solo no basta: title + sr-only. */}
+                  <td style={{ padding: 8 }}>
+                    <span className={'ent-dot ' + (u.activo ? 'ed-ok' : 'ed-error')}
+                      title={u.activo ? 'Activo' : 'Inactivo'}
+                      style={{ display: 'inline-block', marginRight: 8, verticalAlign: 'middle' }} />
+                    <span className="sr-only">{u.activo ? 'Activo' : 'Inactivo'}</span>
+                    {u.nombre}
+                  </td>
                   <td style={{ padding: 8, textAlign: 'center', fontSize: 11 }}>{u.cargo}</td>
                   <td style={{ padding: 8, textAlign: 'center' }}>{u.rol}</td>
                   <td style={{ padding: 6, textAlign: 'center' }}>
-                    {/* El estado se muestra como texto y el botón nombra la
-                        ACCIÓN. Antes el botón decía "Activo"/"Inactivo", así
-                        que pulsar "Activo" desactivaba al usuario. */}
-                    <span className={'badge-suave ' + (u.activo ? 'badge-verde' : 'badge-rojo')}
-                      style={{ marginRight: 8 }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
+                    {/* El botón nombra la ACCIÓN, nunca el estado. Antes decía
+                        "Activo"/"Inactivo", así que pulsar "Activo"
+                        desactivaba al usuario. */}
                     <button onClick={() => togglear(u)} disabled={busyFila != null} style={{
                       background: 'var(--gris-bg)', color: u.activo ? 'var(--rojo)' : 'var(--verde)',
                       border: '1px solid var(--borde)', borderRadius: 6, padding: '4px 10px',

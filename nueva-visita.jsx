@@ -37,9 +37,12 @@ function _normalizarFechaCelda(valor) {
   if (!valor) return '';
   const s = String(valor).trim();
   if (!s) return '';
-  // Ya está en DD/MM/YYYY → conservar (acepta también DD/MM/YYYY HH:mm)
-  let m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
-  if (m) return m[1] + '/' + m[2] + '/' + m[3];
+  // Ya está en D/M/YYYY → conservar rellenando (acepta también con hora).
+  // Los tramos sin padding importan: con `\d{2}` el valor «1/9/2026» caía al
+  // fallback `new Date(s)`, que lo interpreta como M/D (9 de ENERO) y cambiaba
+  // la fecha en silencio.
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (m) return m[1].padStart(2, '0') + '/' + m[2].padStart(2, '0') + '/' + m[3];
   // YYYY-MM-DD o ISO timestamp YYYY-MM-DDTHH... → DD/MM/YYYY
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return m[3] + '/' + m[2] + '/' + m[1];
@@ -62,9 +65,14 @@ function _fechaAIso(valor) {
     return `${yyyy}-${mm}-${dd}`;
   }
   const s = String(valor);
-  // DD/MM/YYYY → YYYY-MM-DD
-  let m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // D/M/YYYY o DD/MM/YYYY → YYYY-MM-DD. Los tramos van sin padding a
+  // propósito: la regla es que BD guarde `DD/MM/YYYY`, pero las filas viejas
+  // de V2 y las que se editan a mano en el Sheet traen `1/9/2026`. Exigiendo
+  // dos dígitos esto devolvía '' y el campo salía VACÍO en el formulario con
+  // el dato presente en BD — el inspector guardaba encima y lo borraba, y el
+  // acta se generaba sin fecha de radicado.
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   // ISO timestamp o YYYY-MM-DD → YYYY-MM-DD
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;

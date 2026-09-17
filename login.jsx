@@ -22,8 +22,15 @@ function LoginScreen({ onLogin }) {
     setError('');
     // Sale al instante con la última lista guardada; si el webhook trae una
     // distinta, se reemplaza sin tocar la selección.
-    listarInspectoresActivos({ onActualizado: setInspectores })
-      .then(list => {
+    // Solo quien tiene PIN entra. Hay funcionarios activos que existen en
+    // USUARIOS únicamente para firmar el acta y para que se les pueda asignar
+    // una visita (Nelson Cuervo, Auxiliar Administrativo): sin `conUsuario`
+    // aparecían en este desplegable y ningún PIN les servía. `!== false`
+    // tolera un backend anterior que no manda el campo.
+    const conPin = l => l.filter(i => i.conUsuario !== false);
+    listarInspectoresActivos({ onActualizado: l => setInspectores(conPin(l)) })
+      .then(lista => {
+        const list = conPin(lista);
         setInspectores(list);
         setCargandoLista(false);
         // Pre-seleccionar último usado
