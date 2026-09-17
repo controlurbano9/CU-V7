@@ -93,6 +93,10 @@ function TabVigilancia() {
         direccion:        f['DIRECCION INFRACCION'] || f['DIRECCION'] || '',
         barrio:           f['BARRIO/VEREDA'] || f['BARRIO'] || '',
       });
+      // Si la orden ya está escaneada, se arma de una vez el PDF único que se
+      // envía a la policía (solicitud + orden). Si todavía no lo está, no se
+      // arma nada: lo hará el escáner al subirla.
+      if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta);
       // Refrescar para mostrar el link recién escrito en BD
       await cargar(true);
       if (r.linkDoc) window.open(r.linkDoc, '_blank', 'noopener,noreferrer');
@@ -137,6 +141,7 @@ function TabVigilancia() {
             <tbody>
               {filas.map(f => {
                 const link = f['LINK_SOLICITUD_VIGILANCIA'] || '';
+                const linkPdf = f['LINK_SOLICITUD_PDF'] || '';
                 const busy = busyFila === f._idx;
                 return (
                   <tr key={f._idx} style={{ borderBottom: '1px solid var(--borde)' }}>
@@ -165,6 +170,16 @@ function TabVigilancia() {
                             alignSelf: 'center',
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                           }}><Icon.Check size={12} /> Ver oficio</a>
+                        )}
+                        {/* El oficio es un Doc editable; esto es el PDF que se
+                            envía: solicitud primero, orden escaneada después.
+                            Solo aparece cuando la orden ya está escaneada. */}
+                        {linkPdf && (
+                          <a href={linkPdf} target="_blank" rel="noopener noreferrer" style={{
+                            fontSize: 11, color: 'var(--verde-dark)', textDecoration: 'none',
+                            alignSelf: 'center', fontWeight: 600,
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                          }}><Icon.Check size={12} /> PDF para enviar</a>
                         )}
                       </div>
                     </td>

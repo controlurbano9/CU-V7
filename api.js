@@ -37,6 +37,7 @@ const CFG = {
 
 const TURF_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js';
 const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
 
 // Promesa por URL: varias llamadas concurrentes comparten una sola descarga
 // y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
@@ -154,7 +155,7 @@ const _PAUSAS_REINTENTO_MS = [1500, 4000]; // 3 intentos en total
 const _ACCIONES_SOLO_LECTURA = {
   leerHoja: true, listarInspectoresActivos: true, login: true,
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
-  obtenerIdFotos: true, geocode: true,
+  obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
 };
 // Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
@@ -679,6 +680,85 @@ async function generarSolicitudVigilancia(params) {
   // El link cambia en BD: invalidamos caché de visitas para que el siguiente fetch lo traiga.
   invalidarCache('visitas');
   return r;
+}
+
+// ── Un solo PDF: solicitud primero, orden de policía después ────
+// Lo que se envía a la policía es un archivo, no dos. El backend entrega el
+// Doc de la solicitud exportado a PDF y el PDF de la orden en base64 (Drive
+// no manda CORS, el navegador no puede bajarlos solo) y aquí se unen con
+// pdf-lib. Ver [SEC:SolicitudUnificada] en el backend.
+// Retorna { ok, solicitud, orden, hayOrden, nombre }.
+async function obtenerPdfsSolicitud(fila) {
+  return gasPost({ accion: 'obtenerPdfsSolicitud', fila });
+}
+
+async function subirSolicitudUnificada(params) {
+  const r = await gasPost(Object.assign({ accion: 'subirSolicitudUnificada' }, params));
+  invalidarCache('visitas'); // LINK_SOLICITUD_PDF cambia en BD
+  return r;
+}
+
+// pdf-lib — solo para unir la solicitud con la orden. A diferencia de jsPDF
+// NO se precalienta: esto se hace con señal (los dos PDFs vienen del
+// servidor), así que no tiene sentido ocupar caché en campo por ella.
+async function cargarPdfLib() {
+  if (window.PDFLib && window.PDFLib.PDFDocument) return window.PDFLib;
+  await cargarScript(PDFLIB_URL);
+  if (!(window.PDFLib && window.PDFLib.PDFDocument)) {
+    throw new Error('pdf-lib no quedó disponible tras cargar el script');
+  }
+  return window.PDFLib;
+}
+
+function _b64ABytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function _bytesAB64(bytes) {
+  // En trozos: `apply` con un array de ~200k elementos revienta la pila.
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  }
+  return btoa(s);
+}
+
+// Arma (o rearma) el PDF único de la solicitud de vigilancia. Best-effort,
+// como generarPdfActaDesdeSheet: si falla, la solicitud y la orden siguen
+// existiendo por separado y esto se puede repetir. Devuelve el link o ''.
+//
+// Sin orden escaneada no se arma nada: un "PDF unificado" con una sola pieza
+// no aporta, y dejarlo sin generar es lo que hace que al escanear la orden
+// más tarde se arme por primera vez.
+async function armarSolicitudUnificada(fila, idCarpetaVisita) {
+  try {
+    if (!fila || !idCarpetaVisita) return '';
+    const r = await obtenerPdfsSolicitud(fila);
+    if (!r || !r.ok || !r.hayOrden) return '';
+
+    const { PDFDocument } = await cargarPdfLib();
+    const salida = await PDFDocument.create();
+    // El orden importa: primero la solicitud, después la orden (criterio del
+    // usuario). Se copian TODAS las páginas de cada uno.
+    for (const b64 of [r.solicitud, r.orden]) {
+      const doc = await PDFDocument.load(_b64ABytes(b64));
+      const paginas = await salida.copyPages(doc, doc.getPageIndices());
+      paginas.forEach(p => salida.addPage(p));
+    }
+
+    const res = await subirSolicitudUnificada({
+      fila, idCarpetaVisita,
+      base64: _bytesAB64(await salida.save()),
+      nombre: r.nombre,
+    });
+    return (res && res.link) || '';
+  } catch (e) {
+    console.warn('[solicitud unificada] ' + (e.message || e));
+    return '';
+  }
 }
 
 // ── PDF del acta F-GGO-46 al COMPLETAR ─────────────────────────
@@ -1315,6 +1395,7 @@ Object.assign(window, {
   mejorarTexto,
   subirFotoConDescripcion, describirFotoConIA,
   subirOrdenPolicia, cargarJsPDF,
+  obtenerPdfsSolicitud, subirSolicitudUnificada, armarSolicitudUnificada,
   listarFotosActa, describirFotoDesdeId,
   consultarPOT,
   buscarCatastroGPS, formatearCOP,

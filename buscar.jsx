@@ -188,6 +188,9 @@ function BuscarScreen({ usuario, onContinuar }) {
             direccion:       f['DIRECCION INFRACCION'] || f['DIRECCION'] || '',
             barrio:          f['BARRIO/VEREDA'] || f['BARRIO'] || '',
           });
+          // Con la orden ya escaneada, deja armado el PDF único para la
+          // policía (solicitud + orden). Sin orden todavía no arma nada.
+          await armarSolicitudUnificada(f._idx, idCarpeta);
         } catch (e) {
           await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
           setBusyFila(null);
