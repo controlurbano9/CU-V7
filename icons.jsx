@@ -100,6 +100,13 @@ const Icon = {
     React.createElement('line',     { key: 1, x1: 12, y1: 19, x2: 12, y2: 5 }),
     React.createElement('polyline', { key: 2, points: '5 12 12 5 19 12' }),
   ], p?.size),
+  // Tres puntos: acciones secundarias de la tarjeta de visita. Van rellenos
+  // (fill) porque a stroke-width 1.6 tres círculos de r=1 se ven huecos.
+  More:    (p) => _svg([
+    React.createElement('circle', { key: 1, cx: 5,  cy: 12, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+    React.createElement('circle', { key: 2, cx: 12, cy: 12, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+    React.createElement('circle', { key: 3, cx: 19, cy: 12, r: 1.4, fill: 'currentColor', stroke: 'none' }),
+  ], p?.size),
 
   // ── Estados / info ───────────────────────────────────────
   Alert:   (p) => _svg([

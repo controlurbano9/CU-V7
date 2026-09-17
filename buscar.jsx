@@ -642,7 +642,7 @@ function BuscarScreen({ usuario, onContinuar }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {visibles.map(([rad, filas]) => (
               <GrupoRadicado key={rad} radicado={rad} filas={filas} usuario={usuario} onContinuar={onContinuar}
-                esAdmin={esAdmin} inspectores={inspectores} busyFila={busyFila}
+                q={q} esAdmin={esAdmin} inspectores={inspectores} busyFila={busyFila}
                 asignandoFila={asignandoFila} setAsignandoFila={setAsignandoFila}
                 onAsignar={adminAsignar} onDesasignar={adminDesasignar} onCompletar={adminCompletar}
                 onAsignarNuevaVisita={adminAsignarNuevaVisita} />
@@ -677,7 +677,7 @@ function BuscarScreen({ usuario, onContinuar }) {
 // React.memo más abajo. Cada GrupoRadicado se re-renderiza solo si cambian
 // sus props (radicado, filas, usuario); un keystroke en el buscador que
 // reduce filtros ya no rerenderea todas las tarjetas visibles.
-function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
+function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q,
   esAdmin, inspectores, busyFila, asignandoFila, setAsignandoFila,
   onAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
   const [open, setOpen] = useStateB(filas.length === 1);
@@ -709,31 +709,32 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {(filas.length > 1 || puedeNueva) && (
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, paddingRight: 10,
         borderBottom: (open || panelNuevaAbierto) ? '1px solid var(--borde)' : 'none',
       }}>
-        <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          style={{
-            flex: 1, minWidth: 0, padding: '12px 14px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          }}>
-          <span>
-            <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{radicado}</span>
-            {/* Solo cuentan las visitas reales (ASIGNADO/INICIADO/COMPLETADO):
-                un radicado con única fila PENDIENTE no es visita y no muestra
-                nada (2026-09-09, antes decía "1 visita"). */}
-            {totalVisitas > 0 && (
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
-                {totalVisitas} {totalVisitas === 1 ? 'visita' : 'visitas'}
-              </span>
-            )}
-          </span>
-          <span style={{ color: 'var(--texto-suave)', display: 'inline-flex' }}>
+        {/* Con una sola visita el chevron y el radicado sobran: la tarjeta de
+            abajo ya dice el radicado, y repetirlo era la línea más cara de la
+            lista. Queda solo "+ Nueva visita", que es acción del radicado. */}
+        {filas.length > 1 && (
+        <button type="button" className="btn-cabecera grupo-cab" onClick={() => setOpen(!open)}
+          aria-expanded={open}>
+          <span className="grupo-cab-chev">
             {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
           </span>
+          <span className="grupo-cab-rad">{radicado}</span>
+          {/* Solo cuentan las visitas reales (ASIGNADO/INICIADO/COMPLETADO):
+              un radicado con única fila PENDIENTE no es visita y no muestra
+              nada (2026-09-09, antes decía "1 visita"). */}
+          {totalVisitas > 0 && (
+            <span className="grupo-cab-n">
+              {totalVisitas} {totalVisitas === 1 ? 'visita' : 'visitas'}
+            </span>
+          )}
         </button>
+        )}
+        {filas.length === 1 && <span style={{ flex: 1 }} />}
 
         {/* "+ Nueva visita" es del radicado, no de una fila: vive en la
             cabecera del grupo. Se apoya en la última visita para clonar los
@@ -757,6 +758,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
           </button>
         ))}
       </div>
+      )}
 
       {/* Panel de inspectores para la nueva visita (filaBase está COMPLETADO,
           así que PanelSeleccionInspector llama a onAsignarNuevaVisita). */}
@@ -773,7 +775,7 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
         <div>
           {ordenadas.map(({ f, n }, i) => <FilaVisita key={f._idx || i} f={f} nVisita={n}
             totalVisitas={totalVisitas}
-            usuario={usuario} onContinuar={onContinuar}
+            usuario={usuario} onContinuar={onContinuar} q={q}
             esAdmin={esAdmin} inspectores={inspectores}
             busy={busyFila === f._idx}
             abierto={asignandoFila === f._idx}
@@ -785,7 +787,16 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar,
   );
 }
 
-function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
+// "Atiende" solo se muestra cuando la consulta coincidió con ese campo: es
+// para lo que se agregó a la búsqueda, y fuera de ese caso no ayuda a decidir
+// qué hacer con la visita (a diferencia de inspector, fecha y orden).
+function coincideAtiende(f, q) {
+  const lq = (q || '').trim().toUpperCase();
+  if (!lq) return false;
+  return (f['NOMBRE PERSONA ATIENDE'] || '').toString().toUpperCase().includes(lq);
+}
+
+function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar, q,
   esAdmin, inspectores, busy, abierto, onAbrirAsignar, onAsignar, onDesasignar, onCompletar }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || '');
 
@@ -804,25 +815,17 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar,
         </div>
       )}
       <VisitaCard f={f}
-        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden mostrarPersonaAtiende
+        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden
+        mostrarPersonaAtiende={coincideAtiende(f, q)}
         labelBadge={est || '—'}
         accionesMt={10}>
-        {/* Botones inline en una sola fila — orden contextual por estado */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {/* Iniciar/Continuar para no completadas */}
-          {est !== 'COMPLETADO' && (
-            <BotonContinuarVisita f={f} onContinuar={onContinuar} busy={busy} tamaño="sm" />
-          )}
-          {/* Entregables solo para completadas (Ver datos + Carpeta + Acta + Informe) */}
-          {est === 'COMPLETADO' && <BotonesEntregables f={f} />}
-          {/* Botones admin contextuales (Asignar / Reasignar / Desasignar / Completar / + Nueva visita) */}
-          <BotonesAdminVisita
-            f={f} esAdmin={esAdmin} busy={busy} abierto={abierto}
-            onAbrirAsignar={onAbrirAsignar}
-            onDesasignar={onDesasignar}
-            onCompletar={onCompletar}
-          />
-        </div>
+        <AccionesFilaVisita
+          f={f} esAdmin={esAdmin} busy={busy} abierto={abierto}
+          onContinuar={onContinuar}
+          onAbrirAsignar={onAbrirAsignar}
+          onDesasignar={onDesasignar}
+          onCompletar={onCompletar}
+        />
       </VisitaCard>
 
       {/* Panel de selección de inspector (fuera del flex de botones, va debajo) */}

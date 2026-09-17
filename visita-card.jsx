@@ -17,6 +17,10 @@
 // Esto permite reusar el mismo componente dentro de acordeones, grupos, listas planas, etc.
 // ═══════════════════════════════════════════════════════════════
 
+// Aliasing por archivo (regla de la app): cada .jsx desestructura los hooks
+// con su propio sufijo para que el bundle no colisione.
+const { useState: useStateVC } = React;
+
 // ── Tonos por estado para badge-suave ─────────────────────────
 // Capitalizado en español, igual que mis-visitas.jsx
 const TONOS_VISITA = {
@@ -115,61 +119,44 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
   // Para Oficio, FECHA RADICADO = fecha de la visita (mismo valor, ver CLAUDE.md).
   const fechaRadicado = formatearFecha(f['FECHA RADICADO'] || '');
 
-  // ULTIMA_MODIFICACION viene del backend como ISO (AP2); el autor, de
-  // ULTIMA_MODIFICACION_POR. Ambas columnas son opcionales en la hoja.
-  const ultimaMod = formatearFechaHora(f['ULTIMA_MODIFICACION'] || '');
-  const ultimaModPor = (f['ULTIMA_MODIFICACION_POR'] || '').toString().trim();
-
-  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende || ultimaMod;
+  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende;
   const mt = (accionesMt != null) ? accionesMt : 12;
 
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Radicado en mono terracota — ancla visual. Al lado, el PDF de la
-              PQR original cuando existe (ver BotonPdfRadicado). */}
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 12,
-            fontWeight: 600, color: 'var(--brand-accent)',
-            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-          }}>
-            {f['RADICADO'] || '—'}
-            {fechaRadicado && (
-              <span style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 10 }}>
-                {fechaRadicado}
-              </span>
-            )}
-            <BotonPdfRadicado f={f} />
-          </div>
-
-          {/* Dirección — bold, principal */}
-          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>
+          {/* Dirección primero: es por lo que el inspector reconoce el caso.
+              El radicado es el identificador, pero no es lo que se busca al
+              barrer la lista con la vista. */}
+          <div className="vc-dir">
             {f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección'}
           </div>
 
-          {/* Barrio · Comuna — siempre presente */}
-          <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 3 }}>
-            {f['BARRIO/VEREDA'] || f['BARRIO'] || '—'}
-            {f['COMUNA'] && (' · C' + f['COMUNA'])}
+          {/* Línea de identidad, sin etiquetas: radicado · PQR · barrio · comuna
+              · fecha de radicado. El radicado conserva peso (mono 12/600
+              terracota) frente al resto en 11 regular — es el identificador
+              único y tiene que localizarse de un vistazo. */}
+          <div className="vc-ident">
+            <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+            <BotonPdfRadicado f={f} />
+            <span className="vc-sep">·</span>
+            <span>{f['BARRIO/VEREDA'] || f['BARRIO'] || '—'}</span>
+            {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
+            {fechaRadicado && <><span className="vc-sep">·</span><span>{fechaRadicado}</span></>}
           </div>
 
-          {/* Meta opcional: fecha + inspector + asignado en una sola línea */}
+          {/* Línea administrativa: quién la tiene, desde cuándo, con qué orden.
+              Es lo que permite decidir sin abrir "Ver datos". "Editado · quién"
+              se quedó fuera a propósito (vive en el detalle); "Atiende" solo
+              aparece cuando la búsqueda coincidió con ese campo. */}
           {tieneMeta && (
-            <div style={{
-              fontSize: 11, color: 'var(--texto-suave)', marginTop: 3,
-              display: 'flex', gap: 8, flexWrap: 'wrap',
-            }}>
-              {fechaVisita && <span><span style={{ opacity: 0.7 }}>Fecha:</span> {fechaVisita}</span>}
-              {inspector   && <span><span style={{ opacity: 0.7 }}>Inspector:</span> {inspector}</span>}
-              {fechaAsig   && <span><span style={{ opacity: 0.7 }}>Asignado:</span> {fechaAsig}</span>}
-              {orden       && <span><span style={{ opacity: 0.7 }}>Orden:</span> {orden}</span>}
-              {personaAtiende && <span><span style={{ opacity: 0.7 }}>Atiende:</span> {personaAtiende}</span>}
-              {ultimaMod   && (
-                <span><span style={{ opacity: 0.7 }}>Editado:</span> {ultimaMod}
-                  {ultimaModPor && ' · ' + titleCaseNombre(ultimaModPor)}
-                </span>
-              )}
+            <div className="vc-admin">
+              {inspector   && <span className="vc-insp">{inspector}</span>}
+              {fechaVisita && <span>visita {fechaVisita}</span>}
+              {fechaAsig   && <span>asignada {fechaAsig}</span>}
+              {orden       && <span>Orden {orden}</span>}
+              {personaAtiende && <span>atiende {personaAtiende}</span>}
             </div>
           )}
         </div>
@@ -247,6 +234,32 @@ function BotonVerDatos({ f }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// MenuAccionesVisita — el "···" de la fila compacta de acciones.
+//
+// Se despliega INLINE (debajo de la fila), no como popover absoluto: la
+// tarjeta del grupo tiene overflow:hidden y un panel posicionado se
+// recortaría; además así funciona igual con el dedo y sin listeners
+// globales de clic-fuera.
+//
+// Props: children = los botones del menú. Se oculta solo si no hay ninguno.
+// ═══════════════════════════════════════════════════════════════
+function MenuAccionesVisita({ children }) {
+  const [abierto, setAbierto] = useStateVC(false);
+  const items = React.Children.toArray(children).filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <>
+      <button type="button" className="vc-btn vc-btn-mas"
+        onClick={() => setAbierto(!abierto)}
+        aria-expanded={abierto} aria-label="Más acciones" title="Más acciones">
+        <Icon.More size={16} />
+      </button>
+      {abierto && <div className="vc-menu">{items}</div>}
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // BotonesEntregables — para visitas COMPLETADO
 // 👁 Ver datos (siempre) + 📂 Carpeta + 📄 Acta + 📝 Informe (si hay link)
 // El informe se genera durante la visita; una vez COMPLETADA solo se consulta.
@@ -299,6 +312,83 @@ function BotonesEntregables({ f }) {
 //   onCompletar(fila, fechaAsig) callback
 //   onAsignarNuevaVisita    callback (presencia define si "+Nueva visita" se muestra)
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// AccionesFilaVisita — la fila compacta de acciones de Buscar.
+//
+// Una sola fila, con TEXTO, no iconos: el inspector la usa en campo y un
+// icono sin rótulo se descubre peor, sobre todo en móvil, donde el tooltip
+// no existe. En móvil envuelve a dos filas; se acepta esa altura.
+//
+//   [ CTA ] [ Ver datos ] [ Acta ] [ Informe ] [ ··· ]
+//
+// El CTA es uno solo según el estado: Asignar (PENDIENTE, admin) o
+// Iniciar/Continuar. Dentro del "···" van Carpeta de Drive y las acciones
+// administrativas — Carpeta no es acción cotidiana y las de admin son
+// secundarias frente a entrar a la visita.
+// ═══════════════════════════════════════════════════════════════
+function AccionesFilaVisita({ f, esAdmin, busy, abierto, onContinuar,
+  onAbrirAsignar, onDesasignar, onCompletar }) {
+  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  const linkDrive   = f['LINK_DRIVE'];
+  const linkActaPdf = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
+  const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
+  const puedeDilig  = puedeDiligenciar(f);
+
+  return (
+    <div className="vc-acciones">
+      {/* CTA: una sola acción principal por estado */}
+      {est === 'PENDIENTE' && esAdmin && (
+        <button type="button" className="vc-btn vc-btn-cta" onClick={onAbrirAsignar} disabled={busy}>
+          {busy ? '...' : (abierto ? 'Cancelar' : 'Asignar')}
+        </button>
+      )}
+      {est !== 'PENDIENTE' && est !== 'COMPLETADO' && onContinuar && puedeDilig && (
+        <button type="button" className="vc-btn vc-btn-cta" disabled={busy}
+          onClick={() => onContinuar(f._idx, f)}>
+          <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar' : 'Iniciar'}
+        </button>
+      )}
+      {/* Regla del diligenciador: al co-asignado se le dice quién la lleva
+          en vez del botón. Tiene que caber en esta fila sin romperla. */}
+      {est !== 'PENDIENTE' && est !== 'COMPLETADO' && onContinuar && !puedeDilig && (
+        <span className="vc-dilig">Diligencia {_primerVisitador(f)}</span>
+      )}
+
+      <button type="button" className="vc-btn"
+        onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}>
+        Ver datos
+      </button>
+      {linkActaPdf && <a className="vc-btn" href={linkActaPdf} target="_blank" rel="noopener noreferrer">Acta</a>}
+      {linkInforme && <a className="vc-btn" href={linkInforme} target="_blank" rel="noopener noreferrer">Informe</a>}
+
+      <MenuAccionesVisita>
+        {linkDrive && (
+          <a key="drive" className="vc-btn" href={linkDrive} target="_blank" rel="noopener noreferrer">
+            <Icon.Folder size={14} /> Carpeta
+          </a>
+        )}
+        {esAdmin && (est === 'ASIGNADO' || est === 'INICIADO') && (
+          <button key="rea" type="button" className="vc-btn" onClick={onAbrirAsignar} disabled={busy}>
+            {abierto ? 'Cancelar' : 'Reasignar'}
+          </button>
+        )}
+        {esAdmin && (est === 'ASIGNADO' || est === 'INICIADO') && (
+          <button key="des" type="button" className="vc-btn" disabled={busy}
+            onClick={() => onDesasignar(f._idx, f['RADICADO'])}>
+            <Icon.Undo size={14} /> Desasignar
+          </button>
+        )}
+        {esAdmin && est === 'INICIADO' && (
+          <button key="com" type="button" className="vc-btn" disabled={busy}
+            onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])}>
+            <Icon.Check size={14} /> Completar
+          </button>
+        )}
+      </MenuAccionesVisita>
+    </div>
+  );
+}
+
 function BotonesAdminVisita({ f, esAdmin, busy, abierto,
   onAbrirAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
   if (!esAdmin) return null;

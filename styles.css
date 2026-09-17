@@ -856,6 +856,67 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .filtros-comunas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .filtros-comunas .btn-filtro { padding: 5px 10px; font-size: 11px; }
 
+/* ── Tarjeta de visita: unidad de decisión ──────────────────
+   Tres líneas y una fila de acciones. La dirección manda porque es por lo
+   que se reconoce el caso; el radicado conserva peso propio dentro de la
+   línea de identidad; la línea administrativa responde quién la tiene,
+   desde cuándo y con qué orden, que es lo que evita abrir "Ver datos". */
+.vc-dir { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.vc-ident {
+  display: flex; align-items: center; gap: 1px 5px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ink-3); margin-top: 3px; line-height: 1.3;
+}
+.vc-rad {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  color: var(--brand-accent);
+}
+.vc-sep { opacity: 0.45; }
+.vc-admin {
+  /* row-gap chico: en móvil esta línea envuelve a 2-3 renglones y con 8px
+     de separación vertical la tarjeta crecía ~12px sin aportar nada. */
+  display: flex; align-items: center; gap: 1px 8px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ink-3); margin-top: 3px; line-height: 1.3;
+}
+.vc-insp { font-weight: 600; color: var(--ink-2); }
+
+/* Fila de acciones: con texto, nunca solo icono. En móvil envuelve. */
+.vc-acciones { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.vc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: var(--tap-min); padding: 7px 12px;
+  border-radius: var(--r-sm); border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2);
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+.vc-btn:hover { background: var(--surface-2); color: var(--ink-1); }
+}
+.vc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.vc-btn-cta {
+  background: var(--brand); border-color: var(--brand); color: var(--surface);
+}
+@media (hover: hover) and (pointer: fine) {
+.vc-btn-cta:hover { background: var(--brand); color: var(--surface); filter: brightness(1.06); }
+}
+.vc-btn-mas { padding: 7px 10px; margin-left: auto; }
+/* El menú se despliega dentro del flujo: la tarjeta del grupo tiene
+   overflow:hidden y un popover absoluto se recortaría. */
+.vc-menu {
+  flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap;
+  padding-top: 6px; margin-top: 2px; border-top: 1px dashed var(--line-2);
+}
+.vc-dilig { font-size: 12px; color: var(--ink-3); align-self: center; }
+
+/* Cabecera del grupo de radicado, en UNA línea (solo con 2+ visitas) */
+.grupo-cab {
+  flex: 1; min-width: 0; padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.grupo-cab-chev { color: var(--ink-3); display: inline-flex; }
+.grupo-cab-rad { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.grupo-cab-n { font-size: 11px; color: var(--ink-3); }
+
 /* ── Buscar: barra de búsqueda a todo el ancho ──────────── */
 .buscar-barra { margin-bottom: 12px; }
 .buscar-barra-input { position: relative; margin-bottom: 10px; }
