@@ -1874,19 +1874,17 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         const bCur = _bOtroRef.current;
         const barrioFinal = dCur.barrio === '__otro__' ? (bCur || '') : dCur.barrio;
         const dFinal = Object.assign({}, dCur, { barrio: barrioFinal });
-        // Diligenciar es trabajar: si el inspector lleva una hora en el
-        // formulario, la visita está INICIADA aunque no haya tocado "Guardar".
-        // Antes se mandaba `estadoVisita` tal cual y la fila se quedaba en
-        // ASIGNADO para siempre (visitas del 14/09/2026). COMPLETADO no se
-        // degrada: solo se sube desde los estados previos.
-        const estadoAuto = estadoVisita === 'COMPLETADO' ? estadoVisita : 'INICIADO';
-        const vals = _construirPayload(dFinal, estadoAuto, dCur.linkDrive || '', datosIniciales);
+        // El autoguardado NO promueve el estado: pasar a INICIADO es un acto
+        // explícito del inspector con el botón Guardar (decisión del usuario,
+        // 2026-09-16). Que la visita del 14/09 se quedara en ASIGNADO no se
+        // arregla aquí sino cerrando la puerta de los entregables: sin guardar
+        // no hay acta, así que no se puede terminar una visita sin pulsarlo.
+        const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
         const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida });
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
         setUltimoGuardadoMs(Date.now());
         setErrorGuardar('');
-        if (estadoAuto !== estadoVisita) setEstV(estadoAuto);
         setDirty(false); // sin este reset la barra seguía en "cambios sin guardar"
       } catch(e) {
         // NO silenciar. Un conflicto de ULTIMA_MODIFICACION falla cada 60 s
