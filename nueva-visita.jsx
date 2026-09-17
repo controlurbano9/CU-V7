@@ -1874,14 +1874,28 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         const bCur = _bOtroRef.current;
         const barrioFinal = dCur.barrio === '__otro__' ? (bCur || '') : dCur.barrio;
         const dFinal = Object.assign({}, dCur, { barrio: barrioFinal });
-        const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
+        // Diligenciar es trabajar: si el inspector lleva una hora en el
+        // formulario, la visita está INICIADA aunque no haya tocado "Guardar".
+        // Antes se mandaba `estadoVisita` tal cual y la fila se quedaba en
+        // ASIGNADO para siempre (visitas del 14/09/2026). COMPLETADO no se
+        // degrada: solo se sube desde los estados previos.
+        const estadoAuto = estadoVisita === 'COMPLETADO' ? estadoVisita : 'INICIADO';
+        const vals = _construirPayload(dFinal, estadoAuto, dCur.linkDrive || '', datosIniciales);
         const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida });
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
         setUltimoGuardadoMs(Date.now());
+        setErrorGuardar('');
+        if (estadoAuto !== estadoVisita) setEstV(estadoAuto);
         setDirty(false); // sin este reset la barra seguía en "cambios sin guardar"
       } catch(e) {
+        // NO silenciar. Un conflicto de ULTIMA_MODIFICACION falla cada 60 s
+        // para siempre, y mientras tanto el acta y el registro fotográfico se
+        // generan desde el estado local: documentos correctos, BD vacía. Es
+        // exactamente lo que pasó con las visitas del 14/09/2026. La barra de
+        // estado del encabezado ya sabe pintar esto en rojo.
         console.warn('[autoguardado] remoto falló (reintenta en 60s):', e.message);
+        setErrorGuardar(e && e.message ? e.message : 'error desconocido');
       }
     }, 60000);
     return function() { clearInterval(id); };
@@ -3242,6 +3256,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // de la carpeta se deshabilitan con tono apagado en vez de ofrecer un
   // botón que el backend rechazaría con «Falta idCarpetaVisita».
   const sinCarpetaVisita = !d.idCarpetaVisita;
+  // El acta y el registro fotográfico se arman con el ESTADO LOCAL, no con lo
+  // que hay en BD: tener `filaEditando` y carpeta no prueba que lo diligenciado
+  // se haya persistido. Si el guardado está pendiente o falló, los documentos
+  // saldrían bien y la fila quedaría vacía — el fallo del 14/09/2026. La barra
+  // del encabezado explica el motivo ("Cambios sin guardar" / "No se pudo
+  // guardar"), así que aquí basta con cerrar la puerta.
+  const sinPersistir = dirty || !!errorGuardar;
+  const generacionBloqueada = docOcupado || sinCarpetaVisita || sinPersistir;
   // Callback para que SeccionFotos reporte su conteo al panel de estado. Su
   // lista ya incluye las de Drive y las de esta sesión, así que el número
   // llega completo (sin max()).
@@ -4058,7 +4080,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               <a href={d.linkXlsxActa} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
               {/* Regenerar rehace el acta en Drive: separado del acceso de
                   solo lectura y reducido a icono con nombre accesible. */}
-              <button type="button" onClick={regenerarActa} disabled={docOcupado || sinCarpetaVisita}
+              <button type="button" onClick={regenerarActa} disabled={generacionBloqueada}
                 className="btn-icono" aria-label="Regenerar el acta F-GGO-46"
                 aria-busy={generandoActa} title="Regenerar acta">
                 {generandoActa
@@ -4066,7 +4088,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   : <Icon.Refresh size={18} />}
               </button>
             </>) : (
-              <button onClick={generarActa} disabled={docOcupado || sinCarpetaVisita} aria-busy={generandoActa}
+              <button onClick={generarActa} disabled={generacionBloqueada} aria-busy={generandoActa}
                 className="btn-accion ent-btn">
                 {generandoActa && <span className="spinner-btn" aria-hidden="true" />}
                 Generar
@@ -4093,7 +4115,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 {/* Mismo patrón de regeneración del acta: el informe ya
                     generado no vuelve a ofrecer un CTA de texto completo. */}
-                <button type="button" onClick={generarInforme} disabled={docOcupado || sinCarpetaVisita}
+                <button type="button" onClick={generarInforme} disabled={generacionBloqueada}
                   className="btn-icono" aria-label="Regenerar el informe F-GGO-43"
                   aria-busy={abriendoInforme} title="Regenerar informe">
                   {abriendoInforme
@@ -4101,7 +4123,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                     : <Icon.Refresh size={18} />}
                 </button>
               </>) : (
-                <button onClick={generarInforme} disabled={docOcupado || sinCarpetaVisita} aria-busy={abriendoInforme}
+                <button onClick={generarInforme} disabled={generacionBloqueada} aria-busy={abriendoInforme}
                   className="btn-accion ent-btn">
                   {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
                   Generar
@@ -4154,7 +4176,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   accesible. El link del RF no viaja por BD, así que el estado
                   «generado» solo vive en esta sesión; al reabrir la visita
                   vuelve a «Generar» (regenerar es idempotente en el backend). */}
-              <button type="button" onClick={abrirModalFotos} disabled={docOcupado || cargandoFotos || sinCarpetaVisita}
+              <button type="button" onClick={abrirModalFotos} disabled={generacionBloqueada || cargandoFotos}
                 className="btn-icono" aria-label="Regenerar el registro fotográfico"
                 aria-busy={generandoRF || cargandoFotos} title="Regenerar registro fotográfico">
                 {(generandoRF || cargandoFotos)
@@ -4165,7 +4187,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               /* Sin carpeta no hay dónde escribir; con carpeta pero cero
                  fotos, «Generar» abriría un modal vacío (P3-4 del review). */
               <button onClick={abrirModalFotos}
-                disabled={docOcupado || cargandoFotos || sinCarpetaVisita
+                disabled={generacionBloqueada || cargandoFotos
                   || (!d.idCarpetaFotos && fotosInfo.subidas === 0)}
                 aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
                 {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
