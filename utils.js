@@ -356,8 +356,55 @@ function numerarVisitasRadicado(filas) {
   return conN.map(function(x) { return { f: x.f, n: x.n }; });
 }
 
+// ── Normalización de direcciones urbanas ───────────────────────
+// Objetivo: que BD guarde siempre `CL 50 # 32-10` / `CR 50 # 32-10` y no las
+// diez grafías que hoy conviven (CALLE, CLL, Cra., No., N°, sin separador).
+//
+// NO afecta la búsqueda de carpetas en Drive: `_normDir` del backend
+// normaliza LAS DOS partes que compara (el nombre entrante y el de la carpeta
+// existente) y ahí el `#` y la palabra completa se descartan igual, así que
+// `CALLE 50 # 32-10` y `CL 50 # 32-10` producen la misma clave `CL 50 32-10`.
+// Por eso se puede reescribir la dirección sin que ninguna carpeta se pierda.
+//
+// Se aplica SOLO a direcciones urbanas reconocibles: si no empieza por un tipo
+// de vía conocido (caso rural: veredas, sectores, referencias) se devuelve tal
+// cual. Mejor dejarla intacta que inventarle una forma.
+var _VIAS_DIR = [
+  [/^(CL|CLL|CLLE|CALLE)\b\.?/, 'CL'],
+  [/^(CR|CRA|CRRA|KR|KRA|CARRERA)\b\.?/, 'CR'],
+  [/^(DG|DIAG|DIAGONAL)\b\.?/, 'DG'],
+  [/^(TV|TRANS|TRANSV|TRANSVERSAL)\b\.?/, 'TV'],
+  [/^(AV|AVE|AVENIDA)\b\.?/, 'AV'],
+  [/^(CQ|CIRCULAR)\b\.?/, 'CQ'],
+];
+function normalizarDireccion(dir) {
+  var s = (dir == null ? '' : String(dir)).trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!s) return '';
+  var via = null;
+  for (var i = 0; i < _VIAS_DIR.length; i++) {
+    if (_VIAS_DIR[i][0].test(s)) {
+      via = _VIAS_DIR[i][1];
+      s = s.replace(_VIAS_DIR[i][0], '').trim();
+      break;
+    }
+  }
+  if (!via) return (dir == null ? '' : String(dir)).trim();  // rural u otra cosa: no tocar
+  // Separador único `#`. `No.`, `Nro`, `N°` y el guion suelto entre los dos
+  // tramos son la misma cosa escrita distinto.
+  s = s.replace(/\b(NO|NRO|NUM|NUMERO)\b\.?/g, '#')
+       .replace(/[N#]\s*[°º]/g, '#')
+       .replace(/[°º]/g, '#')
+       .replace(/#+/g, '#');
+  // Un `#` como mucho: si no hay ninguno, se pone donde arranca el segundo
+  // tramo numérico (`CL 50 32-10` → `CL 50 # 32-10`).
+  if (s.indexOf('#') === -1) s = s.replace(/^(\S+)\s+(\d)/, '$1 # $2');
+  s = s.replace(/\s*#\s*/, ' # ').replace(/\s+/g, ' ').trim();
+  return (via + ' ' + s).trim();
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
+  normalizarDireccion: normalizarDireccion,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,

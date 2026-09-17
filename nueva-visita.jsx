@@ -1229,9 +1229,12 @@ function ModalInicioVisita({ onResult, onCancelar }) {
     datosBase['N° VISITA'] = (resultado?.nVisitaSig || 2).toString();
     datosBase['N VISITA'] = datosBase['N° VISITA'];
     datosBase['ESTADO VISITA'] = 'PENDIENTE';
-    // No heredar el visitador de la visita anterior: la nueva la diligencia quien
-    // la crea. Vacío, el efecto de prefijado lo rellena con el usuario logueado.
+    // No heredar el visitador de la visita anterior. Y tampoco prefijarlo con
+    // quien la crea: una visita de seguimiento se ASIGNA, siempre hay que
+    // elegir a quién. La marca `_seguimiento` apaga el prefijado automático;
+    // `_validar` ya exige visitador, así que no se puede guardar sin elegir.
     datosBase['VISITADOR(ES)'] = '';
+    datosBase['_seguimiento'] = true;
     datosBase['FECHA DE VISITA'] = '';
     datosBase['LINK_DRIVE'] = '';
     datosBase['ACTUACION / OBSERVACIONES'] = '';
@@ -1412,11 +1415,12 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                     {esCompletada && (
                       <>
                         <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 4 }}>
-                          La visita N°{nVis} ya fue completada. ¿Desea realizar una nueva visita?
+                          La visita N°{nVis} ya fue completada. Puede abrir una visita de
+                          seguimiento y asignarla a un inspector.
                         </div>
                         <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
                           className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
-                          Crear visita N°{resultado.nVisitaSig}
+                          Asignar visita N°{resultado.nVisitaSig} (seguimiento)
                         </button>
                       </>
                     )}
@@ -1429,28 +1433,21 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                         <div style={{ fontSize: 13, color: 'var(--texto-suave)' }}>
                           La diligencia {primerVisitador(visitadoresBD(u))}. No puedes continuar
                           una visita de otro inspector.
+                          {!esCompletada && ' Para hacer una visita de seguimiento, esa debe completarse primero.'}
                         </div>
-                        {!esCompletada && (
-                          <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
-                            className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
-                            Crear nueva visita N°{resultado.nVisitaSig}
-                          </button>
-                        )}
                       </>
                     ) : (
                       <>
                         {esIniciada && (
                           <>
+                            {/* Ya no se ofrece crear el seguimiento aquí: una
+                                visita de seguimiento solo tiene sentido con la
+                                anterior COMPLETADA (regla del usuario). Antes
+                                se podía abrir una N°2 con la N°1 a medias y
+                                quedaban dos filas abiertas del mismo radicado. */}
                             <button type="button" onClick={() => iniciarConDatos(u, nVis)}
                               className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
                               Continuar visita N°{nVis}
-                            </button>
-                            {/* Separada y en peso neutro: crea una fila NUEVA en BD.
-                                Antes era el botón relleno y "Continuar" el outline. */}
-                            <div style={{ borderTop: '1px solid var(--borde)', margin: '4px 0 2px' }} />
-                            <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
-                              className="btn-neutro" style={{ width: '100%', fontSize: 13 }}>
-                              O crear nueva visita N°{resultado.nVisitaSig} (seguimiento)
                             </button>
                           </>
                         )}
@@ -2051,9 +2048,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     return () => { cancelado = true; };
   }, [fase]);
 
-  // Prefijar visitador con el usuario logueado (si está en la lista)
+  // Prefijar visitador con el usuario logueado (si está en la lista).
+  // Excepción: las visitas de seguimiento se asignan a alguien a propósito,
+  // así que ahí el campo queda vacío y el inspector se elige.
   useEffectNV(() => {
     if (fase !== 'formulario') return; // no ejecutar en fase modal
+    if (datosIniciales && datosIniciales['_seguimiento']) return;
     if (!d.visitador && usuario) {
       const m = visitadoresDin.find(v => v.val.includes(usuario.usuario.toUpperCase().split(' ')[0]));
       if (m) setCampo('visitador', m.val);
@@ -3443,8 +3443,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       <_Seccion titulo="Ubicación del inmueble"
         estado={estadosSeccion["Ubicación del inmueble"]} color="azul">
         <_Campo label="Dirección del inmueble" fullWidth>
+          {/* Se normaliza al salir del campo, no mientras se escribe: tecleando
+              «CL 5» el normalizador ya metería el `#` y estorbaría. Al salir el
+              inspector ve el resultado y puede corregirlo. La clave de carpeta
+              de Drive no cambia (tests/direcciones.test.js). */}
           <_Input value={d.direccion} onChange={v => setCampo('direccion', v)}
-            placeholder="Cl 50 # 32-10" />
+            onBlur={() => {
+              const n = normalizarDireccion(d.direccion);
+              if (n && n !== d.direccion) setCampo('direccion', n);
+            }}
+            placeholder="CL 50 # 32-10" />
         </_Campo>
         <_Campo label="Barrio / Vereda">
           <_SelectBarrio
