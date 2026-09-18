@@ -2295,7 +2295,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }
     setBusyMe(true);
     try {
-      const t = await mejorarTexto(d.actuacion);
+      const t = await mejorarTexto(d.actuacion, 'actuacion');
       if (t) setSugerenciaIA(t);
     } catch (e) {
       await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Mejora con IA' });

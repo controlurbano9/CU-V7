@@ -893,8 +893,11 @@ async function guardarVisita(payload) {
 }
 
 // Mejora un texto con IA (claude/deepseek) vía webhook.
-async function mejorarTexto(texto) {
-  const d = await gasPost({ accion: 'mejorarTexto', texto });
+// `perfil` elige el prompt del backend: 'actuacion' para la descripción de la
+// situación encontrada (desarma prosa inflada y acorta). Sin perfil queda el
+// prompt genérico, que es el que necesita el JSON del informe F-GGO-43.
+async function mejorarTexto(texto, perfil) {
+  const d = await gasPost({ accion: 'mejorarTexto', texto, perfil });
   return d.texto || '';
 }
 
