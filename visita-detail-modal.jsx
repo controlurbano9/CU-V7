@@ -173,7 +173,7 @@ function VisitaDetailUI({ f, onCerrar }) {
             <_CampoVD l="Dirección"           v={_g(f, 'DIRECCION INFRACCION', 'DIRECCION', 3)} />
             <_CampoVD l="Barrio / Vereda"     v={_g(f, 'BARRIO/VEREDA', 'BARRIO', 4)} />
             <_CampoVD l="Comuna"              v={_g(f, 'COMUNA', 5)} />
-            <_CampoVD l="Coordenadas"         v={_coordsVD(f)} />
+            <_CampoVD l="Coordenadas"         v={_MapaVD({ f })} />
             <_CampoVD l="Código catastral"    v={_g(f, 'CODIGO CATASTRAL', 'CATASTRAL', 32)} />
             <_CampoVD l="N° ficha predial"    v={_g(f, 'N° FICHA PREDIAL', 'N FICHA PREDIAL', 33)} />
           </_SeccionVD>
@@ -321,6 +321,26 @@ function _SeccionVD({ titulo, children }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Coordenadas + enlace a Google Maps. El detalle es la única vía del
+// co-asignado (que no tiene botón de Continuar) para llegar al sitio, y
+// ahí las coordenadas sueltas no sirven de nada en un teléfono.
+function _MapaVD({ f }) {
+  const txt = _coordsVD(f);
+  const link = (typeof linkMapaVisita === 'function') ? linkMapaVisita(f) : '';
+  if (!link) return txt;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {txt}
+      <a href={link} target="_blank" rel="noopener noreferrer"
+        style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-ink, #8A3B12)',
+          textDecoration: 'none', border: '1px solid var(--brand-accent, #C2410C)',
+          borderRadius: 8, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+        Cómo llegar
+      </a>
+    </span>
   );
 }
 

@@ -80,6 +80,11 @@ function MisVisitasScreen({ usuario, onContinuar }) {
         const principal = primerVisitador(vis);
         return principal === miNombre;
       }
+      // Una visita programada para más adelante no aparece hasta su día: la
+      // lista de asignadas es la jornada, no el calendario del mes (ver
+      // asignadaVisibleHoy en utils.js). Sin FECHA ASIGNACION VISITA legible
+      // se muestra igual — ocultar una visita real sería peor.
+      if (!asignadaVisibleHoy(f)) return false;
       return true;   // PENDIENTE/ASIGNADO: cualquier co-asignado la ve
     });
   }, [datos, usuario]);
@@ -320,6 +325,7 @@ function TarjetaVisitaMV({ f, usuario, onContinuar }) {
         {est !== 'COMPLETADO' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {onContinuar && <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />}
+            <BotonMapaVisita f={f} />
             <BotonVerDatos f={f} />
           </div>
         )}

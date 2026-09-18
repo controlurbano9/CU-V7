@@ -10,6 +10,7 @@
 // los botones se pasan como children. Helpers separados:
 //   BotonContinuarVisita      ▶ Iniciar / Continuar (verde secundario)
 //   BotonesEntregables        👁 Ver datos + 📂 Carpeta + 📄 Acta + 📝 Informe
+//   BotonMapaVisita           📍 Cómo llegar (Google Maps: GPS o dirección)
 //   BotonesAdminVisita        Asignar / Reasignar / Desasignar / Completar / + Nueva visita
 //   PanelSeleccionInspector   Panel inline de elección de inspector (abierto=true)
 //
@@ -233,6 +234,42 @@ function BotonVerDatos({ f }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// BotonMapaVisita — abre la ubicación de la visita en Google Maps.
+//
+// Va en la fila de acciones, con texto y no solo icono (criterio de las
+// tarjetas): en campo el icono se descubre peor y en móvil no hay tooltip.
+// Con GPS abre el punto exacto; sin GPS — lo normal en una asignada que
+// nadie ha visitado — abre la dirección como búsqueda en Bello
+// (ver linkMapaVisita en utils.js). Si no hay ni una ni otra, no se pinta.
+//
+// variante 'vc' usa el botón chico de la fila de Buscar; el resto usa el
+// botón de las listas de Inicio y Mis visitas, para que quede del mismo
+// alto que "Iniciar visita" y "Ver datos".
+// ══════════════════════════════════════════════════════════════
+function BotonMapaVisita({ f, variante }) {
+  const link = linkMapaVisita(f);
+  if (!link) return null;
+  const titulo = 'Abrir la ubicación en Google Maps (pestaña nueva)';
+  if (variante === 'vc') {
+    return (
+      <a className="vc-btn" href={link} target="_blank" rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()} title={titulo}>
+        <Icon.Pin size={14} /> Cómo llegar
+      </a>
+    );
+  }
+  return (
+    <a className="btn-principal secundario" href={link} target="_blank" rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()} title={titulo}
+      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        textDecoration: 'none' }}>
+      <Icon.Pin size={14} /> Cómo llegar
+    </a>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MenuAccionesVisita — el "···" de la fila compacta de acciones.
 //
@@ -354,6 +391,9 @@ function AccionesFilaVisita({ f, esAdmin, busy, abierto, onContinuar,
         <span className="vc-dilig">Diligencia {_primerVisitador(f)}</span>
       )}
 
+      {/* "Cómo llegar" antes de "Ver datos": mientras la visita no esté
+          completada, lo que decide el inspector desde acá es salir a ella. */}
+      {est !== 'COMPLETADO' && <BotonMapaVisita f={f} variante="vc" />}
       <button type="button" className="vc-btn"
         onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}>
         Ver datos

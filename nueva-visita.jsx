@@ -336,6 +336,33 @@ function _newEphemeralDraftId() {
   return 'eph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 }
 
+// ── Área en contravención: tres estados, no dos ─────────────
+// Hasta ahora la única casilla era "No se pudo medir", y el inspector la
+// marcaba también cuando NO había nada que medir — que es otra cosa: sin
+// infracción no hay área, no es que no se haya podido tomar. El acta
+// F-GGO-46 y el informe F-GGO-43 escriben ese texto tal cual, así que
+// confundirlos le decía al expediente algo que no pasó.
+const AREA_NO_MEDIBLE = 'No se pudo medir';
+const AREA_NO_APLICA  = 'No aplica';
+
+// Texto que va a BD (col Y), al acta y al informe.
+function _areaTexto(d) {
+  if (d.areaNoAplica)  return AREA_NO_APLICA;
+  if (d.areaNoMedible) return AREA_NO_MEDIBLE;
+  return d.area || '';
+}
+
+// Lectura desde BD. 'N/A' y sus variantes (filas migradas de V2) se leen como
+// "No aplica": es lo que quisieron decir, y así reabrir una visita vieja no
+// la deja trabada en la validación por un campo que ya estaba resuelto.
+function _areaDesdeBD(v) {
+  const s = (v == null ? '' : String(v)).trim();
+  const u = s.toUpperCase();
+  if (u === AREA_NO_MEDIBLE.toUpperCase())           return { area: '', noMedible: true,  noAplica: false };
+  if (u === 'N/A' || u === 'NA' || u === 'NO APLICA') return { area: '', noMedible: false, noAplica: true  };
+  return { area: s, noMedible: false, noAplica: false };
+}
+
 // ── Estado inicial (en blanco o prefill) ───────────────────────
 function _estadoInicial(datosIniciales) {
   const d = datosIniciales || {};
@@ -348,6 +375,7 @@ function _estadoInicial(datosIniciales) {
   // "OFICIO-..." editable y el campo de orden escondido — editar el radicado
   // destruía la identidad de oficio en el siguiente guardado.
   const esOficioDetectado = !!d['_oficio'] || /^OFICIO-/i.test(String(d['RADICADO'] || ''));
+  const _areaBD = _areaDesdeBD(d['AREA CONTRAVENCION m2'] || d['AREA CONTRAVENCION M2']);
   return {
     // Identificación
     radicado:       d['RADICADO']             || '',
@@ -415,11 +443,9 @@ function _estadoInicial(datosIniciales) {
     actuacion:       _partsAct[0] || '',
     obsConclusion:   _partsAct[1] || '',
     infraccion:      d['TIPO DE INFRACCION']  || '',
-    area:            (function(){
-                       var v = (d['AREA CONTRAVENCION m2'] || d['AREA CONTRAVENCION M2'] || '').toString().trim();
-                       return v === 'No se pudo medir' ? '' : v;
-                     })(),
-    areaNoMedible:   ((d['AREA CONTRAVENCION m2'] || d['AREA CONTRAVENCION M2'] || '').toString().trim() === 'No se pudo medir'),
+    area:            _areaBD.area,
+    areaNoMedible:   _areaBD.noMedible,
+    areaNoAplica:    _areaBD.noAplica,
     quebrada:        d['CUMPLE RETIRO QUEBRADA'] || '',
     suspension:      d['SUSPENSION DE LA OBRA'] || '',
     orden:           d['N° ORDEN DE POLICIA'] || d['N ORDEN DE POLICIA'] || '',
@@ -550,7 +576,7 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
     '',                                           // V  DIAS
     d.estadoObra || '',                           // W  ESTADO OBRA
     d.infraccion || '',                           // X  TIPO DE INFRACCION
-    d.areaNoMedible ? 'No se pudo medir' : (d.area || ''),  // Y  AREA CONTRAVENCION m2
+    _areaTexto(d),                                // Y  AREA CONTRAVENCION m2
     d.quebrada || '',                             // Z  CUMPLE RETIRO QUEBRADA
     d.repLocativa || '',                          // AA REPARACION LOCATIVA
     d.habitado || '',                             // AB HABITADO
@@ -2213,13 +2239,29 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     && !advertTipifIgnorada
     && !_sugerenciasYaAplicadas;
 
+  // Sin infracción no hay nada que medir: marcar "No se evidencia infracción"
+  // deja el área en "No aplica", y tipificar un comportamiento real la suelta
+  // (ya hay algo que medir y la validación vuelve a pedir la cifra). Es solo
+  // el valor por defecto — las casillas siguen a mano del inspector.
+  function _setInfraccion(v) {
+    setCampo('infraccion', v);
+    const chips = String(v || '').split(' | ').map(x => x.trim()).filter(Boolean);
+    if (chips.includes(CONTRAVENCION_ESPECIAL)) {
+      setCampo('areaNoAplica', true);
+      setCampo('areaNoMedible', false);
+      setCampo('area', '');
+    } else if (chips.length && d.areaNoAplica) {
+      setCampo('areaNoAplica', false);
+    }
+  }
+
   function _aplicarSugerenciasTipif() {
     // Quitar chips de literal A; conservar el resto (C, D, "No se evidencia...")
     const noA = _chipsActuales.filter(v => !/^A\d/.test(v));
     // Quitar también "No se evidencia infracción" si estaba — ahora SÍ hay infracción.
     const noNoInfr = noA.filter(v => v !== CONTRAVENCION_ESPECIAL);
     const final = [...noNoInfr, ..._vSugeridos];
-    setCampo('infraccion', final.join(' | '));
+    _setInfraccion(final.join(' | '));
   }
 
   // Limpiar geoWatch al desmontar (debe estar ANTES del early return para evitar React #310)
@@ -2734,7 +2776,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       sueloProt:      d.sueloProt,
       retiroQuebrada: d.quebrada,
       infraccion:     d.infraccion,
-      area:           d.areaNoMedible ? 'No se pudo medir' : d.area,
+      area:           _areaTexto(d),
       obsConclusion:  d.obsConclusion || '',
       // Citación
       orden:          (d.orden && String(d.orden).trim()) ? d.orden : 'N/A',
@@ -2829,7 +2871,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(d.actuacion, 'Descripción de la situación encontrada');
     sec = 'Tipificación y medidas';
     req(d.infraccion, 'Tipo de contravención');
-    req(d.area || d.areaNoMedible, 'Área de contravención (m² o marca "no se pudo medir")');
+    req(d.area || d.areaNoMedible || d.areaNoAplica,
+      'Área de contravención (m², "no aplica" o "no se pudo medir")');
 
     sec = 'Tipificación y medidas';
     // Suspensión / citación
@@ -3059,7 +3102,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         amenaza:          d.amenaza,
         sueloProt:        d.sueloProt,
         observaciones:    d.actuacion,
-        areas:            d.area,
+        // Con el texto completo, no solo el número: el informe cierra
+        // mencionando el área y "No aplica" / "No se pudo medir" también
+        // son respuestas. Antes le llegaba vacío y el validador avisaba.
+        areas:            _areaTexto(d),
         // Comportamientos contrarios (Art.135) ya marcados en la visita
         // (columna BD "TIPO DE INFRACCION") — informe/index.html los
         // matchea por codigo (A1, C9, ...) contra sus propios .comp-ac,
@@ -3805,24 +3851,40 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           )}
           <_ChipsContravencion
             value={d.infraccion}
-            onChange={v => setCampo('infraccion', v)}
+            onChange={_setInfraccion}
           />
         </_Campo>
         <_Campo label="Área de contravención (m²)">
-          <label className="check-tap" style={{ marginBottom: 4 }}>
-            <input type="checkbox"
-              checked={d.areaNoMedible}
-              onChange={e => {
-                setCampo('areaNoMedible', e.target.checked);
-                if (e.target.checked) setCampo('area', '');
-              }}
-            />
-            No se pudo medir
-          </label>
+          {/* Dos casillas, excluyentes: "No aplica" es que no hay nada que
+              medir (sin infracción) y "No se pudo medir" es que sí lo hay
+              pero no se pudo tomar la medida — al acta le llegan textos
+              distintos porque son hechos distintos. */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 4 }}>
+            <label className="check-tap">
+              <input type="checkbox"
+                checked={!!d.areaNoAplica}
+                onChange={e => {
+                  setCampo('areaNoAplica', e.target.checked);
+                  if (e.target.checked) { setCampo('areaNoMedible', false); setCampo('area', ''); }
+                }}
+              />
+              No aplica (sin infracción)
+            </label>
+            <label className="check-tap">
+              <input type="checkbox"
+                checked={!!d.areaNoMedible}
+                onChange={e => {
+                  setCampo('areaNoMedible', e.target.checked);
+                  if (e.target.checked) { setCampo('areaNoAplica', false); setCampo('area', ''); }
+                }}
+              />
+              No se pudo medir
+            </label>
+          </div>
           <_Input mono value={d.area}
             onChange={v => setCampo('area', v)}
-            disabled={d.areaNoMedible}
-            placeholder={d.areaNoMedible ? 'N/A' : 'm²'}
+            disabled={d.areaNoMedible || d.areaNoAplica}
+            placeholder={(d.areaNoMedible || d.areaNoAplica) ? 'N/A' : 'm²'}
           />
         </_Campo>
 

@@ -38,13 +38,13 @@ function HomeScreen({ usuario, onContinuar }) {
   // Para admin las stats son globales (vista de sistema). Antes todas eran
   // globales y daban inconsistencia con la sección "Asignadas hoy" debajo.
   const stats = useMemoH(() => {
-    if (!datos.length) return { pendientes: 0, mes: 0, asigHoy: 0, realHoy: 0 };
+    if (!datos.length) return { pendientes: 0, mes: 0, asigPorHacer: 0, realHoy: 0 };
     const hoyStr = hoyDDMMAAAA();
     const hoy = new Date();
     const mesActual = hoy.getMonth();
     const anioActual = hoy.getFullYear();
 
-    let pendientes = 0, mes = 0, asigHoy = 0, realHoy = 0;
+    let pendientes = 0, mes = 0, asigPorHacer = 0, realHoy = 0;
     datos.forEach(f => {
       const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
       // Filtro por rol — admin ve todo, inspector aplica regla diligenciador.
@@ -55,6 +55,12 @@ function HomeScreen({ usuario, onContinuar }) {
           const principal = primerVisitador(vis);
           if (principal !== miNombre) return;
         }
+        // Lo asignado para un día futuro no es trabajo de hoy y no se cuenta:
+        // el inspector no puede verlo en sus listas, así que un contador que
+        // lo sume manda a buscar una visita que no aparece por ninguna parte
+        // (ver asignadaVisibleHoy en utils.js). El admin sí lo ve: sus stats
+        // son la vista de sistema.
+        if (!asignadaVisibleHoy(f)) return;
       }
       if (e === 'PENDIENTE' || e === 'ASIGNADO') pendientes++;
       // «Realizadas este mes» cuenta por FECHA DE VISITA (el día que el
@@ -68,15 +74,16 @@ function HomeScreen({ usuario, onContinuar }) {
         const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
         if (dVis && formatearFecha(dVis) === hoyStr) realHoy++;
       }
-      // Mismo criterio que la lista "Asignadas hoy" de abajo (PENDIENTE o
-      // ASIGNADO): antes la tarjeta contaba solo ASIGNADO y el número no
-      // cuadraba con las tarjetas listadas.
+      // Mismo criterio que la lista "Asignadas por hacer" de abajo (PENDIENTE
+      // o ASIGNADO): antes la tarjeta contaba solo ASIGNADO y el número no
+      // cuadraba con las tarjetas listadas. Entra lo de hoy y lo atrasado,
+      // nunca lo de mañana (asignadaVisibleHoy).
       if (e === 'PENDIENTE' || e === 'ASIGNADO') {
         const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
-        if (dAsig && formatearFecha(dAsig) === hoyStr) asigHoy++;
+        if (dAsig && asignadaVisibleHoy(f)) asigPorHacer++;
       }
     });
-    return { pendientes, mes, asigHoy, realHoy };
+    return { pendientes, mes, asigPorHacer, realHoy };
   }, [datos, esAdmin, miNombre]);
 
   // ── Alertas urgentes ──
@@ -97,6 +104,8 @@ function HomeScreen({ usuario, onContinuar }) {
           const principal = primerVisitador(vis);
           if (principal !== miNombre) return;
         }
+        // Tampoco alerta por una visita que todavía no se le ha entregado.
+        if (!asignadaVisibleHoy(f)) return;
       }
 
       // Alerta roja: PQR cerca de vencer o vencida (término legal 15 días
@@ -178,22 +187,33 @@ function HomeScreen({ usuario, onContinuar }) {
     return { rojas: rojasU, amarillas: amarillasU, total: rojasU.length + amarillasU.length };
   }, [datos, esAdmin, miNombre]);
 
-  // ── Visitas asignadas hoy (al inspector logueado) ──
-  const asignadasHoy = useMemoH(() => {
-    const hoyStr = hoyDDMMAAAA();
+  // ── Visitas asignadas por hacer (al inspector logueado) ──
+  // Entra lo de hoy Y lo atrasado: una asignada de ayer que no se alcanzó a
+  // hacer sigue siendo trabajo de hoy, y con el filtro de "= hoy" desaparecía
+  // de Inicio al día siguiente (solo quedaba en Mis visitas). Lo de mañana no
+  // entra — asignadaVisibleHoy, la misma regla del resto de la app.
+  //
+  // Se sigue exigiendo FECHA ASIGNACION VISITA legible: sin ella, al admin
+  // (que no filtra por nombre) le caería encima toda la bandeja de PENDIENTES
+  // sin asignar.
+  const asignadasPorHacer = useMemoH(() => {
     return datos.filter(f => {
       const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
       if (e !== 'ASIGNADO' && e !== 'PENDIENTE') return false;
       // Solo mis asignaciones (no las de otros)
       const vis = visitadoresBD(f).toUpperCase();
-      // El admin ve todas (vista de sistema), igual que stats.asigHoy: antes
+      // El admin ve todas (vista de sistema), igual que stats.asigPorHacer: antes
       // la tarjeta mostraba el número global y la lista de abajo solo las
       // propias, así que nunca coincidían.
       if (!esAdmin && !vis.includes(miNombre)) return false;
-      // Filtrar por fecha de asignación = hoy
       const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
-      if (dAsig && formatearFecha(dAsig) === hoyStr) return true;
-      return false;
+      if (!dAsig) return false;
+      return asignadaVisibleHoy(f);
+    }).sort((a, b) => {
+      // Más vieja arriba: lo atrasado es lo que primero hay que sacar.
+      const fa = parsearFecha(a['FECHA ASIGNACION VISITA'] || '');
+      const fb = parsearFecha(b['FECHA ASIGNACION VISITA'] || '');
+      return (fa ? fa.getTime() : 0) - (fb ? fb.getTime() : 0);
     });
   }, [datos, esAdmin, miNombre]);
 
@@ -219,8 +239,8 @@ function HomeScreen({ usuario, onContinuar }) {
           <div className="stat-label-v2">Realizadas este mes</div>
         </div>
         <div className="stat-box-v2 compact">
-          <div className="stat-num-v2">{cargando ? '—' : stats.asigHoy}</div>
-          <div className="stat-label-v2">Asignadas hoy</div>
+          <div className="stat-num-v2">{cargando ? '—' : stats.asigPorHacer}</div>
+          <div className="stat-label-v2">Por hacer</div>
         </div>
         <div className="stat-box-v2 verde compact">
           <div className="stat-num-v2">{cargando ? '—' : stats.realHoy}</div>
@@ -234,30 +254,37 @@ function HomeScreen({ usuario, onContinuar }) {
         </div>
       )}
 
-      {/* ── Asignadas hoy + Alertas en dos columnas ≥1200 (ver .home-2col
-          en styles.css); en móvil van apiladas como siempre ── */}
+      {/* ── Asignadas por hacer + Alertas en dos columnas ≥1200 (ver
+          .home-2col en styles.css); en móvil van apiladas como siempre ── */}
       <div className="home-2col">
-      {/* ── Asignadas hoy (antes de las alertas: es lo primero que el
+      {/* ── Asignadas por hacer (antes de las alertas: es lo primero que el
           inspector debe ver al abrir la app, 2026-09-09) ── */}
       <div style={{ marginBottom: 18 }}>
         <SeccionHeader
-          titulo="Asignadas hoy"
-          count={cargando ? null : asignadasHoy.length}
+          titulo="Asignadas por hacer"
+          count={cargando ? null : asignadasPorHacer.length}
           tono="acento"
         />
 
         {cargando && <div className="cargando"><div className="spinner"></div>Cargando...</div>}
 
-        {!cargando && asignadasHoy.length === 0 && (
+        {!cargando && asignadasPorHacer.length === 0 && (
           <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 24, fontSize: 13 }}>
-            No tienes visitas asignadas para hoy
+            No tienes visitas asignadas por hacer
           </div>
         )}
 
-        {!cargando && asignadasHoy.map((f, i) => (
+        {!cargando && asignadasPorHacer.map((f, i) => (
           <div key={f._idx || i} className="card" style={{ padding: 12, marginBottom: 8 }}>
-            <VisitaCard f={f} labelBadge="Asignada" accionesMt={10}>
-              <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />
+            {/* La fecha de asignación solo se muestra cuando la visita viene
+                de un día anterior: ahí dice cuánto lleva esperando. En las de
+                hoy sería ruido — la sección entera es de hoy. */}
+            <VisitaCard f={f} labelBadge="Asignada" accionesMt={10}
+              mostrarAsignado={formatearFecha(f['FECHA ASIGNACION VISITA'] || '') !== hoyDDMMAAAA()}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />
+                <BotonMapaVisita f={f} />
+              </div>
             </VisitaCard>
           </div>
         ))}

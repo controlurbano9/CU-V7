@@ -405,6 +405,64 @@ function normalizarDireccion(dir) {
   return (via + ' ' + s).trim();
 }
 
+// ── Visibilidad por fecha de asignación ───────────────────
+// Una visita programada para el jueves no es trabajo del martes: el visitador
+// solo debe verla a partir del día de su asignación. Antes aparecían todas
+// juntas en "Asignadas" y la lista no distinguía lo de hoy de lo de la otra
+// semana, que es justo lo que hay que saber al abrir la app.
+//
+// Sin fecha legible se muestra igual: las filas viejas (y las migradas de V2)
+// no siempre la traen, y ocultar una visita real es peor que mostrar una de
+// más. La comparación es por día, nunca por instante.
+//
+// Dónde se aplica: Mis visitas la usa para todos (esa lista es la jornada
+// propia, también la del admin) e Inicio solo para el inspector — las stats
+// y alertas del admin son la vista de sistema. Buscar y Agenda NO la usan:
+// ahí el admin tiene que ver lo que programó para la semana.
+// Tampoco toca INICIADO/COMPLETADO: una visita ya empezada no puede estar
+// "en el futuro".
+function asignadaVisibleHoy(fila, hoy) {
+  if (!fila) return true;
+  var d = parsearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+  if (!d) return true;
+  var ref = null;
+  if (hoy instanceof Date) ref = hoy;
+  else if (hoy) ref = parsearFecha(hoy);
+  if (!ref) ref = new Date();
+  var asig = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  var base = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()).getTime();
+  return asig <= base;
+}
+
+// ── Ubicación de la visita en Google Maps ──────────────────
+// El visitador sale a campo con la dirección y lo que necesita es llegar.
+// Con coordenadas se abre el punto exacto (las visitas de seguimiento heredan
+// el GPS de la anterior, ver clonarParaSeguimiento); sin ellas — el caso
+// normal de una asignada que nadie ha visitado todavía — se manda la
+// dirección como búsqueda, acotada a Bello para que Maps no la resuelva en
+// otro municipio del valle (hay CL 50 en todos).
+//
+// Formato `search/?api=1&query=`: es la URL universal de Google Maps — abre
+// la app nativa en el teléfono y la web en escritorio, y deja "Cómo llegar" a
+// un toque. `dir/?api=1&destination=` arrancaría la navegación de una vez,
+// que es demasiado para un enlace de lista.
+//
+// Devuelve '' cuando no hay ni coordenadas ni dirección: el botón no se pinta.
+function linkMapaVisita(fila) {
+  if (!fila) return '';
+  var base = 'https://www.google.com/maps/search/?api=1&query=';
+  var lat = normalizarCoord(fila['LATITUD'], 'lat');
+  var lon = normalizarCoord(fila['LONGITUD'], 'lon');
+  if (lat != null && lon != null) return base + lat.toFixed(6) + ',' + lon.toFixed(6);
+  var dir = String(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '').trim();
+  if (!dir) return '';
+  var barrio = String(fila['BARRIO/VEREDA'] || fila['BARRIO'] || '').trim();
+  var partes = [dir];
+  if (barrio) partes.push(barrio);
+  partes.push('Bello', 'Antioquia', 'Colombia');
+  return base + encodeURIComponent(partes.join(', '));
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   normalizarDireccion: normalizarDireccion,
@@ -421,6 +479,8 @@ var _cuUtilsExports = {
   puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,
+  asignadaVisibleHoy: asignadaVisibleHoy,
+  linkMapaVisita: linkMapaVisita,
   normalizarCoord: normalizarCoord,
   numerarVisitasRadicado: numerarVisitasRadicado,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
