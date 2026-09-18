@@ -57,15 +57,33 @@ test('linkMapaVisita — repara la coordenada con el decimal comido por el Sheet
   assert.equal(url, 'https://www.google.com/maps/search/?api=1&query=6.345587,-75.553412');
 });
 
-test('linkMapaVisita — sin GPS busca la dirección acotada a Bello', () => {
+test('linkMapaVisita — sin GPS busca la dirección acotada a Bello, SIN el barrio', () => {
+  // El barrio se dejó fuera a propósito: medido contra Google Maps, mandarlo
+  // hace que la consulta caiga en Medellín o no resuelva. Ver el comentario
+  // de linkMapaVisita en utils.js con las cuatro mediciones.
   const url = linkMapaVisita({
     'DIRECCION INFRACCION': 'CL 50 # 32-10', 'BARRIO/VEREDA': 'Niquía',
   });
   assert.equal(
     url,
     'https://www.google.com/maps/search/?api=1&query=' +
-      encodeURIComponent('CL 50 # 32-10, Niquía, Bello, Antioquia, Colombia')
+      encodeURIComponent('CL 50 # 32-10, Bello, Antioquia, Colombia')
   );
+  assert.ok(!url.includes('Niqu'), 'el barrio no puede viajar en la consulta');
+});
+
+test('linkMapaVisita — en rural la vereda ya viene en la dirección, no se repite', () => {
+  const url = linkMapaVisita({
+    'DIRECCION INFRACCION': 'Vereda Hato Viejo sector La Loma',
+    'BARRIO/VEREDA': 'Hato Viejo',
+  });
+  assert.equal(
+    url,
+    'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent('Vereda Hato Viejo sector La Loma, Bello, Antioquia, Colombia')
+  );
+  assert.equal(url.match(/Hato\+?%20?Viejo|Hato%20Viejo/g).length, 1,
+    'la vereda aparece dos veces en la consulta');
 });
 
 test('linkMapaVisita — sin barrio sigue sirviendo', () => {

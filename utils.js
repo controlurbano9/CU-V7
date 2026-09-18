@@ -456,11 +456,17 @@ function linkMapaVisita(fila) {
   if (lat != null && lon != null) return base + lat.toFixed(6) + ',' + lon.toFixed(6);
   var dir = String(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '').trim();
   if (!dir) return '';
-  var barrio = String(fila['BARRIO/VEREDA'] || fila['BARRIO'] || '').trim();
-  var partes = [dir];
-  if (barrio) partes.push(barrio);
-  partes.push('Bello', 'Antioquia', 'Colombia');
-  return base + encodeURIComponent(partes.join(', '));
+  // El barrio NO va en la consulta, aunque parezca que ayuda: medido contra
+  // Google Maps el 2026-09-18, mandarlo empeora o rompe la resolucion.
+  //   "CR 52 # 64-134, Niquia, Bello, Antioquia, Colombia" -> Medellin
+  //   "CR 52 # 64-134, Bello, Antioquia, Colombia"         -> Bello, Hatonuevo
+  //   "CL 50 # 32-10, Paris, Bello, ..."   -> no resuelve, mapa a zoom 13
+  //   "CL 50 # 32-10, Bello, ..."          -> Cl. 50, Perez, Bello
+  // En rural da igual (la vereda ya viene en la direccion) y encima acerca el
+  // zoom. El barrio le da al geocodificador un termino mas que interpretar y
+  // termina reencuadrando la cadena entera en el area metropolitana.
+  // Si se vuelve a tocar esto, medirlo con direcciones reales, no suponerlo.
+  return base + encodeURIComponent(dir + ', Bello, Antioquia, Colombia');
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
