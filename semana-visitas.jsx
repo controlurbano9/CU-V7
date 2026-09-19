@@ -101,7 +101,10 @@ function SemanaCard({ f, movil, onAbrir }) {
       <div className="sv-pie">
         <span className="sv-insp">{_svNombreCorto(f)}</span>
         <span className="sv-acc">
-          <button className="sv-btn" onClick={() => onAbrir && onAbrir(f)}>{accion}</button>
+          {/* Firma (fila, datos): la misma de BotonContinuarVisita y AlertaCard.
+              Con solo (f) el router recibe la fila donde espera el _idx y el
+              formulario abre sin datos. */}
+          <button className="sv-btn" onClick={() => onAbrir && onAbrir(f._idx, f)}>{accion}</button>
           <BotonMapaVisita f={f} variante="icono" />
         </span>
       </div>
