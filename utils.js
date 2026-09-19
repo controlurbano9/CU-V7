@@ -190,17 +190,26 @@ function diasHabilesHasta(fechaTarget) {
   hoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   target = new Date(target.getFullYear(), target.getMonth(), target.getDate());
 
-  if (hoy.getTime() === target.getTime()) return 0;
-  var futuro = target > hoy;
-  var inicio = futuro ? hoy : target;
-  var fin = futuro ? target : hoy;
+  return _diasHabilesEntre(hoy, target);
+}
+
+// Hábiles en el intervalo (desde, hasta]. Positivo si hasta es posterior,
+// negativo si es anterior. Separado de diasHabilesHasta porque ese toma "hoy"
+// del reloj: no se puede probar ni usar con otra referencia.
+function _diasHabilesEntre(desde, hasta) {
+  var a = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  var b = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+  if (a.getTime() === b.getTime()) return 0;
+  var adelante = b > a;
+  var inicio = adelante ? a : b;
+  var fin = adelante ? b : a;
   var count = 0;
   var cursor = new Date(inicio.getTime() + 86400000); // día siguiente
   while (cursor <= fin) {
     if (esDiaHabil(cursor)) count++;
     cursor = new Date(cursor.getTime() + 86400000);
   }
-  return futuro ? count : -count;
+  return adelante ? count : -count;
 }
 
 // ── Días calendario desde una fecha hasta hoy ─────────────────
@@ -469,6 +478,123 @@ function linkMapaVisita(fila) {
   return base + encodeURIComponent(dir + ', Bello, Antioquia, Colombia');
 }
 
+// ── Semana de visitas (calendario de Inicio) ────────────────
+// Lunes a viernes: la inspección no agenda fines de semana, y una columna de
+// sábado vacía en todas las semanas es ruido.
+function rangoSemana(ref, offsetSemanas) {
+  var base = ref instanceof Date ? ref : (parsearFecha(ref) || new Date());
+  base = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  // getDay(): 0 = domingo. El domingo cierra la semana que termina, no abre la
+  // siguiente, así que retrocede 6 días y no 0.
+  var dow = base.getDay();
+  var aLunes = dow === 0 ? -6 : 1 - dow;
+  var off = (offsetSemanas || 0) * 7;
+  var lunes = new Date(base.getFullYear(), base.getMonth(), base.getDate() + aLunes + off);
+  var dias = [];
+  for (var i = 0; i < 5; i++) {
+    dias.push(new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + i));
+  }
+  return { lunes: lunes, dias: dias };
+}
+
+// Día en que la visita se planta en el calendario. Programado y realizado son
+// cosas distintas: una asignada vive en su fecha de asignación y una que ya
+// empezó vive en el día en que se hizo. Registrar NO es visitar — el inspector
+// puede registrar al día siguiente o en el transcurso de la semana — así que
+// una visita nunca se reubica en "hoy": moverla ahí sería reagendarla.
+function fechaAgendaVisita(fila) {
+  if (!fila) return null;
+  var e = _normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '');
+  if (e === 'INICIADO' || e === 'COMPLETADO') {
+    return parsearFecha(fila['FECHA DE VISITA'] || '') ||
+           parsearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+  }
+  return parsearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+}
+
+// Regla del diligenciador para un nombre dado: en PENDIENTE/ASIGNADO la ve
+// cualquier co-asignado; en INICIADO/COMPLETADO solo el primero de
+// VISITADOR(ES). Sin nombre no filtra (vista de sistema del admin).
+function _esVisitaDe(fila, nombre) {
+  var n = String(nombre || '').toUpperCase().trim();
+  if (!n) return true;
+  var vis = visitadoresBD(fila).toUpperCase();
+  if (vis.indexOf(n) === -1) return false;
+  var e = _normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '');
+  if (e === 'INICIADO' || e === 'COMPLETADO') return primerVisitador(vis) === n;
+  return true;
+}
+
+// Reparte las filas en los 5 días de `dias`. Devuelve también cuántas quedaron
+// fuera por no tener fecha ubicable: esas no desaparecen (siguen en Buscar),
+// pero la rejilla debe poder decirlo en vez de tragárselas en silencio.
+// Las PENDIENTE sin fecha de asignación no cuentan: son la bandeja de entrada,
+// no un hueco de agenda.
+function agruparSemana(filas, dias, opciones) {
+  var o = opciones || {};
+  var quien = o.esAdmin ? (o.inspector || '') : (o.miNombre || '');
+  var porDia = [];
+  var i;
+  for (i = 0; i < dias.length; i++) porDia.push([]);
+  var claves = {};
+  for (i = 0; i < dias.length; i++) {
+    claves[new Date(dias[i].getFullYear(), dias[i].getMonth(), dias[i].getDate()).getTime()] = i;
+  }
+  var sinFecha = 0;
+  (filas || []).forEach(function(f) {
+    if (!_esVisitaDe(f, quien)) return;
+    var d = fechaAgendaVisita(f);
+    if (!d) {
+      var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '');
+      if (e !== 'PENDIENTE') sinFecha++;
+      return;
+    }
+    var k = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (claves[k] === undefined) return;
+    porDia[claves[k]].push(f);
+  });
+  // Dentro del día: por comuna (agrupa el recorrido) y luego por radicado.
+  porDia.forEach(function(lista) {
+    lista.sort(function(a, b) {
+      var ca = String(a['COMUNA'] || ''), cb = String(b['COMUNA'] || '');
+      if (ca !== cb) return ca.localeCompare(cb, 'es');
+      return String(a['RADICADO'] || '').localeCompare(String(b['RADICADO'] || ''), 'es');
+    });
+  });
+  return { porDia: porDia, sinFecha: sinFecha };
+}
+
+// Días hábiles que lleva una visita asignada sin que nadie la inicie. null si
+// no aplica (ya empezó, o no tiene fecha de asignación legible); 0 si la
+// asignación es a futuro. Alimenta la alerta de Inicio: hasta ahora ninguna
+// asignada podía alertar, porque el memo de alertas descarta de entrada todo
+// lo que no esté en INICIADO.
+function diasSinIniciar(fila, hoy) {
+  if (!fila) return null;
+  var e = _normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '');
+  if (e !== 'ASIGNADO' && e !== 'PENDIENTE') return null;
+  var d = parsearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+  if (!d) return null;
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var n = _diasHabilesEntre(d, ref);
+  return n > 0 ? n : 0;
+}
+
+// Cuántas semanas separan la semana de `fecha` de la semana de `hoy`. Es lo
+// que necesita «Ver en su semana» para saltar del panel de alertas al día en
+// que la visita está programada, sin moverla de sitio.
+// Se compara lunes contra lunes: dentro de la misma semana el offset es 0
+// aunque los días difieran. Colombia no cambia de hora, así que la división
+// por 7 días no arrastra error de DST.
+function offsetSemanaDe(fecha, hoy) {
+  var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  if (!d) return null;
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var lunesObj = rangoSemana(d, 0).lunes;
+  var lunesRef = rangoSemana(ref, 0).lunes;
+  return Math.round((lunesObj.getTime() - lunesRef.getTime()) / 604800000);
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   normalizarDireccion: normalizarDireccion,
@@ -489,6 +615,11 @@ var _cuUtilsExports = {
   linkMapaVisita: linkMapaVisita,
   normalizarCoord: normalizarCoord,
   numerarVisitasRadicado: numerarVisitasRadicado,
+  rangoSemana: rangoSemana,
+  fechaAgendaVisita: fechaAgendaVisita,
+  agruparSemana: agruparSemana,
+  diasSinIniciar: diasSinIniciar,
+  offsetSemanaDe: offsetSemanaDe,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

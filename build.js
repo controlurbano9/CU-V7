@@ -32,6 +32,9 @@ const ARCHIVOS = [
   'login.jsx',
   // visita-card.jsx antes de home/mis-visitas/buscar (que la consumen)
   'visita-card.jsx',
+  // semana-visitas.jsx entre visita-card (consume BotonMapaVisita) y home
+  // (que la consume).
+  'semana-visitas.jsx',
   'home.jsx',
   'mis-visitas.jsx',
   'buscar.jsx',

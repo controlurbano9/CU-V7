@@ -251,6 +251,16 @@ function BotonMapaVisita({ f, variante }) {
   const link = linkMapaVisita(f);
   if (!link) return null;
   const titulo = 'Abrir la ubicación en Google Maps (pestaña nueva)';
+  // Variante icono: la tarjeta de la semana no tiene ancho para el rótulo.
+  // El nombre completo sigue llegando al lector de pantalla y al tooltip.
+  if (variante === 'icono') {
+    return (
+      <a className="sv-icono" href={link} target="_blank" rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()} title={titulo} aria-label="Cómo llegar">
+        <Icon.Pin size={14} />
+      </a>
+    );
+  }
   if (variante === 'vc') {
     return (
       <a className="vc-btn" href={link} target="_blank" rel="noopener noreferrer"

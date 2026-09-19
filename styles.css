@@ -1331,7 +1331,10 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 @media (min-width: 1440px) {
   .pantalla.cn-pantalla {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    /* La semana se queda con todo el ancho que sobre: sus 5 columnas son lo
+       escaso, y Alertas es una lista de una línea por entrada. Antes 3fr/2fr
+       le daba a Alertas 420 px en 1366. */
+    grid-template-columns: minmax(0, 1fr) 260px;
     column-gap: 24px;
     align-items: stretch;
     /* .pantalla tiene min-height: el align-content por defecto del grid
@@ -2093,3 +2096,120 @@ body.is-offline .header {
   background: var(--brand); border-color: var(--brand); color: var(--surface);
 }
 .psi-aviso { font-size: 11px; color: var(--amber, var(--ink-3)); margin-bottom: 4px; }
+
+
+/* ═════════════════════════════════════════════════════════════
+   Semana de visitas (Inicio) — ver semana-visitas.jsx
+   ════════════════════════════════════════════════════════════ */
+
+.sv-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.sv-nav { display: flex; align-items: center; gap: 6px; }
+.sv-nav-btn {
+  width: 24px; height: 24px; padding: 0; line-height: 1;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--superficie); color: var(--texto-suave);
+  font-size: 13px; cursor: pointer;
+}
+.sv-nav-btn:hover { background: var(--gris-bg); }
+.sv-rango { font-family: var(--font-serif); font-size: 14px; font-weight: 600; }
+.sv-hoy {
+  height: 24px; padding: 0 9px; margin-left: 4px;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-full);
+  background: var(--superficie); color: var(--texto-suave);
+  font-size: 11px; cursor: pointer;
+}
+.sv-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.sv-chip {
+  height: 24px; padding: 0 9px;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-full);
+  background: var(--superficie); color: var(--texto-suave);
+  font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.sv-chip.activo {
+  background: var(--brand-bg); border-color: var(--brand); color: var(--brand-ink);
+}
+
+/* Sin max-height ni overflow propios: la columna de .home-2col ya es un
+   scroller (min-height:0 + overflow-y:auto) y es la única que conoce el alto
+   real disponible. Un límite fijo aquí recortaba a 1920 una rejilla que cabía,
+   y anidaba un segundo scroller dentro del que ya existía.
+   Lo que NO puede pasar es que scrollee cada columna por separado: cinco
+   scrollers desalinean los días y la semana deja de leerse. */
+.sv-grid {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px;
+}
+/* La navegación de semana no puede irse con el scroll de la columna. */
+.sv-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--paper); padding-bottom: 6px;
+}
+.sv-col { min-width: 0; }
+.sv-col.hoy { background: var(--gris-bg); border-radius: var(--r-sm); padding: 0 4px 5px; }
+.sv-col-head {
+  font-size: 11px; text-align: center; padding: 4px 0 6px; color: var(--ink-4);
+}
+.sv-col-head.hoy { color: var(--brand-accent); font-weight: 600; }
+.sv-vacio {
+  border: 0.5px dashed var(--line-2); border-radius: var(--r-sm);
+  padding: 12px 5px; text-align: center; font-size: 11px; color: var(--ink-4);
+}
+
+/* Sin border-radius a propósito: la esquina redondeada contra un borde de un
+   solo lado (la barra de estado) se ve rota. */
+.sv-card {
+  background: var(--superficie);
+  border: 0.5px solid var(--borde);
+  border-left: 3px solid var(--amarillo);
+  padding: 7px 8px; margin-bottom: 5px;
+}
+.sv-card.sv-iniciada   { border-left-color: var(--azul); }
+.sv-card.sv-completada { border-left-color: var(--verde); opacity: .62; }
+.sv-dir { font-size: 12px; font-weight: 600; line-height: 1.3; }
+/* Una sola línea lógica que envuelve sola: a 160 px ocupa dos renglones y a
+   285 px uno. Por eso no hace falta media query para "la tarjeta ancha". */
+.sv-meta { font-size: 11px; color: var(--texto-suave); line-height: 1.4; }
+.sv-rad { font-family: var(--font-mono); }
+.sv-pie {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-top: 6px;
+}
+.sv-insp { font-size: 11px; color: var(--ink-4); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-acc { display: flex; gap: 3px; flex-shrink: 0; }
+.sv-btn {
+  height: 24px; padding: 0 8px;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--superficie); color: var(--texto-suave);
+  font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.sv-btn:hover { background: var(--gris-bg); }
+.sv-icono {
+  width: 24px; height: 24px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--superficie); color: var(--texto-suave);
+  text-decoration: none; flex-shrink: 0;
+}
+.sv-icono:hover { background: var(--gris-bg); }
+.sv-sinfecha { font-size: 11px; color: var(--ink-4); margin-top: 8px; }
+
+/* ── Móvil: tira de días + lista del día ── */
+.sv-tira { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 10px; }
+.sv-dia {
+  height: 44px; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 0.5px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--superficie);
+}
+.sv-dia.activo { border: 2px solid var(--brand); background: var(--brand-bg); }
+.sv-dia.hoy .sv-dia-rot { color: var(--brand-accent); font-weight: 600; }
+.sv-dia-rot { font-size: 11px; color: var(--ink-4); }
+.sv-dia-num { font-size: 13px; font-weight: 600; color: var(--texto-suave); }
+.sv-dia-num.vacio { color: var(--surface-3); }
+.sv-lista .sv-card { padding: 9px 10px; margin-bottom: 6px; }
+.sv-lista .sv-dir { font-size: 13px; }
+.sv-lista .sv-pie { margin-top: 8px; }
+.sv-lista .sv-btn { height: 44px; padding: 0 14px; font-size: 13px; }
+.sv-lista .sv-icono { width: 44px; height: 44px; }

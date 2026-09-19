@@ -9,6 +9,10 @@ const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 // Término legal de respuesta a derechos de petición (PQR), Ley 1755/2015 (CPACA): 15 días hábiles.
 const PQR_PLAZO_DIAS_HABILES = 15;
 
+// Días hábiles que una asignada puede estar sin iniciarse antes de alertar.
+// Mismo umbral que la alerta de "lleva N días sin completar".
+const DIAS_ALERTA_SIN_INICIAR = 5;
+
 function HomeScreen({ usuario, onContinuar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
@@ -131,6 +135,25 @@ function HomeScreen({ usuario, onContinuar }) {
         }
       }
 
+      // Alerta: asignada que nadie inicia. Va ANTES del corte de abajo a
+      // propósito: ese `return` descarta todo lo que no esté en INICIADO, así
+      // que hasta 2026-09-19 una visita entregada y olvidada no podía alertar
+      // nunca. Umbral 5 días hábiles, el mismo de "lleva N días sin completar":
+      // una sola noción de "se está demorando" en toda la pantalla.
+      const sinIniciar = diasSinIniciar(f);
+      if (sinIniciar !== null && sinIniciar >= DIAS_ALERTA_SIN_INICIAR) {
+        // El visitador ya lo pinta AlertaCard debajo del mensaje.
+        amarillas.push({
+          f: f,
+          mensaje: 'Asignada el ' + formatearFecha(f['FECHA ASIGNACION VISITA'] || '') +
+                   ', sin iniciar (' + sinIniciar + ' días hábiles)',
+          dias: sinIniciar,
+          // La alerta NO mueve la visita a hoy: lleva al usuario a la semana
+          // en que está programada.
+          irSemana: f['FECHA ASIGNACION VISITA'] || '',
+        });
+      }
+
       if (e !== 'INICIADO') return;
 
       // Alerta roja: audiencia/citación en ≤3 días hábiles
@@ -187,35 +210,16 @@ function HomeScreen({ usuario, onContinuar }) {
     return { rojas: rojasU, amarillas: amarillasU, total: rojasU.length + amarillasU.length };
   }, [datos, esAdmin, miNombre]);
 
-  // ── Visitas asignadas por hacer (al inspector logueado) ──
-  // Entra lo de hoy Y lo atrasado: una asignada de ayer que no se alcanzó a
-  // hacer sigue siendo trabajo de hoy, y con el filtro de "= hoy" desaparecía
-  // de Inicio al día siguiente (solo quedaba en Mis visitas). Lo de mañana no
-  // entra — asignadaVisibleHoy, la misma regla del resto de la app.
-  //
-  // Se sigue exigiendo FECHA ASIGNACION VISITA legible: sin ella, al admin
-  // (que no filtra por nombre) le caería encima toda la bandeja de PENDIENTES
-  // sin asignar.
-  const asignadasPorHacer = useMemoH(() => {
-    return datos.filter(f => {
-      const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-      if (e !== 'ASIGNADO' && e !== 'PENDIENTE') return false;
-      // Solo mis asignaciones (no las de otros)
-      const vis = visitadoresBD(f).toUpperCase();
-      // El admin ve todas (vista de sistema), igual que stats.asigPorHacer: antes
-      // la tarjeta mostraba el número global y la lista de abajo solo las
-      // propias, así que nunca coincidían.
-      if (!esAdmin && !vis.includes(miNombre)) return false;
-      const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
-      if (!dAsig) return false;
-      return asignadaVisibleHoy(f);
-    }).sort((a, b) => {
-      // Más vieja arriba: lo atrasado es lo que primero hay que sacar.
-      const fa = parsearFecha(a['FECHA ASIGNACION VISITA'] || '');
-      const fb = parsearFecha(b['FECHA ASIGNACION VISITA'] || '');
-      return (fa ? fa.getTime() : 0) - (fb ? fb.getTime() : 0);
-    });
-  }, [datos, esAdmin, miNombre]);
+  // Inspectores activos para los chips de filtro de la semana. Misma fuente
+  // que Buscar (USUARIOS vía listarInspectoresActivos, cacheado 60 s): sacar
+  // los nombres de las filas mostraría gente que ya no trabaja aquí.
+  const [inspectores, setInspectores] = useStateH([]);
+  useEffectH(() => {
+    if (!esAdmin) return;
+    listarInspectoresActivos()
+      .then(l => setInspectores((l || []).map(u => u.nombre)))
+      .catch(() => {});
+  }, [esAdmin]);
 
   // ── Render ──
   const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -254,40 +258,24 @@ function HomeScreen({ usuario, onContinuar }) {
         </div>
       )}
 
-      {/* ── Asignadas por hacer + Alertas en dos columnas ≥1200 (ver
+      {/* ── Semana + Alertas en dos columnas ≥1200 (ver
           .home-2col en styles.css); en móvil van apiladas como siempre ── */}
       <div className="home-2col">
-      {/* ── Asignadas por hacer (antes de las alertas: es lo primero que el
-          inspector debe ver al abrir la app, 2026-09-09) ── */}
+      {/* ── Semana de visitas: sustituye a «Asignadas por hacer», que era
+          exactamente su columna de hoy. Cada visita se queda en SU día —
+          registrar no es visitar, el inspector puede registrar al día
+          siguiente, y reubicarla en hoy sería reagendarla. ── */}
       <div style={{ marginBottom: 18 }}>
-        <SeccionHeader
-          titulo="Asignadas por hacer"
-          count={cargando ? null : asignadasPorHacer.length}
-          tono="acento"
-        />
-
         {cargando && <div className="cargando"><div className="spinner"></div>Cargando...</div>}
-
-        {!cargando && asignadasPorHacer.length === 0 && (
-          <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 24, fontSize: 13 }}>
-            No tienes visitas asignadas por hacer
-          </div>
+        {!cargando && (
+          <SemanaVisitas
+            datos={datos}
+            esAdmin={esAdmin}
+            miNombre={miNombre}
+            inspectores={inspectores}
+            onAbrir={onContinuar}
+          />
         )}
-
-        {!cargando && asignadasPorHacer.map((f, i) => (
-          <div key={f._idx || i} className="card" style={{ padding: 12, marginBottom: 8 }}>
-            {/* La fecha de asignación solo se muestra cuando la visita viene
-                de un día anterior: ahí dice cuánto lleva esperando. En las de
-                hoy sería ruido — la sección entera es de hoy. */}
-            <VisitaCard f={f} labelBadge="Asignada" accionesMt={10}
-              mostrarAsignado={formatearFecha(f['FECHA ASIGNACION VISITA'] || '') !== hoyDDMMAAAA()}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <BotonContinuarVisita f={f} onContinuar={onContinuar} tamaño="md" />
-                <BotonMapaVisita f={f} />
-              </div>
-            </VisitaCard>
-          </div>
-        ))}
       </div>
 
       {/* ── Alertas urgentes ── */}
@@ -350,6 +338,18 @@ function SeccionHeader({ titulo, count, tono }) {
 
 // ── Tarjeta de alerta — estilo editorial palette terracota/crema ────
 // rojo (urgencia alta: audiencia ≤3 días hábiles), amarillo (más de 5 días sin completar).
+// Lleva la rejilla de la semana a la fecha indicada. Va por evento y no por
+// prop porque el offset es estado interno de SemanaVisitas: subirlo hasta
+// HomeScreen solo para esto obligaría a pasarlo por dos componentes que no lo
+// usan para nada más.
+function irASemana(fecha) {
+  const off = offsetSemanaDe(fecha);
+  if (off === null) return;
+  window.dispatchEvent(new CustomEvent('cu-ir-semana', { detail: { offset: off, fecha: fecha } }));
+  const rejilla = document.querySelector('.sv');
+  if (rejilla && rejilla.scrollIntoView) rejilla.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 function AlertaCard({ alerta, tipo, onContinuar }) {
   const f = alerta.f;
   const esRojo = tipo === 'rojo';
@@ -409,6 +409,16 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
               {visitadoresBD(f) && <span>{primerVisitador(visitadoresBD(f))}</span>}
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {alerta.irSemana && (
+            <button type="button" onClick={() => irASemana(alerta.irSemana)} style={{
+              background: 'transparent', color: c.fg,
+              border: '0.5px solid ' + c.border,
+              borderRadius: 'var(--r-sm)', padding: '6px 11px',
+              fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>Ver en su semana</button>
+          )}
           <button type="button" onClick={() => onContinuar(f._idx, f)} style={{
             background: c.bg, color: c.fg,
             border: '0.5px solid ' + c.border,
@@ -421,6 +431,7 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
           onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
           >Continuar →</button>
+          </div>
         </div>
       </div>
     </article>
