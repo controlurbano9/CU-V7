@@ -389,15 +389,22 @@ function AccionesFilaVisita({ f, esAdmin, busy, abierto, onContinuar,
           {busy ? '...' : (abierto ? 'Cancelar' : 'Asignar')}
         </button>
       )}
-      {est !== 'PENDIENTE' && est !== 'COMPLETADO' && onContinuar && puedeDilig && (
-        <button type="button" className="vc-btn vc-btn-cta" disabled={busy}
+      {/* Una PENDIENTE también se puede tomar directamente, sin asignarla antes
+          (2026-09-19): al guardar, el payload estampa FECHA ASIGNACION VISITA con
+          la fecha de visita (nueva-visita.jsx, posición O), así que el conteo de
+          días de gestión de completarRegistro no se queda sin base.
+          Para el admin es la acción secundaria — su CTA sigue siendo Asignar,
+          porque delegar es lo habitual; el inspector solo ve Iniciar. */}
+      {est !== 'COMPLETADO' && onContinuar && puedeDilig && (
+        <button type="button" disabled={busy}
+          className={'vc-btn' + (est === 'PENDIENTE' && esAdmin ? '' : ' vc-btn-cta')}
           onClick={() => onContinuar(f._idx, f)}>
           <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar' : 'Iniciar'}
         </button>
       )}
       {/* Regla del diligenciador: al co-asignado se le dice quién la lleva
           en vez del botón. Tiene que caber en esta fila sin romperla. */}
-      {est !== 'PENDIENTE' && est !== 'COMPLETADO' && onContinuar && !puedeDilig && (
+      {est !== 'COMPLETADO' && onContinuar && !puedeDilig && (
         <span className="vc-dilig">Diligencia {_primerVisitador(f)}</span>
       )}
 
