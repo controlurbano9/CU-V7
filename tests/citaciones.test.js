@@ -24,7 +24,7 @@ const hay = fs.existsSync(BACKEND);
 const ctx = vm.createContext({ Number });
 if (hay) {
   const src = fs.readFileSync(BACKEND, 'utf8');
-  for (const nombre of ['_partirFechaCitacion', '_filaCitacion', '_claveCitacion', '_citOrden']) {
+  for (const nombre of ['_partirFechaCitacion', '_filaCitacion', '_claveCitacion', '_citOrden', '_direccionConBarrio']) {
     const re = new RegExp('function ' + nombre + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}');
     const fn = re.exec(src);
     assert.ok(fn, 'no se encontró ' + nombre + ' en apps_script_unificado.js');
