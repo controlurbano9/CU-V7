@@ -1331,10 +1331,7 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 @media (min-width: 1440px) {
   .pantalla.cn-pantalla {
     display: grid;
-    /* La semana se queda con todo el ancho que sobre: sus 5 columnas son lo
-       escaso, y Alertas es una lista de una línea por entrada. Antes 3fr/2fr
-       le daba a Alertas 420 px en 1366. */
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     column-gap: 24px;
     align-items: stretch;
     /* .pantalla tiene min-height: el align-content por defecto del grid
@@ -1389,7 +1386,10 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
   .pantalla.home-pantalla .home-2col {
     flex: 1 1 auto; min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    /* La semana se queda con todo el ancho que sobre: sus 5 columnas son lo
+       escaso, y Alertas es una lista de una línea por entrada. Antes 3fr/2fr
+       le daba a Alertas 420 px en 1366. */
+    grid-template-columns: minmax(0, 1fr) 260px;
     grid-template-rows: minmax(0, 1fr);
     column-gap: 24px;
   }

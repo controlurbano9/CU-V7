@@ -4241,17 +4241,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   ? <span className="spinner-btn" aria-hidden="true" />
                   : <Icon.Refresh size={18} />}
               </button>
-            </>) : (
-              /* Sin carpeta no hay dónde escribir; con carpeta pero cero
-                 fotos, «Generar» abriría un modal vacío (P3-4 del review). */
+            </>) : (fotosInfo.subidas > 0 ? (
+              /* Sin fotos en Drive el botón no se pinta: «Generar» abriría un
+                 modal vacío (P3-4 del review). Las fotos en cola tampoco
+                 cuentan — el modal lista lo que ya está en la carpeta. Antes
+                 solo se deshabilitaba si ADEMÁS faltaba la carpeta, así que con
+                 carpeta y cero fotos quedaba activo. */
               <button onClick={abrirModalFotos}
-                disabled={generacionBloqueada || cargandoFotos
-                  || (!d.idCarpetaFotos && fotosInfo.subidas === 0)}
+                disabled={generacionBloqueada || cargandoFotos}
                 aria-busy={generandoRF || cargandoFotos} className="btn-accion ent-btn">
                 {(generandoRF || cargandoFotos) && <span className="spinner-btn" aria-hidden="true" />}
                 Generar
               </button>
-            )}
+            ) : null)}
           </FilaEntregable>
 
         </>)}
@@ -4527,6 +4529,67 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 // ══════════════════════════════════════════════════════════════
 //   SECCIÓN FOTOS — subida + descripción IA
 // ══════════════════════════════════════════════════════════════
+
+// Compresión en el cliente (2026-09-24): la foto de cámara viajaba entera
+// (3-10 MB, +33 % por base64) por el salto de Apps Script. A 2000 px de lado
+// largo sobra: el registro fotográfico la pone a 10 cm de alto y el informe
+// F-GGO-43 usa la miniatura w1200. Queda en ~300-600 KB.
+const FOTO_LADO_MAX      = 2000;
+const FOTO_CALIDAD_JPEG  = 0.82;
+const FOTO_MAX_ORIGINAL  = 40 * 1024 * 1024;
+const FOTOS_CONCURRENCIA = 3;
+
+// Decodificar una foto de 12 MP ocupa ~50 MB de memoria: con tres a la vez un
+// Android de gama baja mata la pestaña. La compresión va de a una (tarda
+// ~200 ms) y lo que corre en paralelo es la subida, que es lo lento.
+let _fotoCompresionPrevia = Promise.resolve();
+function _comprimirFoto(file) {
+  const p = _fotoCompresionPrevia.then(function() { return _comprimirFotoAhora(file); });
+  _fotoCompresionPrevia = p.catch(function() {});
+  return p;
+}
+
+// Devuelve un File JPEG reducido, o el original si no se puede decodificar
+// (HEIC en escritorio: el backend lo rechaza igual que antes) o si comprimir
+// no lo achica. El <img> aplica la orientación EXIF al dibujar; el EXIF en sí
+// se pierde, y nada del sistema lo lee.
+async function _comprimirFotoAhora(file) {
+  let url = null;
+  try {
+    url = URL.createObjectURL(file);
+    const img = await new Promise(function(resolve, reject) {
+      const i = new Image();
+      i.onload  = function() { resolve(i); };
+      i.onerror = function() { reject(new Error('no se pudo decodificar')); };
+      i.src = url;
+    });
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) return file;
+    const k = Math.min(1, FOTO_LADO_MAX / Math.max(w, h));
+    if (k === 1 && file.type === 'image/jpeg' && file.size <= 1024 * 1024) return file;
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(w * k);
+    canvas.height = Math.round(h * k);
+    const ctx = canvas.getContext('2d');
+    // Fondo blanco: un PNG con transparencia saldría negro en JPEG.
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(function(resolve) {
+      canvas.toBlob(resolve, 'image/jpeg', FOTO_CALIDAD_JPEG);
+    });
+    canvas.width = canvas.height = 0;   // Safari iOS libera el buffer solo así
+    if (!blob || blob.size >= file.size) return file;
+    const nombre = (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], nombre, { type: 'image/jpeg' });
+  } catch (e) {
+    console.warn('[fotos] sin comprimir:', file && file.name, e && e.message);
+    return file;
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+
 function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
   const [subiendo, setSubiendo] = useStateNV(false);
   const [fotos, setFotos]       = useStateNV([]);  // [{ nombre, link, descripcion }]
@@ -4569,71 +4632,112 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
   function alSeleccionar(e) {
     const archivos = Array.from(e.target.files || []);
     if (!archivos.length) return;
-    // Filtrar por tamano
-    const validos = archivos.filter(function(f) { return f.size <= 8 * 1024 * 1024; });
+    // El tope de 8 MB se aplica DESPUÉS de comprimir (ver subirTodos): una
+    // foto de cámara de 10 MB queda en ~500 KB. Aquí solo se descarta lo
+    // absurdo, que además podría agotar la memoria del teléfono al decodificar.
+    const validos = archivos.filter(function(f) { return f.size <= FOTO_MAX_ORIGINAL; });
     const rechazados = archivos.length - validos.length;
     if (rechazados > 0) {
-      appAlert(rechazados + ' foto(s) superan 8MB y fueron excluidas.', { tono: 'aviso', titulo: 'Fotos grandes' });
+      appAlert(rechazados + ' foto(s) superan 40 MB y fueron excluidas.', { tono: 'aviso', titulo: 'Fotos grandes' });
     }
     if (validos.length === 0) return;
+    // `orden` fija el lugar en el registro fotográfico: con subidas en
+    // paralelo la fecha de creación en Drive ya no respeta la selección.
+    const t0 = Date.now();
+    const items = validos.map(function(f, i) { return { file: f, orden: t0 + i }; });
     // Acumular en lugar de sobrescribir: si el inspector selecciona más fotos
     // mientras se está subiendo el batch anterior, las nuevas se agregan a la
     // cola y se procesan a continuación (antes se perdían).
-    setCola(function(prev) { return prev.concat(validos); });
+    setCola(function(prev) { return prev.concat(items); });
     // Reset input para poder seleccionar los mismos archivos de nuevo
     if (inputRef.current) inputRef.current.value = '';
   }
 
-  // Ref con la cola actual — el while loop lee aquí para detectar nuevas
+  // Ref con la cola actual — los trabajadores leen aquí para detectar nuevas
   // adiciones después de iniciar la subida.
   const colaRef = React.useRef([]);
   React.useEffect(function() { colaRef.current = cola; }, [cola]);
 
-  // Subir cola secuencialmente cuando cambie
+  // Cancelar solo al desmontar. Antes el cleanup del effect de subida marcaba
+  // `cancelado` en cada cambio de sus dependencias — el propio
+  // setSubiendo(true) lo disparaba — y la subida avanzaba de a una foto por
+  // ciclo de render, por accidente.
+  const montadoRef = React.useRef(true);
+  React.useEffect(function() {
+    montadoRef.current = true;
+    return function() { montadoRef.current = false; };
+  }, []);
+
+  // Subir la cola, FOTOS_CONCURRENCIA a la vez. Cada llamada paga ~2-3 s fijos
+  // del salto /exec → /macros/echo de Google, que no dependen del tamaño.
   React.useEffect(function() {
     if (cola.length === 0 || subiendo) return;
-    var cancelado = false;
     async function subirTodos() {
       setSubiendo(true);
-      var i = 0;
+      var siguiente = 0, terminadas = 0, publicadas = 0;
       var fallidas = [];   // fotos que no se pudieron subir (antes fallaban en silencio)
-      // Loop dinámico: la cola puede crecer mientras subimos (ver alSeleccionar).
-      while (i < colaRef.current.length) {
-        if (cancelado) break;
-        var f = colaRef.current[i];
-        setProgreso('Subiendo ' + (i + 1) + '/' + colaRef.current.length + '...');
-        try {
-          var base64 = await _aBase64(f);
-          var r = await subirFotoConDescripcion(idCarpetaFotos, base64, f.type, '', f.name);
-          setFotos(function(prev) {
-            return prev.concat([{
+      // Resultado por posición en la cola: terminan en desorden pero la
+      // grilla se llena en el orden de selección (null = falló).
+      var resultados = [];
+      function publicarEnOrden() {
+        var nuevas = [];
+        while (publicadas < siguiente && resultados[publicadas] !== undefined) {
+          if (resultados[publicadas]) nuevas.push(resultados[publicadas]);
+          publicadas++;
+        }
+        if (nuevas.length) setFotos(function(prev) { return prev.concat(nuevas); });
+      }
+      function pintarProgreso() {
+        setProgreso('Subiendo ' + terminadas + '/' + colaRef.current.length + '...');
+      }
+      async function trabajador() {
+        // Loop dinámico: la cola puede crecer mientras subimos (ver alSeleccionar).
+        while (montadoRef.current && siguiente < colaRef.current.length) {
+          var i = siguiente++;
+          var item = colaRef.current[i];
+          try {
+            var f = await _comprimirFoto(item.file);
+            if (f.size > 8 * 1024 * 1024) throw new Error('supera 8 MB aun comprimida');
+            var base64 = await _aBase64(f);
+            var r = await subirFotoConDescripcion(idCarpetaFotos, base64, f.type, '', f.name, item.orden);
+            // Un ok:false del backend (p. ej. tipo no reconocido) antes entraba
+            // a la grilla como foto «subida» sin link.
+            if (!r || r.ok === false) throw new Error((r && r.error) || 'respuesta inválida');
+            resultados[i] = {
               nombre: r.nombre || f.name,
               link:   r.link,
               descripcion: r.descripcion || '',
               pendiente: !!r.encolado,  // sin red: foto pendiente de subir a Drive
               localId: r.localId || null,   // permite parchear el link cuando sincronice offline
-            }]);
-          });
-        } catch (err) {
-          console.warn('Error subiendo foto:', err);
-          fallidas.push(f.name || 'foto ' + (i + 1));
+            };
+          } catch (err) {
+            console.warn('Error subiendo foto:', err);
+            fallidas.push(item.file.name || 'foto ' + (i + 1));
+            resultados[i] = null;
+          }
+          terminadas++;
+          if (montadoRef.current) { publicarEnOrden(); pintarProgreso(); }
         }
-        i++;
       }
-      // Truncar la cola: si crecio durante el loop (alSeleccionar concurrente),
+      pintarProgreso();
+      var trabajadores = [];
+      for (var w = 0; w < FOTOS_CONCURRENCIA; w++) trabajadores.push(trabajador());
+      await Promise.all(trabajadores);
+      if (!montadoRef.current) return;
+      // Truncar la cola: si creció después de que los trabajadores terminaron,
       // dejar las nuevas para que el siguiente ciclo las procese.
-      setCola(function(prev) { return prev.slice(i); });
+      var procesadas = siguiente;
+      setCola(function(prev) { return prev.slice(procesadas); });
       setProgreso('');
       setSubiendo(false);
       // Antes el error solo iba a console.warn: la foto desaparecía de la lista
       // sin avisar y el inspector creía que estaba en Drive.
-      if (!cancelado && fallidas.length) {
+      if (fallidas.length) {
         appAlert('No se pudieron subir ' + fallidas.length + ' foto(s):\n• ' + fallidas.join('\n• ') +
                  '\n\nVuelva a seleccionarlas para reintentar.', { tono: 'error', titulo: 'Fotos no subidas' });
       }
     }
     subirTodos();
-    return function() { cancelado = true; };
   }, [cola.length, subiendo]);
 
   // Escuchar sincronización offline de fotos individuales

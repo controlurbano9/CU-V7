@@ -909,7 +909,10 @@ async function mejorarTexto(texto, perfil) {
 
 // Sube una foto a la subcarpeta Fotos de la visita.
 // Si falla por red, encola para sincronizar después.
-async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion, nombre) {
+// `orden`: lugar de la foto en el registro fotográfico (ms epoch + índice de
+// selección). Hace falta porque las fotos suben en paralelo y la fecha de
+// creación en Drive ya no respeta el orden elegido. Backend viejo lo ignora.
+async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion, nombre, orden) {
   const body = {
     accion: 'subirFoto',
     idCarpeta: idCarpetaFotos,
@@ -919,6 +922,7 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
     descripcion: descripcion || '',
     requestId: _nuevoRequestId(), // un reintento no duplica la foto en Drive
   };
+  if (orden != null) body.orden = orden;
   try {
     return await gasPost(body);
   } catch (e) {
