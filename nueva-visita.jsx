@@ -3207,11 +3207,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           const descripcion = await _describirFotoConReintento(fotoId);
           // Si el modal se cerró o se reabrió con OTRA lista, descartar este resultado.
           if (_modalFotosSesionRef.current !== sesion) return;
+          // Por id, no por posición: si el inspector reordenó o quitó fotos
+          // mientras llegaban las descripciones, `idx` ya apunta a otra foto
+          // (y tras quitar una, al último índice creaba una fila sin id).
           setModalFotos(function(prev) {
             if (!prev) return prev;
-            const arr = prev.slice();
-            arr[idx] = Object.assign({}, arr[idx], { descripcion: descripcion, descBusy: false });
-            return arr;
+            return prev.map(function(f) {
+              return f.id === fotoId ? Object.assign({}, f, { descripcion: descripcion, descBusy: false }) : f;
+            });
           });
         }
       }
@@ -4293,9 +4296,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   React.createElement('div', {
                     draggable: false,
                     onDragStart: function(e) {
-                      // Solo arrastrar desde el handle ≡
-                      var handle = e.target.closest('[data-draghandle]');
-                      if (!handle) { e.preventDefault(); return; }
+                      // Solo arrastrar desde el handle ≡. Eso ya lo garantiza que
+                      // la fila solo se vuelve draggable en el mousedown del
+                      // handle. Antes se buscaba el handle en e.target, pero en
+                      // dragstart el target es la FILA arrastrada, no donde se
+                      // agarró: nunca lo encontraba y cancelaba todo arrastre
+                      // en escritorio. Lo que sí se descarta es arrastrar texto
+                      // de un hijo (el input de la descripción).
+                      if (e.target !== e.currentTarget) { e.preventDefault(); return; }
                       setDragIdx(idx);
                       e.dataTransfer.effectAllowed = 'move';
                       try { e.dataTransfer.setData('text/plain', String(idx)); } catch(ex) {}
