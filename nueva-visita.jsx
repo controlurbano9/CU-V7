@@ -189,20 +189,20 @@ const _BARRIO_A_COMUNA_NORM = {};
 function _quitarTildes(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
 // Llama a describirFotoDesdeId y reintenta con backoff (4s, 8s) si el backend
-// marca rateLimited:true (429 de Gemini) — mismo comportamiento que su
-// contraparte en informe/index.html (mantener sincronizados). Sin reintento
-// para otros tipos de fallo: esos no se arreglan esperando.
-async function _describirFotoConReintento(fotoId) {
+// marca rateLimited:true (429 de Gemini). Sin reintento para otros tipos de
+// fallo: esos no se arreglan esperando. Devuelve null si no hay descripción —
+// nunca un texto de estado, que acababa impreso como pie en el documento.
+async function _describirFotoConReintento(fotoId, situacion, forzar) {
   for (let intento = 0; ; intento++) {
     let resp;
-    try { resp = await describirFotoDesdeId(fotoId); }
+    try { resp = await describirFotoDesdeId(fotoId, situacion, forzar); }
     catch (e) { resp = { ok: false, error: e.message }; }
-    if (resp.ok) return resp.descripcion || 'Sin descripcion';
+    if (resp.ok) return (resp.descripcion || '').trim() || null;
     if (resp.rateLimited && intento < 2) {
       await new Promise(r => setTimeout(r, 4000 * (intento + 1)));
       continue;
     }
-    return 'Sin descripcion';
+    return null;
   }
 }
 
@@ -3162,10 +3162,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // Paso 2 del F-GGO-46: Doc REGISTRO FOTOGRÁFICO con las fotos
   // ya subidas a la subcarpeta Fotos de la visita.
-  // Abre el modal de fotos: carga la lista de Drive, genera descripciones IA
-  // Generación de descripciones: throttle a 3 concurrentes para no saturar Gemini
-  // y sesionRef para descartar callbacks de una apertura anterior si el inspector
-  // cerró y reabrió el modal antes de que terminaran (ref declarado arriba).
+  // Abre el modal de fotos: carga la lista de Drive con la descripción ya
+  // guardada en cada archivo. La IA NO corre sola: la pide el inspector con
+  // «Describir las que faltan» o con ↻ por foto (describirFotosModal).
 
   async function abrirModalFotos() {
     if (!filaEditando) {
@@ -3184,47 +3183,47 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         setCargandoFotos(false);
         return;
       }
-      // Inicializar con descripciones vacias — se generan async
       const lista = r.fotos.map(function(f) {
-        return { id: f.id, nombre: f.nombre, link: f.link, descripcion: '', mimeType: f.mimeType, descBusy: true };
+        return { id: f.id, nombre: f.nombre, link: f.link, descripcion: f.descripcion || '', mimeType: f.mimeType, descBusy: false };
       });
+      // Nueva sesión: las descripciones en vuelo de una apertura anterior se descartan.
       _modalFotosSesionRef.current++;
-      const sesion = _modalFotosSesionRef.current;
       setModalFotos(lista);
       setModalFotosTotal(lista.length);
       setCargandoFotos(false);
-      // Throttle: hasta 3 descripciones simultaneas (Gemini rate-limit friendly).
-      // Mismo comportamiento que describirFotosConIA() en informe/index.html
-      // (mantener sincronizados) — incluye reintento con backoff si el backend
-      // reporta rateLimited:true (429), en vez de darse por vencido de una.
-      const MAX_CONC = 3;
-      let next = 0;
-      async function worker() {
-        while (true) {
-          const idx = next++;
-          if (idx >= lista.length) return;
-          const fotoId = lista[idx].id;
-          const descripcion = await _describirFotoConReintento(fotoId);
-          // Si el modal se cerró o se reabrió con OTRA lista, descartar este resultado.
-          if (_modalFotosSesionRef.current !== sesion) return;
-          // Por id, no por posición: si el inspector reordenó o quitó fotos
-          // mientras llegaban las descripciones, `idx` ya apunta a otra foto
-          // (y tras quitar una, al último índice creaba una fila sin id).
-          setModalFotos(function(prev) {
-            if (!prev) return prev;
-            return prev.map(function(f) {
-              return f.id === fotoId ? Object.assign({}, f, { descripcion: descripcion, descBusy: false }) : f;
-            });
-          });
-        }
-      }
-      const workers = [];
-      for (let w = 0; w < MAX_CONC; w++) workers.push(worker());
-      Promise.all(workers); // sin await — no bloquear el cierre del try
     } catch (e) {
       await appAlert('Error cargando fotos: ' + e.message, { tono: 'error', titulo: 'Error' });
       setCargandoFotos(false);
     }
+  }
+
+  // Describe con IA las fotos `ids`, hasta 3 a la vez (rate-limit de Gemini).
+  // La situación encontrada orienta el prompt. `forzar` salta la caché de Drive (↻).
+  async function describirFotosModal(ids, forzar) {
+    if (!ids.length) return;
+    const sesion = _modalFotosSesionRef.current;
+    const situacion = d.actuacion || '';
+    // Por id, no por posición: el inspector puede reordenar o quitar mientras tanto.
+    function marcar(fotoId, cambios) {
+      setModalFotos(function(prev) {
+        if (!prev) return prev;
+        return prev.map(function(f) { return f.id === fotoId ? Object.assign({}, f, cambios) : f; });
+      });
+    }
+    ids.forEach(function(id) { marcar(id, { descBusy: true, descError: false }); });
+    let next = 0;
+    async function worker() {
+      while (next < ids.length) {
+        const fotoId = ids[next++];
+        const descripcion = await _describirFotoConReintento(fotoId, situacion, forzar);
+        if (_modalFotosSesionRef.current !== sesion) return;
+        if (descripcion) marcar(fotoId, { descripcion: descripcion, descBusy: false });
+        else marcar(fotoId, { descBusy: false, descError: true });
+      }
+    }
+    const workers = [];
+    for (let w = 0; w < 3; w++) workers.push(worker());
+    await Promise.all(workers);
   }
 
   // Confirmar y generar RF con las fotos en el orden del modal
@@ -3243,7 +3242,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const payload = Object.assign({ accion: 'generarRegistroFotos', regenerar: true, seleccionExplicita: true }, _construirDatosF46());
       // Enviar array de fotos con fileId y descripcion editada
       payload.fotos = modalFotos.map(function(f) {
-        return { fileId: f.id, descripcion: f.descripcion || '' };
+        return { fileId: f.id, descripcion: (f.descripcion || '').trim() };
       });
       const r = await gasPost(payload);
       const link = r.linkDoc;
@@ -4279,6 +4278,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 16 }}>
               Arrastra desde el icono ≡ para reordenar. La línea indica donde se insertará la foto.
             </div>
+            {(function() {
+              // A demanda: la IA solo describe lo que el inspector pide.
+              var faltan = modalFotos.filter(function(f) { return !f.descBusy && !(f.descripcion || '').trim(); });
+              var ocupado = modalFotos.some(function(f) { return f.descBusy; });
+              if (!faltan.length && !ocupado) return null;
+              return (
+                <button type="button" className="btn-neutro" style={{ width: '100%', marginBottom: 12 }}
+                  disabled={ocupado} aria-busy={ocupado}
+                  onClick={function() { describirFotosModal(faltan.map(function(f) { return f.id; }), false); }}>
+                  {ocupado ? 'Describiendo…' : '✨ Describir las que faltan (' + faltan.length + ')'}
+                </button>
+              );
+            })()}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
               {modalFotos.map(function(foto, idx) {
@@ -4459,14 +4471,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                       React.createElement('input', {
                         type: 'text',
                         value: foto.descripcion,
-                        placeholder: foto.descBusy ? 'Generando...' : 'Descripcion',
+                        placeholder: foto.descBusy ? 'Describiendo…'
+                          : foto.descError ? 'No se pudo describir, escríbela o prueba ↻'
+                          : 'Descripción (opcional)',
                         disabled: foto.descBusy,
                         onChange: function(e) {
                           var val = e.target.value;
                           setModalFotos(function(prev) {
-                            var next = prev.slice();
-                            next[idx] = Object.assign({}, next[idx], { descripcion: val });
-                            return next;
+                            return prev.map(function(f) {
+                              return f.id === foto.id ? Object.assign({}, f, { descripcion: val, descError: false }) : f;
+                            });
                           });
                         },
                         // Reimplementaba .input-campo a ~28px de alto, justo al
@@ -4475,6 +4489,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                         style: { width: '100%', fontSize: 14, padding: '9px 12px' }
                       })
                     ),
+                    // Describir de nuevo con IA (salta la caché de Drive)
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn-icono',
+                      title: 'Describir de nuevo con IA',
+                      'aria-label': 'Describir de nuevo con IA la foto ' + (idx + 1),
+                      disabled: foto.descBusy,
+                      onClick: function(e) { e.stopPropagation(); describirFotosModal([foto.id], true); },
+                      style: { marginLeft: 4 }
+                    }, '↻'),
                     // Eliminar foto
                     React.createElement('button', {
                       type: 'button',
@@ -4505,13 +4529,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               <button onClick={function() { setModalFotos(null); }}
                 className="btn-neutro" style={{ flex: 1 }}>Cancelar</button>
               <button onClick={confirmarYGenerarRF}
-                disabled={modalFotos.length === 0 || modalFotos.some(function(f) { return f.descBusy; })}
-                aria-busy={modalFotos.some(function(f) { return f.descBusy; })}
+                disabled={modalFotos.length === 0}
                 className="btn-principal" style={{ flex: 2, margin: 0, padding: 12, fontSize: 14 }}>
                 {modalFotos.length === 0
                   ? 'No hay fotos'
-                  : modalFotos.some(function(f) { return f.descBusy; })
-                    ? <><span className="spinner-btn" aria-hidden="true" /> Generando descripciones…</>
                     // Si se quitaron fotos, el texto lo dice: sin esto el inspector
                     // quitaba 13 de 25 y el botón seguía igual — nada confirmaba
                     // que la exclusión surtiría efecto en el documento.

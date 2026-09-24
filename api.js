@@ -967,24 +967,25 @@ async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden) {
   }
 }
 
-// Genera descripción de una foto con Gemini (vía webhook).
-async function describirFotoConIA(base64, mime) {
-  const d = await gasPost({ accion: 'describirFoto', base64, mime });
-  return d.descripcion || '';
-}
-
 // Lista las fotos de una carpeta de Drive (sin base64, solo metadata).
 async function listarFotosActa(idCarpetaFotos) {
   return gasGet({ accion: 'listarFotosActa', idCarpeta: idCarpetaFotos });
 }
 
 // Describe una foto por fileId usando Gemini Vision (thumbnail 600px).
-// NO pasa por gasGet: ese lanza al ver ok:false y se llevaba consigo el flag
-// rateLimited que el caller usa para reintentar con backoff 4s/8s — el
-// reintento era código muerto y un 429 de Gemini se trataba como fallo final.
-async function describirFotoDesdeId(fileId) {
-  const qs = new URLSearchParams(_conCredencialesSesion({ accion: 'describirFotoDesdeId', fileId })).toString();
-  const r = await fetch(CFG.webhook + '?' + qs);
+// POST porque lleva la situación encontrada, que puede traer nombres y no
+// debe ir en la URL. `forzar` salta la caché de Drive (↻ del modal).
+// NO pasa por gasPost: _llamarWebhook lanza al ver ok:false y se llevaba el
+// flag rateLimited que el caller usa para reintentar con backoff 4s/8s.
+async function describirFotoDesdeId(fileId, situacion, forzar) {
+  const cuerpo = JSON.stringify(_conCredencialesSesion({
+    accion: 'describirFotoDesdeId', fileId, situacion: situacion || '', forzar: !!forzar,
+  }));
+  const r = await fetch(CFG.webhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: cuerpo,
+  });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return await r.json();
 }
@@ -1400,7 +1401,7 @@ Object.assign(window, {
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,
-  subirFotoConDescripcion, describirFotoConIA,
+  subirFotoConDescripcion,
   subirOrdenPolicia, cargarJsPDF,
   obtenerPdfsSolicitud, subirSolicitudUnificada, armarSolicitudUnificada,
   listarFotosActa, describirFotoDesdeId,
