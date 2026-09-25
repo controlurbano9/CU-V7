@@ -1267,7 +1267,12 @@ function _construirPayloadF43Plantilla(tFinal) {
     idCarpetaVisita:         V6_CTX.idCarpeta,
     fila:                    V6_CTX.fila,
     radicado:                V6_CTX.radicado || 'informe',
-    regenerar:               false
+    // Siempre true: llegar aquí es haber recorrido el wizard y pedir un informe
+    // nuevo. Con false el backend devolvía el F-GGO-43 que ya estuviera en la
+    // carpeta (yaExistia), así que el ↻ «Regenerar informe» entregaba el mismo
+    // documento de antes — p. ej. uno que salió sin fotos. El anterior va a la
+    // papelera de Drive, no se borra.
+    regenerar:               true
   });
 }
 
@@ -1281,6 +1286,9 @@ async function generarInformeF43ViaPlantilla(tFinal) {
   if (!V6_CTX.fila || !V6_CTX.idCarpeta) {
     throw new Error('La plantilla oficial requiere una visita asociada. Sin ella, use el camino de descarga local (desactive USAR_PLANTILLA_F43).');
   }
+  // Red de seguridad: si la carga automática falló o no terminó, se intenta
+  // otra vez antes de mandar el informe sin registro fotográfico.
+  if (_nFotosEnLista() === 0) await cargarFotosDeVisita();
   var payload = _construirPayloadF43Plantilla(tFinal);
   var r = await fetch(WH, {
     method: 'POST',
@@ -3462,7 +3470,24 @@ var fotoCount = 0;
 // ── Cargar fotos desde la carpeta Drive de la visita ─────────────────────────
 //  Solo lista y crea tarjetas. El analisis IA es opcional (boton "Describir
 //  con IA") y el inspector puede editar descripciones y reordenar manualmente.
-async function cargarFotosDeVisita() {
+// Una sola carga a la vez: la automática del arranque y la de respaldo de
+// generarInformeF43ViaPlantilla() pueden coincidir con un clic en el botón.
+var _cargaFotosEnCurso = null;
+function cargarFotosDeVisita() {
+  if (!_cargaFotosEnCurso) {
+    _cargaFotosEnCurso = _cargarFotosDeVisita().finally(function() { _cargaFotosEnCurso = null; });
+  }
+  return _cargaFotosEnCurso;
+}
+
+// Hay que cargarlas solas: antes solo entraban con el botón y el borrador IA
+// (que reabre en el momento 5) no las restaura, así que el informe salía
+// «Sin fotografías cargadas» con la carpeta llena.
+function _nFotosEnLista() {
+  return document.querySelectorAll('#fotos-list > div[id^="foto-"]').length;
+}
+
+async function _cargarFotosDeVisita() {
   var btn    = document.getElementById('btn-cargar-fotos');
   var status = document.getElementById('fotos-status');
   if (!V6_CTX.idCarpeta) {
@@ -3496,7 +3521,9 @@ async function cargarFotosDeVisita() {
     fotoCount = 0;
     fotos.forEach(function(f) {
       var thumbUrl = 'https://drive.google.com/thumbnail?id=' + f.id + '&sz=w400';
-      crearTarjetaFoto({ url: thumbUrl, descripcion: '', fileId: f.id });
+      // La Descripción de Drive es la caché de describirFotoDesdeId y guarda
+      // lo que el inspector corrigió en el registro fotográfico.
+      crearTarjetaFoto({ url: thumbUrl, descripcion: f.descripcion || '', fileId: f.id });
     });
     status.textContent = fotos.length + ' fotos cargadas. Use ↑↓ para reordenar, "Describir" para autocompletar.';
     status.style.color = 'var(--verde-dark)';
@@ -4082,6 +4109,9 @@ function _hoyLocal() {
   //  Si llegan params, sobrescriben lo cargado de localStorage para
   //  reflejar siempre los datos frescos de la visita seleccionada.
   prefillDesdeURL();
+
+  // Fotos de la carpeta de la visita, sin esperar al botón del momento 3.
+  if (V6_CTX.idCarpeta) cargarFotosDeVisita();
 
   // Imagen de localización: se genera apenas hay dirección (o coords).
   setTimeout(function() {
