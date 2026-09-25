@@ -2056,6 +2056,17 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     return () => { cancelado = true; };
   }, [fase]);
 
+  // Nombre del usuario logueado tal como va en VISITADOR(ES) (col A de
+  // USUARIOS), o '' si no es inspector de la lista (p. ej. un admin puro).
+  function _miVisitador() {
+    if (!usuario || !usuario.usuario) return '';
+    const u = String(usuario.usuario).toUpperCase().trim();
+    const exacto = visitadoresDin.find(v => v.val.toUpperCase() === u);
+    if (exacto) return exacto.val;
+    const m = visitadoresDin.find(v => v.val.includes(u.split(' ')[0]));
+    return m ? m.val : '';
+  }
+
   // Prefijar visitador con el usuario logueado (si está en la lista).
   // Excepción: las visitas de seguimiento se asignan a alguien a propósito,
   // así que ahí el campo queda vacío y el inspector se elige.
@@ -2063,8 +2074,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (fase !== 'formulario') return; // no ejecutar en fase modal
     if (datosIniciales && datosIniciales['_seguimiento']) return;
     if (!d.visitador && usuario) {
-      const m = visitadoresDin.find(v => v.val.includes(usuario.usuario.toUpperCase().split(' ')[0]));
-      if (m) setCampo('visitador', m.val);
+      const m = _miVisitador();
+      if (m) setCampo('visitador', m);
     }
   }, [fase, visitadoresDin]); // re-prefija si la lista cambia tras carga dinámica
 
@@ -2636,7 +2647,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     try {
       // Resolver barrio final (si es "Otro", usar el texto libre)
       const barrioFinal = d.barrio === '__otro__' ? (barrioOtro || '') : d.barrio;
-      const dFinal = { ...d, barrio: barrioFinal };
+      // Quien inicia la visita (primer guardado: PENDIENTE/ASIGNADO → INICIADO)
+      // queda de diligenciador, aunque estuviera asignada a otro. Después no se
+      // toca: un co-asignado que la edite no se la quita al que la empezó.
+      const esPrimerInicio = estadoVisita !== 'INICIADO' && estadoVisita !== 'COMPLETADO';
+      const visitadorFinal = esPrimerInicio
+        ? ponerDiligenciadorPrimero(d.visitador, _miVisitador())
+        : d.visitador;
+      const dFinal = { ...d, barrio: barrioFinal, visitador: visitadorFinal };
 
       // 1. Crear carpeta Drive si aún no existe
       let linkDrive = d.linkDrive || '';
@@ -2684,6 +2702,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       setD(prev => ({
         ...prev,
         barrio: barrioFinal,
+        visitador: visitadorFinal,
         linkDrive,
         idCarpetaVisita,
         idCarpetaFotos,

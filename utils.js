@@ -248,6 +248,20 @@ function primerVisitador(visitadores) {
   return String(visitadores || '').split(/\s*[\/,]\s*/)[0].trim();
 }
 
+// Quien inicia la visita queda como diligenciador: se mueve (o se agrega) al
+// primer lugar de VISITADOR(ES) y el resto sigue como acompañante, en su orden.
+// Sin esto, abrir una visita asignada a otro y guardarla la dejaba a nombre
+// del asignado, que nunca la empezó. Formato de salida: "A / B" (col R).
+function ponerDiligenciadorPrimero(visitadores, nombre) {
+  var partes = String(visitadores || '').split(/\s*\/\s*/)
+    .map(function(s) { return s.trim(); }).filter(Boolean);
+  var n = String(nombre || '').trim();
+  if (!n) return partes.join(' / ');
+  var nU = n.toUpperCase();
+  var resto = partes.filter(function(p) { return p.toUpperCase() !== nU; });
+  return [n].concat(resto).join(' / ');
+}
+
 // Regla del diligenciador aplicada a la escritura: solo el primer nombre de
 // VISITADOR(ES) puede diligenciar la visita, porque al pasar a INICIADO solo él
 // la sigue viendo. Un co-asignado que la iniciara la perdería de su lista y la
@@ -608,6 +622,7 @@ var _cuUtilsExports = {
   hoyDDMMAAAA: hoyDDMMAAAA,
   visitadoresBD: visitadoresBD,
   primerVisitador: primerVisitador,
+  ponerDiligenciadorPrimero: ponerDiligenciadorPrimero,
   puedeDiligenciar: puedeDiligenciar,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,
