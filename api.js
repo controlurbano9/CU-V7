@@ -431,7 +431,7 @@ const _snapBorrar  = clave        => _snapOperar('readwrite', s => s.delete(clav
 // 1,1 MB por el salto de Google que se cuelga, sin nada que mostrar mientras.
 let _visitasUltimas = null;   // último resultado servido (red o copia local)
 let _visitasDeRed = false;    // _visitasUltimas vino de la red en esta pestaña
-let _firmaVisitas = '';       // JSON de los values de _visitasUltimas
+let _firmaVisitas = '';       // JSON de values + filas de _visitasUltimas (detecta cambios)
 let _hashVisitas = '';        // firma (MD5) que dio el servidor para esos values; '' = no mandarla
 let _visitasSucias = false;   // hubo escritura desde la última descarga
 let _genVisitas = 0;          // sube con cada invalidarCache('visitas')
@@ -440,12 +440,18 @@ let _snapVisitasLeida = null; // promesa de la lectura única de IndexedDB
 let _resolverPrimeraCarga = null;
 const _primeraCargaVisitas = new Promise(res => { _resolverPrimeraCarga = res; });
 
-function _procesarVisitas(filas) {
+// `nums` (respuesta compacta del backend): número real de fila en el Sheet de
+// cada fila de datos. Sin él la hoja vino entera y la fila es la posición.
+// Es el número donde se escribe al guardar: nunca deducirlo de la posición
+// si el backend filtró filas.
+function _procesarVisitas(filas, nums) {
   if (!filas || !filas.length) return { headers: [], datos: [] };
   const headers = filas[0];
+  const conNums = Array.isArray(nums) && nums.length === filas.length - 1;
+  const jAt = headers.findIndex(h => (h || '').toString().trim().toUpperCase() === 'ATENCION PQR');
   const datos = filas.slice(1)
     .map((fila, i) => {
-      const obj = { _idx: i + 2 };
+      const obj = { _idx: conNums ? nums[i] : i + 2 };
       headers.forEach((h, j) => {
         const val = (fila[j] !== undefined && fila[j] !== null) ? fila[j].toString().trim() : '';
         obj[(h || '').toString().trim()] = val;
@@ -453,8 +459,21 @@ function _procesarVisitas(filas) {
       });
       return obj;
     })
-    .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '');
+    .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '')
+    // NO COMPETENCIA fuera de toda la app (decisión del usuario, 2026-09-25).
+    // El backend compacto ya no las manda; esto cubre la hoja entera.
+    .filter(o => jAt < 0 || !_esNoCompetencia(o[jAt]));
   return { headers, datos };
+}
+
+function _esNoCompetencia(v) {
+  return /NO\s+COMPETENCIA/.test(String(v == null ? '' : v).toUpperCase());
+}
+
+// Clave de cambio: values + números de fila (misma hoja con otras filas
+// omitidas también es un cambio, porque mueve los _idx).
+function _claveVisitas(json, nums) {
+  return json + '#' + (Array.isArray(nums) ? nums.join(',') : '');
 }
 
 // Última copia conocida sin tocar la red: memoria o, al arrancar, IndexedDB.
@@ -464,8 +483,9 @@ function _visitasLocales() {
     _snapVisitasLeida = _snapLeer(_SNAP_VISITAS).then(reg => {
       if (_visitasUltimas) return _visitasUltimas; // la red ganó mientras se leía
       if (!reg || typeof reg.json !== 'string') return null;
-      _visitasUltimas = _procesarVisitas(JSON.parse(reg.json));
-      _firmaVisitas = reg.json;
+      const nums = Array.isArray(reg.filas) ? reg.filas : null;
+      _visitasUltimas = _procesarVisitas(JSON.parse(reg.json), nums);
+      _firmaVisitas = _claveVisitas(reg.json, nums);
       _hashVisitas = typeof reg.firma === 'string' ? reg.firma : '';
       return _visitasUltimas;
     }).catch(() => null);
@@ -480,18 +500,20 @@ function _visitasLocales() {
 // firma y manda values como siempre.
 async function _pedirHojaVisitas() {
   const firma = _visitasUltimas ? _hashVisitas : '';
-  const params = { accion: 'leerHoja', hoja: CFG.hoja };
+  const params = { accion: 'leerHoja', hoja: CFG.hoja, compacto: '1' };
   if (firma) params.firma = firma;
   const d = await gasGet(params);
   if (d.sinCambios) {
     if (firma && firma === _hashVisitas && _visitasUltimas) return { sinCambios: true, firma };
     return _pedirHojaCompleta();
   }
-  return { values: d.values || [], firma: d.firma || '' };
+  return _respuestaHoja(d);
 }
 async function _pedirHojaCompleta() {
-  const d = await gasGet({ accion: 'leerHoja', hoja: CFG.hoja });
-  return { values: d.values || [], firma: d.firma || '' };
+  return _respuestaHoja(await gasGet({ accion: 'leerHoja', hoja: CFG.hoja, compacto: '1' }));
+}
+function _respuestaHoja(d) {
+  return { values: d.values || [], filas: Array.isArray(d.filas) ? d.filas : null, firma: d.firma || '' };
 }
 
 function _descargarVisitas() {
@@ -510,17 +532,18 @@ function _descargarVisitas() {
       return _visitasUltimas;
     }
     const values = r.values;
-    if (gen !== _genVisitas) return _procesarVisitas(values); // se entrega, no se guarda como vigente
+    if (gen !== _genVisitas) return _procesarVisitas(values, r.filas); // se entrega, no se guarda como vigente
     const json = JSON.stringify(values);
-    const cambio = json !== _firmaVisitas || !_visitasUltimas;
+    const clave = _claveVisitas(json, r.filas);
+    const cambio = clave !== _firmaVisitas || !_visitasUltimas;
     const firmaNueva = r.firma !== _hashVisitas;
-    if (cambio) _visitasUltimas = _procesarVisitas(values);
-    _firmaVisitas = json;
+    if (cambio) _visitasUltimas = _procesarVisitas(values, r.filas);
+    _firmaVisitas = clave;
     _hashVisitas = r.firma;
     _visitasDeRed = true;
     _visitasSucias = false;
     _cacheSet('visitas', _visitasUltimas);
-    if (cambio || firmaNueva) _snapGuardar(_SNAP_VISITAS, { json, firma: r.firma, ts: Date.now() });
+    if (cambio || firmaNueva) _snapGuardar(_SNAP_VISITAS, { json, filas: r.filas, firma: r.firma, ts: Date.now() });
     if (cambio) {
       try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
     }
@@ -1058,6 +1081,49 @@ async function describirFotoDesdeId(fileId, situacion, forzar) {
   return await r.json();
 }
 
+// Describe varias fotos en UNA llamada (el backend baja miniaturas y pide a
+// Gemini en paralelo): el salto /exec → /macros/echo se paga una vez y no
+// una por foto. `ids` (modal del RF) o `idCarpeta` (solo las que no tienen
+// descripción). Responde { ok, resultados: [{ id, ok, descripcion, rateLimited }] }.
+// Mismo trato que describirFotoDesdeId: fetch directo, sin gasPost.
+async function describirFotos(opciones) {
+  const o = opciones || {};
+  const cuerpo = JSON.stringify(_conCredencialesSesion({
+    accion: 'describirFotos',
+    ids: o.ids || [], idCarpeta: o.idCarpeta || '',
+    situacion: o.situacion || '', forzar: !!o.forzar,
+  }));
+  const r = await fetch(CFG.webhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: cuerpo,
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return await r.json();
+}
+
+// Pre-descripción en segundo plano al terminar una subida de fotos: cuando
+// el inspector abre el registro fotográfico, las descripciones ya están en la
+// caché de Drive. Una por carpeta a la vez: si llega otra subida mientras
+// corre, la siguiente espera a la anterior (no se describe dos veces lo mismo).
+// El modal del RF consulta `descripcionesEnCurso` para esperarla en vez de
+// lanzar pedidos duplicados.
+const _descFotosEnCurso = {};
+function preDescribirFotosCarpeta(idCarpeta, situacion) {
+  if (!idCarpeta) return Promise.resolve(null);
+  const previo = _descFotosEnCurso[idCarpeta] || Promise.resolve();
+  const p = previo
+    .catch(function() {})
+    .then(function() { return describirFotos({ idCarpeta: idCarpeta, situacion: situacion }); })
+    .catch(function(e) { return { ok: false, error: e.message }; });
+  _descFotosEnCurso[idCarpeta] = p;
+  p.then(function() { if (_descFotosEnCurso[idCarpeta] === p) delete _descFotosEnCurso[idCarpeta]; });
+  return p;
+}
+function descripcionesEnCurso(idCarpeta) {
+  return (idCarpeta && _descFotosEnCurso[idCarpeta]) || null;
+}
+
 // ── Consulta POT (100% cliente, igual que producción V2) ───────────
 // Cruza un punto (lat,lon) contra los GeoJSONs publicados en GitHub
 // `controlurbano9/pot-bello/main/*.geojson` usando turf.js (cargado
@@ -1473,6 +1539,7 @@ Object.assign(window, {
   subirOrdenPolicia, cargarJsPDF,
   obtenerPdfsSolicitud, subirSolicitudUnificada, armarSolicitudUnificada,
   listarFotosActa, describirFotoDesdeId,
+  describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,
   buscarCatastroGPS, formatearCOP,
   SESSION_V6: SESSION,

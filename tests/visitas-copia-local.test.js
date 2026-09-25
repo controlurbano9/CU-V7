@@ -183,3 +183,47 @@ test('backend sin soporte (no devuelve firma): se sigue bajando la hoja sin romp
   await tic();
   assert.equal(m.pedidos[1].params.firma, undefined);
 });
+
+// ── Respuesta compacta (sin filas vacías ni NO COMPETENCIA) ─────────────
+
+test('pide la respuesta compacta y usa el número real de fila, no la posición', async () => {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  assert.equal(m.pedidos[0].params.compacto, '1');
+  // El backend omitió las filas 3 y 4 del Sheet: la segunda visita es la 5.
+  m.pedidos[0].resolve({ ok: true, values: BD, filas: [2, 5], firma: 'c1' });
+  const res = await p0;
+  assert.deepEqual(res.datos.map(o => o._idx), [2, 5]);
+  assert.equal(res.datos[1]['RADICADO'], 'R-2');
+  m.invalidarCache('visitas');
+  m.parchear(5, ['R-2', 'INICIADO', ''], '');
+  const res2 = await m.leerVisitas();
+  assert.equal(res2.datos.find(o => o._idx === 5)['ESTADO VISITA'], 'INICIADO');
+  assert.equal(res2.datos.find(o => o._idx === 2)['ESTADO VISITA'], 'PENDIENTE');
+});
+
+test('mismos values con otras filas omitidas cuenta como cambio', async () => {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  m.pedidos[0].resolve({ ok: true, values: BD, filas: [2, 5], firma: 'c1' });
+  await p0;
+  const p1 = m.leerVisitas({ forzar: true });
+  await tic();
+  m.pedidos[1].resolve({ ok: true, values: BD, filas: [2, 6], firma: 'c2' });
+  const res = await p1;
+  assert.deepEqual(res.datos.map(o => o._idx), [2, 6]);
+});
+
+test('NO COMPETENCIA queda fuera aunque el backend mande la hoja entera', async () => {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  const bd = BD.map(f => f.slice());
+  bd[2][0] = ' No competencia ';
+  m.pedidos[0].resolve(bd);
+  const res = await p0;
+  assert.deepEqual(res.datos.map(o => o['RADICADO']), ['R-1']);
+  assert.equal(res.datos[0]._idx, 2);
+});
