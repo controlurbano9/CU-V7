@@ -432,6 +432,7 @@ const _snapBorrar  = clave        => _snapOperar('readwrite', s => s.delete(clav
 let _visitasUltimas = null;   // último resultado servido (red o copia local)
 let _visitasDeRed = false;    // _visitasUltimas vino de la red en esta pestaña
 let _firmaVisitas = '';       // JSON de los values de _visitasUltimas
+let _hashVisitas = '';        // firma (MD5) que dio el servidor para esos values; '' = no mandarla
 let _visitasSucias = false;   // hubo escritura desde la última descarga
 let _genVisitas = 0;          // sube con cada invalidarCache('visitas')
 let _visitasEnVuelo = null;   // { gen, promesa } — una sola descarga compartida
@@ -465,10 +466,32 @@ function _visitasLocales() {
       if (!reg || typeof reg.json !== 'string') return null;
       _visitasUltimas = _procesarVisitas(JSON.parse(reg.json));
       _firmaVisitas = reg.json;
+      _hashVisitas = typeof reg.firma === 'string' ? reg.firma : '';
       return _visitasUltimas;
     }).catch(() => null);
   }
   return _snapVisitasLeida;
+}
+
+// «¿Cambió algo?»: con copia en mano se manda su firma y, si la BD no cambió,
+// el backend responde sinCambios (~100 bytes) en vez de los 1,1 MB de la hoja.
+// Si la copia se tocó mientras el pedido viajaba (parche local), un sinCambios
+// ya no la describe: se pide la hoja entera. Backend sin soporte: ignora la
+// firma y manda values como siempre.
+async function _pedirHojaVisitas() {
+  const firma = _visitasUltimas ? _hashVisitas : '';
+  const params = { accion: 'leerHoja', hoja: CFG.hoja };
+  if (firma) params.firma = firma;
+  const d = await gasGet(params);
+  if (d.sinCambios) {
+    if (firma && firma === _hashVisitas && _visitasUltimas) return { sinCambios: true, firma };
+    return _pedirHojaCompleta();
+  }
+  return { values: d.values || [], firma: d.firma || '' };
+}
+async function _pedirHojaCompleta() {
+  const d = await gasGet({ accion: 'leerHoja', hoja: CFG.hoja });
+  return { values: d.values || [], firma: d.firma || '' };
 }
 
 function _descargarVisitas() {
@@ -476,17 +499,29 @@ function _descargarVisitas() {
   // Todas las pantallas (y "Recargar") comparten la descarga en curso, salvo
   // que haya habido una escritura después de lanzarla: esa podría no incluirla.
   if (_visitasEnVuelo && _visitasEnVuelo.gen === gen) return _visitasEnVuelo.promesa;
-  const promesa = leerHoja(CFG.hoja).then(values => {
+  const promesa = _pedirHojaVisitas().then(r => {
+    if (r.sinCambios) {
+      // La BD sigue siendo la que describe la copia: queda confirmada de red.
+      if (gen === _genVisitas) {
+        _visitasDeRed = true;
+        _visitasSucias = false;
+        _cacheSet('visitas', _visitasUltimas);
+      }
+      return _visitasUltimas;
+    }
+    const values = r.values;
     if (gen !== _genVisitas) return _procesarVisitas(values); // se entrega, no se guarda como vigente
     const json = JSON.stringify(values);
     const cambio = json !== _firmaVisitas || !_visitasUltimas;
+    const firmaNueva = r.firma !== _hashVisitas;
     if (cambio) _visitasUltimas = _procesarVisitas(values);
     _firmaVisitas = json;
+    _hashVisitas = r.firma;
     _visitasDeRed = true;
     _visitasSucias = false;
     _cacheSet('visitas', _visitasUltimas);
+    if (cambio || firmaNueva) _snapGuardar(_SNAP_VISITAS, { json, firma: r.firma, ts: Date.now() });
     if (cambio) {
-      _snapGuardar(_SNAP_VISITAS, { json, ts: Date.now() });
       try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
     }
     return _visitasUltimas;
@@ -542,6 +577,7 @@ function _parchearVisitaLocal(fila, valores, ultimaMod) {
     ? base.datos.map(o => (o === previa ? obj : o))
     : base.datos.concat([obj]).sort((a, b) => a._idx - b._idx);
   _visitasUltimas = { headers, datos };
+  _hashVisitas = ''; // la copia ya no es la que firmó el servidor
   try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
 }
 
@@ -582,7 +618,7 @@ async function obtenerFilaVigente(fila, respaldo) {
 }
 
 function _olvidarVisitasLocales() {
-  _visitasUltimas = null; _visitasDeRed = false; _firmaVisitas = '';
+  _visitasUltimas = null; _visitasDeRed = false; _firmaVisitas = ''; _hashVisitas = '';
   _snapVisitasLeida = null;
   _snapBorrar(_SNAP_VISITAS);
 }

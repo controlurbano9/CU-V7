@@ -23,7 +23,9 @@ assert.ok(ini > 0 && fin > ini, 'no se encontró el bloque de caché de visitas 
 
 const HEADERS = ['ATENCION PQR', 'RADICADO', 'ESTADO VISITA', 'OBS', 'ULTIMA_MODIFICACION'];
 
-// Contexto nuevo por prueba: leerHoja la controla la prueba (pedidos en vuelo).
+// Contexto nuevo por prueba: gasGet lo controla la prueba (pedidos en vuelo).
+// resolve(values) simula al backend nuevo (values + firma); resolve(objeto)
+// entrega esa respuesta tal cual (sinCambios, backend viejo sin firma...).
 function montar() {
   const pedidos = [];
   const eventos = [];
@@ -32,13 +34,19 @@ function montar() {
     console,
     CustomEvent: function (tipo) { this.type = tipo; },
     window: { dispatchEvent: e => eventos.push(e.type) },
-    leerHoja: () => new Promise((resolve, reject) => pedidos.push({ resolve, reject })),
+    gasGet: params => new Promise((res, reject) => pedidos.push({
+      params,
+      reject,
+      resolve: v => res(Array.isArray(v) ? { ok: true, values: v, firma: firmaDe(v) } : v),
+    })),
   });
   vm.runInContext(src.slice(ini, fin), ctx);
   const f = n => vm.runInContext(n, ctx);
   return { pedidos, eventos, leerVisitas: f('leerVisitas'), invalidarCache: f('invalidarCache'),
     parchear: f('_parchearVisitaLocal') };
 }
+
+const firmaDe = v => 'h' + JSON.stringify(v).length;
 
 const BD = [HEADERS,
   ['', 'R-1', 'PENDIENTE', '', '2026-09-20T10:00:00.000Z'],
@@ -112,4 +120,66 @@ test('la descarga posterior reemplaza la copia parchada por la del servidor', as
   await tic(); await tic();
   const res = await m.leerVisitas();
   assert.equal(res.datos.find(o => o._idx === 2)['OBS'], 'del servidor');
+});
+
+// ── «¿Cambió algo?» ──────────────────────────────────────────────
+
+async function conCopiaDeRed() {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  m.pedidos[0].resolve(BD);
+  await p0;
+  return m;
+}
+
+test('el refresco manda la firma de la copia y sinCambios la confirma sin re-pintar', async () => {
+  const m = await conCopiaDeRed();
+  assert.equal(m.pedidos[0].params.firma, undefined, 'sin copia no hay firma que mandar');
+  const eventos = m.eventos.length;
+  const p = m.leerVisitas({ forzar: true });
+  await tic();
+  assert.equal(m.pedidos[1].params.firma, firmaDe(BD));
+  m.pedidos[1].resolve({ ok: true, sinCambios: true, firma: firmaDe(BD) });
+  const res = await p;
+  assert.equal(res.datos.length, 2);
+  assert.equal(m.eventos.length, eventos, 'sin cambios no se re-pinta');
+  await m.leerVisitas(); // quedó confirmada: sirve de caché, sin pedido nuevo
+  assert.equal(m.pedidos.length, 2);
+});
+
+test('con la copia parchada no se manda firma: se pide la hoja entera', async () => {
+  const m = await conCopiaDeRed();
+  m.invalidarCache('visitas');
+  m.parchear(2, ['R-1', 'INICIADO', ''], '');
+  m.leerVisitas({ forzar: true });
+  await tic();
+  assert.equal(m.pedidos[1].params.firma, undefined);
+});
+
+test('si la copia se parcha con el pedido en vuelo, un sinCambios no se acepta', async () => {
+  const m = await conCopiaDeRed();
+  const p = m.leerVisitas({ forzar: true });
+  await tic();
+  assert.equal(m.pedidos[1].params.firma, firmaDe(BD));
+  m.parchear(2, ['R-1', 'INICIADO', ''], ''); // llega un guardado mientras viaja
+  m.pedidos[1].resolve({ ok: true, sinCambios: true, firma: firmaDe(BD) });
+  await tic();
+  assert.equal(m.pedidos.length, 3, 'debe pedir la hoja completa');
+  assert.equal(m.pedidos[2].params.firma, undefined);
+  const servidor = BD.map(f => f.slice()); servidor[1][2] = 'INICIADO';
+  m.pedidos[2].resolve(servidor);
+  const res = await p;
+  assert.equal(res.datos.find(o => o._idx === 2)['ESTADO VISITA'], 'INICIADO');
+});
+
+test('backend sin soporte (no devuelve firma): se sigue bajando la hoja sin romper nada', async () => {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  m.pedidos[0].resolve({ ok: true, values: BD });
+  await p0;
+  m.leerVisitas({ forzar: true });
+  await tic();
+  assert.equal(m.pedidos[1].params.firma, undefined);
 });
