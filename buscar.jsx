@@ -89,6 +89,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [datos, setDatos]     = useStateB([]);
   const [cargando, setCargando] = useStateB(true);
   const [error, setError]     = useStateB('');
+  const [refrescando, setRefrescando] = useStateB(false);
 
   // Paginación incremental
   const LIMITE_INICIAL = 50;
@@ -143,8 +144,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   // Declarada ANTES de las acciones admin de abajo: sus useCallback dependen
   // de `cargar` en el array de deps, y siendo const, referenciarla antes de
   // su propia declaración revienta con "Cannot access before initialization".
-  const cargar = useCallbackB(async (forzar, silencioso) => {
-    if (!silencioso) { setCargando(true); setError(''); }
+  // conservar=true deja la lista a la vista mientras llega la red (botón Recargar).
+  const cargar = useCallbackB(async (forzar, silencioso, conservar) => {
+    if (!silencioso) { if (!conservar) setCargando(true); setError(''); }
     try {
       const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
       const mios = esAdmin ? all : all.filter(f => {
@@ -159,6 +161,16 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
 
   // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
   useEffectB(() => suscribirVisitas(() => cargar(false, true)), [cargar]);
+
+  // «Recargar» con datos ya pintados no los esconde tras el spinner: solo gira
+  // el ícono hasta que responde la red. Tras asignar/completar sí se espera con
+  // spinner (cargar(true)): una fila vieja a la vista invitaría a repetir la acción.
+  async function recargar() {
+    if (refrescando) return;
+    setRefrescando(true);
+    await cargar(true, false, datos.length > 0);
+    setRefrescando(false);
+  }
 
   // ── Acciones admin: asignar, desasignar, completar ──
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
@@ -615,7 +627,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             </select>
           </label>
 
-          <button type="button" className="buscar-recargar" onClick={() => cargar(true)}
+          <button type="button" className={'buscar-recargar' + (refrescando ? ' icono-girando' : '')}
+            onClick={recargar} disabled={refrescando} aria-busy={refrescando}
             title="Recargar datos (ignora la copia local)" aria-label="Recargar datos">
             <Icon.Refresh size={16} />
           </button>

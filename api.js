@@ -501,17 +501,48 @@ function _descargarVisitas() {
 // ── Leer BD VISITAS con headers → datos[{header:val, _idx}] ────
 // Sin opciones: copia de red de hace <60 s, o la última copia conocida al
 // instante (refrescándola por detrás). { forzar:true } espera a la red.
+// La copia se sirve también cuando está sucia (hubo una escritura): antes eso
+// dejaba Inicio en "Cargando…" justo al volver de guardar. Lo guardado desde
+// este dispositivo ya viene aplicado (_parchearVisitaLocal) y lo demás llega
+// con el refresco; abrir el formulario sigue esperando la red (obtenerFilaVigente).
 async function leerVisitas(opts) {
   if (opts && opts.forzar) return _descargarVisitas();
   const hit = _cacheGet('visitas');
   if (hit) return hit;
   const local = await _visitasLocales();
-  if (local && !_visitasSucias) {
+  if (local) {
     _descargarVisitas().catch(e => console.warn('[visitas] actualización en segundo plano: ' + e.message));
     return local;
   }
-  try { return await _descargarVisitas(); }
-  catch (e) { if (local) return local; throw e; } // sin red: mejor la copia que nada
+  return _descargarVisitas();
+}
+
+// Aplica a la copia en memoria lo que acaba de confirmar el servidor, para que
+// la lista muestre el guardado sin esperar la descarga completa. `valores` es
+// el payload posicional de guardarVisita (arranca en la columna B). No toca
+// _firmaVisitas: la próxima descarga trae la fila real y re-pinta si difiere.
+function _parchearVisitaLocal(fila, valores, ultimaMod) {
+  const base = _visitasUltimas;
+  fila = parseInt(fila, 10);
+  if (!base || !base.headers.length || !fila || !Array.isArray(valores)) return;
+  const headers = base.headers;
+  const previa = base.datos.find(o => o._idx === fila);
+  const obj = Object.assign({ _idx: fila }, previa);
+  if (!previa) headers.forEach((h, j) => { obj[(h || '').toString().trim()] = ''; obj[j] = ''; });
+  const poner = (j, v) => {
+    const val = (v !== undefined && v !== null) ? v.toString().trim() : '';
+    obj[(headers[j] || '').toString().trim()] = val;
+    obj[j] = val;
+  };
+  valores.forEach((v, i) => { if (i + 1 < headers.length) poner(i + 1, v); });
+  const jMod = headers.findIndex(h => (h || '').toString().trim() === 'ULTIMA_MODIFICACION');
+  if (jMod >= 0 && ultimaMod) poner(jMod, ultimaMod);
+  if (!obj['RADICADO']) return;
+  const datos = previa
+    ? base.datos.map(o => (o === previa ? obj : o))
+    : base.datos.concat([obj]).sort((a, b) => a._idx - b._idx);
+  _visitasUltimas = { headers, datos };
+  try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
 }
 
 // Las pantallas que listan visitas se re-pintan cuando la actualización en
@@ -878,6 +909,7 @@ async function guardarVisita(payload) {
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
+    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida);
     return d;
   } catch (e) {
     if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {

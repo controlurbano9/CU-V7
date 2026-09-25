@@ -37,6 +37,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const [datos, setDatos]       = useStateMV([]);
   const [cargando, setCargando] = useStateMV(true);
   const [error, setError]       = useStateMV('');
+  const [refrescando, setRefrescando] = useStateMV(false);
 
   // Secciones abiertas: asignadas e iniciadas por defecto, completadas cerrada
   const [abiertos, setAbiertos] = useStateMV({
@@ -62,6 +63,19 @@ function MisVisitasScreen({ usuario, onContinuar }) {
       if (!silencioso) setError(e.message);
     }
     setCargando(false);
+  }
+
+  // «Recargar» con datos ya pintados no los esconde tras el spinner: siguen a
+  // la vista y solo gira el ícono hasta que responde la red. Sin datos, carga normal.
+  async function recargar() {
+    if (refrescando) return;
+    if (!datos.length) return cargar(true);
+    setRefrescando(true);
+    try {
+      const { datos: all } = await leerVisitas({ forzar: true });
+      setDatos(all); setError('');
+    } catch (e) { setError(e.message); }
+    setRefrescando(false);
   }
 
   // ── Filtrar visitas del inspector logueado ──
@@ -254,11 +268,13 @@ function MisVisitasScreen({ usuario, onContinuar }) {
           <span style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
             {misVisitas.length} visita{misVisitas.length !== 1 ? 's' : ''} en total
           </span>
-          <button onClick={() => cargar(true)} style={{
+          <button onClick={recargar} disabled={refrescando} aria-busy={refrescando}
+            className={refrescando ? 'icono-girando' : ''} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
             background: 'var(--gris-bg)', border: '1px solid var(--borde)',
             borderRadius: 8, padding: '4px 10px', fontFamily: 'inherit',
             fontSize: 11, cursor: 'pointer', color: 'var(--texto-2)',
-          }}>Recargar</button>
+          }}><Icon.Refresh size={12} /> Recargar</button>
         </div>
       )}
     </div>

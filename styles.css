@@ -1891,6 +1891,13 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 @media (prefers-reduced-motion: reduce) {
   .spinner-btn { animation: girar 1.4s linear infinite !important; }
 }
+/* Botón «Recargar» mientras refresca por detrás: gira su propio ícono en vez
+   de esconder la lista tras el spinner (sin mensajes, decisión del usuario). */
+.icono-girando svg { animation: girar .9s linear infinite; }
+.icono-girando:disabled { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  .icono-girando svg { animation: girar 1.8s linear infinite !important; }
+}
 
 /* ── Banner offline ──────────────────────────────────────── */
 .offline-banner {

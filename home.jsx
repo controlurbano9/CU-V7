@@ -17,6 +17,7 @@ function HomeScreen({ usuario, onContinuar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
   const [error, setError] = useStateH('');
+  const [refrescando, setRefrescando] = useStateH(false);
 
   const esAdmin = usuario.rol === 'ADMIN';
   const miNombre = usuario.usuario.toUpperCase();
@@ -33,6 +34,19 @@ function HomeScreen({ usuario, onContinuar }) {
       setDatos(all);
     } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
+  }
+
+  // «Recargar» con datos ya pintados no los esconde tras el spinner: siguen a
+  // la vista y solo gira el ícono hasta que responde la red. Sin datos, carga normal.
+  async function recargar() {
+    if (refrescando) return;
+    if (!datos.length) return cargar(true);
+    setRefrescando(true);
+    try {
+      const { datos: all } = await leerVisitas({ forzar: true });
+      setDatos(all); setError('');
+    } catch (e) { setError(e.message); }
+    setRefrescando(false);
   }
 
   // ── Estadísticas ──
@@ -298,7 +312,8 @@ function HomeScreen({ usuario, onContinuar }) {
 
       {/* ── Footer: recargar datos ── */}
       <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <button onClick={() => cargar(true)} className="btn-texto">
+        <button onClick={recargar} className={'btn-texto' + (refrescando ? ' icono-girando' : '')}
+          disabled={refrescando} aria-busy={refrescando}>
           <Icon.Refresh size={14} /> Recargar datos
         </button>
       </div>
