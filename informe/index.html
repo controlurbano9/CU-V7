@@ -3521,7 +3521,7 @@ async function _cargarFotosDeVisita() {
     fotoCount = 0;
     fotos.forEach(function(f) {
       var thumbUrl = 'https://drive.google.com/thumbnail?id=' + f.id + '&sz=w400';
-      // La Descripción de Drive es la caché de describirFotoDesdeId y guarda
+      // La Descripción de Drive es la caché de describirFotos y guarda
       // lo que el inspector corrigió en el registro fotográfico.
       crearTarjetaFoto({ url: thumbUrl, descripcion: f.descripcion || '', fileId: f.id });
     });
@@ -3537,28 +3537,30 @@ async function _cargarFotosDeVisita() {
 }
 
 // ── Analisis IA bajo demanda ─────────────────────────────────────────────────
-//  Recorre las tarjetas actuales (en el orden visual del DOM) y dispara
-//  describirFotoDesdeId en serie. Solo escribe descripciones vacias para no
-//  pisar las que el inspector haya editado a mano.
-// Llama a describirFotoDesdeId (vía webhook) y reintenta con backoff (4s, 8s)
-// si el backend marca rateLimited:true (429 de Gemini) — mismo comportamiento
-// que su contraparte en nueva-visita.jsx (mantener sincronizados). Sin
-// reintento para otros tipos de fallo: esos no se arreglan esperando.
-async function _describirFotoConReintentoWH(fileId) {
-  for (var intento = 0; ; intento++) {
-    var d;
-    try {
-      var r = await fetch(WH + '?' + _qsConSesion({ accion: 'describirFotoDesdeId', fileId: fileId }).toString());
-      d = await r.json();
-    } catch (e) {
-      d = { ok: false, error: e.message };
-    }
-    if (d.ok) return d;
-    if (d.rateLimited && intento < 2) {
-      await new Promise(function(res) { setTimeout(res, 4000 * (intento + 1)); });
-      continue;
-    }
-    return d;
+//  Recorre las tarjetas actuales (en el orden visual del DOM) y las describe
+//  en lote. Solo escribe descripciones vacias para no pisar las que el
+//  inspector haya editado a mano.
+// Lote (2026-09-25): una llamada a `describirFotos` por tanda de 6 — el
+// backend baja miniaturas y pide a Gemini en paralelo, y ya reintenta con el
+// modelo de respaldo. Antes era una llamada GET por foto, 3 a la vez, y cada
+// una pagaba el salto /exec → /macros/echo. Mismo esquema que
+// describirFotosModal en nueva-visita.jsx (mantener sincronizados).
+var DESCRIBIR_TANDA = 6;
+async function _describirTandaWH(fileIds) {
+  try {
+    var r = await fetch(WH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(_bodyConSesion({ accion: 'describirFotos', ids: fileIds }))
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'respuesta invalida');
+    var porId = {};
+    (d.resultados || []).forEach(function(x) { porId[x.id] = x; });
+    return fileIds.map(function(id) { return porId[id] || { ok: false, error: 'sin resultado' }; });
+  } catch (e) {
+    return fileIds.map(function() { return { ok: false, error: e.message }; });
   }
 }
 
@@ -3585,36 +3587,48 @@ async function describirFotosConIA() {
   status.style.color = 'var(--texto-suave)';
   status.textContent = 'Analizando 0/' + pendientes.length + '...';
 
-  // Throttle: hasta 3 descripciones simultaneas (Gemini rate-limit friendly).
-  // Mismo comportamiento que el worker de abrirModalFotos() en nueva-visita.jsx.
-  var MAX_CONC = 3;
-  var next = 0;
-  async function worker() {
-    while (true) {
-      var idx = next++;
-      if (idx >= pendientes.length) return;
-      var item = pendientes[idx];
-      var d = await _describirFotoConReintentoWH(item.fileId);
-      hechos++;
+  // Aplica una tanda; devuelve los items que chocaron con la cuota (429).
+  function aplicar(lote, resultados, esUltimoIntento) {
+    var limitados = [];
+    lote.forEach(function(item, k) {
+      var d = resultados[k];
       if (d.ok && d.descripcion) {
-        item.descEl.value = d.descripcion;
-        item.descEl.dispatchEvent(new Event('change'));
-        ok++;
+        // El inspector pudo escribir mientras la tanda estaba en vuelo.
+        if (item.descEl && !item.descEl.value.trim()) {
+          item.descEl.value = d.descripcion;
+          item.descEl.dispatchEvent(new Event('change'));
+        }
+        ok++; hechos++;
+      } else if (d.rateLimited && !esUltimoIntento) {
+        limitados.push(item);
       } else {
-        // El backend ya no devuelve ok:true con descripcion vacia (ver el
-        // contrato en describirFotoDesdeId). Aqui se cuenta el fallo y se
-        // guarda el primer motivo para mostrarlo: antes esto se descartaba
-        // en silencio y el inspector veia "0 descripciones" en verde.
-        fallos++;
+        // El backend no devuelve ok:true con descripcion vacia. Aqui se
+        // cuenta el fallo y se guarda el primer motivo para mostrarlo: antes
+        // esto se descartaba en silencio y el inspector veia "0
+        // descripciones" en verde.
+        fallos++; hechos++;
         if (!motivo) motivo = d.error || 'el servicio de vision no devolvio descripcion';
         console.warn('describir foto ' + (item.pos + 1) + ':', d.error || d.debug || 'sin detalle');
       }
-      status.textContent = 'Analizando ' + hechos + '/' + pendientes.length + '...';
-    }
+    });
+    status.textContent = 'Analizando ' + hechos + '/' + pendientes.length + '...';
+    return limitados;
   }
-  var workers = [];
-  for (var w = 0; w < MAX_CONC; w++) workers.push(worker());
-  await Promise.all(workers);
+  async function pasada(items, esUltimoIntento) {
+    var limitados = [];
+    for (var t = 0; t < items.length; t += DESCRIBIR_TANDA) {
+      var lote = items.slice(t, t + DESCRIBIR_TANDA);
+      var res = await _describirTandaWH(lote.map(function(x) { return x.fileId; }));
+      limitados = limitados.concat(aplicar(lote, res, esUltimoIntento));
+    }
+    return limitados;
+  }
+  var limitados = await pasada(pendientes, false);
+  // Cuota por minuto de Gemini: una segunda pasada tras una pausa.
+  if (limitados.length) {
+    await new Promise(function(res) { setTimeout(res, 6000); });
+    await pasada(limitados, true);
+  }
 
   if (fallos && !ok) {
     status.textContent = 'No se pudo describir ninguna de las ' + total + ' fotos: ' + motivo

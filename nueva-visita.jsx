@@ -188,24 +188,6 @@ BARRIOS_POR_COMUNA.forEach(g => {
 const _BARRIO_A_COMUNA_NORM = {};
 function _quitarTildes(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
-// Llama a describirFotoDesdeId y reintenta con backoff (4s, 8s) si el backend
-// marca rateLimited:true (429 de Gemini). Sin reintento para otros tipos de
-// fallo: esos no se arreglan esperando. Devuelve null si no hay descripción —
-// nunca un texto de estado, que acababa impreso como pie en el documento.
-async function _describirFotoConReintento(fotoId, situacion, forzar) {
-  for (let intento = 0; ; intento++) {
-    let resp;
-    try { resp = await describirFotoDesdeId(fotoId, situacion, forzar); }
-    catch (e) { resp = { ok: false, error: e.message }; }
-    if (resp.ok) return (resp.descripcion || '').trim() || null;
-    if (resp.rateLimited && intento < 2) {
-      await new Promise(r => setTimeout(r, 4000 * (intento + 1)));
-      continue;
-    }
-    return null;
-  }
-}
-
 Object.keys(_BARRIO_A_COMUNA).forEach(k => {
   _BARRIO_A_COMUNA_NORM[_quitarTildes(k).toUpperCase()] = _BARRIO_A_COMUNA[k];
 });
@@ -3207,42 +3189,102 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       });
       // Nueva sesión: las descripciones en vuelo de una apertura anterior se descartan.
       _modalFotosSesionRef.current++;
+      const sesion = _modalFotosSesionRef.current;
       setModalFotos(lista);
       setModalFotosTotal(lista.length);
       setCargandoFotos(false);
+      // Si la pre-descripción de la última subida sigue corriendo, sus
+      // resultados llenan los pies vacíos al llegar (nunca pisan lo escrito).
+      const enCurso = descripcionesEnCurso(d.idCarpetaFotos);
+      if (enCurso) {
+        const idsVacias = lista.filter(function(f) { return !f.descripcion; }).map(function(f) { return f.id; });
+        idsVacias.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
+        enCurso.then(function(res) {
+          if (_modalFotosSesionRef.current !== sesion) return;
+          _aplicarDescripcionesModal(res, idsVacias, false);
+        });
+      }
     } catch (e) {
       await appAlert('Error cargando fotos: ' + e.message, { tono: 'error', titulo: 'Error' });
       setCargandoFotos(false);
     }
   }
 
-  // Describe con IA las fotos `ids`, hasta 3 a la vez (rate-limit de Gemini).
-  // La situación encontrada orienta el prompt. `forzar` salta la caché de Drive (↻).
+  // Por id, no por posición: el inspector puede reordenar o quitar mientras tanto.
+  function _marcarFotoModal(fotoId, cambios) {
+    setModalFotos(function(prev) {
+      if (!prev) return prev;
+      return prev.map(function(f) { return f.id === fotoId ? Object.assign({}, f, cambios) : f; });
+    });
+  }
+
+  // Aplica la respuesta de describirFotos a las fotos `ids` del modal.
+  // Devuelve los ids que quedaron sin descripción por 429 (vale reintentar).
+  // `pisar` = false: solo llena pies vacíos (pre-descripción que llega tarde,
+  // mientras el inspector ya pudo escribir el suyo).
+  function _aplicarDescripcionesModal(res, ids, pisar) {
+    const porId = {};
+    ((res && res.ok && res.resultados) || []).forEach(function(r) { porId[r.id] = r; });
+    const limitadas = [];
+    setModalFotos(function(prev) {
+      if (!prev) return prev;
+      return prev.map(function(f) {
+        if (ids.indexOf(f.id) < 0) return f;
+        const r = porId[f.id];
+        const desc = r && r.ok ? String(r.descripcion || '').trim() : '';
+        if (desc) {
+          return Object.assign({}, f, { descBusy: false, descError: false,
+            descripcion: (pisar || !f.descripcion) ? desc : f.descripcion });
+        }
+        return Object.assign({}, f, { descBusy: false, descError: !f.descripcion });
+      });
+    });
+    ids.forEach(function(id) { if (porId[id] && porId[id].rateLimited) limitadas.push(id); });
+    return limitadas;
+  }
+
+  // Describe con IA las fotos `ids` en tandas de 6 por llamada (el backend las
+  // procesa en paralelo; tandas y no todo junto para que los pies vayan
+  // apareciendo). La situación encontrada orienta el prompt. `forzar` salta
+  // la caché de Drive (↻).
   async function describirFotosModal(ids, forzar) {
     if (!ids.length) return;
     const sesion = _modalFotosSesionRef.current;
     const situacion = d.actuacion || '';
-    // Por id, no por posición: el inspector puede reordenar o quitar mientras tanto.
-    function marcar(fotoId, cambios) {
-      setModalFotos(function(prev) {
-        if (!prev) return prev;
-        return prev.map(function(f) { return f.id === fotoId ? Object.assign({}, f, cambios) : f; });
-      });
+    ids.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
+    let restantes = ids.slice();
+    // Pre-descripción en curso: esperarla en vez de pedir lo mismo dos veces.
+    const enCurso = !forzar && descripcionesEnCurso(d.idCarpetaFotos);
+    if (enCurso) {
+      const res = await enCurso;
+      if (_modalFotosSesionRef.current !== sesion) return;
+      const resueltas = {};
+      ((res && res.ok && res.resultados) || []).forEach(function(r) { if (r.ok && r.descripcion) resueltas[r.id] = true; });
+      _aplicarDescripcionesModal(res, restantes.filter(function(id) { return resueltas[id]; }), false);
+      restantes = restantes.filter(function(id) { return !resueltas[id]; });
     }
-    ids.forEach(function(id) { marcar(id, { descBusy: true, descError: false }); });
-    let next = 0;
-    async function worker() {
-      while (next < ids.length) {
-        const fotoId = ids[next++];
-        const descripcion = await _describirFotoConReintento(fotoId, situacion, forzar);
+    async function tanda(lote) {
+      let res;
+      try { res = await describirFotos({ ids: lote, situacion: situacion, forzar: forzar }); }
+      catch (e) { res = { ok: false, error: e.message }; }
+      if (_modalFotosSesionRef.current !== sesion) return [];
+      return _aplicarDescripcionesModal(res, lote, true);
+    }
+    let limitadas = [];
+    for (let i = 0; i < restantes.length; i += 6) {
+      limitadas = limitadas.concat(await tanda(restantes.slice(i, i + 6)));
+      if (_modalFotosSesionRef.current !== sesion) return;
+    }
+    // Cuota por minuto de Gemini: una segunda pasada tras una pausa.
+    if (limitadas.length) {
+      limitadas.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
+      await new Promise(function(r) { setTimeout(r, 6000); });
+      if (_modalFotosSesionRef.current !== sesion) return;
+      for (let i = 0; i < limitadas.length; i += 6) {
+        await tanda(limitadas.slice(i, i + 6));
         if (_modalFotosSesionRef.current !== sesion) return;
-        if (descripcion) marcar(fotoId, { descripcion: descripcion, descBusy: false });
-        else marcar(fotoId, { descBusy: false, descError: true });
       }
     }
-    const workers = [];
-    for (let w = 0; w < 3; w++) workers.push(worker());
-    await Promise.all(workers);
   }
 
   // Confirmar y generar RF con las fotos en el orden del modal
@@ -4246,7 +4288,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                   : null)}
             procesando={generandoRF || cargandoFotos}
             slot={d.idCarpetaFotos ? (
-              <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} onFotosChange={_reportarFotos} />
+              <SeccionFotos idCarpetaFotos={d.idCarpetaFotos} fila={filaEditando} situacion={d.actuacion} onFotosChange={_reportarFotos} />
             ) : undefined}
           >
             {d.linkRegistroFotos ? (<>
@@ -4286,7 +4328,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999,
           display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
           padding: 16, overflowY: 'auto',
-        }} onClick={function(e) { if (e.target === e.currentTarget) setModalFotos(null); }}>
+        }}>{/* Sin cierre al clic afuera: un toque accidental perdía el orden y las descripciones editadas. Solo cierra «Cancelar». */}
           <div style={{
             background: 'white', borderRadius: 12, padding: 20, width: '100%',
             maxWidth: 600, margin: 'auto',
@@ -4638,12 +4680,15 @@ async function _comprimirFotoAhora(file) {
   }
 }
 
-function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
+function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
   const [subiendo, setSubiendo] = useStateNV(false);
   const [fotos, setFotos]       = useStateNV([]);  // [{ nombre, link, descripcion }]
   const [cola, setCola]         = useStateNV([]);   // archivos pendientes de subir
   const [progreso, setProgreso] = useStateNV('');   // "Subiendo 2/5..."
   const inputRef = React.useRef(null);
+  // La situación al momento de terminar la subida, no la del primer render.
+  const situacionRef = React.useRef(situacion);
+  situacionRef.current = situacion;
 
   // Fotos que ya viven en Drive: al reabrir una visita con 18 fotos, la lista
   // arrancaba vacía y el inspector solo podía verlas abriendo el modal del
@@ -4778,6 +4823,13 @@ function SeccionFotos({ idCarpetaFotos, fila, onFotosChange }) {
       setCola(function(prev) { return prev.slice(procesadas); });
       setProgreso('');
       setSubiendo(false);
+      // Pre-descripción en segundo plano (sin esperarla): cuando el inspector
+      // abra el registro fotográfico, los pies ya están en la caché de Drive.
+      // Solo si algo llegó a Drive: lo encolado sin señal aún no existe allí.
+      var enDrive = resultados.some(function(x) { return x && !x.pendiente; });
+      if (enDrive && typeof preDescribirFotosCarpeta === 'function') {
+        preDescribirFotosCarpeta(idCarpetaFotos, situacionRef.current || '');
+      }
       // Antes el error solo iba a console.warn: la foto desaparecía de la lista
       // sin avisar y el inspector creía que estaba en Drive.
       if (fallidas.length) {
