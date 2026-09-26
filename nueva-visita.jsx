@@ -1645,6 +1645,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [advertTipifIgnorada, setAdvertTipifIgnorada] = useStateNV(false);
   // Estado auxiliar para barrio "Otro" (texto libre)
   const [barrioOtro, setBarrioOtro] = useStateNV('');
+  // Confirmación de dirección en línea: la dirección bautiza la carpeta de
+  // Drive en el PRIMER guardado, así que el inspector la confirma («¿Es
+  // correcta?») antes de que exista la carpeta. dirEnfoque esconde la fila
+  // mientras el inspector edita el campo. Los refs apuntan a la fila y al
+  // botón «Sí» para el bloqueo de guardar() (scroll + foco + parpadeo).
+  const [dirConfirmada, setDirConfirmada] = useStateNV(false);
+  const [dirEnfoque, setDirEnfoque] = useStateNV(false);
+  const dirFilaRef = React.useRef(null);
+  const dirBotonRef = React.useRef(null);
+  // ¿Corresponde pedir la confirmación? Solo mientras la carpeta de Drive no
+  // exista (primer guardado): reabrir una visita guardada ya no pregunta.
+  const requiereDir = !d.linkDrive && direccionRequiereConfirmar(d.direccion, d.comuna, d.barrio);
   // Estado auxiliar para consecutivo de orden de policía (solo el número)
   const [ordenConsecutivo, setOrdenConsecutivo] = useStateNV(() =>
     _extraerConsecutivoOrden((datosIniciales || {})['N° ORDEN DE POLICIA'] || (datosIniciales || {})['N ORDEN DE POLICIA'] || '')
@@ -2625,6 +2637,24 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // Doble-tap defensivo: el disabled del botón llega tras el re-render;
     // un segundo toque en esa ventana podía lanzar dos POST 'agregar'.
     if (_guardandoRef.current) return;
+    // Dirección sin confirmar (bautiza la carpeta de Drive en este guardado):
+    // normalizar, llevar la fila a la vista y pedir la confirmación ahí mismo.
+    // Solo el botón Guardar llega aquí — el autoguardado de 60 s hace su POST
+    // propio y corre únicamente con filaEditando (carpeta ya existente), así
+    // que nunca interfiere con este bloqueo.
+    if (requiereDir && !dirConfirmada) {
+      const n = normalizarDireccion(d.direccion);
+      if (n && n !== d.direccion) setCampo('direccion', n);
+      if (dirFilaRef.current) {
+        dirFilaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        dirFilaRef.current.classList.add('dir-conf-parpadeo');
+        setTimeout(function() {
+          if (dirFilaRef.current) dirFilaRef.current.classList.remove('dir-conf-parpadeo');
+        }, 650);
+      }
+      if (dirBotonRef.current) dirBotonRef.current.focus();
+      return;
+    }
     const errs = _validar();
     if (errs.length) {
       await appAlert('Faltan campos:\n• ' + errs.join('\n• '), { tono: 'aviso', titulo: 'Datos incompletos' });
@@ -3545,18 +3575,42 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* 2. UBICACIÓN ─────────────────────────────────────── */}
       <_Seccion titulo="Ubicación del inmueble"
         estado={estadosSeccion["Ubicación del inmueble"]} color="azul">
-        <_Campo label="Dirección del inmueble" fullWidth>
-          {/* Se normaliza al salir del campo, no mientras se escribe: tecleando
-              «CL 5» el normalizador ya metería el `#` y estorbaría. Al salir el
-              inspector ve el resultado y puede corregirlo. La clave de carpeta
-              de Drive no cambia (tests/direcciones.test.js). */}
-          <_Input value={d.direccion} onChange={v => setCampo('direccion', v)}
-            onBlur={() => {
-              const n = normalizarDireccion(d.direccion);
-              if (n && n !== d.direccion) setCampo('direccion', n);
-            }}
-            placeholder="CL 50 # 32-10" />
-        </_Campo>
+        {/* Grupo escrito a mano en vez de <_Campo>: envolvemos el input para el
+            check de confirmación y el <label for> quedaría apuntando al div
+            (mismo caso que el Radicado). Se normaliza al salir del campo, no
+            mientras se escribe: tecleando «CL 5» el normalizador ya metería el
+            `#` y estorbaría. Al salir el inspector ve el resultado, confirma
+            «¿Es correcta?» o lo corrige. La clave de carpeta de Drive no
+            cambia (tests/direcciones.test.js). */}
+        <div className="input-grupo full-width">
+          <label className="input-label" htmlFor="nv-direccion">Dirección del inmueble</label>
+          <div className={'dir-conf-wrap' + (requiereDir && dirConfirmada ? ' dir-conf-ok' : '')}>
+            <input id="nv-direccion" type="text" className="input-campo"
+              value={d.direccion}
+              onChange={v => { setCampo('direccion', v); setDirConfirmada(false); }}
+              onFocus={() => setDirEnfoque(true)}
+              onBlur={() => {
+                setDirEnfoque(false);
+                const n = normalizarDireccion(d.direccion);
+                if (n && n !== d.direccion) setCampo('direccion', n);
+              }}
+              placeholder="CL 50 # 32-10" />
+            {requiereDir && dirConfirmada && (
+              <span className="dir-conf-check" title="Dirección confirmada">
+                <span aria-hidden="true">✓</span>
+                <span className="sr-only">Dirección confirmada</span>
+              </span>
+            )}
+          </div>
+          {requiereDir && !dirConfirmada && !dirEnfoque && (
+            <div ref={dirFilaRef} className="dir-conf-fila" role="group" aria-label="Confirmar dirección">
+              <span className="ent-dot ed-pend" aria-hidden="true" />
+              <span className="dir-conf-pregunta">¿Es correcta?</span>
+              <button type="button" ref={dirBotonRef} className="btn-neutro dir-conf-btn"
+                onClick={() => setDirConfirmada(true)}>Sí</button>
+            </div>
+          )}
+        </div>
         <_Campo label="Barrio / Vereda">
           <_SelectBarrio
             barrio={d.barrio}

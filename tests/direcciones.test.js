@@ -12,7 +12,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizarDireccion, claveBusquedaDireccion } = require('../utils.js');
+const { normalizarDireccion, claveBusquedaDireccion, direccionRequiereConfirmar } = require('../utils.js');
 
 // Copia literal de _normDir (apps_script_unificado.js).
 function normDir(dir) {
@@ -43,6 +43,25 @@ test('ya normalizada: idempotente', () => {
   assert.equal(normalizarDireccion(uno), uno);
 });
 
+// Placa sin guion (2026-09-26): dos números puros tras el `#` se unen con
+// guion. Solo dígitos puros — `32A`, `BIS`, `SUR` y `3210` pegado quedan.
+test('placa con dos números separados por espacio → guion', () => {
+  assert.equal(normalizarDireccion('CL 50 # 32 10'), 'CL 50 # 32-10');
+  assert.equal(normalizarDireccion('CALLE 50 32 10'), 'CL 50 # 32-10');
+  assert.equal(normalizarDireccion('CL 50 # 32 10 INT 201'), 'CL 50 # 32-10 INT 201');
+});
+
+test('placa: casos que quedan intactos', () => {
+  assert.equal(normalizarDireccion('CL 50 # 32A 10'), 'CL 50 # 32A 10');
+  assert.equal(normalizarDireccion('CL 50 # 32 BIS 10'), 'CL 50 # 32 BIS 10');
+  assert.equal(normalizarDireccion('CL 50 # 3210'), 'CL 50 # 3210');
+});
+
+test('placa: idempotente', () => {
+  const casos = ['CL 50 # 32-10', 'CL 50 # 32-10 INT 201', 'CR 23 # 5-40 APTO 301'];
+  for (const c of casos) assert.equal(normalizarDireccion(c), c);
+});
+
 test('rural o sin tipo de vía reconocible: no se toca', () => {
   assert.equal(normalizarDireccion('Vereda Hato Viejo, sector La Loma'),
                'Vereda Hato Viejo, sector La Loma');
@@ -54,11 +73,25 @@ test('la clave de carpeta de Drive NO cambia al normalizar', () => {
   const casos = [
     'CALLE 51 # 53-68', 'CARRERA 50 N° 32-10', 'CL 45 47-50/52',
     'calle 55 no. 46-21', 'TRANSVERSAL 45 # 12-3',
+    'CL 50 32 10', 'calle 50 no. 32 10',
   ];
   for (const original of casos) {
     assert.equal(normDir(normalizarDireccion(original)), normDir(original),
       'cambia la carpeta de: ' + original);
   }
+});
+
+// Confirmación de dirección: solo formato urbano reconocible (la fila «¿Es
+// correcta?» no tiene sentido en veredas, coordenadas o campo vacío).
+test('direccionRequiereConfirmar', () => {
+  assert.equal(direccionRequiereConfirmar('CL 50 # 32-10', '9', 'Niquía'), true);
+  assert.equal(direccionRequiereConfirmar('cl 50 32 10', '9', 'Niquía'), true);
+  assert.equal(direccionRequiereConfirmar('CL 50 # 32-10', 'RURAL', 'Niquía'), false);
+  assert.equal(direccionRequiereConfirmar('Vereda La China', 'RURAL', 'Vda. La China'), false);
+  assert.equal(direccionRequiereConfirmar('Finca El Roble', '9', 'Niquía'), false);
+  assert.equal(direccionRequiereConfirmar('6.33412, -75.55821', '9', 'Niquía'), false);
+  assert.equal(direccionRequiereConfirmar('', '9', 'Niquía'), false);
+  assert.equal(direccionRequiereConfirmar(null, '9', 'Niquía'), false);
 });
 
 // Búsqueda en Buscar: lo tecleado y lo guardado pasan por la misma clave y se

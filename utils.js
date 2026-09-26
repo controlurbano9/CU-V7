@@ -434,7 +434,27 @@ function normalizarDireccion(dir) {
   // tramo numérico (`CL 50 32-10` → `CL 50 # 32-10`).
   if (s.indexOf('#') === -1) s = s.replace(/^(\S+)\s+(\d)/, '$1 # $2');
   s = s.replace(/\s*#\s*/, ' # ').replace(/\s+/g, ' ').trim();
+  // Placa sin guion: dos números puros seguidos tras el `#` (`# 32 10`,
+  // `# 32 10 INT 201`) se unen con guion. Solo dígitos puros: `32A 10`,
+  // `32 BIS 10`, `32 SUR 10` y `# 3210` quedan intactos. Idempotente (un
+  // solo reemplazo, sin `g`: `32-10` ya no calza en el patrón).
+  s = s.replace(/(#\s*)(\d+)\s+(\d+)(?=\s|$)/, '$1$2-$3');
   return (via + ' ' + s).trim();
+}
+
+// ¿La dirección amerita la confirmación explícita del inspector («¿Es
+// correcta?») antes del primer guardado? Solo para direcciones urbanas con
+// formato reconocible: el rural (veredas, referencias, coordenadas) no tiene
+// forma canónica que validar, así que no se le pregunta. La consume
+// nueva-visita.jsx para la fila de confirmación y el bloqueo en guardar().
+function direccionRequiereConfirmar(dir, comuna, barrio) {
+  const s = (dir == null ? '' : String(dir)).trim();
+  if (!s) return false;
+  if (String(comuna || '').trim().toUpperCase() === 'RURAL') return false;
+  if (/^VDA\./i.test(String(barrio || '').trim())) return false;
+  // Coordenadas pegadas en el campo: no es una dirección para normalizar.
+  if (/-?\d{1,2}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/.test(s)) return false;
+  return _VIAS_DIR.some(function(e) { return e[0].test(s.toUpperCase()); });
 }
 
 // Clave para BUSCAR por dirección, no para guardar: tipo de vía unificado y
@@ -629,6 +649,7 @@ function offsetSemanaDe(fecha, hoy) {
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   normalizarDireccion: normalizarDireccion,
+  direccionRequiereConfirmar: direccionRequiereConfirmar,
   claveBusquedaDireccion: claveBusquedaDireccion,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,

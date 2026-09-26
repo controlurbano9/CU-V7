@@ -1489,6 +1489,36 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 .ent-dot.ed-pend  { background: var(--amber); }
 .ent-dot.ed-error { background: var(--red); }
 .ent-nota { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+
+/* Confirmación de dirección en línea (nueva-visita.jsx): mientras la carpeta
+   de Drive no exista, debajo del campo vive «● ¿Es correcta? [ Sí ]» y, al
+   confirmar, un check verde dentro del campo. Mismo lenguaje visual que los
+   entregables: punto ámbar = pendiente, ✓ verde = listo. */
+.dir-conf-wrap { position: relative; }
+.dir-conf-ok input { padding-right: 34px; }
+.dir-conf-check {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--green); font-weight: 700; pointer-events: none;
+}
+.dir-conf-fila {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 6px;
+}
+.dir-conf-pregunta { font-size: 12px; color: var(--ink-3); }
+.dir-conf-btn {
+  min-width: 44px; min-height: 44px;
+  padding: 4px 14px; margin-left: 4px;
+}
+/* Parpadeo único (guardar() la agrega y la quita a los 650 ms) para señalar
+   la fila a la que el guardado se negó. */
+.dir-conf-parpadeo { animation: dir-conf-parpadeo 600ms ease; }
+@keyframes dir-conf-parpadeo {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dir-conf-parpadeo { animation: none; }
+}
 /* Grid de dos columnas en vez de flex: la segunda columna reserva SIEMPRE
    los 44 px de la acción secundaria (↻), exista o no en ese renglón. Con
    flex, las filas sin ↻ empujaban el botón principal 50 px a la derecha y
