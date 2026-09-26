@@ -188,6 +188,12 @@ BARRIOS_POR_COMUNA.forEach(g => {
 const _BARRIO_A_COMUNA_NORM = {};
 function _quitarTildes(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
+// Fotos del modal del RF que aún no tienen pie definitivo: sin descripción o
+// con la IA trabajando en ella (un ↻ en curso va a reemplazar el texto).
+function _fotosSinDescripcion(fotos) {
+  return (fotos || []).filter(function(f) { return f.descBusy || !String(f.descripcion || '').trim(); }).length;
+}
+
 Object.keys(_BARRIO_A_COMUNA).forEach(k => {
   _BARRIO_A_COMUNA_NORM[_quitarTildes(k).toUpperCase()] = _BARRIO_A_COMUNA[k];
 });
@@ -3164,8 +3170,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Paso 2 del F-GGO-46: Doc REGISTRO FOTOGRÁFICO con las fotos
   // ya subidas a la subcarpeta Fotos de la visita.
   // Abre el modal de fotos: carga la lista de Drive con la descripción ya
-  // guardada en cada archivo. La IA NO corre sola: la pide el inspector con
-  // «Describir las que faltan» o con ↻ por foto (describirFotosModal).
+  // guardada en cada archivo. Al abrir, la IA no corre: la pide el inspector
+  // con «Describir fotografías» (solo las que no tienen) o con ↻ por foto
+  // (describirFotosModal). Lo único automático es la pre-descripción al
+  // terminar una subida, y solo si ya hay situación encontrada (SeccionFotos).
 
   async function abrirModalFotos() {
     if (!filaEditando) {
@@ -3290,6 +3298,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Confirmar y generar RF con las fotos en el orden del modal
   async function confirmarYGenerarRF() {
     if (!modalFotos || modalFotos.length === 0) return;
+    // Todas las fotos llevan pie: el RF no sale con fotos sin descripción
+    // (decisión del usuario, 2026-09-25). El botón ya viene deshabilitado;
+    // esto cubre cualquier otra vía.
+    if (_fotosSinDescripcion(modalFotos) > 0) return;
     // Misma guarda compartida de documentos que el acta (ver _ejecutarGenerarActa).
     if (_docOcupadoRef.current) return;
     _docOcupadoRef.current = true;
@@ -4340,7 +4352,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               Arrastra desde el icono ≡ para reordenar. La línea indica donde se insertará la foto.
             </div>
             {(function() {
-              // A demanda: la IA solo describe lo que el inspector pide.
+              // Solo describe las que no tienen descripción; el ↻ por foto es
+              // el único que reescribe una existente.
               var faltan = modalFotos.filter(function(f) { return !f.descBusy && !(f.descripcion || '').trim(); });
               var ocupado = modalFotos.some(function(f) { return f.descBusy; });
               if (!faltan.length && !ocupado) return null;
@@ -4348,7 +4361,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 <button type="button" className="btn-neutro" style={{ width: '100%', marginBottom: 12 }}
                   disabled={ocupado} aria-busy={ocupado}
                   onClick={function() { describirFotosModal(faltan.map(function(f) { return f.id; }), false); }}>
-                  {ocupado ? 'Describiendo…' : '✨ Describir las que faltan (' + faltan.length + ')'}
+                  {ocupado ? 'Describiendo…' : '✨ Describir fotografías'}
                 </button>
               );
             })()}
@@ -4590,10 +4603,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               <button onClick={function() { setModalFotos(null); }}
                 className="btn-neutro" style={{ flex: 1 }}>Cancelar</button>
               <button onClick={confirmarYGenerarRF}
-                disabled={modalFotos.length === 0}
+                disabled={modalFotos.length === 0 || _fotosSinDescripcion(modalFotos) > 0}
                 className="btn-principal" style={{ flex: 2, margin: 0, padding: 12, fontSize: 14 }}>
                 {modalFotos.length === 0
                   ? 'No hay fotos'
+                  : modalFotos.some(function(f) { return f.descBusy; })
+                    ? 'Describiendo…'
+                  // Sin pie no se genera: el texto dice por qué está deshabilitado.
+                  : _fotosSinDescripcion(modalFotos) > 0
+                    ? (function(n) { return n === 1 ? 'Falta 1 descripción' : 'Faltan ' + n + ' descripciones'; })(_fotosSinDescripcion(modalFotos))
                     // Si se quitaron fotos, el texto lo dice: sin esto el inspector
                     // quitaba 13 de 25 y el botón seguía igual — nada confirmaba
                     // que la exclusión surtiría efecto en el documento.
@@ -4825,10 +4843,14 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
       setSubiendo(false);
       // Pre-descripción en segundo plano (sin esperarla): cuando el inspector
       // abra el registro fotográfico, los pies ya están en la caché de Drive.
-      // Solo si algo llegó a Drive: lo encolado sin señal aún no existe allí.
+      // Solo si algo llegó a Drive (lo encolado sin señal aún no existe allí)
+      // y si ya hay situación encontrada: sin ella la descripción sale sin
+      // contexto y queda guardada, y «Describir fotografías» ya no la rehace.
+      // Sin situación, las fotos quedan para que el inspector las pida.
       var enDrive = resultados.some(function(x) { return x && !x.pendiente; });
-      if (enDrive && typeof preDescribirFotosCarpeta === 'function') {
-        preDescribirFotosCarpeta(idCarpetaFotos, situacionRef.current || '');
+      var situacionActual = String(situacionRef.current || '').trim();
+      if (enDrive && situacionActual && typeof preDescribirFotosCarpeta === 'function') {
+        preDescribirFotosCarpeta(idCarpetaFotos, situacionActual);
       }
       // Antes el error solo iba a console.warn: la foto desaparecía de la lista
       // sin avisar y el inspector creía que estaba en Drive.
