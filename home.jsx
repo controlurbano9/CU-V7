@@ -403,9 +403,11 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
         </div>
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          alignItems: 'flex-end', gap: 10,
+          alignItems: 'flex-end', gap: 10, flexWrap: 'wrap',
         }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Base de 200 px: si los botones no caben al lado, bajan a su propia
+              línea en vez de estrujar la dirección a una palabra por renglón. */}
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <div style={{
               fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600,
               lineHeight: 1.3, color: 'var(--texto)',
@@ -426,7 +428,7 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
               {visitadoresBD(f) && <span>{primerVisitador(visitadoresBD(f))}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
           {alerta.irSemana && (
             <button type="button" onClick={() => irASemana(alerta.irSemana)} style={{
               background: 'transparent', color: c.fg,
