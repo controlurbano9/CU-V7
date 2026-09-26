@@ -24,6 +24,7 @@ function normDir(dir) {
     .replace(/N°/g, '').replace(/Nº/g, '').replace(/#/g, '')
     .replace(/\b(NO|NRO|NUM|NUMERO|N)\b\.?/g, '')
     .replace(/[°º]/g, '')
+    .replace(/-/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
 
