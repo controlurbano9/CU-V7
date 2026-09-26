@@ -84,3 +84,13 @@ test('orden retroactivo por FECHA DEVOLUCION; sin fecha va al final', opts, () =
   const ordenadas = fechas.slice().sort((a, b) => orden(a) - orden(b));
   assert.deepEqual(ordenadas, ['02/12/2025', '01/09/2026', '15/09/2026', '']);
 });
+
+// El encabezado real de BD es BARRIO/VEREDA. Buscar solo 'BARRIO' dejó todas
+// las citaciones sin barrio desde el 24-09 sin que ninguna prueba lo viera.
+test('la dirección lleva el barrio de la columna BARRIO/VEREDA', opts, () => {
+  const H = HEADERS.concat(['BARRIO/VEREDA']);
+  const c = n => H.indexOf(n) + 1;
+  const datos = ['2026-123', '01/09/2026', 'JUAN', 'PEDRO', 'CL 50 # 32-10',
+    '17/09/2026 · 02:30 PM', 'Niquía'];
+  assert.equal(filaCit(c, datos)[4], 'CL 50 # 32-10 - Niquía');
+});
