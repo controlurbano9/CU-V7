@@ -12,7 +12,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizarDireccion } = require('../utils.js');
+const { normalizarDireccion, claveBusquedaDireccion } = require('../utils.js');
 
 // Copia literal de _normDir (apps_script_unificado.js).
 function normDir(dir) {
@@ -58,4 +58,17 @@ test('la clave de carpeta de Drive NO cambia al normalizar', () => {
     assert.equal(normDir(normalizarDireccion(original)), normDir(original),
       'cambia la carpeta de: ' + original);
   }
+});
+
+// Búsqueda en Buscar: lo tecleado y lo guardado pasan por la misma clave y se
+// comparan con includes. Pedido 2026-09-25: `CL 50 # 32 10` no encontraba nada.
+test('búsqueda de dirección insensible al separador', () => {
+  const bd = claveBusquedaDireccion('CALLE 50 # 32-10');
+  for (const q of ['CL 50 # 32 10', 'cl 50 32-10', 'CL 50 # 3210', 'Cra 50', '32 10', '# 3210', 'calle 50 no. 32-10']) {
+    const k = claveBusquedaDireccion(q);
+    if (q === 'Cra 50') assert.ok(!bd.includes(k), q + ' no debe encontrar una calle');
+    else assert.ok(bd.includes(k), q + ' → ' + k + ' no está en ' + bd);
+  }
+  assert.equal(claveBusquedaDireccion('#'), '');
+  assert.equal(claveBusquedaDireccion('Vda. La China'), 'VDALACHINA');
 });

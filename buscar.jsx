@@ -398,11 +398,16 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     // "2026-9-15" o "15", tal como la escribió en el papel.
     const _sinCeros = s => s.replace(/\d+/g, n => String(parseInt(n, 10)));
     const lqOrden = _sinCeros(lq);
+    // La dirección se compara además sin separadores: `CL 50 # 32 10` o
+    // `3210` encuentran `CALLE 50 # 32-10` (claveBusquedaDireccion, utils.js).
+    const lqDir = claveBusquedaDireccion(lq);
     return datos.filter(f => {
       if (lq) {
         const orden = ordenPoliciaDe(f).toUpperCase();
         const hay = ['RADICADO', 'DIRECCION INFRACCION', 'DIRECCION', 'BARRIO/VEREDA', 'BARRIO', 'NOMBRE PERSONA ATIENDE']
           .some(k => (f[k] || '').toString().toUpperCase().includes(lq))
+          || (!!lqDir && ['DIRECCION INFRACCION', 'DIRECCION']
+            .some(k => !!f[k] && claveBusquedaDireccion(f[k]).includes(lqDir)))
           || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)));
         if (!hay) return false;
       }

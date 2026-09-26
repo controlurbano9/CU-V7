@@ -437,6 +437,14 @@ function normalizarDireccion(dir) {
   return (via + ' ' + s).trim();
 }
 
+// Clave para BUSCAR por dirección, no para guardar: tipo de vía unificado y
+// sin ningún separador. El inspector teclea `CL 50 # 32 10`, `50 32-10` o
+// `# 3210` y en BD está `CALLE 50 # 32-10`: todas dan `CL503210` / `503210`,
+// que se comparan con includes. Cubre las filas viejas sin tocar la BD.
+function claveBusquedaDireccion(dir) {
+  return normalizarDireccion(dir).toUpperCase().replace(/[^0-9A-Z]/g, '');
+}
+
 // ── Visibilidad por fecha de asignación ───────────────────
 // Una visita programada para el jueves no es trabajo del martes: el visitador
 // solo debe verla a partir del día de su asignación. Antes aparecían todas
@@ -621,6 +629,7 @@ function offsetSemanaDe(fecha, hoy) {
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   normalizarDireccion: normalizarDireccion,
+  claveBusquedaDireccion: claveBusquedaDireccion,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
