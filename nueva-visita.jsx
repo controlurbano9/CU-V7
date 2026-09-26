@@ -3586,8 +3586,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           <label className="input-label" htmlFor="nv-direccion">Dirección del inmueble</label>
           <div className={'dir-conf-wrap' + (requiereDir && dirConfirmada ? ' dir-conf-ok' : '')}>
             <input id="nv-direccion" type="text" className="input-campo"
-              value={d.direccion}
-              onChange={v => { setCampo('direccion', v); setDirConfirmada(false); }}
+              value={d.direccion || ''}
+              onChange={e => { setCampo('direccion', e.target.value); setDirConfirmada(false); }}
               onFocus={() => setDirEnfoque(true)}
               onBlur={() => {
                 setDirEnfoque(false);

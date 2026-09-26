@@ -88,6 +88,7 @@ test('direccionRequiereConfirmar', () => {
   assert.equal(direccionRequiereConfirmar('cl 50 32 10', '9', 'Niquía'), true);
   assert.equal(direccionRequiereConfirmar('CL 50 # 32-10', 'RURAL', 'Niquía'), false);
   assert.equal(direccionRequiereConfirmar('Vereda La China', 'RURAL', 'Vda. La China'), false);
+  assert.equal(direccionRequiereConfirmar('CL 50 # 32-10', 'Vereda', ''), false);
   assert.equal(direccionRequiereConfirmar('Finca El Roble', '9', 'Niquía'), false);
   assert.equal(direccionRequiereConfirmar('6.33412, -75.55821', '9', 'Niquía'), false);
   assert.equal(direccionRequiereConfirmar('', '9', 'Niquía'), false);

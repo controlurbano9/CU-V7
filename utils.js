@@ -450,7 +450,9 @@ function normalizarDireccion(dir) {
 function direccionRequiereConfirmar(dir, comuna, barrio) {
   const s = (dir == null ? '' : String(dir)).trim();
   if (!s) return false;
-  if (String(comuna || '').trim().toUpperCase() === 'RURAL') return false;
+  // En el formulario la comuna rural es 'Vereda'; 'RURAL' por datos viejos.
+  var c = String(comuna || '').trim().toUpperCase();
+  if (c === 'RURAL' || c === 'VEREDA') return false;
   if (/^VDA\./i.test(String(barrio || '').trim())) return false;
   // Coordenadas pegadas en el campo: no es una dirección para normalizar.
   if (/-?\d{1,2}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/.test(s)) return false;
