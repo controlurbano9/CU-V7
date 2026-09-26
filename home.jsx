@@ -19,7 +19,9 @@ function HomeScreen({ usuario, onContinuar }) {
   const [error, setError] = useStateH('');
   const [refrescando, setRefrescando] = useStateH(false);
 
-  const esAdmin = usuario.rol === 'ADMIN';
+  // Admin y supervisor ven todo (stats, alertas y semana globales); el resto,
+  // la regla del diligenciador. Aquí no hay acciones de gestión que separar.
+  const veTodo = veTodasLasVisitas(usuario.rol);
   const miNombre = usuario.usuario.toUpperCase();
 
   useEffectH(() => { cargar(); }, []);
@@ -66,7 +68,7 @@ function HomeScreen({ usuario, onContinuar }) {
     datos.forEach(f => {
       const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
       // Filtro por rol — admin ve todo, inspector aplica regla diligenciador.
-      if (!esAdmin) {
+      if (!veTodo) {
         const vis = visitadoresBD(f).toUpperCase();
         if (!vis.includes(miNombre)) return;
         if (e === 'INICIADO' || e === 'COMPLETADO') {
@@ -102,7 +104,7 @@ function HomeScreen({ usuario, onContinuar }) {
       }
     });
     return { pendientes, mes, asigPorHacer, realHoy };
-  }, [datos, esAdmin, miNombre]);
+  }, [datos, veTodo, miNombre]);
 
   // ── Alertas urgentes ──
   const alertas = useMemoH(() => {
@@ -115,7 +117,7 @@ function HomeScreen({ usuario, onContinuar }) {
       // Filtro por rol (regla diligenciador, ver CLAUDE.md):
       //  PENDIENTE/ASIGNADO → cualquier co-asignado ve la alerta.
       //  INICIADO/COMPLETADO → solo el primero en VISITADOR(ES).
-      if (!esAdmin) {
+      if (!veTodo) {
         const vis = visitadoresBD(f).toUpperCase();
         if (!vis.includes(miNombre)) return;
         if (e === 'INICIADO' || e === 'COMPLETADO') {
@@ -222,18 +224,18 @@ function HomeScreen({ usuario, onContinuar }) {
     const amarillasU = amarillas.filter(a => !vistas.has(a.f._idx || a.f['RADICADO'] || a.f));
 
     return { rojas: rojasU, amarillas: amarillasU, total: rojasU.length + amarillasU.length };
-  }, [datos, esAdmin, miNombre]);
+  }, [datos, veTodo, miNombre]);
 
   // Inspectores activos para los chips de filtro de la semana. Misma fuente
   // que Buscar (USUARIOS vía listarInspectoresActivos, cacheado 60 s): sacar
   // los nombres de las filas mostraría gente que ya no trabaja aquí.
   const [inspectores, setInspectores] = useStateH([]);
   useEffectH(() => {
-    if (!esAdmin) return;
+    if (!veTodo) return;
     listarInspectoresActivos()
       .then(l => setInspectores((l || []).map(u => u.nombre)))
       .catch(() => {});
-  }, [esAdmin]);
+  }, [veTodo]);
 
   // ── Render ──
   const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -284,7 +286,7 @@ function HomeScreen({ usuario, onContinuar }) {
         {!cargando && (
           <SemanaVisitas
             datos={datos}
-            esAdmin={esAdmin}
+            esAdmin={veTodo}
             miNombre={miNombre}
             inspectores={inspectores}
             onAbrir={onContinuar}
@@ -434,7 +436,10 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
               cursor: 'pointer', whiteSpace: 'nowrap',
             }}>Ver en su semana</button>
           )}
-          <button type="button" onClick={() => onContinuar(f._idx, f)} style={{
+          {/* Un supervisor ve alertas de visitas ajenas: para esas solo consulta. */}
+          <button type="button" onClick={() => puedeDiligenciar(f)
+              ? onContinuar(f._idx, f)
+              : (window.abrirVisitaDetail && window.abrirVisitaDetail(f))} style={{
             background: c.bg, color: c.fg,
             border: '0.5px solid ' + c.border,
             borderRadius: 'var(--r-sm)', padding: '6px 11px',
@@ -445,7 +450,7 @@ function AlertaCard({ alerta, tipo, onContinuar }) {
           onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
           onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-          >Continuar →</button>
+          >{puedeDiligenciar(f) ? 'Continuar →' : 'Ver datos →'}</button>
           </div>
         </div>
       </div>

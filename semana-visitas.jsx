@@ -87,6 +87,10 @@ function SemanaCard({ f, movil, onAbrir }) {
   if (e === 'INICIADO') accion = movil ? 'Continuar' : 'Seguir';
   else if (e === 'COMPLETADO') accion = movil ? 'Ver datos' : 'Ver';
   else if (movil) accion = 'Iniciar visita';
+  // Un supervisor ve la semana de todos: en visita ajena solo consulta, no
+  // abre el formulario (se guardaría sobre la fila de otro inspector).
+  const soloVer = e !== 'COMPLETADO' && !puedeDiligenciar(f);
+  if (soloVer) accion = movil ? 'Ver datos' : 'Ver';
 
   return (
     <div className={'sv-card ' + _svClaseEstado(f)}
@@ -104,7 +108,9 @@ function SemanaCard({ f, movil, onAbrir }) {
           {/* Firma (fila, datos): la misma de BotonContinuarVisita y AlertaCard.
               Con solo (f) el router recibe la fila donde espera el _idx y el
               formulario abre sin datos. */}
-          <button className="sv-btn" onClick={() => onAbrir && onAbrir(f._idx, f)}>{accion}</button>
+          <button className="sv-btn" onClick={() => soloVer
+            ? (window.abrirVisitaDetail && window.abrirVisitaDetail(f))
+            : (onAbrir && onAbrir(f._idx, f))}>{accion}</button>
           <BotonMapaVisita f={f} variante="icono" />
         </span>
       </div>

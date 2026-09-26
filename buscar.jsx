@@ -117,6 +117,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const inputBuscarRef = useRefB(null);
 
   const esAdmin = usuario.rol === 'ADMIN';
+  // Supervisor: ve la lista completa y filtra por inspector, pero las acciones
+  // de gestión siguen atadas a esAdmin.
+  const veTodo = veTodasLasVisitas(usuario.rol);
 
   // ── Estado para acciones de gestión admin ──
   const [inspectores, setInspectores] = useStateB([]);
@@ -132,13 +135,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   // USUARIOS nunca aparecía como filtro. Ahora se muestran todos los activos,
   // que es la misma lista que alimenta el panel de asignación.
   useEffectB(() => {
-    if (!esAdmin) return;
+    if (!veTodo) return;
     listarInspectoresActivos().then(lista => {
       const todos = lista || [];
       setVisitadores(todos.map(u => ({ val: u.nombre, l: titleCaseNombre(u.nombre) })));
       setInspectores(todos);
     }).catch(() => {});
-  }, [esAdmin]);
+  }, [veTodo]);
 
   // forzar=true salta el caché (botón "Recargar"). Al primer mount reusa caché.
   // Declarada ANTES de las acciones admin de abajo: sus useCallback dependen
@@ -149,7 +152,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     if (!silencioso) { if (!conservar) setCargando(true); setError(''); }
     try {
       const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
-      const mios = esAdmin ? all : all.filter(f => {
+      const mios = veTodo ? all : all.filter(f => {
         const vis = visitadoresBD(f).toUpperCase();
         const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
         return vis.includes(usuario.usuario.toUpperCase()) || est === 'PENDIENTE' || est === 'COMPLETADO';
@@ -157,7 +160,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       setDatos(mios);
     } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
-  }, [esAdmin, usuario]);
+  }, [veTodo, usuario]);
 
   // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
   useEffectB(() => suscribirVisitas(() => cargar(false, true)), [cargar]);
@@ -558,8 +561,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           </div>
         )}
 
-        {/* Visitador — solo ADMIN */}
-        {esAdmin && visitadores.length > 0 && (
+        {/* Visitador — admin y supervisor */}
+        {veTodo && visitadores.length > 0 && (
           <div className="filtro-grupo">
             <div className="filtro-grupo-titulo">
               Visitador {filtrosVisitador.length > 0 && (

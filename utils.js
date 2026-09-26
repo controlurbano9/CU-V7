@@ -278,6 +278,15 @@ function puedeDiligenciar(fila) {
   return s.rol === 'ADMIN' || String(s.usuario || '').toUpperCase() === dilig;
 }
 
+// Quién ve TODAS las visitas (Inicio, semana, alertas, Buscar), no solo las
+// suyas. SUPERVISOR (col E de USUARIOS, 2026-09-25) ve como el admin pero no
+// gestiona: asignar/completar/Agenda/⚙ Admin siguen atados a rol === 'ADMIN'
+// y diligenciar a puedeDiligenciar(). Solo lectura por construcción.
+function veTodasLasVisitas(rol) {
+  var r = String(rol || '').toUpperCase();
+  return r === 'ADMIN' || r === 'SUPERVISOR';
+}
+
 // Extrae el ID de carpeta Drive desde un link "https://drive.google.com/.../folders/<id>..."
 // Antes duplicada de forma idéntica en informe-modal.jsx y buscar.jsx: al concatenar
 // el bundle, la segunda declaración pisaba silenciosamente a la primera (mismo scope global).
@@ -624,6 +633,7 @@ var _cuUtilsExports = {
   primerVisitador: primerVisitador,
   ponerDiligenciadorPrimero: ponerDiligenciadorPrimero,
   puedeDiligenciar: puedeDiligenciar,
+  veTodasLasVisitas: veTodasLasVisitas,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,
   asignadaVisibleHoy: asignadaVisibleHoy,
