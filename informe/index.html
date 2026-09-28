@@ -412,7 +412,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
   <div class="card" id="card-identificacion" data-momento="1">
     <div class="ch"><div class="ci"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg></div><div><div class="ct">Expediente y visita</div><div class="cst">Datos de radicacion</div></div></div>
     <div class="fg">
-      <div class="f"><label>Fecha de la visita</label><input type="date" id="fechaVisita"></div>
+      <div class="f"><label>Fecha de la visita</label><input type="date" id="fechaVisita" onchange="sugerirVigenciaLic()"></div>
       <div class="f"><label>Fecha emision del informe</label><input type="date" id="fechaInforme"></div>
       <div class="f"><label>Quien realiza informe</label>
         <select id="inspector" onchange="onInspectorChange(this)">
@@ -581,7 +581,15 @@ body.v2-mode .v2-autosave{display:inline-flex}
     <div id="lic-fields">
       <div class="fg">
         <div class="f"><label>N de resolucion</label><input type="text" id="numRes" placeholder="0234 de 15/03/2020"></div>
-        <div class="f"><label>Fecha de ejecutoria</label><input type="text" id="fechaEjec" placeholder="DD/MM/AAAA"></div>
+        <div class="f"><label>Fecha de ejecutoria</label><input type="text" id="fechaEjec" placeholder="DD/MM/AAAA" onchange="sugerirVigenciaLic()"></div>
+        <div class="f"><label>Vigencia de la licencia a la fecha de visita</label>
+          <select id="vigenciaLic" onchange="this.dataset.auto=''">
+            <option value="">Sin verificar</option>
+            <option value="VIGENTE">Vigente</option>
+            <option value="VENCIDA">Vencida</option>
+          </select>
+          <small id="vigenciaLic-nota" style="display:block;font-size:11px;color:var(--texto-3);margin-top:3px"></small>
+        </div>
         <div class="f ff"><label>Tipo de tramite (puede seleccionar varios)</label>
           <div id="tipo-tramite-checks" class="mod-chk-wrap">
             <label><input type="checkbox" class="tt-chk" value="Licencia de construccion" onchange="toggleModalidades()"> Licencia de construccion</label>
@@ -1556,10 +1564,12 @@ function _marcarComportamientoPorCodigo(codigo) {
 // — se usan como señal adicional para sugerir/advertir hallazgos, en vez de
 // depender solo de que el inspector lo redacte en prosa libre.
 function _senalesEstructuradas() {
-  var sinLicEl = document.getElementById('sinLic');
   var proteccionNorm = _normalizarParaMatch(gv('proteccion')).trim();
+  var estadoLic = _estadoLicencia();
   return {
-    sinLicencia: sinLicEl ? sinLicEl.checked : false,
+    // Licencia vencida cuenta igual que sin licencia para A4 ("o cuando
+    // esta hubiere caducado").
+    sinLicencia: estadoLic === 'SIN_LICENCIA' || estadoLic === 'VENCIDA',
     sueloProtegido: !!proteccionNorm && proteccionNorm !== 'no' && proteccionNorm !== 'seleccione'
   };
 }
@@ -1901,8 +1911,10 @@ function _actualizarRespuestaPreguntaClarificacion(idx, valor) {
 // aprobado).
 function _hallazgoInconsistente(h) {
   if (!h || _numeralCatalogoACodigo(h.numeral_art135) !== 'A4') return false;
-  var sinLicEl = document.getElementById('sinLic');
-  return sinLicEl ? !sinLicEl.checked : false;
+  // A4 dice "sin licencia o cuando esta hubiere caducado": con licencia
+  // vencida el hallazgo es coherente, no contradictorio.
+  var estado = _estadoLicencia();
+  return estado !== 'SIN_LICENCIA' && estado !== 'VENCIDA';
 }
 
 // Etiqueta cualitativa de confianza, NO un porcentaje inventado: cuenta
@@ -2134,6 +2146,58 @@ function ir(n) {
 function toggleSinLic(cb) {
   document.getElementById('lic-fields').classList.toggle('hidden', cb.checked);
 }
+
+// ── Vigencia de la licencia (2026-09-28) ─────────────────────────────────
+// Antes el prompt solo conocia "sin licencia aportada" / "licencia vigente":
+// una licencia aportada pero vencida caia en la segunda rama y la IA
+// recomendaba "cenirse a lo aprobado" en vez de abstenerse de construir.
+// La sugerencia automatica usa 24 meses de vigencia + 12 de prorroga desde
+// la ejecutoria; es solo una pista — el inspector decide, porque puede haber
+// prorroga o revalidacion que el formulario no conoce. Solo se toca el
+// select si esta en "Sin verificar" o si el valor lo puso esta misma
+// funcion (dataset.auto): una eleccion a mano o restaurada del borrador
+// nunca se pisa.
+var VIGENCIA_LIC_MESES_MAX = 36;
+
+// DD/MM/AAAA (o D-M-AAAA) o AAAA-MM-DD -> Date local; null si no se entiende.
+// Nunca new Date(texto): con DD/MM voltea dia y mes sin avisar.
+function _fechaLicComoDate(txt) {
+  var s = String(txt || '').trim(), m;
+  if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) return new Date(+m[1], +m[2] - 1, +m[3]);
+  if ((m = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/.exec(s))) return new Date(+m[3], +m[2] - 1, +m[1]);
+  return null;
+}
+
+function _vigenciaLicSugerida() {
+  var ejec = _fechaLicComoDate(gv('fechaEjec'));
+  var visita = _fechaLicComoDate(gv('fechaVisita'));
+  if (!ejec || !visita) return '';
+  var limite = new Date(ejec.getFullYear(), ejec.getMonth() + VIGENCIA_LIC_MESES_MAX, ejec.getDate());
+  return visita > limite ? 'VENCIDA' : '';
+}
+
+function sugerirVigenciaLic() {
+  var sel = document.getElementById('vigenciaLic');
+  var nota = document.getElementById('vigenciaLic-nota');
+  if (!sel) return;
+  var sugerida = _vigenciaLicSugerida();
+  if (!sel.value || sel.dataset.auto === '1') {
+    sel.value = sugerida;
+    sel.dataset.auto = sugerida ? '1' : '';
+  }
+  if (nota) {
+    nota.textContent = sugerida === 'VENCIDA'
+      ? 'Mas de 36 meses desde la ejecutoria a la fecha de visita: probablemente vencida. Confirme si hubo prorroga o revalidacion.'
+      : '';
+  }
+}
+
+// Estado efectivo para el prompt: SIN_LICENCIA / VENCIDA / VIGENTE / SIN_VERIFICAR.
+function _estadoLicencia() {
+  var sinLicEl = document.getElementById('sinLic');
+  if (sinLicEl && sinLicEl.checked) return 'SIN_LICENCIA';
+  return gv('vigenciaLic') || 'SIN_VERIFICAR';
+}
 function toggleArt(cb) {
   document.getElementById('art-table').classList.toggle('hidden', !cb.checked);
 }
@@ -2203,6 +2267,7 @@ function buildRes() {
     h += '<div class="res-grid" style="margin-top:8px">';
     h += fila('N resolucion',   gv('numRes'));
     h += fila('Fecha ejecutoria', gv('fechaEjec'));
+    h += fila('Vigencia', { VIGENTE: 'Vigente', VENCIDA: 'Vencida' }[gv('vigenciaLic')] || 'Sin verificar');
     h += fila('Titular',        gv('titular'));
     h += fila('Curaduria',      gv('curaduria'));
     h += fila('Pisos aprobados', gv('pisos'));
@@ -2315,6 +2380,7 @@ function recolectarDatosWizard() {
     es_diligencia: !!(document.getElementById('esDiligencia') || {}).checked,
     num_res:sinLic?'No se aporto':gv('numRes'),
     fecha_ejec:sinLic?'No se aporto':gv('fechaEjec'),
+    estado_licencia:_estadoLicencia(),
     tipo_tramite:sinLic?'No aplica':tipoTramiteStr,
     modalidad:sinLic?'No aplica':modalidadStr,
     titular:sinLic?'No se aporto':gv('titular'),
@@ -2369,7 +2435,29 @@ async function construirPromptF43(ctx) {
   var d = ctx.d, fotoDescs = ctx.fotoDescs, sinLic = ctx.sinLic;
   var licNota = sinLic
     ? 'No se aporto documentacion urbanistica. En antecedentes indicar exactamente que "no fue aportada ni exhibida documentacion urbanistica que acredite licencia de construccion" — la ausencia de exhibicion deja la carga de acreditarla en quien construye. Nunca afirmar que la obra "no tiene licencia" (hecho negativo absoluto, no verificable en una sola visita) ni escribir "no fue posible verificar" (sugeriria que la licencia existe y solo falto comprobarla).'
-    : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion.';
+    : d.estado_licencia === 'VENCIDA'
+      ? 'Se aporto licencia, pero su termino de vigencia se encontraba vencido a la fecha de la visita (dato del inspector). Indicarlo en observaciones de forma objetiva (ej. "licencia con fecha de ejecutoria ' + (d.fecha_ejec || '[segun DATOS]') + ', cuyo termino de vigencia se encontraba vencido a la fecha de la visita") y contrastar lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion. PROHIBIDO tratarla como licencia vigente.'
+      : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion.'
+        + (d.estado_licencia === 'VIGENTE' ? '' : ' Su vigencia a la fecha de la visita no fue verificada: no afirmes que esta vigente ni que esta vencida.');
+  // Recomendacion permanente de licencia — un caso por estado (2026-09-28:
+  // una licencia vencida salia con "cenirse a lo aprobado", como si estuviera
+  // vigente, y ademas mezclada con el hallazgo del tercer piso).
+  var recLicencia;
+  if (d.estado_licencia === 'SIN_LICENCIA') {
+    recLicencia = 'la visita se realizo sin licencia aportada — tratada como licencia no vigente —: recomienda '
+      + 'abstenerse de ejecutar obras nuevas o de modificacion hasta tramitar y obtener la licencia de construccion vigente.';
+  } else if (d.estado_licencia === 'VENCIDA') {
+    recLicencia = 'la licencia aportada estaba VENCIDA a la fecha de la visita: recomienda abstenerse de ejecutar '
+      + 'nuevas obras de construccion, ampliacion, modificacion o adecuacion en el inmueble hasta contar con licencia '
+      + 'urbanistica vigente, y garantizar que toda intervencion se ajuste estrictamente a lo aprobado por la curaduria '
+      + 'urbana (orientacion: "Abstenerse de ejecutar nuevas obras de construccion, ampliacion, modificacion o adecuacion '
+      + 'en el inmueble hasta contar con licencia urbanistica vigente, y garantizar que toda intervencion se ajuste '
+      + 'estrictamente a lo aprobado por la curaduria urbana."). PROHIBIDO recomendar "cenirse a lo aprobado" como si la '
+      + 'licencia estuviera vigente, y PROHIBIDO recomendar revalidacion o prorroga.';
+  } else {
+    recLicencia = 'se aporto licencia: recomienda garantizar que la ejecucion de las obras se ajuste estrictamente a lo '
+      + 'aprobado por la curaduria urbana' + (d.estado_licencia === 'VIGENTE' ? ' en la licencia vigente' : '') + '.';
+  }
   // Area en contravencion — tres estados, tres reglas (2026-09-28, a partir
   // de un informe real): cifra -> cierre literal e item de conclusiones;
   // "No se pudo medir" -> prosa fluida, nunca la formula literal;
@@ -2500,12 +2588,10 @@ async function construirPromptF43(ctx) {
     + 'generica ni de vuelta al mismo Inspector que ya tiene el caso. Si hay un comportamiento marcado en '
     + 'area protegida o espacio publico, no recomiendes "obtener licencia" (esa obra no es susceptible de '
     + 'licenciamiento); recomienda la restitucion/demolicion directa. RECOMENDACION PERMANENTE DE LICENCIA '
-    + '(siempre presente como un item, adaptada al caso): si la visita se realizo sin licencia aportada — '
-    + 'tratada como licencia no vigente —, recomienda abstenerse de ejecutar obras nuevas o de modificacion '
-    + 'hasta tramitar y obtener la licencia de construccion vigente; si hay licencia vigente, recomienda '
-    + 'garantizar que la ejecucion de las obras se cina a cabalidad a lo aprobado por la curaduria. Excepto '
-    + 'cuando el hallazgo sea en area protegida o espacio publico, caso en el que aplica la restriccion de '
-    + 'arriba. No repitas el area en contravencion aqui.\n'
+    + '(siempre presente como un item propio): en esta visita ' + recLicencia + ' Ese item habla SOLO de la '
+    + 'licencia: PROHIBIDO mencionar en el hallazgos puntuales (un piso adicional, un voladizo, un uso, etc.) — '
+    + 'cada uno de esos va en su propio item. Excepto cuando el hallazgo sea en area protegida o espacio '
+    + 'publico, caso en el que aplica la restriccion de arriba. No repitas el area en contravencion aqui.\n'
     + '6. Lenguaje: prohibido "constituye", "demuestra", "acredita", "confirma", "prueba", "evidencia plenamente", '
     + '"se encuentra plenamente establecido", "desconocimiento total", "carece de estructura aprobada" — usa '
     + '"se observo", "se evidencio", "se identifico", "durante la visita". Nunca escribas "no fue posible verificar" — describe el hecho observado, no lo que falto comprobar (con sin-licencia sugeriria que la licencia existe). Sin puntos '
@@ -2730,6 +2816,19 @@ function validarInformeIA(json, ctx) {
       problemas.push('Recomendacion ' + (i + 1) + ' remite "a la autoridad competente" de forma generica — debe nombrar una entidad con competencia distinta (ambiental, movilidad, curaduria, etc.), nunca de vuelta al mismo Inspector que ya tiene el caso.');
     }
   });
+
+  // Licencia vencida: la recomendacion permanente debe pedir abstenerse hasta
+  // contar con licencia vigente — el caso que el prompt viejo resolvia con
+  // "cenirse a lo aprobado", como si la licencia estuviera vigente.
+  if (ctx.d.estado_licencia === 'VENCIDA') {
+    var recsNorm = (json.recomendaciones_items || []).map(_quitarTildesInforme);
+    var pideVigente = recsNorm.some(function(r) {
+      return r.indexOf('abstener') >= 0 && r.indexOf('vigente') >= 0;
+    });
+    if (!pideVigente) {
+      problemas.push('La licencia estaba vencida a la fecha de visita: falta la recomendacion de abstenerse de ejecutar obras hasta contar con licencia urbanistica vigente.');
+    }
+  }
 
   // Cantidades — el minimo solo aplica si hay algo confirmado que reportar
   // (hallazgos del catalogo o comportamientos Art.135); un informe
@@ -3361,7 +3460,7 @@ async function descargarDocx() {
 var CAMPOS = [
   'fechaVisita','fechaInforme','inspector','cargo',
   'numRadicado','direccion','barrio','comuna','catastral',
-  'numRes','fechaEjec','titular',
+  'numRes','fechaEjec','vigenciaLic','titular',
   'pisos','areaApro','sist','dest','cubierta','curaduria',
   'obs','areas',
   'clasificacion','poligUso','poligTrat','franja','proteccion'
@@ -4340,7 +4439,7 @@ function prefillDesdeURL() {
     if (cb) { cb.checked = true; toggleSinLic(cb); }
   } else {
     if (p.get('numRes'))    document.getElementById('numRes').value    = p.get('numRes');
-    if (p.get('fechaEjec')) document.getElementById('fechaEjec').value = p.get('fechaEjec');
+    if (p.get('fechaEjec')) { document.getElementById('fechaEjec').value = p.get('fechaEjec'); sugerirVigenciaLic(); }
     if (p.get('pisos'))     document.getElementById('pisos').value     = p.get('pisos');
     if (p.get('dest'))      document.getElementById('dest').value      = p.get('dest');
     if (p.get('cubierta'))  document.getElementById('cubierta').value  = p.get('cubierta');
