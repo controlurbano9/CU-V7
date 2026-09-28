@@ -262,6 +262,26 @@ function ponerDiligenciadorPrimero(visitadores, nombre) {
   return [n].concat(resto).join(' / ');
 }
 
+// ¿El borrador local guardado bajo `cu_draft_v1_fila_<N>` es de la visita que
+// hoy vive en la fila N? El número de fila NO identifica una visita: si alguien
+// borra una fila en el Sheet, todas las de abajo suben una posición y el
+// borrador queda apuntando a otra visita. Caso real (2026-09-25): el borrador
+// de 20261079955 se restauró sobre la fila de 20261084284 y la carpeta
+// automática la guardó sola — esa visita desapareció de la BD.
+//   - `_radicadoFila`: radicado de BD que tenía la fila al escribir el borrador.
+//   - Borradores viejos (sin ese campo): se compara el radicado del formulario.
+//   - Si falta alguno de los dos no hay con qué comparar: se acepta.
+function _normRadicado(r) {
+  return String(r == null ? '' : r).replace(/\s+/g, '').toUpperCase();
+}
+function borradorEsDeLaFila(borrador, radicadoFila) {
+  var actual = _normRadicado(radicadoFila);
+  if (!borrador || !actual) return true;
+  var suyo = _normRadicado(borrador._radicadoFila || (borrador._d && borrador._d.radicado));
+  if (!suyo) return true;
+  return suyo === actual;
+}
+
 // Regla del diligenciador aplicada a la escritura: solo el primer nombre de
 // VISITADOR(ES) puede diligenciar la visita, porque al pasar a INICIADO solo él
 // la sigue viendo. Un co-asignado que la iniciara la perdería de su lista y la
@@ -664,6 +684,7 @@ var _cuUtilsExports = {
   visitadoresBD: visitadoresBD,
   primerVisitador: primerVisitador,
   ponerDiligenciadorPrimero: ponerDiligenciadorPrimero,
+  borradorEsDeLaFila: borradorEsDeLaFila,
   puedeDiligenciar: puedeDiligenciar,
   veTodasLasVisitas: veTodasLasVisitas,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,

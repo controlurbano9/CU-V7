@@ -958,6 +958,11 @@ async function guardarVisita(payload) {
   // backend lo compara contra el valor actual en BD para detectar si otro
   // co-asignado guardó cambios en el medio (ver ULTIMA_MODIFICACION).
   if (payload.fila && payload.ultimaModConocida) body.ultimaModConocida = payload.ultimaModConocida;
+  // Radicado que el cliente cree que vive en esa fila. El backend no escribe
+  // si ahí hay otro: el número de fila se corre cuando borran una fila en el
+  // Sheet, y ULTIMA_MODIFICACION no lo detecta si la fila de destino nunca se
+  // estampó (así se perdió 20261084284 el 2026-09-25). Backend viejo lo ignora.
+  if (payload.fila && payload.radicadoConocido) body.radicadoConocido = payload.radicadoConocido;
   // requestId solo para 'actualizar': si Google pierde la respuesta de un
   // guardado que sí se escribió, el reintento (o la cola) recibe el resultado
   // ya hecho en vez de un conflicto falso por ULTIMA_MODIFICACION.

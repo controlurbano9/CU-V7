@@ -1734,6 +1734,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const _lastSavedRef  = React.useRef('');     // JSON del último estado persistido OK
   const _restauradoRef = React.useRef(false);
   const _prevDraftKeyRef = React.useRef(null); // clave bajo la que se hizo el último setItem
+  // Radicado que tiene en BD la fila que edita este formulario (el que vino al
+  // abrir, o el último que se guardó). Viaja en cada 'actualizar' como
+  // `radicadoConocido`: el backend se niega a escribir si en esa fila ahora hay
+  // otro radicado (una fila borrada en el Sheet corre todas las de abajo), y
+  // también sirve para descartar un borrador local que no es de esta visita.
+  const _radicadoFilaRef = React.useRef(String((datosIniciales || {})['RADICADO'] || ''));
   // QW25: refs para que el useEffect del autoguardado remoto no dependa de
   // estos flags — cambian seguido (cada guardado manual/acta/RF) y antes
   // reiniciaban el setInterval de 60s en cada toggle.
@@ -1802,7 +1808,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const raw = localStorage.getItem(_draftKey);
       if (raw) {
         const obj = JSON.parse(raw);
-        if (obj && obj._d) {
+        if (filaEditando && !borradorEsDeLaFila(obj, _radicadoFilaRef.current)) {
+          // Borrador de OTRA visita que quedó bajo este número de fila. Nunca
+          // restaurarlo: el guardado siguiente la escribiría encima de esta.
+          localStorage.removeItem(_draftKey);
+          console.warn('[autoguardado] borrador descartado: ' + _draftKey + ' es de otro radicado');
+        } else if (obj && obj._d) {
           // Los borradores escritos antes del fix de `_dServidor` todavía
           // contienen `ultimaModConocida`; restaurarlo pisaría el timestamp
           // fresco de BD y provocaría un conflicto falso al guardar. Se
@@ -1864,6 +1875,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           _d: _dSafe,
           _barrioOtro: barrioOtro,
           _clientId: clientId,
+          _radicadoFila: _radicadoFilaRef.current,
         }));
         if (_prevDraftKeyRef.current && _prevDraftKeyRef.current !== _draftKey) {
           try { localStorage.removeItem(_prevDraftKeyRef.current); } catch(_) {}
@@ -1893,7 +1905,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // arregla aquí sino cerrando la puerta de los entregables: sin guardar
         // no hay acta, así que no se puede terminar una visita sin pulsarlo.
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current });
+        _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
         setUltimoGuardadoMs(Date.now());
@@ -2003,6 +2016,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setClientId(_newEphemeralDraftId());
     _restauradoRef.current = false;
     _prevDraftKeyRef.current = null;
+    _radicadoFilaRef.current = (res.tipo === 'pqr' && !res.esNueva)
+      ? String((res.datosIniciales || {})['RADICADO'] || '') : '';
     if (res.tipo === 'oficio') {
       // Visita de oficio — formulario en blanco con flag _oficio
       setD(_estadoInicial({ '_oficio': true }));
@@ -2121,7 +2136,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         const vals = _construirPayload(d, estadoVisita, linkDrive, datosIniciales);
         let rBg = null;
         try {
-          rBg = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: d.ultimaModConocida });
+          rBg = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: d.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current });
+          _radicadoFilaRef.current = String(vals[0] || '');
         } catch (e) { /* silencioso, se reintenta al próximo save */ }
         if (cancelado) return;
         setD(prev => ({
@@ -2710,7 +2726,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current });
+      _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.fila) setFE(r.fila);
 
       // 4. Actualizar state local con metadatos derivados
