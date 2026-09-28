@@ -11,7 +11,7 @@
 //   - filaInicial num   →  continuar visita existente (Buscar / Gestión)
 //   - datosIniciales obj → prefill desde una fila PENDIENTE (radicado ya existe en BD)
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateNV, useEffect: useEffectNV, useMemo: useMemoNV } = React;
+const { useEffect: useEffectNV, useMemo: useMemoNV } = React;
 
 // ── Helpers de fecha ───────────────────────────────────────────
 function _hoyDDMMYYYY_nv() {
@@ -957,7 +957,7 @@ function _MapaGPS({ lat, lon, onMove }) {
   onMoveRef.current = onMove;
   // null = esperando el script de Maps · true = listo · false = se rindió
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [gmListo, setGmListo] = useStateNV(_googleMapsYaEsta() ? true : null);
+  const [gmListo, setGmListo] = React.useState(_googleMapsYaEsta() ? true : null);
   const tieneCoords = lat != null && lon != null;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -1054,7 +1054,7 @@ function _MapaGPS({ lat, lon, onMove }) {
 // Reutilizable entre Nueva visita y Consulta de norma.
 function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_TarjetaFichaCatastral`, convención guion bajo del archivo
-  const [abierta, setAbierta] = useStateNV(!!expandida);
+  const [abierta, setAbierta] = React.useState(!!expandida);
   const titular = r.propietario || '—';
   return (
     <div style={{
@@ -1120,7 +1120,7 @@ window._TarjetaFichaCatastral = _TarjetaFichaCatastral;
 // Si hay >10 fichas, muestra input para filtrar por ficha, dirección o titular.
 function _ListaFichasCatastrales({ fichas, onSeleccionar, maxAlto }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_ListaFichasCatastrales`, convención guion bajo del archivo
-  const [filtro, setFiltro] = useStateNV('');
+  const [filtro, setFiltro] = React.useState('');
   // Ordenar por prioridad descendente:
   //   1) fichas con matrícula inmobiliaria (más útiles para el inspector)
   //   2) predios municipales (Municipio de Bello)
@@ -1189,10 +1189,10 @@ window._ListaFichasCatastrales = _ListaFichasCatastrales;
 //   MODAL INICIO — Elige tipo de visita y busca radicado
 // ══════════════════════════════════════════════════════════════
 function ModalInicioVisita({ onResult, onCancelar }) {
-  const [paso, setPaso]         = useStateNV('tipo');    // 'tipo' | 'radicado' | 'resultado'
-  const [radicado, setRadicado] = useStateNV('');
-  const [buscando, setBuscando] = useStateNV(false);
-  const [resultado, setResultado] = useStateNV(null);
+  const [paso, setPaso]         = React.useState('tipo');    // 'tipo' | 'radicado' | 'resultado'
+  const [radicado, setRadicado] = React.useState('');
+  const [buscando, setBuscando] = React.useState(false);
+  const [resultado, setResultado] = React.useState(null);
   // resultado: { encontrado, visitas[], ultimaVisita, nVisitaSig }
 
   async function buscarRadicado() {
@@ -1591,33 +1591,33 @@ function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, nota, pr
 function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // ── Fase: 'modal' muestra el selector de tipo, 'formulario' muestra el form ──
   const tieneDatos = filaInicial != null || datosIniciales != null;
-  const [fase, setFase] = useStateNV(tieneDatos ? 'formulario' : 'modal');
+  const [fase, setFase] = React.useState(tieneDatos ? 'formulario' : 'modal');
 
-  const [d, setD]               = useStateNV(() => _estadoInicial(datosIniciales));
+  const [d, setD]               = React.useState(() => _estadoInicial(datosIniciales));
   // Estado inicial real desde BD para no promover PENDIENTE→INICIADO solo por
   // abrir el formulario (la promoción ocurre únicamente al pulsar Guardar).
-  const [estadoVisita, setEstV] = useStateNV(() => {
+  const [estadoVisita, setEstV] = React.useState(() => {
     const raw = (datosIniciales || {})['ESTADO VISITA'];
     const norm = (typeof normalizarEstado === 'function' ? normalizarEstado(raw) : (raw || '').toString().toUpperCase().trim());
     return norm || (filaInicial ? 'INICIADO' : 'PENDIENTE');
   });
-  const [filaEditando, setFE]   = useStateNV(filaInicial || null);
-  const [guardando, setGuard]   = useStateNV(false);
-  const [generandoActa, setGA]  = useStateNV(false);
-  const [generandoRF,  setGRF]  = useStateNV(false);
+  const [filaEditando, setFE]   = React.useState(filaInicial || null);
+  const [guardando, setGuard]   = React.useState(false);
+  const [generandoActa, setGA]  = React.useState(false);
+  const [generandoRF,  setGRF]  = React.useState(false);
   // Informe F-GGO-43: la "generación" es abrir informe/index.html (pestaña o
   // iframe); este flag solo marca el tramo validación→apertura.
-  const [abriendoInforme, setAI] = useStateNV(false);
-  const [modalFotos,  setModalFotos] = useStateNV(null); // null o [{id, nombre, link, descripcion, mimeType}]
+  const [abriendoInforme, setAI] = React.useState(false);
+  const [modalFotos,  setModalFotos] = React.useState(null); // null o [{id, nombre, link, descripcion, mimeType}]
   // Total de fotos que trajo listarFotosActa al abrir el modal. Se fija una sola
   // vez y no se recalcula: la lista se va modificando al quitar fotos y el botón
   // de confirmar necesita el total original para avisar cuántas se excluyeron.
-  const [modalFotosTotal, setModalFotosTotal] = useStateNV(0);
-  const [cargandoFotos, setCargandoFotos] = useStateNV(false);
-  const [dragIdx, setDragIdx]   = useStateNV(null); // indice de la foto siendo arrastrada
-  const [dropTarget, setDropTarget] = useStateNV(null); // {idx, pos:'above'|'below'} — indicador de inserción
-  const [busyGeo, setBusyGeo]   = useStateNV(false);
-  const [gpsAccuracy, setGpsAccuracy] = useStateNV(null); // precisión en metros
+  const [modalFotosTotal, setModalFotosTotal] = React.useState(0);
+  const [cargandoFotos, setCargandoFotos] = React.useState(false);
+  const [dragIdx, setDragIdx]   = React.useState(null); // indice de la foto siendo arrastrada
+  const [dropTarget, setDropTarget] = React.useState(null); // {idx, pos:'above'|'below'} — indicador de inserción
+  const [busyGeo, setBusyGeo]   = React.useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = React.useState(null); // precisión en metros
   const geoWatchRef = React.useRef(null); // id del watchPosition activo
   // id del setTimeout de 30s que corta el watch. En ref y no en variable local:
   // "Cancelar", el aceptar manual y el desmontaje pasan por _detenerGeoWatch()
@@ -1627,44 +1627,44 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // segunda aceptación viva capaz de pisar una corrección del pin.
   const geoTimeoutRef = React.useRef(null);
   const mejorPosGeoRef = React.useRef(null); // {lat, lon, acc} de la última lectura del watch activo
-  const [busyMejora, setBusyMe] = useStateNV(false);
-  const [sugerenciaIA, setSugerenciaIA] = useStateNV(''); // texto mejorado pendiente de aceptar
-  const [dictando, setDictando] = useStateNV(false);    // grabación por voz activa
-  const [busyPOT, setBusyPOT]   = useStateNV(false);
-  const [busyCat, setBusyCat]   = useStateNV(false);
-  const [catResultados, setCatRes] = useStateNV(null);
+  const [busyMejora, setBusyMe] = React.useState(false);
+  const [sugerenciaIA, setSugerenciaIA] = React.useState(''); // texto mejorado pendiente de aceptar
+  const [dictando, setDictando] = React.useState(false);    // grabación por voz activa
+  const [busyPOT, setBusyPOT]   = React.useState(false);
+  const [busyCat, setBusyCat]   = React.useState(false);
+  const [catResultados, setCatRes] = React.useState(null);
   // Flag independiente: ¿es predio del Municipio de Bello?
   // catResultados solo se setea cuando hay >1 ficha (propiedad horizontal);
   // este flag se setea SIEMPRE que la búsqueda catastral encuentre fichas
   // municipales, sin importar si es 1 ficha o muchas. Crítico para que la
   // advertencia de tipificación A3 no se "pierda" en predios de 1 sola ficha.
-  const [predioMunicipal, setPredioMunicipal] = useStateNV(false);
+  const [predioMunicipal, setPredioMunicipal] = React.useState(false);
   // Estado para la advertencia de tipificación (predio público / suelo protección).
   // Cuando el inspector toca "Ignorar" no volvemos a mostrarla hasta que cambien
   // las señales (nuevo punto GPS, nueva consulta catastral, etc.).
-  const [advertTipifIgnorada, setAdvertTipifIgnorada] = useStateNV(false);
+  const [advertTipifIgnorada, setAdvertTipifIgnorada] = React.useState(false);
   // Estado auxiliar para barrio "Otro" (texto libre)
-  const [barrioOtro, setBarrioOtro] = useStateNV('');
+  const [barrioOtro, setBarrioOtro] = React.useState('');
   // Confirmación de dirección en línea: la dirección bautiza la carpeta de
   // Drive en el PRIMER guardado, así que el inspector la confirma («¿Es
   // correcta?») antes de que exista la carpeta. dirEnfoque esconde la fila
   // mientras el inspector edita el campo. Los refs apuntan a la fila y al
   // botón «Sí» para el bloqueo de guardar() (scroll + foco + parpadeo).
-  const [dirConfirmada, setDirConfirmada] = useStateNV(false);
-  const [dirEnfoque, setDirEnfoque] = useStateNV(false);
+  const [dirConfirmada, setDirConfirmada] = React.useState(false);
+  const [dirEnfoque, setDirEnfoque] = React.useState(false);
   const dirFilaRef = React.useRef(null);
   const dirBotonRef = React.useRef(null);
   // ¿Corresponde pedir la confirmación? Solo mientras la carpeta de Drive no
   // exista (primer guardado): reabrir una visita guardada ya no pregunta.
   const requiereDir = !d.linkDrive && direccionRequiereConfirmar(d.direccion, d.comuna, d.barrio);
   // Estado auxiliar para consecutivo de orden de policía (solo el número)
-  const [ordenConsecutivo, setOrdenConsecutivo] = useStateNV(() =>
+  const [ordenConsecutivo, setOrdenConsecutivo] = React.useState(() =>
     _extraerConsecutivoOrden((datosIniciales || {})['N° ORDEN DE POLICIA'] || (datosIniciales || {})['N ORDEN DE POLICIA'] || '')
   );
   // Año de la orden — se extrae al cargar y queda bloqueado para órdenes
   // existentes. Para órdenes nuevas (string vacío) el prefijo cae al año
   // actual del calendario, capturándose efectivamente al guardar.
-  const [ordenAnio, setOrdenAnio] = useStateNV(() =>
+  const [ordenAnio, setOrdenAnio] = React.useState(() =>
     _extraerAnioOrden((datosIniciales || {})['N° ORDEN DE POLICIA'] || (datosIniciales || {})['N ORDEN DE POLICIA'] || '')
   );
   // Referencia estable al recognition de voz (debe estar ANTES del early return de fase=modal,
@@ -1680,7 +1680,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // automáticamente al recuperar conexión. Refuerza la confianza del inspector
   // en campo (caso típico: zona rural sin señal).
   // DEBE estar ANTES del early return de fase=modal (React #310).
-  const [enLinea, setEnLinea] = useStateNV(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [enLinea, setEnLinea] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   React.useEffect(function() {
     function _on()  { setEnLinea(true); }
     function _off() { setEnLinea(false); }
@@ -1712,13 +1712,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   //      al recibir fila tras el primer guardado), el borrador bajo la
   //      clave anterior se elimina para no dejar huérfanos.
   // DEBE estar antes del early return de fase=modal (React #310).
-  const [draftEphemeralId, setDraftEphemeralId] = useStateNV(_newEphemeralDraftId);
+  const [draftEphemeralId, setDraftEphemeralId] = React.useState(_newEphemeralDraftId);
 
   // clientId: identificador único de esta sesión de formulario, usado solo
   // para 'agregar'. Si el envío falla y se encola varias veces (o se reintenta
   // tras una recarga que restaura el borrador), AS deduplica devolviendo
   // siempre la misma fila. Se persiste con el borrador para sobrevivir reloads.
-  const [clientId, setClientId] = useStateNV(_newEphemeralDraftId);
+  const [clientId, setClientId] = React.useState(_newEphemeralDraftId);
 
   const _draftKey = React.useMemo(function() {
     if (filaEditando) return 'cu_draft_v1_fila_' + filaEditando;
@@ -1781,7 +1781,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     return snap !== _lastSavedRef.current;
   }
 
-  const [ultimoGuardadoMs, setUltimoGuardadoMs] = useStateNV(null);
+  const [ultimoGuardadoMs, setUltimoGuardadoMs] = React.useState(null);
 
   // ═══ Centro de control de la visita ═══
   // Estados que alimentan el panel superior y la barra fija inferior.
@@ -1789,15 +1789,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // dirty: hay cambios sin guardar (comparación contra _lastSavedRef).
   // enColaGuardado: el guardado de ESTA visita está en la cola offline.
   // fotosInfo: resumen de evidencia fotográfica para el panel de estado.
-  const [dirty, setDirty]               = useStateNV(false);
-  const [errorGuardar, setErrorGuardar] = useStateNV('');
-  const [enColaGuardado, setEnColaGuardado] = useStateNV(false);
-  const [fotosInfo, setFotosInfo]       = useStateNV({ subidas: 0, enCola: 0 });
+  const [dirty, setDirty]               = React.useState(false);
+  const [errorGuardar, setErrorGuardar] = React.useState('');
+  const [enColaGuardado, setEnColaGuardado] = React.useState(false);
+  const [fotosInfo, setFotosInfo]       = React.useState({ subidas: 0, enCola: 0 });
   // Puntos ámbar de sección: ocultos mientras se diligencia (si no, diez
   // secciones marcadas al abrir = decorado que se aprende a ignorar).
   // Se encienden con el primer intento de generar que encuentre faltantes.
   // Estado de sesión de pantalla: no se persiste en el borrador.
-  const [mostrarPendientes, setMostrarPendientes] = useStateNV(false);
+  const [mostrarPendientes, setMostrarPendientes] = React.useState(false);
 
   // (1) Restaurar borrador local en el primer render del formulario.
   React.useEffect(function() {
@@ -1841,7 +1841,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         setDirty(false); // el estado restaurado es la línea base, no "cambios"
       }
     }, 0);
-  }, [fase, _draftKey]);
+  }, [fase, _draftKey, filaEditando]);
 
   // (2) Persistir borrador local con debounce 500ms en cada cambio.
   // Si la identidad de la visita cambió (p.ej. al teclear el radicado en
@@ -1936,6 +1936,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }
     window.addEventListener('beforeunload', _bu);
     return function() { window.removeEventListener('beforeunload', _bu); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- _hayCambiosSinGuardar solo lee refs; re-suscribir en cada render no aporta nada
   }, [fase]);
 
   // (5) Estado "dirty" reactivo para la barra fija de guardado: la misma
@@ -2073,7 +2074,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // Lista dinámica de visitadores (cargada desde USUARIOS vía endpoint).
   // Si falla la carga (sin red o primer arranque sin cache), usa el fallback.
-  const [visitadoresDin, setVisitadoresDin] = useStateNV(VISITADORES_FALLBACK);
+  const [visitadoresDin, setVisitadoresDin] = React.useState(VISITADORES_FALLBACK);
   useEffectNV(() => {
     if (fase !== 'formulario') return;
     if (typeof listarInspectoresActivos !== 'function') return;
@@ -4787,10 +4788,10 @@ async function _comprimirFotoAhora(file) {
 }
 
 function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
-  const [subiendo, setSubiendo] = useStateNV(false);
-  const [fotos, setFotos]       = useStateNV([]);  // [{ nombre, link, descripcion }]
-  const [cola, setCola]         = useStateNV([]);   // archivos pendientes de subir
-  const [progreso, setProgreso] = useStateNV('');   // "Subiendo 2/5..."
+  const [subiendo, setSubiendo] = React.useState(false);
+  const [fotos, setFotos]       = React.useState([]);  // [{ nombre, link, descripcion }]
+  const [cola, setCola]         = React.useState([]);   // archivos pendientes de subir
+  const [progreso, setProgreso] = React.useState('');   // "Subiendo 2/5..."
   const inputRef = React.useRef(null);
   // La situación al momento de terminar la subida, no la del primer render.
   const situacionRef = React.useRef(situacion);
@@ -4948,7 +4949,7 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
       }
     }
     subirTodos();
-  }, [cola.length, subiendo]);
+  }, [cola.length, subiendo, idCarpetaFotos]);
 
   // Escuchar sincronización offline de fotos individuales
   React.useEffect(function() {
