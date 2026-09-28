@@ -2309,6 +2309,10 @@ function recolectarDatosWizard() {
     direccion:gv('direccion'), barrio:gv('barrio'), comuna:gv('comuna'),
     catastral:gv('catastral'),
     sin_licencia:sinLic,
+    // El check "Visita realizada en razon a diligencia... decretada en
+    // audiencia" existia en el wizard pero nunca llegaba al DATOS del prompt,
+    // asi que la IA no podia ponerlo en ANTECEDENTES aunque se marcara.
+    es_diligencia: !!(document.getElementById('esDiligencia') || {}).checked,
     num_res:sinLic?'No se aporto':gv('numRes'),
     fecha_ejec:sinLic?'No se aporto':gv('fechaEjec'),
     tipo_tramite:sinLic?'No aplica':tipoTramiteStr,
@@ -2366,6 +2370,29 @@ async function construirPromptF43(ctx) {
   var licNota = sinLic
     ? 'No se aporto documentacion urbanistica. En antecedentes indicar exactamente que "no fue aportada ni exhibida documentacion urbanistica que acredite licencia de construccion" — la ausencia de exhibicion deja la carga de acreditarla en quien construye. Nunca afirmar que la obra "no tiene licencia" (hecho negativo absoluto, no verificable en una sola visita) ni escribir "no fue posible verificar" (sugeriria que la licencia existe y solo falto comprobarla).'
     : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion.';
+  // Area en contravencion — tres estados, tres reglas (2026-09-28, a partir
+  // de un informe real): cifra -> cierre literal e item de conclusiones;
+  // "No se pudo medir" -> prosa fluida, nunca la formula literal;
+  // "No aplica" -> omitir por completo en todo el informe (no hay infraccion
+  // que cuantificar; decir "No aplica" en el texto final sobra).
+  var areasV = (d.areas || '').trim();
+  var areaNoAplica = /^(no\s+aplica|n\/?a|na)$/i.test(areasV);
+  var areaNoMedible = /no\s+se\s+pudo\s+medir/i.test(areasV);
+  var areaCuantificable = !!areasV && !areaNoAplica && !areaNoMedible;
+  var areaCierra, areaItem, areaEnCuenta;
+  if (areaNoAplica) {
+    areaCierra = 'Esta visita NO tiene area en contravencion: PROHIBIDO mencionar el area en contravencion en OBSERVACIONES, CONCLUSIONES o RECOMENDACIONES.';
+    areaItem = '';
+    areaEnCuenta = '';
+  } else if (areaNoMedible) {
+    areaCierra = 'Cierra integrando en prosa fluida que el area afectada no pudo determinarse en la visita (ej. "cuya area no pudo determinarse durante la visita") — PROHIBIDO la formula literal "El area en contravencion es: No se pudo medir".';
+    areaItem = 'Incluye un item independiente que exprese con redaccion fluida que el area total en contravencion no pudo determinarse en la visita.';
+    areaEnCuenta = ', mas el area en contravencion';
+  } else {
+    areaCierra = 'Cierra siempre mencionando el area en contravencion: ' + (areasV || 'segun descripcion') + '.';
+    areaItem = 'Incluye un item independiente y explicito con el area total en contravencion.';
+    areaEnCuenta = ', mas el area en contravencion';
+  }
   // Reemplaza el hsNota legado (9 checkboxes .hallazgo) por los hallazgos del
   // catalogo backend que el inspector confirmo (sugerirHallazgosDesdeObs() +
   // chips de confirmacion) — ver seccion "Hallazgos del catalogo" arriba.
@@ -2385,7 +2412,9 @@ async function construirPromptF43(ctx) {
           // cuando el hallazgo lo amerita, tomando la cifra de DATOS y nunca
           // inventandola si no viene.
           + (String(h.requiere_area || '').trim().toUpperCase() === 'SI'
-              ? '\n  Este hallazgo amerita cuantificar el area afectada: tomala del campo de areas en contravencion de DATOS y exprésala en la conclusion. Si DATOS no la trae, describe la afectacion sin cifras — nunca estimes un area.'
+              ? (areaCuantificable
+                  ? '\n  Este hallazgo amerita cuantificar el area afectada: tomala del campo de areas en contravencion de DATOS y exprésala en la conclusion. Si DATOS no la trae, describe la afectacion sin cifras — nunca estimes un area.'
+                  : '\n  Este hallazgo amerita cuantificar el area afectada, pero esta visita no trae area en contravencion cuantificable: describe la afectacion sin cifras — nunca estimes un area.')
               : '')
           + '\n  Sugerencia de conclusion (adaptar al caso, no copiar literal): ' + (h.conclusion_sugerida || 'sin sugerencia disponible')
           + '\n  Sugerencia de recomendacion (adaptar al caso, no copiar literal; solo verbos permitidos de la regla 5): ' + (h.recomendacion_sugerida || 'sin sugerencia disponible')
@@ -2422,10 +2451,13 @@ async function construirPromptF43(ctx) {
     + 'la visita o su cargo: eso ya consta en la firma al final del informe y repetirlo sobra. PROHIBIDO repetir aqui los datos de la '
     + 'licencia (numero de resolucion, curaduria, fecha de ejecutoria, modalidad, area aprobada, pisos, sistema '
     + 'estructural): ya van completos en el cuadro RESUMEN DE LO APROBADO POR CURADURIA que sigue, y duplicarlos '
-    + 'sobra. Basta decir que el objeto fue verificar el cumplimiento de la licencia, sin detallarla. PROHIBIDO '
+    + 'sobra. Basta decir que el objeto fue verificar las condiciones urbanisticas del inmueble, sin detallarla. PROHIBIDO '
     + 'tambien adelantar hallazgos, estado de la obra o conclusiones — eso va en OBSERVACIONES. Nunca inventes '
     + 'un motivo, denuncia, radicado o solicitud que no aparezca explicitamente en DATOS — si ese dato no viene, '
     + 'omite la frase de motivo por completo, no la sustituyas por una suposicion. Maximo 4 lineas.\n'
+    + (d.es_diligencia
+        ? 'ORIGEN DE LA ACTUACION: la visita se realizo en razon a diligencia de inspeccion al lugar decretada en audiencia por el inspector de convivencia — incluye esa circunstancia en ANTECEDENTES tal cual esta. Nombrar al inspector que decreto la diligencia es parte del origen y no viola la prohibicion de nombrar a quien realiza la visita.\n'
+        : '')
     + '2. OBSERVACIONES: ESTRUCTURA OBLIGATORIA — entrega el texto en VARIOS parrafos separados por \\n, uno por '
     + 'nivel, zona o tema (ej. un parrafo por piso, uno para la cubierta, uno para el espacio publico). PROHIBIDO '
     + 'entregar todo en un unico parrafo largo: un bloque corrido de mas de 5 lineas es ilegible y se lee mal como '
@@ -2437,7 +2469,11 @@ async function construirPromptF43(ctx) {
     + 'polig_trat, franja, proteccion) salvo que esa explicacion este expresamente en DATOS — reproducelos '
     + 'literalmente. Si hay discrepancia entre un dato de DATOS (ej. pisos aprobados) y lo observado en campo, '
     + 'prevalece lo observado para describir el estado actual; la discrepancia puede mencionarse objetivamente '
-    + 'sin explicar su causa. Cierra siempre mencionando el area en contravencion: ' + (d.areas || 'segun descripcion') + '.\n'
+    + 'sin explicar su causa. PROHIBIDO usar area_apro, pisos, sist u otro dato del cuadro de licencia como '
+    + 'medida de campo o descripcion del estado real del predio: son valores APROBADOS, no verificados — '
+    + 'solo pueden citarse como "lo aprobado" en el contraste con lo hallado. El area construida observada '
+    + 'solo puede provenir de obs, areas o la descripcion de fotografias; si no hay area medida, describe '
+    + 'sin cifra, nunca tomes la de la licencia. ' + areaCierra + '\n'
     + '3. CITAS LEGALES: cita exclusivamente los codigos de COMPORTAMIENTOS ART.135 ya listados arriba, tal como '
     + 'aparecen (ej. "A1", "C9"). Prohibido inventar numerales, incisos o articulos adicionales que no esten en '
     + 'esa lista — si no hay comportamientos marcados, no cites el Art. 135 en absoluto. Nunca escribas "conforme '
@@ -2446,8 +2482,7 @@ async function construirPromptF43(ctx) {
     + 'referencia.\n'
     + '4. CONCLUSIONES: deben limitarse a sintetizar los hechos ya descritos en OBSERVACIONES o los '
     + 'comportamientos ya marcados por el inspector — no incorporar hechos nuevos, interpretaciones adicionales '
-    + 'ni calificar si constituyen infraccion (esa calificacion es del Inspector). Incluye un item independiente '
-    + 'y explicito con el area total en contravencion.\n'
+    + 'ni calificar si constituyen infraccion (esa calificacion es del Inspector). ' + areaItem + '\n'
     + '5. RECOMENDACIONES: cada item debe indicar directamente la accion correctiva concreta para lo YA '
     + 'verificado en OBSERVACIONES/CONCLUSIONES — no es una sugerencia tentativa, ya se confirmo el hallazgo. '
     + 'Usa verbos directos: restituir, demoler, ajustar, corregir, retirar, cerrar, desmontar, tramitar '
@@ -2464,7 +2499,13 @@ async function construirPromptF43(ctx) {
     + 'sugiere explicitamente, nombrando la entidad — nunca remitas "a la autoridad competente" de forma '
     + 'generica ni de vuelta al mismo Inspector que ya tiene el caso. Si hay un comportamiento marcado en '
     + 'area protegida o espacio publico, no recomiendes "obtener licencia" (esa obra no es susceptible de '
-    + 'licenciamiento); recomienda la restitucion/demolicion directa. No repitas el area en contravencion aqui.\n'
+    + 'licenciamiento); recomienda la restitucion/demolicion directa. RECOMENDACION PERMANENTE DE LICENCIA '
+    + '(siempre presente como un item, adaptada al caso): si la visita se realizo sin licencia aportada — '
+    + 'tratada como licencia no vigente —, recomienda abstenerse de ejecutar obras nuevas o de modificacion '
+    + 'hasta tramitar y obtener la licencia de construccion vigente; si hay licencia vigente, recomienda '
+    + 'garantizar que la ejecucion de las obras se cina a cabalidad a lo aprobado por la curaduria. Excepto '
+    + 'cuando el hallazgo sea en area protegida o espacio publico, caso en el que aplica la restriccion de '
+    + 'arriba. No repitas el area en contravencion aqui.\n'
     + '6. Lenguaje: prohibido "constituye", "demuestra", "acredita", "confirma", "prueba", "evidencia plenamente", '
     + '"se encuentra plenamente establecido", "desconocimiento total", "carece de estructura aprobada" — usa '
     + '"se observo", "se evidencio", "se identifico", "durante la visita". Nunca escribas "no fue posible verificar" — describe el hecho observado, no lo que falto comprobar (con sin-licencia sugeriria que la licencia existe). Sin puntos '
@@ -2473,7 +2514,8 @@ async function construirPromptF43(ctx) {
     + 'revisa que ningun comportamiento citado este fuera de la lista dada, que ninguna norma citada este fuera '
     + 'de DATOS, que toda conclusion provenga de observaciones o comportamientos ya dados, que ninguna '
     + 'recomendacion use un verbo prohibido, que no haya antecedentes inventados y que no haya contradiccion '
-    + 'entre observaciones y conclusiones, y que se cumplan las reglas 8 y 9 de abajo. Elimina cualquier frase '
+    + 'entre observaciones y conclusiones, que ningun area construida observada provenga del cuadro de '
+    + 'licencia (area_apro), y que se cumplan las reglas 8 y 9 de abajo. Elimina cualquier frase '
     + 'que no pase esta verificacion antes de emitir el JSON final.\n'
     + '8. VERBO RECTOR DEL LITERAL A: si algun COMPORTAMIENTO ART.135 marcado empieza con "A" (A1-A4), tanto '
     + 'OBSERVACIONES como la conclusion que cite ese codigo deben mencionar, en cualquier tiempo o forma, alguna '
@@ -2483,7 +2525,7 @@ async function construirPromptF43(ctx) {
     + 'OBSERVACIONES.\n'
     + '9. CANTIDADES: si hay hallazgos del catalogo confirmados o comportamientos marcados, procura entre '
     + (CONCLUSIONES_MIN||4) + ' y ' + (CONCLUSIONES_MAX||10) + ' conclusiones (fisicas/funcionales/espacio '
-    + 'publico segun aplique, mas el area en contravencion) y entre ' + (RECOMENDACIONES_MIN||3) + ' y ' +
+    + 'publico segun aplique' + areaEnCuenta + ') y entre ' + (RECOMENDACIONES_MIN||3) + ' y ' +
     (RECOMENDACIONES_MAX||8) + ' recomendaciones. No rellenes con relleno generico solo para llegar al minimo — '
     + 'si los hechos dan para menos items, prioriza calidad sobre cantidad.';
   if (fotoDescs.length > 0) {
