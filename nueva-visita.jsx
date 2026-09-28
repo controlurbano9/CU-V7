@@ -1973,16 +1973,33 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // iframe) y al subir avisa por postMessage {tipo:'informe-f43-subido'}.
   // Escucharlo aquí permite marcar el renglón del informe como generado sin
   // recargar la visita (antes nadie escuchaba este mensaje en esta pantalla).
+  // `m.fila` llega como texto (sale del query string del generador) y
+  // `filaEditando` es número: con === nunca coincidían y al regenerar «Abrir»
+  // seguía apuntando al informe anterior, ya en la papelera. En móvil el
+  // generador abre en pestaña 'noopener' y el aviso llega por BroadcastChannel.
   React.useEffect(function() {
-    function _onMsg(e) {
-      const m = e && e.data;
-      if (!m || m.tipo !== 'informe-f43-subido') return;
-      if (filaEditando && m.fila === filaEditando && m.link) {
+    function _aplicar(m) {
+      if (!m || m.tipo !== 'informe-f43-subido' || !m.link) return;
+      if (filaEditando && String(m.fila) === String(filaEditando)) {
         setD(function(prev) { return Object.assign({}, prev, { linkDocxInforme: m.link }); });
       }
     }
+    function _onMsg(e) {
+      if (e.origin !== window.location.origin) return;
+      _aplicar(e && e.data);
+    }
     window.addEventListener('message', _onMsg);
-    return function() { window.removeEventListener('message', _onMsg); };
+    let bc = null;
+    try {
+      if (typeof BroadcastChannel === 'function') {
+        bc = new BroadcastChannel('cu-informe-f43');
+        bc.onmessage = function(e) { _aplicar(e && e.data); };
+      }
+    } catch (eBc) { bc = null; }
+    return function() {
+      window.removeEventListener('message', _onMsg);
+      if (bc) bc.close();
+    };
   }, [filaEditando]);
 
   // (8) El conteo de fotos ya en Drive lo trae SeccionFotos con su propia

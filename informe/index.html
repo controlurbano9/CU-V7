@@ -1305,12 +1305,28 @@ async function generarInformeF43ViaPlantilla(tFinal) {
   });
   var d = await r.json();
   if (!d.ok) throw new Error(d.error || 'El servidor no pudo generar el informe.');
+  _avisarInformeSubido(d.link);
+  return { link: d.link };
+}
+
+// Avisa a V6 que el informe quedó en Drive con un link nuevo (al regenerar,
+// el anterior va a la papelera). postMessage llega al padre si es iframe;
+// en móvil la pestaña se abre con 'noopener' (window.opener es null), así
+// que también se emite por BroadcastChannel, que cruza pestañas del mismo
+// origen sin necesitar referencia a la ventana que abrió.
+function _avisarInformeSubido(link) {
+  var msg = { tipo: 'informe-f43-subido', fila: V6_CTX.fila, radicado: V6_CTX.radicado, link: link };
   try {
-    var msg = { tipo: 'informe-f43-subido', fila: V6_CTX.fila, radicado: V6_CTX.radicado, link: d.link };
     if (window.parent && window.parent !== window) window.parent.postMessage(msg, '*');
     else if (window.opener && !window.opener.closed) window.opener.postMessage(msg, '*');
   } catch (eMsg) {}
-  return { link: d.link };
+  try {
+    if (typeof BroadcastChannel === 'function') {
+      var bc = new BroadcastChannel('cu-informe-f43');
+      bc.postMessage(msg);
+      bc.close();
+    }
+  } catch (eBc) {}
 }
 
 function activarV2() {
@@ -4542,21 +4558,8 @@ async function subirInformeAlDrive(blob) {
     });
     var d = await r.json();
     if (!d.ok) throw new Error(d.error || 'Sin respuesta');
-    // Notificar a V6 (padre): window.parent si es iframe (modal V6),
-    // window.opener si es pestaña abierta con window.open.
-    try {
-      var msg = {
-        tipo: 'informe-f43-subido',
-        fila: V6_CTX.fila,
-        radicado: V6_CTX.radicado,
-        link: d.link
-      };
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(msg, '*');
-      } else if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(msg, '*');
-      }
-    } catch(eP) {}
+    // Notificar a V6 (iframe → padre; pestaña → BroadcastChannel).
+    _avisarInformeSubido(d.link);
     return d.link || null;
   } catch(e) {
     console.warn('Subida a Drive falló:', e.message);

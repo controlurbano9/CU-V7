@@ -56,7 +56,23 @@ function InformeModalHost() {
       }
     }
     window.addEventListener('message', onMsg);
-    return function() { window.removeEventListener('message', onMsg); };
+    // Móvil: el generador va en pestaña 'noopener' y avisa por BroadcastChannel.
+    // Sin invalidar, la copia local seguiría con el link del informe anterior.
+    let bc = null;
+    try {
+      if (typeof BroadcastChannel === 'function') {
+        bc = new BroadcastChannel('cu-informe-f43');
+        bc.onmessage = function(e) {
+          if (e && e.data && e.data.tipo === 'informe-f43-subido' && typeof invalidarCache === 'function') {
+            invalidarCache('visitas');
+          }
+        };
+      }
+    } catch (eBc) { bc = null; }
+    return function() {
+      window.removeEventListener('message', onMsg);
+      if (bc) bc.close();
+    };
   }, []);
 
   // Esc cierra el modal.
