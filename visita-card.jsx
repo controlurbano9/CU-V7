@@ -548,15 +548,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 
   function cambiarFecha(v) {
     setFecha(v);
-    if (!v) { setAviso(''); return; }
-    // Fin de semana y festivos no se bloquean: el inspector a veces va un
-    // sábado. Solo se avisa, la decisión es del admin.
-    const d = parsearFecha(_isoADDMMAAAA(v));
-    if (!d) { setAviso(''); return; }
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) setAviso('Cae en fin de semana.');
-    else if (typeof esDiaHabil === 'function' && !esDiaHabil(d)) setAviso('Es festivo.');
-    else setAviso('');
+    setAviso(avisoFechaAsignacion(v));
   }
 
   return (
@@ -571,8 +563,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
       </div>
 
       {/* Fecha programada: asignar hoy para un día posterior. Vacío = hoy.
-          Solo donde el caller lo pide: en Agenda la jornada se programa desde
-          la agenda misma y un segundo selector ahí confundiría. */}
+          Solo donde el caller lo pide (Buscar y Agenda). */}
       {conFecha && (
       <div className="psi-fecha">
         <label htmlFor={'psi-f-' + f._idx}>Para el día</label>
@@ -617,6 +608,18 @@ function _isoSumandoDias(n) {
 function _isoADDMMAAAA(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
   return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
+}
+// Fin de semana y festivos no se bloquean: el inspector a veces va un
+// sábado. Solo se avisa, la decisión es del admin. Compartido por
+// PanelSeleccionInspector y la confirmación de jornada de Agenda.
+function avisoFechaAsignacion(iso) {
+  if (!iso) return '';
+  const d = parsearFecha(_isoADDMMAAAA(iso));
+  if (!d) return '';
+  const dow = d.getDay();
+  if (dow === 0 || dow === 6) return 'Cae en fin de semana.';
+  if (typeof esDiaHabil === 'function' && !esDiaHabil(d)) return 'Es festivo.';
+  return '';
 }
 
 

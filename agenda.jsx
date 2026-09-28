@@ -85,6 +85,8 @@ function AgendaScreen({ usuario, onContinuar }) {
   const [inspectores, setInspectores]   = useStateG([]);
   const [asignandoFila, setAsignandoFila] = useStateG(null);
   const [inspectorSel, setInspectorSel] = useStateG({ manana: '', tarde: '' });
+  // Fecha de asignación por jornada, en ISO del <input type="date">; '' = hoy.
+  const [fechaSel, setFechaSel]         = useStateG({ manana: '', tarde: '' });
   const [confirmando, setConfirmando]   = useStateG(false);
   // Ajuste manual por jornada: { comuna, n } o null (= sugerencia + máx. config)
   const [ajuste, setAjuste]             = useStateG(leerAjusteAgenda);
@@ -148,12 +150,14 @@ function AgendaScreen({ usuario, onContinuar }) {
   // Asignación individual — misma acción que usa Buscar (asignarRadicado).
   // Como todo ítem de la Agenda ya viene en PENDIENTE, esto es lo único que
   // BotonesAdminVisita puede ofrecer aquí (nunca "Desasignar").
-  async function adminAsignar(fila, inspector) {
+  // fechaAsignacion llega del selector «Para el día» del panel (DD/MM/YYYY;
+  // vacío = hoy), igual que en Buscar.
+  async function adminAsignar(fila, inspector, f, fechaAsignacion) {
     setBusyFila(fila);
     try {
       await gasPost({
         accion: 'asignarRadicado', fila, inspector,
-        fechaAsignacion: hoyDDMMAAAA(),
+        fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
       setAsignandoFila(null);
@@ -171,8 +175,11 @@ function AgendaScreen({ usuario, onContinuar }) {
     const label = jornadaKey === 'manana' ? 'mañana' : 'tarde';
     const deComuna = comuna == null ? ''
       : comuna === 'RURAL' ? ' de zona rural' : ` de la comuna ${comuna}`;
+    // Vacío = hoy. Se nombra el día en la confirmación para que un día
+    // equivocado se vea antes de escribir N filas.
+    const fechaAsignacion = fechaSel[jornadaKey] ? _isoADDMMAAAA(fechaSel[jornadaKey]) : hoyDDMMAAAA();
     const ok = await appConfirm(
-      `¿Confirmar ${items.length} visita(s)${deComuna} en la jornada de la ${label} y asignarlas a ${inspector}?`,
+      `¿Confirmar ${items.length} visita(s)${deComuna} en la jornada de la ${label} y asignarlas a ${inspector} para el ${fechaAsignacion}?`,
       { tono: 'info', titulo: 'Confirmar agenda', btnOk: 'Confirmar' }
     );
     if (!ok) return;
@@ -180,11 +187,12 @@ function AgendaScreen({ usuario, onContinuar }) {
     try {
       const r = await gasPost({
         accion: 'confirmarAgenda',
-        jornadas: { [jornadaKey]: { inspector, visitas: items.map(it => ({ radicado: it.radicado })) } },
+        jornadas: { [jornadaKey]: { inspector, fechaAsignacion, visitas: items.map(it => ({ radicado: it.radicado })) } },
       });
       if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
       invalidarCache('visitas');
       setInspectorSel(s => Object.assign({}, s, { [jornadaKey]: '' }));
+      setFechaSel(s => Object.assign({}, s, { [jornadaKey]: '' }));
       if (r && r.errores && r.errores.length) {
         await appAlert('No se pudieron confirmar: ' + r.errores.join(', '), { tono: 'aviso', titulo: 'Confirmado parcialmente' });
       }
@@ -290,6 +298,19 @@ function AgendaScreen({ usuario, onContinuar }) {
                       </button>
                     ))}
                   </div>
+                  {/* Mismo selector «Para el día» que el panel individual. */}
+                  <div className="psi-fecha" style={{ marginTop: 10 }}>
+                    <label htmlFor={'ag-fecha-' + tab}>Para el día</label>
+                    <input id={'ag-fecha-' + tab} type="date" value={fechaSel[tab]}
+                      min={_hoyIso()} max={_isoSumandoDias(90)}
+                      onChange={e => { const v = e.target.value; setFechaSel(s => Object.assign({}, s, { [tab]: v })); }} />
+                    <button type="button" className="vc-btn"
+                      onClick={() => setFechaSel(s => Object.assign({}, s, { [tab]: '' }))}
+                      aria-pressed={!fechaSel[tab]}>Hoy</button>
+                  </div>
+                  {avisoFechaAsignacion(fechaSel[tab]) && (
+                    <div className="psi-aviso">{avisoFechaAsignacion(fechaSel[tab])}</div>
+                  )}
                   <div className="agenda-confirmar-bar">
                     <button className="btn-principal" disabled={!inspectorSel[tab] || confirmando}
                       onClick={() => confirmarJornada(tab, items, s.grupo ? s.grupo.comuna : null)}
@@ -459,6 +480,7 @@ function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setA
             abierto={asignandoFila === it.fila}
             inspectores={inspectores}
             onAsignar={onAsignar}
+            conFecha
           />
         </div>
       ))}
