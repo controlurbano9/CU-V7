@@ -936,7 +936,7 @@ function _googleMapsYaEsta() {
 
 // Mapa Google Maps con pin arrastrable para corregir coordenadas.
 // Sin coordenadas muestra vista general de Bello; con coords, zoom 18 + pin.
-function _MapaGPS({ lat, lon, onMove }) {
+function _MapaGPS({ lat, lon, onMove, direccion }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`, convención guion bajo del archivo (3 refs seguidas)
   const mapRef = React.useRef(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -1019,6 +1019,37 @@ function _MapaGPS({ lat, lon, onMove }) {
     }
   }, [lat, lon, gmListo]);
 
+  // Sin pin, centrar el mapa en la dirección escrita para que el inspector
+  // encuentre el predio y lo toque. Solo centra: el geocoding de direcciones
+  // de Bello es aproximado (vive del fallback Nominatim/Photon), así que nunca
+  // se toma como la ubicación — esa la pone el GPS o el toque en el mapa.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  const [centradoEnDir, setCentradoEnDir] = React.useState(false);
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  useEffectNV(() => {
+    if (gmListo !== true || tieneCoords || !direccion || direccion.length < 8) return;
+    if (typeof geocodeDireccion !== 'function' || !navigator.onLine) return;
+    let vigente = true;
+    // Debounce: la dirección se escribe tecla a tecla.
+    const t = setTimeout(async () => {
+      try {
+        const r = await geocodeDireccion(direccion);
+        const c = r && (r.data || r);
+        if (!vigente || !gMapRef.current || !c || c.lat == null || c.lng == null) return;
+        const la = Number(c.lat), lo = Number(c.lng);
+        // Resultado fuera de Bello (el geocoder suele caer en Medellín con
+        // direcciones ambiguas): mejor dejar el mapa donde está.
+        if (!(la > 6.30 && la < 6.48 && lo > -75.66 && lo < -75.47)) return;
+        gMapRef.current.setCenter({ lat: la, lng: lo });
+        gMapRef.current.setZoom(18);
+        setCentradoEnDir(true);
+      } catch (e) {
+        console.warn('[Mapa] no se pudo centrar en la dirección:', e.message);
+      }
+    }, 1200);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [direccion, tieneCoords, gmListo]);
+
   // Limpieza de listeners al desmontar (mapa/marker persisten toda la vida
   // del componente, se crean una sola vez arriba — solo falta esto al final).
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
@@ -1040,7 +1071,9 @@ function _MapaGPS({ lat, lon, onMove }) {
         <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
           {tieneCoords
             ? 'Toca el mapa o arrastra el pin para corregir la ubicación'
-            : 'Captura tu ubicación o toca el mapa en el predio para colocar el pin'}
+            : centradoEnDir
+              ? 'Mapa centrado en la dirección escrita (aproximado): toca el predio para colocar el pin'
+              : 'Captura tu ubicación o toca el mapa en el predio para colocar el pin'}
         </div>
       )}
       <div ref={mapRef} className={'mapa-gps' + (gmListo === true ? '' : ' mapa-gps-sin')}>
@@ -2226,6 +2259,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         const r = await gasPost({
           accion: 'recuperarEntregables',
           fila: filaEditando,
+          radicadoConocido: _radicadoFilaRef.current,
           idCarpetaVisita: d.idCarpetaVisita,
         });
         if (cancelado || !r || !r.ok) return;
@@ -2359,7 +2393,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       if (c.lat && c.lng) {
         setCampo('lat', c.lat); setCampo('lon', c.lng);
         ejecutarPOT(c.lat, c.lng);
-        ejecutarBusquedaCatastral(c.lat, c.lng);
+        ejecutarBusquedaCatastral(c.lat, c.lng, true);
       } else {
         await appAlert('No se encontró la ubicación. Refina la dirección.', { tono: 'aviso', titulo: 'Sin resultado' });
       }
@@ -2471,7 +2505,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setBusyPOT(true);
     try {
       const r = await consultarPOT(lat, lon);
-      if (r.poligono)       setCampo('poligono',  r.poligono);
+      // Siempre, aunque venga vacío: si el punto se movió a rural o fuera de la
+      // capa, el polígono del punto anterior quedaría pegado.
+      setCampo('poligono', r.poligono || '');
       if (r.sueloProt)      setCampo('sueloProt', r.sueloProt);   // 'SI' | 'NO'
       if (r.amenaza)        setCampo('amenaza',   r.amenaza);     // 'SI' | 'NO'
       if (r.enRetiro)       setCampo('quebrada',  r.enRetiro);    // 'SI' | 'NO'
@@ -2498,12 +2534,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
 
   // ── Búsqueda catastral por GPS ────────────────────────────
-  async function ejecutarBusquedaCatastral(latArg, lonArg) {
+  // `puntoNuevo`: la ubicación cambió (GPS o mapa), así que la ficha elegida
+  // para el punto anterior ya no aplica — sin borrarla quedaba pegada cuando el
+  // punto nuevo cae en varias fichas (hay que elegir) o en ninguna. El botón
+  // manual re-busca el mismo punto y no la toca.
+  async function ejecutarBusquedaCatastral(latArg, lonArg, puntoNuevo) {
     const lat = (latArg != null) ? latArg : d.lat;
     const lon = (lonArg != null) ? lonArg : d.lon;
     if (lat == null || lon == null) {
       await appAlert('Necesitas coordenadas primero. Usa "Buscar coordenadas" o "Mi ubicación".', { tono: 'aviso', titulo: 'Sin GPS' });
       return;
+    }
+    if (puntoNuevo) {
+      setCampo('catastral', '');
+      setCampo('ficha', '');
     }
     setBusyCat(true);
     setCatRes(null);
@@ -2580,7 +2624,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setCampo('lat', lat);
     setCampo('lon', lon);
     ejecutarPOT(lat, lon);
-    ejecutarBusquedaCatastral(lat, lon);
+    ejecutarBusquedaCatastral(lat, lon, true);
   }
   async function usarMiUbicacion() {
     if (!navigator.geolocation) {
@@ -2659,10 +2703,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (!d.comuna)         errs.push('Comuna');
     if (!d.fechaVisita)    errs.push('Fecha de visita');
     if (!d.visitador)      errs.push('Visitador');
-    // Ubicación obligatoria: sin ella no hay POT, catastro ni tipificación A1/A3.
-    // Se puede capturar con el GPS o tocando el predio en el mapa.
-    if (d.lat == null || d.lon == null || !isFinite(Number(d.lat)) || !isFinite(Number(d.lon)))
-      errs.push('Ubicación GPS (captúrala o toca el predio en el mapa)');
     // Validaciones duras sobre la fecha de visita — capturan errores de tipeo
     // típicos cuando el inspector diligencia días después.
     if (d.fechaVisita) {
@@ -2878,6 +2918,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       idCarpetaVisita: d.idCarpetaVisita,
       idCarpetaFotos:  d.idCarpetaFotos,
       fila:            filaEditando,
+      // El backend no escribe el link del acta/RF si en esa fila hay ya otro
+      // radicado (fila corrida) — mismo control que `actualizar`.
+      radicadoConocido: _radicadoFilaRef.current,
     };
   }
 
@@ -3221,6 +3264,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         gasPost({
           accion: 'actualizarLinks',
           fila: filaEditando,
+          radicadoConocido: _radicadoFilaRef.current,
           linkXlsxActa: link,
           linkPdfActa: r.linkPdf || d.linkPdfActa || '',
         }).catch(e => console.warn('[actualizarLinks] no se pudo persistir en BD:', e.message));
@@ -3718,7 +3762,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           </div>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
-          <_MapaGPS lat={d.lat} lon={d.lon} onMove={(lat, lon) => {
+          <_MapaGPS lat={d.lat} lon={d.lon}
+            // Sin barrio a propósito: medido en «Cómo llegar», con barrio la
+            // consulta cae en Medellín.
+            direccion={d.direccion ? d.direccion + ', Bello, Antioquia' : ''}
+            onMove={(lat, lon) => {
             // Un GPS aún refinando pisaría el punto marcado a mano con su
             // siguiente lectura (o el timeout de 30 s lo aceptaría encima).
             _detenerGeoWatch(); setBusyGeo(false);
@@ -3729,7 +3777,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             // punto anterior, sin que nada lo advirtiera.
             setGpsAccuracy(null);   // la precisión del GPS ya no describe este punto
             ejecutarPOT(lat, lon);
-            ejecutarBusquedaCatastral(lat, lon);
+            ejecutarBusquedaCatastral(lat, lon, true);
           }} />
         </div>
       </_Seccion>
