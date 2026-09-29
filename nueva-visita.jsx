@@ -491,12 +491,6 @@ function _idCarpetaDeLink(url) {
   return m ? (m[1] || m[2] || '') : '';
 }
 
-// ── Parsear chips multi-select desde string guardado en BD ─────
-function _parsearChipsDesdeString(str, separador) {
-  if (!str) return [];
-  return str.split(separador).map(s => s.trim()).filter(Boolean);
-}
-
 // ── Estructura del payload (60 cols B → BD) ────────────────────
 // Construye el array que se mandará al webhook. Mantiene el orden
 // exacto definido en app.js / apps_script_unificado.js.
