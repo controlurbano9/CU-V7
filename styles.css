@@ -1132,6 +1132,47 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   font-size: 12px;
 }
 .mapa-norma { width: 100%; height: 380px; }
+
+/* Leyenda de contornos bajo el mapa del formulario (nueva-visita.jsx). El
+   color va en el borde de la muestra: es un contorno, no un relleno. */
+.mapa-leyenda {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin-top: 4px; font-size: 11px; color: var(--ink-3);
+}
+.mapa-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+.mapa-leyenda i {
+  width: 12px; height: 9px; border: 2px solid; border-radius: 2px;
+  background: var(--surface-2);
+}
+
+/* Panel «Predio»: dirección ↔ catastro ↔ pin (plan 2026-09-29). Mismo
+   lenguaje que la confirmación de dirección: punto ámbar/verde + una acción. */
+.predio-panel {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 10px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.predio-fila { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.predio-titulo { font-size: 13px; }
+.predio-nota { font-size: 12px; color: var(--ink-3); }
+.predio-ok { color: var(--green-ink); }
+.predio-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.predio-btn { min-height: var(--tap); }
+.predio-conflicto {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--amber-bg); border: 1px solid var(--amber);
+  font-size: 13px; color: var(--ink-2, var(--ink-3));
+}
+.predio-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip-predio {
+  min-height: var(--tap); padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface, #fff); color: var(--ink-3);
+  font-size: 12px; font-family: var(--font-mono); cursor: pointer;
+}
+.chip-predio-sel { border-color: var(--green); color: var(--green-ink); background: var(--green-bg); font-weight: 600; }
 @media (min-width: 768px) {
   .mapa-gps   { height: 420px; }
   .mapa-norma { height: 520px; }

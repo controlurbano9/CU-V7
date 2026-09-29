@@ -971,6 +971,10 @@ async function guardarVisita(payload) {
   // clientId solo aplica para 'agregar': permite a AS deduplicar reintentos
   // offline (misma sesión → mismo clientId → siempre devuelve la misma fila).
   if (!payload.fila && payload.clientId) body.clientId = payload.clientId;
+  // UBICACION_CONFIRMADA (origen GPS/MAPA/DIRECCION, o '' si ya no vale).
+  // Fuera de `valores` como ultimaModConocida: el backend la escribe por
+  // nombre. Sin el campo (autoguardado de la carpeta), no se toca la columna.
+  if (payload.ubicacionConfirmada !== undefined) body.ubicacionConfirmada = payload.ubicacionConfirmada;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
@@ -1510,39 +1514,134 @@ async function buscarCatastroGPS(lat, lon) {
   // Formato del registro en data.f: [ficha, npn_sufijo, dir, prop, matric, dest, avaluo, municipal]
   // prop con prefijo '@' = razón social; sin prefijo = persona natural (Nombres + Apellidos).
   const results = [];
-  for (const tcod of candidatos) {
-    const fichas = fichasMap[tcod] || [];
-    for (const rec of fichas) {
-      const [ficha, npnSufijo, direccion, prop, matric, dest, avaluo, municipal] = rec;
-      const esRazonSocial = (prop || '').startsWith('@');
-      results.push({
-        ficha: ficha,
-        catastral: tcod + npnSufijo,  // NPN completo 30 chars
-        direccion: direccion || '',
-        propietario: esRazonSocial ? prop.slice(1) : prop,
-        esRazonSocial: esRazonSocial,
-        matricula: matric || null,
-        destinacion: dest || '',
-        avaluo: avaluo || 0,
-        municipal: !!municipal,
-        terrenoCodigo: tcod,
-        npnSufijo: npnSufijo,
-      });
+  for (const tcod of candidatos) results.push(..._fichasDeTerreno(data, tcod));
+  return results;
+}
+
+// Fichas completas de un terreno, en el formato de buscarCatastroGPS.
+function _fichasDeTerreno(data, tcod) {
+  return (data.f[tcod] || []).map(function (rec) {
+    const [ficha, npnSufijo, direccion, prop, matric, dest, avaluo, municipal] = rec;
+    const esRazonSocial = (prop || '').startsWith('@');
+    return {
+      ficha: ficha,
+      catastral: tcod + npnSufijo,  // NPN completo 30 chars
+      direccion: direccion || '',
+      propietario: esRazonSocial ? prop.slice(1) : prop,
+      esRazonSocial: esRazonSocial,
+      matricula: matric || null,
+      destinacion: dest || '',
+      avaluo: avaluo || 0,
+      municipal: !!municipal,
+      terrenoCodigo: tcod,
+      npnSufijo: npnSufijo,
+    };
+  });
+}
+
+// Fichas de un terreno por su código (21 dígitos). La usa el formulario para
+// tomar la ficha del predio de la dirección cuando el pin cayó en la calle o
+// en el vecino.
+async function fichasCatastroTerreno(tcod) {
+  const data = await _cargarCatastro();
+  return _fichasDeTerreno(data, tcod);
+}
+
+// ── CATASTRO — búsqueda por dirección ─────────────────────────
+// Índice clave de dirección → fichas, sobre el mismo catastro.json. Son
+// ~225.000 fichas: armarlo de un tirón tomó 326 ms en un PC de escritorio y
+// en un Android barato congelaría la pantalla segundos, así que se arma por
+// tramos cediendo el hilo. La clave la da claveDireccionCatastro (utils.js).
+let _indiceDir = null, _indiceDirPromesa = null, _anilloPorTcod = null;
+function _indiceDireccionesCatastro() {
+  if (_indiceDir) return Promise.resolve(_indiceDir);
+  if (_indiceDirPromesa) return _indiceDirPromesa;
+  _indiceDirPromesa = _cargarCatastro().then(function (data) {
+    return new Promise(function (resolve) {
+      const idx = new Map();
+      const tcods = Object.keys(data.f);
+      let i = 0;
+      (function tramo() {
+        // 500 terrenos ≈ 2.200 fichas ≈ 18 ms en escritorio (medido): en un
+        // Android barato queda por debajo de lo que se nota al tocar.
+        const fin = Math.min(i + 500, tcods.length);
+        for (; i < fin; i++) {
+          const tcod = tcods[i], fs = data.f[tcod];
+          for (let k = 0; k < fs.length; k++) {
+            const c = claveDireccionCatastro(fs[k][2]);
+            if (!c) continue;
+            let a = idx.get(c.base);
+            if (!a) { a = []; idx.set(c.base, a); }
+            a.push({ tcod: tcod, k: k, unidad: c.unidad });
+          }
+        }
+        if (i < tcods.length) { setTimeout(tramo, 0); return; }
+        _anilloPorTcod = new Map(data.p.map(function (p) { return [p[0], p[5]]; }));
+        _indiceDir = idx;
+        _indiceDirPromesa = null;
+        resolve(idx);
+      })();
+    });
+  }).catch(function (e) { _indiceDirPromesa = null; throw e; });
+  return _indiceDirPromesa;
+}
+
+// Busca el predio de una dirección en catastro.
+//   null → la dirección no se reconoce (rural, referencia, sin placa)
+//   { exacta: true,  terrenos: [...] } → misma dirección en catastro (1 a 4 terrenos)
+//   { exacta: false, terrenos: [...] } → no está, pero hay placas a ±10 en la
+//     misma cuadra: son candidatos, el inspector elige (nunca se preseleccionan)
+//   { exacta: false, terrenos: [] }    → ni eso
+// Cada terreno: { tcod, anillo, direccion, dif } (dif = distancia de placa).
+// `fichaUnidad`: catastral de la unidad si la dirección trae `AP 402` y calza
+// con una sola ficha.
+async function buscarCatastroPorDireccion(dir) {
+  const clave = claveDireccionCatastro(dir);
+  if (!clave) return null;
+  const idx = await _indiceDireccionesCatastro();
+  const data = await _cargarCatastro();
+  let exacta = true;
+  let hits = (idx.get(clave.base) || []).map(function (h) { return Object.assign({ dif: 0 }, h); });
+  if (!hits.length) {
+    exacta = false;
+    clavesCercanasCatastro(clave, 10).forEach(function (c) {
+      (idx.get(c.base) || []).forEach(function (h) { hits.push(Object.assign({ dif: c.dif }, h)); });
+    });
+  }
+  const porTcod = new Map();
+  hits.forEach(function (h) {
+    if (porTcod.has(h.tcod) || !_anilloPorTcod.get(h.tcod)) return;
+    porTcod.set(h.tcod, {
+      tcod: h.tcod,
+      anillo: _anilloPorTcod.get(h.tcod),
+      direccion: data.f[h.tcod][h.k][2] || '',
+      dif: h.dif,
+    });
+  });
+  const terrenos = Array.from(porTcod.values())
+    .sort(function (a, b) { return a.dif - b.dif; })
+    .slice(0, exacta ? 4 : 6);
+  let fichaUnidad = null;
+  if (exacta && clave.unidad) {
+    const conUnidad = hits.filter(function (h) { return unidadCatastroCalza(h.unidad, clave.unidad); });
+    if (conUnidad.length === 1) {
+      const h = conUnidad[0];
+      fichaUnidad = h.tcod + data.f[h.tcod][h.k][1];
     }
   }
-  return results;
+  return { exacta: exacta, terrenos: terrenos, fichaUnidad: fichaUnidad };
 }
 
 // Contorno del terreno (o terrenos, si se traslapan) que contiene el punto,
 // para resaltarlo en el mapa. Mismo filtro bbox + ray casting que
-// buscarCatastroGPS; devuelve anillos [[lat,lon],...]. Comparte la descarga
+// buscarCatastroGPS; devuelve [{ tcod, anillo: [[lat,lon],...] }]. Comparte la descarga
 // de catastro.json, así que no suma red si ya se consultó la ficha.
 async function poligonosCatastroGPS(lat, lon) {
   const data = await _cargarCatastro();
   const out = [];
   for (const p of data.p) {
     if (lat < p[1] || lat > p[3] || lon < p[2] || lon > p[4]) continue;
-    if (_pointInPolygon(lat, lon, p[5])) out.push(p[5]);
+    if (_pointInPolygon(lat, lon, p[5])) out.push({ tcod: p[0], anillo: p[5] });
   }
   return out;
 }
@@ -1571,6 +1670,7 @@ Object.assign(window, {
   describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,
   buscarCatastroGPS, poligonosCatastroGPS, formatearCOP,
+  fichasCatastroTerreno, buscarCatastroPorDireccion,
   SESSION_V6: SESSION,
   invalidarCache,
 });

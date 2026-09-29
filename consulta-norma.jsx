@@ -295,6 +295,19 @@ function ConsultaNormaScreen() {
 
     // No son coordenadas → geocodificar como dirección
     setBusyGeo(true);
+    // Catastro primero: si la dirección está tal cual, el pin va dentro de su
+    // predio (exacto y sin red). Si no, sigue el geocoder como antes.
+    if (typeof buscarCatastroPorDireccion === 'function') {
+      try {
+        var pc = await buscarCatastroPorDireccion(txt);
+        var q0 = pc && pc.exacta && pc.terrenos.length && puntoInteriorAnillo(pc.terrenos[0].anillo);
+        if (q0) {
+          colocarPin(q0[0], q0[1], true);
+          setBusyGeo(false);
+          return;
+        }
+      } catch (eCat) { /* sin catastro.json: se sigue con el geocoder */ }
+    }
     try {
       var res = await geocodeConGoogle(txt);
       colocarPin(res.lat, res.lon, true);

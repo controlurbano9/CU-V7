@@ -13,7 +13,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  claveDireccionCatastro, clavesCercanasCatastro, puntoEnAnillo,
+  claveDireccionCatastro, clavesCercanasCatastro, direccionDesdeClave, unidadCatastroCalza, puntoEnAnillo,
   distanciaPuntoAnilloM, puntoInteriorAnillo, compararUbicacion,
   origenUbicacionConfirmada, ubicacionConfirmadaVigente,
 } = require('../utils.js');
@@ -59,6 +59,16 @@ test('unidad normalizada: AP/APTO, IN/INT, CA/CASA', () => {
   assert.equal(claveDireccionCatastro('CL 50 # 32-10').unidad, '');
 });
 
+test('unidad: catastro agrega el piso que el inspector no escribe', () => {
+  const u = d => claveDireccionCatastro(d).unidad;
+  assert.equal(unidadCatastroCalza(u('CR 47 N 45-38 AP 102 PI2'), u('CR 47 # 45-38 APTO 102')), true);
+  assert.equal(unidadCatastroCalza('AP102', 'AP102'), true);
+  assert.equal(unidadCatastroCalza('AP102', 'AP10'), false);      // otro dígito: otra unidad
+  assert.equal(unidadCatastroCalza('AP102PI2', 'AP103'), false);
+  assert.equal(unidadCatastroCalza('AP102', ''), false);
+  assert.equal(unidadCatastroCalza('', 'AP102'), false);
+});
+
 test('consecutivo pegado delante (visto en BD) se descarta', () => {
   assert.equal(base('12 - CR 50 # 32-10 INT 201'), 'CR|50|32|10');
 });
@@ -84,6 +94,16 @@ test('cuadra y placa para la búsqueda aproximada', () => {
   assert.deepEqual(clavesCercanasCatastro(c0, 2).map(x => x.base),
     ['CL|54A|45|0', 'CL|54A|45|2', 'CL|54A|45|3']);
   assert.deepEqual(clavesCercanasCatastro(null), []);
+});
+
+test('dirección con formato de la app desde la clave de catastro', () => {
+  assert.equal(direccionDesdeClave(base('CL 54A N 45-85 AP 402')), 'CL 54A # 45-85');
+  assert.equal(direccionDesdeClave(base('KR 50 N 32-010')), 'CR 50 # 32-10');
+  assert.equal(direccionDesdeClave(base('CL 50 BIS N 32 BIS-10')), 'CL 50 BIS # 32 BIS-10');
+  // Ida y vuelta: la dirección generada vuelve a dar la misma clave.
+  const k = base('DG 58 N 19 A-26 AP 9948');
+  assert.equal(base(direccionDesdeClave(k)), k);
+  assert.equal(direccionDesdeClave(''), '');
 });
 
 // ── Geometría ─────────────────────────────────────────────────

@@ -589,6 +589,16 @@ function claveDireccionCatastro(dir) {
   };
 }
 
+// Dirección con el formato de la app a partir de la clave de catastro:
+// 'CL|54A|45|85' → 'CL 54A # 45-85'. La usa «Usar el del punto» para ofrecer
+// la dirección que catastro tiene para el predio donde está el pin.
+function direccionDesdeClave(base) {
+  var p = String(base || '').split('|');
+  if (p.length !== 4) return '';
+  var sep = function (t) { return t.replace(/BIS/, ' BIS'); };
+  return p[0] + ' ' + sep(p[1]) + ' # ' + sep(p[2]) + '-' + p[3];
+}
+
 // Claves de la misma cuadra con placa a ±rango, de la más cercana a la más
 // lejana (`45-85` → `45-84`, `45-86`, `45-83`…). La búsqueda aproximada solo
 // ofrece candidatos: nunca se preseleccionan.
@@ -601,6 +611,17 @@ function clavesCercanasCatastro(clave, rango) {
     out.push({ base: clave.cuadra + '|' + (clave.placa + d), dif: d });
   }
   return out;
+}
+
+// ¿La unidad que escribió el inspector es la de esta ficha? Catastro suele
+// agregar el piso (`AP 102 PI2`) que el inspector no escribe (`APTO 102`):
+// calza si la de catastro empieza por la del inspector y lo que sigue es otra
+// etiqueta (letra), nunca otro dígito (`AP10` no es `AP102`).
+function unidadCatastroCalza(unidadCatastro, unidadInspector) {
+  var c = String(unidadCatastro || ''), u = String(unidadInspector || '');
+  if (!u || !c) return false;
+  if (c === u) return true;
+  return c.indexOf(u) === 0 && /^[A-Z]/.test(c.slice(u.length));
 }
 
 // Anillos en el formato de catastro.json: [[lat, lon], ...].
@@ -925,6 +946,8 @@ var _cuUtilsExports = {
   claveBusquedaDireccion: claveBusquedaDireccion,
   claveDireccionCatastro: claveDireccionCatastro,
   clavesCercanasCatastro: clavesCercanasCatastro,
+  direccionDesdeClave: direccionDesdeClave,
+  unidadCatastroCalza: unidadCatastroCalza,
   puntoEnAnillo: puntoEnAnillo,
   distanciaPuntoAnilloM: distanciaPuntoAnilloM,
   puntoInteriorAnillo: puntoInteriorAnillo,
@@ -996,6 +1019,8 @@ function clonarParaSeguimiento(filaBase, nVisita) {
    'LINK_PDF_ACTA', 'LINK_XLSX_ACTA', 'LINK_DOCX_INFORME', 'LINK_INFORME_F43',
    'LINK_REGISTRO_FOTOS', 'LINK_SOLICITUD_VIGILANCIA', 'LINK_SOLICITUD_PDF',
    'LINK_ORDEN_POLICIA', 'ULTIMA_MODIFICACION', 'ULTIMA_MODIFICACION_POR',
+   // La confirmación de ubicación es de la visita anterior: la nueva la vuelve a pedir.
+   'UBICACION_CONFIRMADA',
   ].forEach(function (k) { d[k] = ''; });
   return d;
 }
