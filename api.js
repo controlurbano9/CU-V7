@@ -872,6 +872,7 @@ async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpeta
     gasPost({
       accion: 'actualizarLinks',
       fila: fila,
+      radicadoConocido: radicado || '',
       linkPdfActa: r.linkPdf,
     }).catch(e => console.warn('[generarPdfActa] no se pudo persistir linkPdfActa:', e.message));
     invalidarCache('visitas');
