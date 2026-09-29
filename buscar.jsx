@@ -467,7 +467,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const grupos = useMemoB(() => {
     const g = {};
     filtrados.forEach(f => {
-      let rad = (f['RADICADO'] || f[1] || '').toString().trim();
+      // En mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
+      let rad = (f['RADICADO'] || f[1] || '').toString().trim().toUpperCase();
       if (!rad || rad.startsWith('LAT ') || rad.startsWith('6.') || rad.startsWith('-75') || rad.length > 60) {
         rad = 'Sin radicado';
       }

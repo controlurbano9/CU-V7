@@ -274,6 +274,23 @@ function ponerDiligenciadorPrimero(visitadores, nombre) {
 function _normRadicado(r) {
   return String(r == null ? '' : r).replace(/\s+/g, '').toUpperCase();
 }
+// Clave para comparar/agrupar radicados: sin espacios y en mayúsculas.
+// Caso real (2026-09-29): el inspector tecleó «Oficio-2026-09-239» en el
+// modal de nueva visita, la búsqueda exacta no encontró «OFICIO-2026-09-239»
+// y la 2ª visita nació como radicado aparte, con N° visita 1.
+function claveRadicado(r) { return _normRadicado(r); }
+
+// RADICADO que se guarda para una visita de oficio. La 1ª visita lo deriva
+// de su orden de policía (OFICIO-<orden>). Una visita de seguimiento (N° > 1)
+// conserva el del caso: si lo recalculara, una orden nueva (o ninguna) le
+// cambiaría el radicado y la sacaría del grupo de la 1ª visita.
+function radicadoDeOficio(radicadoBD, orden, nVisita) {
+  var bd = String(radicadoBD == null ? '' : radicadoBD).trim().toUpperCase();
+  if ((parseInt(nVisita, 10) || 1) > 1 && /^OFICIO-/.test(bd)) return bd;
+  var o = String(orden == null ? '' : orden).trim();
+  return o ? 'OFICIO-' + o : '';
+}
+
 function borradorEsDeLaFila(borrador, radicadoFila) {
   var actual = _normRadicado(radicadoFila);
   if (!borrador || !actual) return true;
@@ -685,6 +702,8 @@ var _cuUtilsExports = {
   primerVisitador: primerVisitador,
   ponerDiligenciadorPrimero: ponerDiligenciadorPrimero,
   borradorEsDeLaFila: borradorEsDeLaFila,
+  claveRadicado: claveRadicado,
+  radicadoDeOficio: radicadoDeOficio,
   puedeDiligenciar: puedeDiligenciar,
   veTodasLasVisitas: veTodasLasVisitas,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,

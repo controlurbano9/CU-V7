@@ -494,10 +494,16 @@ function _idCarpetaDeLink(url) {
 // ── Estructura del payload (60 cols B → BD) ────────────────────
 // Construye el array que se mandará al webhook. Mantiene el orden
 // exacto definido en app.js / apps_script_unificado.js.
+// Visita de oficio de seguimiento con radicado ya fijado por la 1ª visita.
+function _oficioSeguimiento(d) {
+  return !!d.esOficio && (parseInt(d.nVisita, 10) || 1) > 1 && !!d.fechaRadicado
+    && /^OFICIO-/i.test(String(d.radicado || ''));
+}
+
 function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
   const radicado = d.esOficio
-    ? (d.orden ? 'OFICIO-' + d.orden : '')
-    : (d.radicado || '');
+    ? radicadoDeOficio(d.radicado, d.orden, d.nVisita)
+    : String(d.radicado || '').trim().toUpperCase();
   const fpRadicado = filaPendiente?.['FECHA RADICADO'] || '';
   // Prioridad: state d.denunciante (que se inicializa desde datosIniciales y se conserva
   // a través del modal) → filaPendiente prop como fallback.
@@ -528,7 +534,8 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
   // el "radicado" se genera al hacer la visita). Para PQR: lo que ingresó el inspector
   // o lo que ya estaba en la fila pendiente del PQR original. El fallback a BD
   // se normaliza para evitar perpetuar formatos ISO o Date crudo.
-  const fechaRadicadoFinal = d.esOficio
+  // Seguimiento de oficio (N° > 1): conserva la fecha de la 1ª visita.
+  const fechaRadicadoFinal = (d.esOficio && !_oficioSeguimiento(d))
     ? _isoAFecha(d.fechaVisita)
     : (_isoAFecha(d.fechaRadicado) || _normalizarFechaCelda(fpRadicado));
 
@@ -1239,9 +1246,10 @@ function ModalInicioVisita({ onResult, onCancelar }) {
     setBuscando(true);
     try {
       const { datos } = await leerVisitas({ forzar: true });
-      const visitasRad = datos.filter(f =>
-        (f['RADICADO'] || '').trim() === radicado.trim()
-      );
+      // Sin distinguir mayúsculas ni espacios: «Oficio-…» debe encontrar
+      // «OFICIO-…» (caso 2026-09-29, ver claveRadicado en utils.js).
+      const buscado = claveRadicado(radicado);
+      const visitasRad = datos.filter(f => claveRadicado(f['RADICADO']) === buscado);
       // Ordenar por N° visita descendente
       visitasRad.sort((a, b) =>
         parseInt(b['N° VISITA'] || b['N VISITA'] || 1) -
@@ -1293,7 +1301,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
   function iniciarSinDatos() {
     onResult({
       tipo: 'pqr_manual',
-      radicado: radicado.trim(),
+      radicado: radicado.trim().toUpperCase(),
     });
   }
 
@@ -2697,7 +2705,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // ── Validaciones mínimas antes de guardar ──────────────────
   function _validar() {
     const errs = [];
-    const radicadoEfectivo = d.esOficio ? d.orden : d.radicado;
+    const radicadoEfectivo = d.esOficio ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : d.radicado;
     if (!radicadoEfectivo) errs.push(d.esOficio ? 'N° de orden de policía' : 'Radicado');
     if (!d.direccion)      errs.push('Dirección');
     if (!d.comuna)         errs.push('Comuna');
@@ -2855,11 +2863,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       : (d.atiendeRelacion || '');
     const dirNotifFinal = d.dirNotifIgual ? (d.direccion || '') : (d.atiendeDir || '');
     return {
-      radicado:       d.esOficio ? ('OFICIO-' + d.orden) : d.radicado,
+      radicado:       d.esOficio ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : d.radicado,
       // Oficio: no hay radicado externo previo, el campo de fecha de
       // radicado ni se muestra en el formulario — usar fecha de visita
       // (misma regla que _construirPayload al guardar en BD).
-      fechaRadicado:  d.esOficio ? _isoAFecha(d.fechaVisita) : _isoAFecha(d.fechaRadicado),
+      fechaRadicado:  (d.esOficio && !_oficioSeguimiento(d)) ? _isoAFecha(d.fechaVisita) : _isoAFecha(d.fechaRadicado),
       fechaVisita:    _isoAFecha(d.fechaVisita),
       objetoVisita:   d.esOficio ? 'Inspección de oficio' : 'Atención de PQR',
       direccion:      d.direccion,
@@ -2946,7 +2954,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
     // Identificación
     if (d.esOficio) {
-      req(d.orden, 'N° Orden de policía');
+      // Seguimiento: el radicado es el de la 1ª visita; la orden no es obligatoria.
+      if (!_oficioSeguimiento(d)) req(d.orden, 'N° Orden de policía');
     } else {
       req(d.radicado, 'Radicado');
       req(d.fechaRadicado, 'Fecha del radicado');
@@ -3207,7 +3216,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // (mismo criterio que _construirPayload y _construirDatosF46).
         // Sin esta derivación, abrirInformeF43 recibe '' y aborta con
         // "faltan params obligatorios" en toda visita de oficio.
-        radicado: d.esOficio ? ('OFICIO-' + d.orden) : d.radicado,
+        radicado: d.esOficio ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : d.radicado,
         fechaVisita: d.fechaVisita,
         direccion: d.direccion,
         barrio: d.barrio,
@@ -3539,7 +3548,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           <PanelEstadoVisita
             estadoVisita={estadoVisita}
             identificador={d.esOficio
-              ? (d.orden ? 'OFICIO ' + d.orden : 'OFICIO')
+              ? (_oficioSeguimiento(d) ? d.radicado.toUpperCase().replace('-', ' ')
+                 : d.orden ? 'OFICIO ' + d.orden : 'OFICIO')
               : (d.radicado ? 'RAD ' + d.radicado : 'Sin radicado')}
             direccion={d.direccion || ''}
             barrio={d.barrio || ''}
