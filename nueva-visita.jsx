@@ -316,6 +316,19 @@ const CONTRAVENCION_GRUPOS = [
 ];
 const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
 
+// Deja en TIPO DE INFRACCION solo lo que es un chip del catálogo. Filas
+// migradas de V2 o editadas a mano traen textos como "#9,11 Y 12" que no se
+// pintan como chip: el inspector no los ve, no los puede quitar, y aun así
+// salían en el acta y el informe. Lo que llega a los documentos tiene que ser
+// exactamente lo que está marcado en pantalla.
+const _CONTRAVENCION_VALIDAS = new Set(
+  CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(CONTRAVENCION_ESPECIAL)
+);
+function _infraccionSoloCatalogo(v) {
+  return String(v || '').split(' | ').map(s => s.trim())
+    .filter(s => _CONTRAVENCION_VALIDAS.has(s)).join(' | ');
+}
+
 // Genera un id único para identificar el borrador local de un formulario
 // en blanco (sin radicado/orden/fila aún). Antes se usaba la clave
 // compartida 'cu_draft_v1_nuevo' y los datos de la persona que atiende se
@@ -430,7 +443,7 @@ function _estadoInicial(datosIniciales) {
     // Descripción + conclusiones
     actuacion:       _partsAct[0] || '',
     obsConclusion:   _partsAct[1] || '',
-    infraccion:      d['TIPO DE INFRACCION']  || '',
+    infraccion:      _infraccionSoloCatalogo(d['TIPO DE INFRACCION']),
     area:            _areaBD.area,
     areaNoMedible:   _areaBD.noMedible,
     areaNoAplica:    _areaBD.noAplica,
@@ -564,7 +577,7 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
     _normalizarFechaCelda(fpFechaDev) || '',      // U  FECHA DEVOLUCION
     '',                                           // V  DIAS
     d.estadoObra || '',                           // W  ESTADO OBRA
-    d.infraccion || '',                           // X  TIPO DE INFRACCION
+    _infraccionSoloCatalogo(d.infraccion),        // X  TIPO DE INFRACCION
     _areaTexto(d),                                // Y  AREA CONTRAVENCION m2
     d.quebrada || '',                             // Z  CUMPLE RETIRO QUEBRADA
     d.repLocativa || '',                          // AA REPARACION LOCATIVA
@@ -2905,7 +2918,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       amenaza:        d.amenaza,
       sueloProt:      d.sueloProt,
       retiroQuebrada: d.quebrada,
-      infraccion:     d.infraccion,
+      infraccion:     _infraccionSoloCatalogo(d.infraccion),
       area:           _areaTexto(d),
       obsConclusion:  d.obsConclusion || '',
       // Citación
@@ -3006,7 +3019,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     // Descripción / conclusiones
     req(d.actuacion, 'Descripción de la situación encontrada');
     sec = 'Tipificación y medidas';
-    req(d.infraccion, 'Tipo de contravención');
+    req(_infraccionSoloCatalogo(d.infraccion), 'Tipo de contravención');
     req(d.area || d.areaNoMedible || d.areaNoAplica,
       'Área de contravención (m², "no aplica" o "no se pudo medir")');
 
@@ -3246,7 +3259,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         // (columna BD "TIPO DE INFRACCION") — informe/index.html los
         // matchea por codigo (A1, C9, ...) contra sus propios .comp-ac,
         // que usan un texto mas largo/distinto al de estos chips.
-        infraccion:       d.infraccion,
+        infraccion:       _infraccionSoloCatalogo(d.infraccion),
         ...potExtra,
       });
     } finally {
