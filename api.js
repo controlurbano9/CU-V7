@@ -1411,9 +1411,13 @@ async function leerLogAuditoria() {
 }
 
 // ── Sesión (localStorage) — mismas keys que app.js para coexistir.
-// El hash se conserva en memoria de la pestaña (sessionStorage) para
-// reusarlo en llamadas admin sin volver a pedir el PIN. NO se guarda
-// en localStorage para que cierre con la pestaña.
+// El hash va en localStorage junto al usuario y con el mismo vencimiento
+// (2026-09-29). Antes vivía en sessionStorage: al reabrir la PWA o abrir
+// otra pestaña dentro de las 4 h, la app daba la sesión por válida pero
+// mandaba el hash vacío, y cada llamada volvía «No autorizado» (y lo
+// encolado sin señal quedaba sin credenciales → atascado). Decisión del
+// usuario: es el SHA-256 de un PIN de 4 dígitos, sessionStorage no lo
+// protegía de verdad y dejaba al inspector afuera en campo.
 const SESSION = {
   guardar(s) {
     const expira = Date.now() + 4 * 60 * 60 * 1000;
@@ -1421,20 +1425,25 @@ const SESSION = {
     localStorage.setItem('cu_cargo', s.cargo);
     localStorage.setItem('cu_rol', s.rol);
     localStorage.setItem('cu_sesion_expira', expira.toString());
-    if (s.hash) sessionStorage.setItem('cu_hash', s.hash);
+    if (s.hash) localStorage.setItem('cu_hash', s.hash);
   },
   leer() {
     const expira = parseInt(localStorage.getItem('cu_sesion_expira') || '0', 10);
     if (!expira || Date.now() > expira) return null;
+    // sessionStorage: sesiones iniciadas antes de este cambio.
+    const hash = localStorage.getItem('cu_hash') || sessionStorage.getItem('cu_hash') || '';
+    // Sin hash el backend rechaza todo: mejor pedir el PIN que dejar
+    // entrar a una app que no puede hacer nada.
+    if (!hash) return null;
     return {
       usuario: localStorage.getItem('cu_usuario'),
       cargo:   localStorage.getItem('cu_cargo'),
       rol:     localStorage.getItem('cu_rol'),
-      hash:    sessionStorage.getItem('cu_hash') || '',
+      hash,
     };
   },
   borrar() {
-    ['cu_usuario', 'cu_cargo', 'cu_rol', 'cu_sesion_expira'].forEach(k => localStorage.removeItem(k));
+    ['cu_usuario', 'cu_cargo', 'cu_rol', 'cu_sesion_expira', 'cu_hash'].forEach(k => localStorage.removeItem(k));
     sessionStorage.removeItem('cu_hash');
     // Higiene: el caché de datos del usuario actual no debe vivir a la sesión.
     invalidarCache();
