@@ -984,10 +984,20 @@ function _MapaGPS({ lat, lon, onMove }) {
         center: pos, zoom, mapTypeId: 'hybrid',
         disableDefaultUI: true, zoomControl: true,
         gestureHandling: 'greedy',
+        // Cruz y no mano: tocar el mapa marca el punto, no solo lo desplaza.
+        draggableCursor: 'crosshair',
+      });
+      // Tocar el mapa coloca (o mueve) el pin: sirve cuando el GPS no da señal
+      // o cuando se diligencia después, lejos del predio. Pasa por onMove igual
+      // que arrastrar, así re-consulta POT y catastro con el punto nuevo.
+      gMapRef.current.addListener('click', (e) => {
+        if (!e.latLng || !onMoveRef.current) return;
+        onMoveRef.current(e.latLng.lat(), e.latLng.lng());
       });
     } else {
       gMapRef.current.setCenter(pos);
-      gMapRef.current.setZoom(zoom);
+      // No alejar a quien ya acercó más para afinar el punto.
+      if (!tieneCoords || gMapRef.current.getZoom() < zoom) gMapRef.current.setZoom(zoom);
     }
 
     if (tieneCoords) {
@@ -1028,7 +1038,9 @@ function _MapaGPS({ lat, lon, onMove }) {
     <div>
       {gmListo === true && (
         <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
-          {tieneCoords ? 'Arrastra el pin para corregir la ubicación' : 'Captura tu ubicación para colocar el pin'}
+          {tieneCoords
+            ? 'Toca el mapa o arrastra el pin para corregir la ubicación'
+            : 'Captura tu ubicación o toca el mapa en el predio para colocar el pin'}
         </div>
       )}
       <div ref={mapRef} className={'mapa-gps' + (gmListo === true ? '' : ' mapa-gps-sin')}>
@@ -2647,6 +2659,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (!d.comuna)         errs.push('Comuna');
     if (!d.fechaVisita)    errs.push('Fecha de visita');
     if (!d.visitador)      errs.push('Visitador');
+    // Ubicación obligatoria: sin ella no hay POT, catastro ni tipificación A1/A3.
+    // Se puede capturar con el GPS o tocando el predio en el mapa.
+    if (d.lat == null || d.lon == null || !isFinite(Number(d.lat)) || !isFinite(Number(d.lon)))
+      errs.push('Ubicación GPS (captúrala o toca el predio en el mapa)');
     // Validaciones duras sobre la fecha de visita — capturan errores de tipeo
     // típicos cuando el inspector diligencia días después.
     if (d.fechaVisita) {
@@ -3703,6 +3719,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <_MapaGPS lat={d.lat} lon={d.lon} onMove={(lat, lon) => {
+            // Un GPS aún refinando pisaría el punto marcado a mano con su
+            // siguiente lectura (o el timeout de 30 s lo aceptaría encima).
+            _detenerGeoWatch(); setBusyGeo(false);
             setCampo('lat', lat); setCampo('lon', lon);
             // Arrastrar el pin es una corrección deliberada del punto: hay que
             // re-consultar POT y catastro. Antes solo se movían las coordenadas
