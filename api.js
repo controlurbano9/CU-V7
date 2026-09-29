@@ -1533,6 +1533,20 @@ async function buscarCatastroGPS(lat, lon) {
   return results;
 }
 
+// Contorno del terreno (o terrenos, si se traslapan) que contiene el punto,
+// para resaltarlo en el mapa. Mismo filtro bbox + ray casting que
+// buscarCatastroGPS; devuelve anillos [[lat,lon],...]. Comparte la descarga
+// de catastro.json, así que no suma red si ya se consultó la ficha.
+async function poligonosCatastroGPS(lat, lon) {
+  const data = await _cargarCatastro();
+  const out = [];
+  for (const p of data.p) {
+    if (lat < p[1] || lat > p[3] || lon < p[2] || lon > p[4]) continue;
+    if (_pointInPolygon(lat, lon, p[5])) out.push(p[5]);
+  }
+  return out;
+}
+
 // Formateador de moneda colombiana (sin decimales para avalúos grandes)
 function formatearCOP(valor) {
   if (!valor || valor <= 0) return '—';
@@ -1556,7 +1570,7 @@ Object.assign(window, {
   listarFotosActa, describirFotoDesdeId,
   describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,
-  buscarCatastroGPS, formatearCOP,
+  buscarCatastroGPS, poligonosCatastroGPS, formatearCOP,
   SESSION_V6: SESSION,
   invalidarCache,
 });

@@ -954,6 +954,38 @@ function _googleMapsYaEsta() {
   return typeof google !== 'undefined' && !!google.maps;
 }
 
+// Resalta en el mapa el contorno catastral del predio que contiene el punto.
+// polysRef guarda los google.maps.Polygon dibujados para poder quitarlos al
+// mover el pin. Devuelve una función de cancelación: la búsqueda es async
+// (puede estar bajando catastro.json) y un punto viejo no debe pintar encima
+// del nuevo. Lo usan el formulario de visita y Consulta Norma.
+function _resaltarPredioCatastral(map, polysRef, lat, lon) {
+  (polysRef.current || []).forEach(function (pg) { pg.setMap(null); });
+  polysRef.current = [];
+  if (!map || lat == null || lon == null || typeof poligonosCatastroGPS !== 'function') {
+    return function () {};
+  }
+  let vigente = true;
+  poligonosCatastroGPS(Number(lat), Number(lon)).then(function (anillos) {
+    if (!vigente) return;
+    polysRef.current = anillos.map(function (anillo) {
+      return new google.maps.Polygon({
+        paths: anillo.map(function (c) { return { lat: c[0], lng: c[1] }; }),
+        map: map,
+        // Amarillo: se lee sobre la foto aérea ('hybrid') y sobre el callejero.
+        strokeColor: '#FFD400', strokeOpacity: 1, strokeWeight: 2,
+        fillColor: '#FFD400', fillOpacity: 0.15,
+        // No clicable: tocar dentro del predio tiene que seguir moviendo el pin.
+        clickable: false,
+      });
+    });
+  }).catch(function (e) {
+    // Sin catastro.json (offline sin precarga) el mapa sigue sirviendo sin contorno.
+    console.warn('[Mapa] sin contorno catastral:', e.message);
+  });
+  return function () { vigente = false; };
+}
+
 // Mapa Google Maps con pin arrastrable para corregir coordenadas.
 // Sin coordenadas muestra vista general de Bello; con coords, zoom 18 + pin.
 function _MapaGPS({ lat, lon, onMove, direccion }) {
@@ -1069,6 +1101,16 @@ function _MapaGPS({ lat, lon, onMove, direccion }) {
     }, 1200);
     return () => { vigente = false; clearTimeout(t); };
   }, [direccion, tieneCoords, gmListo]);
+
+  // Contorno catastral del predio bajo el pin (se redibuja al moverlo).
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  const predioRef = React.useRef([]);
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  useEffectNV(() => {
+    if (gmListo !== true || !gMapRef.current) return;
+    return _resaltarPredioCatastral(gMapRef.current, predioRef,
+      tieneCoords ? lat : null, tieneCoords ? lon : null);
+  }, [lat, lon, gmListo]);
 
   // Limpieza de listeners al desmontar (mapa/marker persisten toda la vida
   // del componente, se crean una sola vez arriba — solo falta esto al final).

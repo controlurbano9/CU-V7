@@ -186,6 +186,14 @@ function ConsultaNormaScreen() {
     };
   }, [gmListoCN]);
 
+  // Contorno catastral del predio bajo el pin (helper en nueva-visita.jsx).
+  const predioCNRef = useRefCN([]);
+  useEffectCN(() => {
+    if (gmListoCN !== true || !mapRef.current) return;
+    return _resaltarPredioCatastral(mapRef.current, predioCNRef,
+      punto ? punto.lat : null, punto ? punto.lon : null);
+  }, [punto, gmListoCN]);
+
   function colocarPin(lat, lon, consultar) {
     setError('');
     setPunto({ lat, lon });
