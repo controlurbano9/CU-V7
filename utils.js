@@ -504,6 +504,239 @@ function claveBusquedaDireccion(dir) {
   return normalizarDireccion(dir).toUpperCase().replace(/[^0-9A-Z]/g, '');
 }
 
+// ── Ubicación del predio: dirección + GPS + catastro ───────────
+// Plan: docs/PLAN_2026-09-29_ubicacion-predio.md (raíz de PROYECTO CODE).
+// Lógica pura, sin catastro.json ni Maps: api.js arma el índice y el
+// formulario pinta; lo que decide si la dirección y el GPS son el mismo
+// predio vive aquí para poder probarlo con node.
+
+// Tipos de vía que aparecen en catastro y en BD. Mismo criterio que
+// _VIAS_DIR (catastro además escribe KR).
+var _VIAS_CAT = [
+  [/^(CL|CLL|CLLE|CALLE)\b\.?/, 'CL'],
+  [/^(CR|CRA|CRRA|KR|KRA|CARRERA)\b\.?/, 'CR'],
+  [/^(DG|DIAG|DIAGONAL)\b\.?/, 'DG'],
+  [/^(TV|TRANS|TRANSV|TRANSVERSAL)\b\.?/, 'TV'],
+  [/^(AV|AVE|AVENIDA)\b\.?/, 'AV'],
+  [/^(CQ|CIRCULAR)\b\.?/, 'CQ'],
+];
+// Tipos de unidad: catastro escribe `AP 402`, `IN 148`, `CA 48`, `PI1`; el
+// inspector `APTO 402`, `INT 148`, `CASA 48`.
+var _UNIDADES_CAT = [
+  [/\b(APTO|APARTAMENTO)\b\.?/g, 'AP'],
+  [/\b(INT|INTERIOR)\b\.?/g, 'IN'],
+  [/\b(CA|CASA)\b\.?/g, 'CS'],
+  [/\b(LOCAL)\b\.?/g, 'LC'],
+  [/\b(PISO)\b\.?/g, 'PI'],
+  [/\b(TORRE)\b\.?/g, 'TO'],
+  [/\b(BLOQUE)\b\.?/g, 'BL'],
+];
+
+// Clave para cruzar una dirección con las de catastro. Devuelve null si no se
+// reconoce (rural, referencias, sin placa). Ejemplos:
+//   'CL 54A N 45-85 AP 402'  (catastro)  → base 'CL|54A|45|85', unidad 'AP402'
+//   'CALLE 54 A # 45-085'    (inspector) → base 'CL|54A|45|85', unidad ''
+// `cuadra` = base sin el último número: la usa la búsqueda aproximada
+// (placas cercanas en la misma cuadra). Sin ceros a la izquierda: la BD trae
+// `45-085` y catastro `45-85`.
+function claveDireccionCatastro(dir) {
+  var s = (dir == null ? '' : String(dir))
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+  // `12 - CR 50 # 32-10 …`: consecutivo pegado delante (visto en BD); se
+  // descarta si detrás viene texto.
+  s = s.replace(/^\d+\s*-\s*(?=[A-Z])/, '');
+  var via = null;
+  for (var i = 0; i < _VIAS_CAT.length; i++) {
+    if (_VIAS_CAT[i][0].test(s)) {
+      via = _VIAS_CAT[i][1];
+      s = s.replace(_VIAS_CAT[i][0], '').trim();
+      break;
+    }
+  }
+  if (!via) return null;
+  // Separador único `#`: catastro usa `N`, el inspector `#`, `No.`, `N°`.
+  s = s.replace(/[N#]\s*[°º]/g, ' # ').replace(/[°º]/g, ' # ')
+       .replace(/\b(N|NO|NRO|NUM|NUMERO)\b\.?/g, ' # ')
+       .replace(/#(\s*#)+/g, '#');
+  var izq, der;
+  var k = s.indexOf('#');
+  if (k >= 0) {
+    izq = s.slice(0, k); der = s.slice(k + 1);
+  } else {
+    // Sin separador: `CL 50 32-10`, `CR 66BB 55-51`. Corta antes del segundo número.
+    var m = s.match(/^(\d+\s*[A-Z]{0,2}(?:\s*BIS)?(?:\s*[A-Z])?)\s+(\d.*)$/);
+    if (!m) return null;
+    izq = m[1]; der = m[2];
+  }
+  var vm = izq.trim().match(/^(\d+)\s*([A-Z]{0,2})\s*(BIS)?\s*([A-Z]?)$/);
+  if (!vm) return null;
+  var pm = der.trim().match(/^(\d+)\s*([A-Z]{0,2})\s*(BIS)?\s*[-\s]\s*(\d+)\s*(.*)$/);
+  if (!pm) return null;
+  var numVia = String(parseInt(vm[1], 10)) + vm[2] + (vm[3] || '') + vm[4];
+  var placa1 = String(parseInt(pm[1], 10)) + pm[2] + (pm[3] || '');
+  var placa2 = parseInt(pm[4], 10);
+  var cuadra = via + '|' + numVia + '|' + placa1;
+  var resto = pm[5] || '';
+  for (var u = 0; u < _UNIDADES_CAT.length; u++) {
+    resto = resto.replace(_UNIDADES_CAT[u][0], _UNIDADES_CAT[u][1]);
+  }
+  return {
+    base: cuadra + '|' + placa2,
+    cuadra: cuadra,
+    placa: placa2,
+    unidad: resto.replace(/[^0-9A-Z]/g, ''),
+  };
+}
+
+// Claves de la misma cuadra con placa a ±rango, de la más cercana a la más
+// lejana (`45-85` → `45-84`, `45-86`, `45-83`…). La búsqueda aproximada solo
+// ofrece candidatos: nunca se preseleccionan.
+function clavesCercanasCatastro(clave, rango) {
+  if (!clave) return [];
+  var r = rango == null ? 10 : rango;
+  var out = [];
+  for (var d = 1; d <= r; d++) {
+    if (clave.placa - d >= 0) out.push({ base: clave.cuadra + '|' + (clave.placa - d), dif: d });
+    out.push({ base: clave.cuadra + '|' + (clave.placa + d), dif: d });
+  }
+  return out;
+}
+
+// Anillos en el formato de catastro.json: [[lat, lon], ...].
+function puntoEnAnillo(lat, lon, anillo) {
+  var dentro = false;
+  for (var i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    var ai = anillo[i], aj = anillo[j];
+    if (((ai[0] > lat) !== (aj[0] > lat)) &&
+        (lon < (aj[1] - ai[1]) * (lat - ai[0]) / (aj[0] - ai[0]) + ai[1])) {
+      dentro = !dentro;
+    }
+  }
+  return dentro;
+}
+
+// Metros del punto al borde más cercano del anillo (0 si está dentro).
+// Proyección equirectangular local: a escala de un predio el error es de
+// milímetros, y así no depende de turf (que se carga lazy solo para POT).
+function distanciaPuntoAnilloM(lat, lon, anillo) {
+  if (!anillo || anillo.length < 3) return Infinity;
+  if (puntoEnAnillo(lat, lon, anillo)) return 0;
+  var kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540;
+  var mejor = Infinity;
+  for (var i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    var ax = (anillo[j][1] - lon) * kx, ay = (anillo[j][0] - lat) * ky;
+    var bx = (anillo[i][1] - lon) * kx, by = (anillo[i][0] - lat) * ky;
+    var dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    var t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    var d = Math.sqrt(Math.pow(ax + t * dx, 2) + Math.pow(ay + t * dy, 2));
+    if (d < mejor) mejor = d;
+  }
+  return mejor;
+}
+
+// Un punto garantizado DENTRO del anillo, para poner el pin en el predio de
+// la dirección. El centroide sirve casi siempre; en un lote en L o en U cae
+// afuera, y entonces se toma el centro del tramo más ancho de la horizontal
+// que pasa por él. Devuelve [lat, lon].
+function puntoInteriorAnillo(anillo) {
+  if (!anillo || !anillo.length) return null;
+  // Relativo al primer vértice: con coordenadas absolutas (−75,56 × 6,33)
+  // la fórmula resta productos de ~480 para obtener áreas de ~1e-8 y el
+  // centroide se corre metros.
+  var oLat = anillo[0][0], oLon = anillo[0][1];
+  var a = 0, cx = 0, cy = 0;
+  for (var i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    var xj = anillo[j][1] - oLon, yj = anillo[j][0] - oLat;
+    var xi = anillo[i][1] - oLon, yi = anillo[i][0] - oLat;
+    var f = xj * yi - xi * yj;
+    a += f;
+    cx += (xj + xi) * f;
+    cy += (yj + yi) * f;
+  }
+  var lat0, lon0;
+  if (Math.abs(a) > 1e-18) {
+    lon0 = oLon + cx / (3 * a); lat0 = oLat + cy / (3 * a);
+  } else {
+    lat0 = 0; lon0 = 0;
+    anillo.forEach(function (p) { lat0 += p[0]; lon0 += p[1]; });
+    lat0 /= anillo.length; lon0 /= anillo.length;
+  }
+  if (puntoEnAnillo(lat0, lon0, anillo)) return [lat0, lon0];
+  var cortes = [];
+  for (var m = 0, n = anillo.length - 1; m < anillo.length; n = m++) {
+    var p = anillo[m], q = anillo[n];
+    if ((p[0] > lat0) !== (q[0] > lat0)) {
+      cortes.push(p[1] + (lat0 - p[0]) * (q[1] - p[1]) / (q[0] - p[0]));
+    }
+  }
+  cortes.sort(function (x, y) { return x - y; });
+  var mejor = null, ancho = -1;
+  for (var c = 0; c + 1 < cortes.length; c += 2) {
+    if (cortes[c + 1] - cortes[c] > ancho) {
+      ancho = cortes[c + 1] - cortes[c];
+      mejor = (cortes[c] + cortes[c + 1]) / 2;
+    }
+  }
+  return mejor == null ? [anillo[0][0], anillo[0][1]] : [lat0, mejor];
+}
+
+// ¿La dirección y el pin son el mismo predio?
+//   terrenosDir: [{ tcod, anillo }] — lo que encontró la dirección (1 a 4)
+//   lat, lon:    el pin (GPS o mapa), o vacío
+// Coinciden si el pin cae dentro de alguno o a ≤ umbralM de su borde: con el
+// pin en la calle frente al predio, o en el lindero del vecino, el predio
+// inspeccionado es el de la dirección (Fase 0: 66 de 206 visitas 2025+ caían
+// así, y la ficha tomada del pin era la del vecino o ninguna). `tcod` es
+// siempre el terreno de la dirección más cercano al pin.
+function compararUbicacion(terrenosDir, lat, lon, umbralM) {
+  var umbral = umbralM == null ? 10 : umbralM;
+  var hayDir = !!(terrenosDir && terrenosDir.length);
+  var hayPin = lat != null && lon != null && lat !== '' && lon !== '' &&
+    isFinite(Number(lat)) && isFinite(Number(lon));
+  if (!hayDir) return { estado: 'sin-dir', tcod: null, distM: null };
+  if (!hayPin) {
+    return { estado: 'sin-pin', tcod: terrenosDir.length === 1 ? terrenosDir[0].tcod : null, distM: null };
+  }
+  var la = Number(lat), lo = Number(lon);
+  var mejor = null, dMin = Infinity;
+  terrenosDir.forEach(function (t) {
+    var d = distanciaPuntoAnilloM(la, lo, t.anillo);
+    if (d < dMin) { dMin = d; mejor = t.tcod; }
+  });
+  return {
+    estado: dMin <= umbral ? 'coincide' : 'distinto',
+    tcod: mejor,
+    distM: isFinite(dMin) ? Math.round(dMin) : null,
+  };
+}
+
+// Columna UBICACION_CONFIRMADA: `GPS · 29/09/2026 · NOMBRE`. El servidor
+// estampa fecha y nombre; aquí solo se lee el origen.
+var ORIGENES_UBICACION = ['GPS', 'MAPA', 'DIRECCION'];
+function origenUbicacionConfirmada(valor) {
+  var o = String(valor == null ? '' : valor).split('·')[0].trim().toUpperCase();
+  return ORIGENES_UBICACION.indexOf(o) >= 0 ? o : '';
+}
+
+// La confirmación vale mientras dirección, punto y ficha sean los que se
+// confirmaron. Se compara en vez de borrarla en cada evento de edición: así
+// ningún camino (arrastrar, tocar, GPS, escribir, elegir ficha) se olvida de
+// invalidarla. BD devuelve las coordenadas como texto y el formulario como
+// número: se comparan como números con tolerancia (~1 cm).
+function ubicacionConfirmadaVigente(conf, d) {
+  if (!conf || !conf.origen || !d) return false;
+  function mismoNum(a, b) {
+    if (a == null || a === '' || b == null || b === '') return false;
+    var x = Number(String(a).replace(',', '.')), y = Number(String(b).replace(',', '.'));
+    return isFinite(x) && isFinite(y) && Math.abs(x - y) < 1e-7;
+  }
+  function txt(v) { return String(v == null ? '' : v).trim().toUpperCase().replace(/\s+/g, ' '); }
+  return mismoNum(conf.lat, d.lat) && mismoNum(conf.lon, d.lon) &&
+    txt(conf.direccion) === txt(d.direccion) &&
+    txt(conf.catastral) !== '' && txt(conf.catastral) === txt(d.catastral);
+}
+
 // ── Visibilidad por fecha de asignación ───────────────────
 // Una visita programada para el jueves no es trabajo del martes: el visitador
 // solo debe verla a partir del día de su asignación. Antes aparecían todas
@@ -690,6 +923,14 @@ var _cuUtilsExports = {
   normalizarDireccion: normalizarDireccion,
   direccionRequiereConfirmar: direccionRequiereConfirmar,
   claveBusquedaDireccion: claveBusquedaDireccion,
+  claveDireccionCatastro: claveDireccionCatastro,
+  clavesCercanasCatastro: clavesCercanasCatastro,
+  puntoEnAnillo: puntoEnAnillo,
+  distanciaPuntoAnilloM: distanciaPuntoAnilloM,
+  puntoInteriorAnillo: puntoInteriorAnillo,
+  compararUbicacion: compararUbicacion,
+  origenUbicacionConfirmada: origenUbicacionConfirmada,
+  ubicacionConfirmadaVigente: ubicacionConfirmadaVigente,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
