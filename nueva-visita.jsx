@@ -2958,7 +2958,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(d.direccion, 'Dirección');
     req(d.barrio && d.barrio !== '__otro__', 'Barrio / Vereda');
     req(d.comuna, 'Comuna');
-    req(d.lat != null && d.lon != null, 'Coordenadas GPS (capturar ubicación)');
+    req(d.lat != null && d.lon != null && d.lat !== '' && d.lon !== '' &&
+        isFinite(Number(d.lat)) && isFinite(Number(d.lon)),
+        'Coordenadas GPS (captúrala o toca el predio en el mapa)');
 
     sec = 'Persona que atiende';
     // Persona que atiende (si se marcó "No se atiende", la sección
