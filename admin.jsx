@@ -88,7 +88,8 @@ function TabVigilancia() {
         fila:             f._idx,
         idCarpetaVisita:  idCarpeta,
         radicado:         f['RADICADO'] || '',
-        fechaVisita:      f['FECHA DE VISITA'] || '',
+        // Date serializada a ISO rompía el nombre del archivo → DD/MM/YYYY.
+        fechaVisita:      formatearFecha(f['FECHA DE VISITA']) || '',
         nOrdenPolicia:    f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '',
         direccion:        f['DIRECCION INFRACCION'] || f['DIRECCION'] || '',
         barrio:           f['BARRIO/VEREDA'] || f['BARRIO'] || '',

@@ -255,6 +255,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     const sinOficio = f && !(f['LINK_SOLICITUD_VIGILANCIA'] || '').toString().trim();
     const requiereVigilancia = !!(f && suspSi && tieneOrden && sinOficio);
 
+    let oficioGenerado = null;
     if (requiereVigilancia) {
       const generar = await appConfirm(
         'Esta visita tiene orden de suspensión preventiva y aún no se ha generado el oficio de Vigilancia Policía.\n\n¿Generar el oficio antes de completar?',
@@ -269,11 +270,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             setBusyFila(null);
             return;
           }
-          await generarSolicitudVigilancia({
+          oficioGenerado = await generarSolicitudVigilancia({
             fila: f._idx,
             idCarpetaVisita: idCarpeta,
             radicado:        f['RADICADO'] || '',
-            fechaVisita:     f['FECHA DE VISITA'] || '',
+            // La celda puede llegar como Date serializada a ISO: el nombre del
+            // archivo salía «…_20260924T05:00:00.000Z». Se manda DD/MM/YYYY.
+            fechaVisita:     formatearFecha(f['FECHA DE VISITA']) || '',
             nOrdenPolicia:   f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'] || '',
             direccion:       f['DIRECCION INFRACCION'] || f['DIRECCION'] || '',
             barrio:          f['BARRIO/VEREDA'] || f['BARRIO'] || '',
@@ -288,6 +291,22 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
         }
         setBusyFila(null);
       }
+    }
+
+    // Antes el oficio se generaba en silencio y se pasaba directo a
+    // «¿Marcar como COMPLETADO?»: parecía que no se había generado. Se avisa
+    // y se ofrece abrirlo — el clic en «Abrir oficio» es un gesto nuevo, así
+    // que window.open no lo bloquea el navegador (tras la espera sí lo haría).
+    if (oficioGenerado && oficioGenerado.linkDoc) {
+      const avisos = [oficioGenerado.aviso, oficioGenerado.avisoLink].filter(Boolean).join('\n\n');
+      const abrir = await appConfirm(
+        (oficioGenerado.yaExistia
+          ? 'El oficio de Vigilancia Policía ya existía en la carpeta de la visita.'
+          : 'Oficio de Vigilancia Policía generado en la carpeta de la visita.')
+        + (avisos ? '\n\n' + avisos : ''),
+        { tono: avisos ? 'aviso' : 'info', titulo: 'Oficio de vigilancia', btnOk: 'Abrir oficio', btnCancel: 'Seguir' }
+      );
+      if (abrir) window.open(oficioGenerado.linkDoc, '_blank', 'noopener,noreferrer');
     }
 
     const ok = await appConfirm('¿Marcar como COMPLETADO?', {
