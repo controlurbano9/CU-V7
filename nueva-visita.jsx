@@ -1418,6 +1418,18 @@ function _PanelPredio(p) {
         )}
       </div>
       {!p.vigente && bloqueo && <div className="predio-nota">{bloqueo}</div>}
+      {p.consultando ? (
+        <div className="predio-nota" role="status">
+          <span className="spinner-btn" aria-hidden="true" /> Consultando catastro y POT…
+        </div>
+      ) : p.fallo && p.hayPin && (
+        <div className="predio-conflicto" role="alert" style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <span style={{ flex: '1 1 auto' }}>No se pudo consultar catastro o POT.</span>
+          <button type="button" className="btn-neutro predio-btn" onClick={p.onReintentar}>
+            Reintentar
+          </button>
+        </div>
+      )}
       {lineaDir && <div className="predio-nota">{lineaDir}</div>}
       {candidatos.length > 0 && (
         <div>
@@ -1972,6 +1984,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Tecleando código/ficha a mano: las casillas no se esconden a media
   // escritura cuando los dos campos dejan de estar vacíos.
   const [catEditando, setCatEditando] = React.useState(false);
+  // La última consulta de catastro o POT falló: el panel «Predio» ofrece
+  // «Reintentar» (ya no hay botón «Consultar»: todo lo dispara el pin).
+  const [consultaFallida, setConsultaFallida] = React.useState(false);
   // Flag independiente: ¿es predio del Municipio de Bello?
   // catResultados solo se setea cuando hay >1 ficha (propiedad horizontal);
   // este flag se setea SIEMPRE que la búsqueda catastral encuentre fichas
@@ -2036,6 +2051,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     }, 700);
     return function () { vigente = false; clearTimeout(t); };
   }, [d.direccion, _esRuralUbic, fase]);
+
+  // Visita guardada con coordenadas: al abrirla nada movía el pin, así que la
+  // ficha no aparecía hasta tocar «Consultar». Se consulta catastro una vez,
+  // después de la búsqueda por dirección (decide qué predio vale si el pin
+  // cae en la calle). El POT no se repite: pisaría lo corregido a mano.
+  const consultaAlAbrirRef = React.useRef(false);
+  React.useEffect(() => {
+    if (consultaAlAbrirRef.current || fase !== 'formulario' || filaInicial == null) return;
+    if (d.lat == null || d.lat === '' || d.lon == null || d.lon === '') return;
+    if (predioDirEstado === 'buscando') return;
+    if (predioDirEstado === 'idle' && d.direccion && !_esRuralUbic) return;
+    consultaAlAbrirRef.current = true;
+    ejecutarBusquedaCatastral(null, null, false, { alAbrir: true });
+  }, [fase, predioDirEstado]);
 
   // Terrenos de la dirección que cuentan para comparar con el pin: con
   // coincidencia exacta, todos (el pin desempata) o el elegido; con placas
@@ -2910,6 +2939,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       return;
     }
     setBusyPOT(true);
+    setConsultaFallida(false);
     try {
       const r = await consultarPOT(lat, lon);
       // Siempre, aunque venga vacío: si el punto se movió a rural o fuera de la
@@ -2929,8 +2959,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         if (com) setCampo('comuna', com);
       }
     } catch (e) {
-      // Sin conexión: no interrumpir al inspector. El botón manual
-      // "Consultar POT por coordenadas" permite reintentar al volver la señal.
+      // Sin conexión: no interrumpir al inspector. «Reintentar» del panel
+      // «Predio» vuelve a consultar al volver la señal.
+      setConsultaFallida(true);
       if (navigator.onLine) {
         await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Consulta POT' });
       } else {
@@ -2959,6 +2990,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       setCampo('ficha', '');
     }
     setBusyCat(true);
+    setConsultaFallida(false);
     setCatRes(null);
     setPredioMunicipal(false);   // reset al iniciar nueva búsqueda
     try {
@@ -2981,7 +3013,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       const esMunicipal = res.some(r => r.municipal);
       setPredioMunicipal(esMunicipal);
 
-      if (!res.length) {
+      // Al abrir, lo guardado manda: se muestra la ficha guardada si está en
+      // el predio y nunca se reescribe el código ni se avisa nada.
+      const guardada = opts && opts.alAbrir && d.catastral &&
+        res.find(r => r.catastral === d.catastral);
+      if (guardada) {
+        setCatRes([guardada]);
+      } else if (opts && opts.alAbrir && (d.catastral || !res.length)) {
+        // código escrito a mano fuera de este predio, o el punto sin predio
+      } else if (!res.length) {
         // Solo avisar si fue invocado manualmente con conexión.
         // Tras GPS auto-disparado y sin red, esto sería ruido.
         if (navigator.onLine) {
@@ -3002,7 +3042,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       // Sin conexión, el catastro.json no se pudo cargar — el inspector
       // puede llenar manualmente catastral/ficha y dejar la consulta
       // catastral para cuando vuelva la señal.
-      if (navigator.onLine) {
+      setConsultaFallida(true);
+      if (navigator.onLine && !(opts && opts.alAbrir)) {
         await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Catastro' });
       } else {
         console.warn('[Catastro] sin conexión, consulta diferida:', e.message);
@@ -4161,17 +4202,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       {/* 2. UBICACIÓN ─────────────────────────────────────── */}
       <_Seccion titulo="Ubicación del inmueble"
         estado={estadosSeccion["Ubicación del inmueble"]} color="azul"
-        // Un solo «Consultar» (catastro + POT): mover el pin ya dispara las
-        // dos consultas; esto solo las repite. La norma no se calcula: se
-        // consulta en las capas del POT.
-        accion={
-          <button type="button" className="btn-neutro sec-consultar"
-            onClick={consultarNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
-            {busyCat || busyPOT
-              ? <><span className="spinner-btn" aria-hidden="true" /> Consultando…</>
-              : 'Consultar'}
-          </button>
-        }>
+        // Sin botón «Consultar»: el pin dispara catastro y POT, abrir una
+        // visita guardada consulta catastro, y si algo falla el panel
+        // «Predio» ofrece «Reintentar».
+      >
         {/* Grupo escrito a mano en vez de <_Campo>: envolvemos el input para el
             check de confirmación y el <label for> quedaría apuntando al div
             (mismo caso que el Radicado). Se normaliza al salir del campo, no
@@ -4313,7 +4347,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           onUsarDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
           onUsarPunto={usarPredioPunto}
           onUbicarEnDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
-          onConfirmar={confirmarUbicacion} />
+          onConfirmar={confirmarUbicacion}
+          consultando={busyCat || busyPOT}
+          fallo={consultaFallida} onReintentar={consultarNorma} />
 
         {/* Norma POT bajo «Predio», en la columna del mapa: mover el pin la
             vuelve a consultar y así se ve qué cambió sin bajar. Filas de

@@ -1282,7 +1282,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   .norma-panel .input-grupo { grid-template-columns: minmax(0, 1fr) 150px; }
 }
 .form-seccion-accion { margin-left: auto; }
-.sec-consultar { padding: 6px 14px; font-size: 13px; }
 
 /* Usado por el indicador "Grabando..." del dictado por voz (nueva-visita) */
 @keyframes pulsar { 0%,100%{opacity:1} 50%{opacity:.3} }
