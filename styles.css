@@ -335,7 +335,7 @@ body {
   line-height: 1.1;
 }
 /* ── Pad bottom (espacio sobre nav inferior fija) ──────────── */
-.pad-bottom { padding-bottom: 100px; }
+.pad-bottom { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 
 
 /* ╔════════════════════════════════════════════════════════════╗
@@ -789,7 +789,10 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .fab,
 .fab-nueva {
   position: fixed;
-  bottom: 76px; right: 16px;
+  /* La barra de pestañas crece con la franja de gestos del sistema
+     (padding-bottom: env(safe-area-inset-bottom)); el «+» sube con ella o
+     queda pisado en teléfonos con barra de gestos. */
+  bottom: calc(76px + env(safe-area-inset-bottom)); right: 16px;
   width: 54px; height: 54px;
   background: var(--brand);
   border-radius: var(--r-full);
