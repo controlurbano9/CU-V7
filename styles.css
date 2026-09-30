@@ -1151,7 +1151,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   display: flex; flex-direction: column; gap: 8px;
   margin-top: 10px; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: var(--surface, #fff);
 }
 .predio-fila { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .predio-titulo { font-size: 13px; }
@@ -1182,9 +1182,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   .mapa-norma { height: 600px; }
 }
 
-/* Ubicación: coordenadas, mapa y panel «Predio» (nueva-visita.jsx). En móvil
-   van uno debajo de otro; en escritorio el mapa es cuadrado a la izquierda y
-   lo que cambia al mover el pin queda a su derecha, a la vista. */
+/* Ubicación: GPS, mapa y panel «Predio» (nueva-visita.jsx). En móvil van
+   uno debajo de otro; en escritorio el mapa ocupa la columna izquierda del
+   formulario (mismo ancho que «Barrio») y el panel la derecha. */
 .ubic-mapa-grid {
   grid-column: 1 / -1;
   display: grid; gap: 10px;
@@ -1195,20 +1195,40 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .ubic-mapa-grid > .predio-panel { grid-area: predio; margin-top: 0; }
 @media (min-width: 900px) {
   .ubic-mapa-grid {
-    grid-template-columns: 45% minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: auto 1fr;
     grid-template-areas: "mapa gps" "mapa predio";
     gap: 12px 16px;
     align-items: start;
     margin-bottom: 14px;
   }
-  .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 1 / 1; }
+  /* 4:3 con tope: cuadrado a media pantalla de 1920 medía ~950 px de alto. */
+  .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 4 / 3; max-height: 560px; }
   .ubic-mapa-grid .mapa-gps.mapa-gps-sin { aspect-ratio: auto; }
 }
-.predio-plegado { padding: 6px 14px; }
-.predio-detalle { margin-left: auto; min-height: var(--tap); }
+/* Sin GPS real (ratón): ni caja ni botón; las coordenadas van al panel. */
+@media (hover: hover) and (pointer: fine) {
+  .ubic-mapa-grid > .gps-box { display: none; }
+  .ubic-mapa-grid { grid-template-areas: "mapa" "predio"; }
+}
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+  .ubic-mapa-grid { grid-template-rows: auto; grid-template-areas: "mapa predio"; }
+}
+@media not ((hover: hover) and (pointer: fine)) {
+  .predio-coords { display: none; }
+}
+.predio-panel.predio-vigente { border-color: var(--green); }
+.predio-titulo { min-height: var(--tap); }
+.predio-confirmar { margin-left: auto; }
+.predio-coords { font-size: 11px; }
+.predio-municipal {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: var(--r-sm);
+  background: var(--rojo-bg); border: 1.5px solid var(--rojo);
+  color: var(--brand-ink); font-size: 13px; font-weight: 600;
+}
 
-/* Dirección + «¿Es correcta? [Sí]» en un renglón; envuelve si no cabe. */
+/* Dirección + «Confirmar dirección» en un renglón; envuelve si no cabe. */
 .dir-conf-linea { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
 .dir-conf-linea > .dir-conf-wrap { flex: 1 1 240px; }
 .dir-conf-linea > .dir-conf-fila { margin-top: 0; }
@@ -1220,7 +1240,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .norma-grid-3 .input-grupo { margin-bottom: 14px; }
 .form-seccion-accion { margin-left: auto; }
-.sec-recalcular { padding: 6px 14px; font-size: 13px; }
+.sec-consultar { padding: 6px 14px; font-size: 13px; }
 
 /* Usado por el indicador "Grabando..." del dictado por voz (nueva-visita) */
 @keyframes pulsar { 0%,100%{opacity:1} 50%{opacity:.3} }
@@ -1572,23 +1592,14 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 .ent-nota { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 
 /* Confirmación de dirección en línea (nueva-visita.jsx): mientras la carpeta
-   de Drive no exista, debajo del campo vive «● ¿Es correcta? [ Sí ]» y, al
-   confirmar, un check verde dentro del campo. Mismo lenguaje visual que los
-   entregables: punto ámbar = pendiente, ✓ verde = listo. */
+   de Drive no exista, al lado del campo vive el botón «Confirmar dirección»
+   y, al tocarlo, el estado «✓ Dirección confirmada» en verde. */
 .dir-conf-wrap { position: relative; }
-.dir-conf-ok input { padding-right: 34px; }
-.dir-conf-check {
-  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-  color: var(--green); font-weight: 700; pointer-events: none;
-}
-.dir-conf-fila {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 6px;
-}
-.dir-conf-pregunta { font-size: 12px; color: var(--ink-3); }
-.dir-conf-btn {
-  min-width: 44px; min-height: 44px;
-  padding: 4px 14px; margin-left: 4px;
+.dir-conf-fila { display: flex; align-items: center; }
+.dir-conf-btn { min-height: var(--tap); padding: 4px 14px; }
+.dir-conf-hecha {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  font-size: 13px; font-weight: 600; color: var(--green-ink);
 }
 /* Parpadeo único (guardar() la agrega y la quita a los 650 ms) para señalar
    la fila a la que el guardado se negó. */

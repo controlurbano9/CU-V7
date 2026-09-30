@@ -646,7 +646,7 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
 // `estado`: 'ok' → check verde; 'pend' → punto ámbar (solo tras un intento
 // de generar fallido, ver `mostrarPendientes`); undefined → sin indicador
 // (secciones sin campos obligatorios, p. ej. Observaciones).
-// `accion`: botón opcional a la derecha de la cabecera (p. ej. «Recalcular»).
+// `accion`: botón opcional a la derecha de la cabecera (p. ej. «Consultar»).
 function _Seccion({ titulo, color, estado, accion, children }) {
   return (
     <div className="form-seccion">
@@ -1357,14 +1357,15 @@ window._ListaFichasCatastrales = _ListaFichasCatastrales;
 
 // ── Panel «Predio»: dirección ↔ catastro ↔ pin ─────────────────
 // Solo pinta: el formulario calcula todo (compararUbicacion y compañía viven
-// en utils.js con tests). Va debajo del mapa. Punto ámbar = falta confirmar,
-// verde = confirmada — el mismo lenguaje que los entregables.
-const _ORIGEN_TXT = { GPS: 'GPS', MAPA: 'punto en el mapa', DIRECCION: 'predio de la dirección' };
+// en utils.js con tests). Arriba el estado y su acción; en el cuerpo, la
+// ficha del predio — es con lo que el inspector decide si confirma. Los
+// mensajes del proceso solo salen cuando piden algo: si dirección y punto
+// cuadran, no se dice (antes eran dos renglones que repetían lo mismo).
 function _PanelPredio(p) {
-  const bloqueo = !p.hayPin ? 'Falta el punto: captura tu ubicación o toca el predio en el mapa.'
+  const bloqueo = !p.hayPin ? 'Falta el punto: toca el predio en el mapa o captura tu ubicación.'
     : p.cmp.estado === 'distinto' ? 'Elige cuál predio es antes de confirmar.'
     : !p.catastral ? (p.faltaUnidad
-        ? 'Elige la unidad en la lista de arriba.'
+        ? 'Elige la unidad en la lista.'
         : 'Falta la ficha catastral.')
     : '';
   let lineaDir = null;
@@ -1372,46 +1373,27 @@ function _PanelPredio(p) {
   else if (p.estadoBusq === 'buscando') lineaDir = 'Buscando la dirección en catastro…';
   else if (p.estadoBusq === 'no-reconocible') lineaDir = 'La dirección no tiene placa reconocible para catastro: el predio sale del punto.';
   else if (p.estadoBusq === 'sin-catastro') lineaDir = 'Catastro no disponible (sin conexión): el predio sale del punto.';
-  else if (p.predioDir && p.predioDir.exacta) lineaDir = 'Dirección encontrada en catastro.';
-  else if (p.predioDir && !p.predioDir.terrenos.length) lineaDir = 'Dirección no encontrada en catastro: el predio sale del punto.';
+  else if (p.predioDir && !p.predioDir.exacta && !p.predioDir.terrenos.length) lineaDir = 'Dirección no encontrada en catastro: el predio sale del punto.';
   // Candidatos: placas cercanas (no exacta) o varios terrenos con la misma
   // dirección sin pin que desempate.
   const candidatos = !p.predioDir ? [] :
     !p.predioDir.exacta ? p.predioDir.terrenos :
     (p.predioDir.terrenos.length > 1 && !p.hayPin ? p.predioDir.terrenos : []);
-  // Confirmada y sin nada que decidir: un solo renglón. Cualquier conflicto,
-  // candidato o unidad por elegir lo vuelve a abrir solo.
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_PanelPredio`, convención guion bajo del archivo
-  const [detalle, setDetalle] = React.useState(false);
-  const plegado = p.vigente && !detalle && p.cmp.estado !== 'distinto' &&
-    !candidatos.length && !(!p.catastral && p.faltaUnidad);
-  if (plegado) {
-    return (
-      <div className="predio-panel predio-plegado">
-        <div className="predio-fila">
-          <span className="ent-dot ed-ok" title="Ubicación confirmada" aria-hidden="true" />
-          <span className="predio-ok">Ubicación confirmada</span>
-          <span className="predio-nota predio-mono">· Ficha {p.ficha || '—'}</span>
-          <button type="button" className="btn-texto predio-detalle" onClick={() => setDetalle(true)}>
-            Ver detalle
-          </button>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div className="predio-panel">
+    <div className={'predio-panel' + (p.vigente ? ' predio-vigente' : '')}>
       <div className="predio-fila predio-titulo">
-        <span className={'ent-dot ' + (p.vigente ? 'ed-ok' : 'ed-pend')}
-          title={p.vigente ? 'Ubicación confirmada' : 'Ubicación sin confirmar'} aria-hidden="true" />
-        <strong>Predio</strong>
-        <span className="sr-only">{p.vigente ? 'Ubicación confirmada' : 'Ubicación sin confirmar'}</span>
-        {detalle && p.vigente && (
-          <button type="button" className="btn-texto predio-detalle" onClick={() => setDetalle(false)}>
-            Ocultar detalle
+        <span className={'ent-dot ' + (p.vigente ? 'ed-ok' : 'ed-pend')} aria-hidden="true" />
+        <strong className={p.vigente ? 'predio-ok' : ''}>
+          {p.vigente ? 'Ubicación confirmada' : 'Ubicación sin confirmar'}
+        </strong>
+        {!p.vigente && (
+          <button type="button" className="btn-accion predio-btn predio-confirmar" disabled={!!bloqueo}
+            onClick={p.onConfirmar} title={bloqueo || undefined}>
+            Confirmar ubicación
           </button>
         )}
       </div>
+      {!p.vigente && bloqueo && <div className="predio-nota">{bloqueo}</div>}
       {lineaDir && <div className="predio-nota">{lineaDir}</div>}
       {candidatos.length > 0 && (
         <div>
@@ -1437,11 +1419,9 @@ function _PanelPredio(p) {
       {p.preferirPunto && (
         <div className="predio-nota">Se toma el predio del punto: la dirección cae en otro predio de catastro.</div>
       )}
-      {p.cmp.estado === 'coincide' && (
-        <div className="predio-nota predio-ok">
-          {p.cmp.distM
-            ? 'El punto está a ' + p.cmp.distM + ' m del predio de la dirección (calle o lindero): se toma el predio de la dirección.'
-            : 'El punto cae en el predio de la dirección.'}
+      {p.cmp.estado === 'coincide' && p.cmp.distM > 0 && (
+        <div className="predio-nota">
+          El punto está a {p.cmp.distM} m del predio de la dirección (calle o lindero): se toma el predio de la dirección.
         </div>
       )}
       {p.cmp.estado === 'sin-pin' && p.cmp.tcod && (
@@ -1464,8 +1444,8 @@ function _PanelPredio(p) {
           </div>
         </div>
       )}
-      {/* Propiedad horizontal: la lista vive solo aquí («Consulta norma POT»
-          remite a este panel); elegir la unidad es parte de la confirmación. */}
+      {/* Propiedad horizontal: la lista vive solo aquí; elegir la unidad es
+          parte de la confirmación. Con la ficha ya elegida, su tarjeta. */}
       {!p.catastral && p.faltaUnidad ? (
         <div>
           <div className="predio-nota">
@@ -1473,6 +1453,15 @@ function _PanelPredio(p) {
           </div>
           <_ListaFichasCatastrales fichas={p.fichasPH} onSeleccionar={p.onSeleccionarFicha} maxAlto={260} />
         </div>
+      ) : p.fichaInfo ? (
+        <>
+          {p.fichaInfo.municipal && (
+            <div className="predio-municipal">
+              <Icon.Alert size={16} /> Predio del <strong>Municipio de Bello</strong>
+            </div>
+          )}
+          <_TarjetaFichaCatastral r={p.fichaInfo} expandida />
+        </>
       ) : (
         <div className="predio-nota predio-mono">
           {p.catastral
@@ -1480,19 +1469,9 @@ function _PanelPredio(p) {
             : 'Sin ficha catastral'}
         </div>
       )}
-      {p.vigente ? (
-        <div className="predio-nota predio-ok">
-          ✓ Ubicación confirmada ({_ORIGEN_TXT[p.origen] || p.origen}). Mover el pin, cambiar la dirección o la ficha la vuelve a pedir.
-        </div>
-      ) : (
-        <div className="predio-fila">
-          <button type="button" className="btn-accion predio-btn" disabled={!!bloqueo}
-            onClick={p.onConfirmar}>
-            Confirmar ubicación
-          </button>
-          {bloqueo && <span className="predio-nota">{bloqueo}</span>}
-        </div>
-      )}
+      {/* Coordenadas: en escritorio no hay caja de GPS (no hay GPS), así que
+          van aquí en pequeño. En el teléfono ya las muestra esa caja. */}
+      <div className="predio-nota predio-mono predio-coords">{p.coords}</div>
     </div>
   );
 }
@@ -1959,10 +1938,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Estado auxiliar para barrio "Otro" (texto libre)
   const [barrioOtro, setBarrioOtro] = React.useState('');
   // Confirmación de dirección en línea: la dirección bautiza la carpeta de
-  // Drive en el PRIMER guardado, así que el inspector la confirma («¿Es
-  // correcta?») antes de que exista la carpeta. dirEnfoque esconde la fila
+  // Drive en el PRIMER guardado, así que el inspector la confirma («Confirmar
+  // dirección») antes de que exista la carpeta. dirEnfoque esconde la fila
   // mientras el inspector edita el campo. Los refs apuntan a la fila y al
-  // botón «Sí» para el bloqueo de guardar() (scroll + foco + parpadeo).
+  // botón «Confirmar dirección» para el bloqueo de guardar() (scroll + foco + parpadeo).
   const [dirConfirmada, setDirConfirmada] = React.useState(false);
   const [dirEnfoque, setDirEnfoque] = React.useState(false);
   const dirFilaRef = React.useRef(null);
@@ -2856,9 +2835,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Cliente puro (turf.js + GeoJSONs en GitHub, igual que producción).
   // Acepta lat/lon opcionales para encadenarse tras geocoding sin
   // depender del state batched de React.
-  // «↻ Recalcular» de Consulta norma POT: catastro y POT juntos para el punto
+  // «Consultar» de Consulta norma POT: catastro y POT juntos para el punto
   // actual. Sin coordenadas avisa una sola vez (cada función avisaría aparte).
-  async function recalcularNorma() {
+  async function consultarNorma() {
     if (d.lat == null || d.lon == null || d.lat === '' || d.lon === '') {
       await appAlert('Necesitas coordenadas primero: captura tu ubicación o toca el predio en el mapa.', { tono: 'aviso', titulo: 'Sin GPS' });
       return;
@@ -3059,7 +3038,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   }
 
   // Confirma juntos dirección, punto y ficha. También da por confirmada la
-  // dirección («¿Es correcta?»): el inspector la está viendo en el resumen.
+  // dirección («Confirmar dirección»): el inspector la está viendo en el resumen.
   function confirmarUbicacion() {
     setCampo('ubicConf', {
       origen: d.origenPunto || 'MAPA',
@@ -3439,10 +3418,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(d.lat != null && d.lon != null && d.lat !== '' && d.lon !== '' &&
         isFinite(Number(d.lat)) && isFinite(Number(d.lon)),
         'Coordenadas GPS (captúrala o toca el predio en el mapa)');
-    // Dirección, punto y ficha confirmados juntos (panel «Predio» bajo el
+    // Dirección, punto y ficha confirmados juntos (panel «Predio» junto al
     // mapa). Guardar no lo exige; el acta y el informe sí (decisión 2026-09-29).
     req(ubicacionConfirmadaVigente(d.ubicConf, d),
-        'Ubicación confirmada (dirección, punto y ficha catastral, bajo el mapa)');
+        'Ubicación confirmada (dirección, punto y ficha catastral, junto al mapa)');
 
     sec = 'Consulta norma POT';
     // POT
@@ -4154,14 +4133,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             (mismo caso que el Radicado). Se normaliza al salir del campo, no
             mientras se escribe: tecleando «CL 5» el normalizador ya metería el
             `#` y estorbaría. Al salir el inspector ve el resultado, confirma
-            «¿Es correcta?» o lo corrige. La clave de carpeta de Drive no
+            «Confirmar dirección» o lo corrige. La clave de carpeta de Drive no
             cambia (tests/direcciones.test.js). */}
         <div className="input-grupo full-width">
           <label className="input-label" htmlFor="nv-direccion">Dirección del inmueble</label>
-          {/* «¿Es correcta?» al lado del campo, no debajo: en escritorio
-              sobra ancho y el renglón extra alargaba la sección. */}
+          {/* «Confirmar dirección» al lado del campo, no debajo: en escritorio
+              sobra ancho. Al tocarlo se vuelve el estado «✓ Dirección
+              confirmada»; reescribir la dirección lo devuelve a botón. */}
           <div className="dir-conf-linea">
-          <div className={'dir-conf-wrap' + (requiereDir && dirConfirmada ? ' dir-conf-ok' : '')}>
+          <div className="dir-conf-wrap">
             <input id="nv-direccion" type="text" className="input-campo"
               value={d.direccion || ''}
               onChange={e => { setCampo('direccion', e.target.value); setDirConfirmada(false); }}
@@ -4172,19 +4152,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 if (n && n !== d.direccion) setCampo('direccion', n);
               }}
               placeholder="CL 50 # 32-10" />
-            {requiereDir && dirConfirmada && (
-              <span className="dir-conf-check" title="Dirección confirmada">
-                <span aria-hidden="true">✓</span>
-                <span className="sr-only">Dirección confirmada</span>
-              </span>
-            )}
           </div>
+          {requiereDir && dirConfirmada && (
+            <span className="dir-conf-hecha">✓ Dirección confirmada</span>
+          )}
           {requiereDir && !dirConfirmada && !dirEnfoque && (
-            <div ref={dirFilaRef} className="dir-conf-fila" role="group" aria-label="Confirmar dirección">
-              <span className="ent-dot ed-pend" aria-hidden="true" />
-              <span className="dir-conf-pregunta">¿Es correcta?</span>
+            <div ref={dirFilaRef} className="dir-conf-fila">
               <button type="button" ref={dirBotonRef} className="btn-neutro dir-conf-btn"
-                onClick={() => setDirConfirmada(true)}>Sí</button>
+                onClick={() => setDirConfirmada(true)}>Confirmar dirección</button>
             </div>
           )}
           </div>
@@ -4204,9 +4179,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             placeholder="4" />
         </_Campo>
 
-        {/* Escritorio: mapa cuadrado a la izquierda y, a su derecha, las
-            coordenadas y el panel «Predio» — lo que cambia al mover el pin
-            queda a la vista junto al pin. Móvil: coordenadas, mapa, predio. */}
+        {/* Escritorio: el mapa en la columna izquierda del formulario y, a su
+            derecha, el panel «Predio» — lo que cambia al mover el pin queda a
+            la vista junto al pin. La caja de GPS solo existe en pantallas
+            táctiles (CSS): un computador ubica por la red, con cientos de
+            metros de error, y el pin caería en la oficina. Móvil: GPS, mapa,
+            predio. */}
         <div className="ubic-mapa-grid">
         <div className="gps-box">
           <div style={{ flex: 1 }}>
@@ -4281,7 +4259,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           catastral={d.catastral} ficha={d.ficha}
           faltaUnidad={!!(catResultados && catResultados.length > 1)}
           fichasPH={catResultados || []} onSeleccionarFicha={seleccionarCatastral}
-          vigente={ubicVigente} origen={d.ubicConf && d.ubicConf.origen}
+          vigente={ubicVigente}
+          // La tarjeta solo si describe el código del campo: reescrito a mano,
+          // dejaría de ser la ficha de este predio.
+          fichaInfo={catResultados && catResultados.length === 1 && catResultados[0].catastral === d.catastral
+            ? catResultados[0] : null}
+          coords={d.lat != null && d.lat !== '' && d.lon != null && d.lon !== ''
+            ? Number(d.lat).toFixed(6) + ', ' + Number(d.lon).toFixed(6) : 'Sin coordenadas'}
           onUsarDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
           onUsarPunto={usarPredioPunto}
           onUbicarEnDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
@@ -4294,19 +4278,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           y, separados, el inspector no veía qué había cambiado. */}
       <_Seccion titulo="Consulta norma POT"
         estado={estadosSeccion["Consulta norma POT"]} color="gris"
-        // Un solo «Recalcular» (catastro + POT): mover el pin ya dispara las
-        // dos consultas; esto solo las repite. Antes eran dos botones, uno a
-        // todo el ancho con su ayuda debajo.
+        // Un solo «Consultar» (catastro + POT): mover el pin ya dispara las
+        // dos consultas; esto solo las repite. La norma no se calcula: se
+        // consulta en las capas del POT.
         accion={
-          <button type="button" className="btn-neutro sec-recalcular"
-            onClick={recalcularNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
+          <button type="button" className="btn-neutro sec-consultar"
+            onClick={consultarNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
             {busyCat || busyPOT
-              ? <><span className="spinner-btn" aria-hidden="true" /> Calculando…</>
-              : '↻ Recalcular'}
+              ? <><span className="spinner-btn" aria-hidden="true" /> Consultando…</>
+              : 'Consultar'}
           </button>
         }>
         <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 8 }}>
-          Calculado para el punto del mapa: si mueves el pin, estos datos se actualizan.
+          Se consulta para el punto del mapa; si mueves el pin, se vuelve a consultar sola.
         </div>
         <div className="norma-grid-3">
           <_Campo label="Código catastral">
@@ -4320,38 +4304,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
               placeholder="ZR-CN-1" />
           </_Campo>
         </div>
-
-        {catResultados && catResultados.length > 0 && (
-          <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-            {/* Alerta si alguna ficha es del Municipio de Bello */}
-            {catResultados.some(r => r.municipal) && (
-              <div style={{
-                padding: '12px 14px', borderRadius: 'var(--r-md)',
-                background: 'var(--rojo-bg)', border: '1.5px solid var(--rojo)',
-                color: 'var(--brand-ink)', fontSize: 13, fontWeight: 600,
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-              }}>
-                <Icon.Alert size={18} />
-                <div>Predio del <strong>Municipio de Bello</strong></div>
-              </div>
-            )}
-            {catResultados.length === 1 ? (
-              // Una ficha (o la unidad ya elegida en PH): se muestra aplicada,
-              // sin «Usar esta ficha». Si el inspector reescribe el código a
-              // mano, la tarjeta deja de describir el campo y se oculta.
-              catResultados[0].catastral === d.catastral && <>
-                <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>Ficha de este predio:</div>
-                <_TarjetaFichaCatastral r={catResultados[0]} expandida />
-              </>
-            ) : (
-              // La lista para elegir vive en el panel «Predio», justo encima:
-              // repetirla aquí la ponía dos veces seguidas.
-              <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
-                {catResultados.length} unidades en este predio (propiedad horizontal): elige la correcta en «Predio», arriba.
-              </div>
-            )}
-          </div>
-        )}
+        {/* La tarjeta de la ficha, el aviso de predio municipal y la lista de
+            propiedad horizontal viven en el panel «Predio», junto al mapa. */}
 
         {/* Las tres preguntas SI/NO en un renglón en escritorio; en móvil,
             una debajo de otra (norma-grid-3 colapsa a una columna). */}
