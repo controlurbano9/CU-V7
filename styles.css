@@ -949,6 +949,20 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px;
 }
 
+/* ── Buscar: bloque fijo y filtros plegables (<1200) ────────
+   Título + barra + chips de estado van juntos en .titulo-fijo: la casilla
+   no se va con el scroll. Comuna, visitador y antigüedad se pliegan tras el
+   chip «Filtros» — abiertos llenaban la pantalla del celular. ≥1200 viven
+   abiertos en su columna y el chip no existe. */
+.buscar-fijo { padding-bottom: 0; }
+.buscar-filtros-toggle { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 1199px) {
+  .buscar-filtros.plegado { display: none; }
+}
+@media (min-width: 1200px) {
+  .buscar-filtros-toggle { display: none; }
+}
+
 /* ── Buscar: cabecera de resultados ─────────────────────── */
 .buscar-resultados-head {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

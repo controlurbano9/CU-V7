@@ -115,6 +115,25 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [visitadores, setVisitadores] = useStateB([]);
   const [limite, setLimite] = useStateB(prefs0.limite || LIMITE_INICIAL);
   const inputBuscarRef = useRefB(null);
+  // <1200 los filtros de comuna, visitador y antigüedad van plegados: abiertos
+  // ocupaban toda la pantalla del celular antes del primer resultado. No se
+  // persiste: cada entrada a Buscar arranca plegada. ≥1200 el CSS los muestra
+  // siempre en su columna y el botón no se ve.
+  const [filtrosAbiertos, setFiltrosAbiertos] = useStateB(false);
+  // Al abrir con la lista ya recorrida, el panel queda arriba, oculto tras el
+  // bloque fijo: se sube lo justo para que aparezca bajo la casilla.
+  useEffectB(() => {
+    if (!filtrosAbiertos) return;
+    const panel = document.getElementById('buscar-filtros');
+    const fijo = document.querySelector('.buscar-fijo');
+    if (!panel || !fijo) return;
+    const delta = panel.getBoundingClientRect().top - fijo.getBoundingClientRect().bottom;
+    if (delta >= 0) return;
+    // <900 scrollea el documento; 900–1199 scrollea #content-desktop.
+    const cont = panel.closest('#content-desktop');
+    if (cont && cont.scrollHeight > cont.clientHeight) cont.scrollBy(0, delta);
+    else window.scrollBy(0, delta);
+  }, [filtrosAbiertos]);
 
   const esAdmin = usuario.rol === 'ADMIN';
   // Supervisor: ve la lista completa y filtra por inspector, pero las acciones
@@ -486,6 +505,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     setFiltrosVisitador([]); setFiltroRural(false); setFiltroAntiguedad('');
   }
 
+  // Filtros del panel plegable (sin texto ni estado, que siempre están a la vista).
+  const nFiltrosPanel = filtroComunas.length + filtrosVisitador.length
+    + (filtroRural ? 1 : 0) + (filtroAntiguedad ? 1 : 0);
+
   const hayFiltros = !!q || filtrosEstado.length || filtroComunas.length
     || filtrosVisitador.length || filtroRural || !!filtroAntiguedad;
 
@@ -516,7 +539,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     <div className="pantalla activa pad-bottom buscar-pantalla">
       {/* Mismo nombre que la pestaña del nav: antes la pestaña decía "Buscar"
           y el título de la pantalla "Visitas". */}
-      <div className="page-title titulo-fijo" style={{ marginBottom: 12 }}>Buscar</div>
+      {/* Título + barra de búsqueda en un solo bloque fijo (.titulo-fijo): en
+          móvil la casilla queda a mano mientras se recorre la lista. */}
+      <div className="titulo-fijo buscar-fijo">
+      <div className="page-title" style={{ marginBottom: 12 }}>Buscar</div>
 
       {/* Barra de búsqueda a todo el ancho, FUERA de .buscar-2col: es el
           control principal de la pantalla, no un campo más de la tarjeta de
@@ -552,15 +578,26 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
               </button>
             );
           })}
+          {/* Solo <1200: abre/cierra comuna, visitador y antigüedad. El número
+              dice cuántos hay activos aunque el panel esté plegado. */}
+          <button type="button" className="btn-filtro buscar-filtros-toggle"
+            aria-expanded={filtrosAbiertos} aria-controls="buscar-filtros"
+            onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}>
+            Filtros{nFiltrosPanel > 0 && <span className="btn-filtro-num">· {nFiltrosPanel}</span>}
+            {filtrosAbiertos ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
+          </button>
         </div>
       </div>
+      </div>{/* .buscar-fijo */}
 
       {/* ≥1200: filtros fijos a la izquierda (.buscar-col-izq), resultados
           con scroll a la derecha (.buscar-col-der); por debajo de 1200 los
           wrappers son divs inertes y todo va apilado como siempre. */}
       <div className="buscar-2col">
       <div className="buscar-col-izq">
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div id="buscar-filtros"
+        className={'card buscar-filtros' + (filtrosAbiertos ? '' : ' plegado')}
+        style={{ marginBottom: 12 }}>
         {/* Sin acordeones: a 280px los chips caben abiertos y plegarlos
             escondía el estado del filtro tras un clic. Solo Antigüedad
             conserva pliegue, por ser el último grupo. */}
