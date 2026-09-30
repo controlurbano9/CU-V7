@@ -69,7 +69,16 @@ window.obtenerIdFotos = function () {
   );
 };
 window.consultarPOT       = function () { return Promise.resolve({}); };
-window.buscarCatastroGPS  = function () { return Promise.resolve({ ok: true, resultados: [] }); };
+// Una ficha falsa, en el formato real (lista): con ella se ve la tarjeta de
+// «Consulta norma POT» al tocar «Buscar datos catastrales».
+window.buscarCatastroGPS  = function () {
+  return Promise.resolve([{
+    ficha: 999001, catastral: '050880100000000000000900000001', direccion: 'CR 52 64-134',
+    propietario: 'PROPIETARIO DE PRUEBA', esRazonSocial: false, matricula: '01N-0000000',
+    destinacion: 'HABITACIONAL', avaluo: 150000000, municipal: false,
+    terrenoCodigo: '050880100000000000000', npnSufijo: '900000001',
+  }]);
+};
 window.abrirInformeF43    = function () { console.log('[QA] abrirInformeF43 llamado'); };
 
 // Sin conexión: el navegador no deja escribir navigator.onLine directo.

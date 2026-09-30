@@ -1437,8 +1437,8 @@ function _PanelPredio(p) {
           </div>
         </div>
       )}
-      {/* Propiedad horizontal: la lista también vive en «Consulta norma POT»,
-          pero la confirmación está aquí y elegir la unidad es parte de ella. */}
+      {/* Propiedad horizontal: la lista vive solo aquí («Consulta norma POT»
+          remite a este panel); elegir la unidad es parte de la confirmación. */}
       {!p.catastral && p.faltaUnidad ? (
         <div>
           <div className="predio-nota">
@@ -2917,10 +2917,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       } else if (res.length === 1) {
         setCampo('catastral', res[0].catastral);
         setCampo('ficha', String(res[0].ficha));
-        // Si la única ficha es municipal, mostramos también catResultados
-        // para que aparezca el banner visual "Predio del Municipio de Bello"
-        // en sección 9 (que hoy solo se renderiza con catResultados poblado).
-        if (esMunicipal) setCatRes(res);
+        // También a la vista con una sola ficha: sin la tarjeta el inspector
+        // no distinguía «encontró» de «no hizo nada».
+        setCatRes(res);
       } else if (!_preseleccionarUnidad(res)) {
         // En propiedad horizontal puede haber muchas unidades en el mismo polígono.
         // Sin tope: el inspector debe poder ver todas y elegir.
@@ -2948,7 +2947,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     if (!u) return false;
     setCampo('catastral', u.catastral);
     setCampo('ficha', String(u.ficha));
-    setCatRes(null);
+    setCatRes([u]);
     return true;
   }
 
@@ -2964,7 +2963,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       if (res.length === 1) {
         setCampo('catastral', res[0].catastral);
         setCampo('ficha', String(res[0].ficha));
-        setCatRes(esMunicipal ? res : null);
+        setCatRes(res);
       } else if (!_preseleccionarUnidad(res)) {
         setCampo('catastral', '');
         setCampo('ficha', '');
@@ -3035,7 +3034,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   function seleccionarCatastral(item) {
     setCampo('catastral', item.catastral);
     setCampo('ficha', String(item.ficha));
-    setCatRes(null);
+    setCatRes([item]);   // queda a la vista la unidad elegida
   }
 
   // ── Geolocalización progresiva del dispositivo ─────────────
@@ -3408,6 +3407,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(ubicacionConfirmadaVigente(d.ubicConf, d),
         'Ubicación confirmada (dirección, punto y ficha catastral, bajo el mapa)');
 
+    sec = 'Consulta norma POT';
+    // POT
+    req(d.catastral, 'Código catastral');
+    req(d.ficha, 'N° ficha predial');
+    req(d.poligono, 'Polígono de uso del suelo');
+    req(d.amenaza, '¿Amenaza? (SI/NO)');
+    req(d.sueloProt, '¿Suelo de protección? (SI/NO)');
+    req(d.quebrada, '¿Dentro de retiro de quebrada? (SI/NO)');
+
     sec = 'Persona que atiende';
     // Persona que atiende (si se marcó "No se atiende", la sección
     // queda cerrada y estos campos no se diligencian — no bloquear).
@@ -3461,15 +3469,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     sec = 'Funcionarios que realizan la inspección';
     // Funcionarios
     req(d.visitador, 'Visitador(es) que realizan la inspección');
-
-    sec = 'Consulta norma POT';
-    // POT
-    req(d.catastral, 'Código catastral');
-    req(d.ficha, 'N° ficha predial');
-    req(d.poligono, 'Polígono de uso del suelo');
-    req(d.amenaza, '¿Amenaza? (SI/NO)');
-    req(d.sueloProt, '¿Suelo de protección? (SI/NO)');
-    req(d.quebrada, '¿Dentro de retiro de quebrada? (SI/NO)');
 
     // Observaciones (sección 10) — opcional, no bloquea acta
 
@@ -4245,6 +4244,92 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           onConfirmar={confirmarUbicacion} />
       </_Seccion>
 
+      {/* 2b. CONSULTA NORMA POT ─────────────────────────── */}
+      {/* Pegada a Ubicación a propósito: mover el pin recalcula estos campos
+          y, separados, el inspector no veía qué había cambiado. */}
+      <_Seccion titulo="Consulta norma POT"
+        estado={estadosSeccion["Consulta norma POT"]} color="gris">
+        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)' }}>
+          Calculado para el punto del mapa: si mueves el pin, estos datos se actualizan.
+        </div>
+        {/* Búsqueda automática primero (al inicio del bloque, ancho completo,
+            centrado y con icono que indica que rellena código catastral y ficha). */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          {/* El borde PUNTEADO significa "placeholder / incompleto" en cualquier
+              gramática visual; aquí marcaba una acción real. Sólido + spinner. */}
+          <button type="button" onClick={() => ejecutarBusquedaCatastral()} disabled={busyCat}
+            aria-busy={busyCat} className="btn-accion"
+            style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}>
+            {busyCat
+              ? <><span className="spinner-btn" aria-hidden="true" /> Buscando en catastro…</>
+              : 'Buscar datos catastrales'}
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginTop: 4 }}>
+            Llena automáticamente código catastral y ficha usando las coordenadas GPS.
+          </div>
+        </div>
+        <_Campo label="Código catastral">
+          <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
+        </_Campo>
+        <_Campo label="N° ficha predial">
+          <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
+        </_Campo>
+
+        {catResultados && catResultados.length > 0 && (
+          <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Alerta si alguna ficha es del Municipio de Bello */}
+            {catResultados.some(r => r.municipal) && (
+              <div style={{
+                padding: '12px 14px', borderRadius: 'var(--r-md)',
+                background: 'var(--rojo-bg)', border: '1.5px solid var(--rojo)',
+                color: 'var(--brand-ink)', fontSize: 13, fontWeight: 600,
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+              }}>
+                <Icon.Alert size={18} />
+                <div>Predio del <strong>Municipio de Bello</strong></div>
+              </div>
+            )}
+            {catResultados.length === 1 ? (
+              // Una ficha (o la unidad ya elegida en PH): se muestra aplicada,
+              // sin «Usar esta ficha». Si el inspector reescribe el código a
+              // mano, la tarjeta deja de describir el campo y se oculta.
+              catResultados[0].catastral === d.catastral && <>
+                <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>Ficha de este predio:</div>
+                <_TarjetaFichaCatastral r={catResultados[0]} expandida />
+              </>
+            ) : (
+              // La lista para elegir vive en el panel «Predio», justo encima:
+              // repetirla aquí la ponía dos veces seguidas.
+              <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
+                {catResultados.length} unidades en este predio (propiedad horizontal): elige la correcta en «Predio», arriba.
+              </div>
+            )}
+          </div>
+        )}
+
+        <_Campo label="Polígono de uso del suelo">
+          <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
+            placeholder="ZR-CN-1" />
+        </_Campo>
+        <_Campo label="¿Amenaza?">
+          <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
+            opciones={['SI', 'NO']} />
+        </_Campo>
+        <_Campo label="¿Suelo de protección?">
+          <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
+            opciones={['SI', 'NO']} />
+        </_Campo>
+        <_Campo label="¿Dentro de retiro de quebrada?">
+          <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
+            opciones={['SI', 'NO']} />
+        </_Campo>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <_BtnAccion busy={busyPOT} onClick={() => ejecutarPOT()}>
+            {busyPOT ? 'Consultando POT…' : 'Consultar POT por coordenadas'}
+          </_BtnAccion>
+        </div>
+      </_Seccion>
+
       {/* 3. PERSONA QUE ATIENDE ──────────────────────────── */}
       <_Seccion titulo="Persona que atiende"
         estado={estadosSeccion["Persona que atiende"]} color="azul">
@@ -4662,79 +4747,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             })}
           </div>
         </_Campo>
-      </_Seccion>
-
-      {/* 9. CONSULTA NORMA POT ──────────────────────────── */}
-      <_Seccion titulo="Consulta norma POT"
-        estado={estadosSeccion["Consulta norma POT"]} color="gris">
-        {/* Búsqueda automática primero (al inicio del bloque, ancho completo,
-            centrado y con icono que indica que rellena código catastral y ficha). */}
-        <div style={{ gridColumn: '1 / -1' }}>
-          {/* El borde PUNTEADO significa "placeholder / incompleto" en cualquier
-              gramática visual; aquí marcaba una acción real. Sólido + spinner. */}
-          <button type="button" onClick={() => ejecutarBusquedaCatastral()} disabled={busyCat}
-            aria-busy={busyCat} className="btn-accion"
-            style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}>
-            {busyCat
-              ? <><span className="spinner-btn" aria-hidden="true" /> Buscando en catastro…</>
-              : 'Buscar datos catastrales'}
-          </button>
-          <div style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginTop: 4 }}>
-            Llena automáticamente código catastral y ficha usando las coordenadas GPS.
-          </div>
-        </div>
-        <_Campo label="Código catastral">
-          <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
-        </_Campo>
-        <_Campo label="N° ficha predial">
-          <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
-        </_Campo>
-
-        {catResultados && catResultados.length > 0 && (
-          <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Alerta si alguna ficha es del Municipio de Bello */}
-            {catResultados.some(r => r.municipal) && (
-              <div style={{
-                padding: '12px 14px', borderRadius: 'var(--r-md)',
-                background: 'var(--rojo-bg)', border: '1.5px solid var(--rojo)',
-                color: 'var(--brand-ink)', fontSize: 13, fontWeight: 600,
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-              }}>
-                <Icon.Alert size={18} />
-                <div>Predio del <strong>Municipio de Bello</strong></div>
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
-              {catResultados.length === 1
-                ? '1 unidad en este predio:'
-                : catResultados.length + ' unidades en este predio (propiedad horizontal) — selecciona la correcta:'}
-            </div>
-            <_ListaFichasCatastrales fichas={catResultados}
-              onSeleccionar={seleccionarCatastral} maxAlto={400} />
-          </div>
-        )}
-
-        <_Campo label="Polígono de uso del suelo">
-          <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
-            placeholder="ZR-CN-1" />
-        </_Campo>
-        <_Campo label="¿Amenaza?">
-          <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <_Campo label="¿Suelo de protección?">
-          <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <_Campo label="¿Dentro de retiro de quebrada?">
-          <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <_BtnAccion busy={busyPOT} onClick={() => ejecutarPOT()}>
-            {busyPOT ? 'Consultando POT…' : 'Consultar POT por coordenadas'}
-          </_BtnAccion>
-        </div>
       </_Seccion>
 
       {/* 10. OBSERVACIONES Y CONCLUSIONES (al final) ───────── */}
