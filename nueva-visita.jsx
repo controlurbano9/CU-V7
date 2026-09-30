@@ -1190,17 +1190,6 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir }) {
   // caja gris alta y vacía con un microtexto suelto encima.
   return (
     <div>
-      {gmListo === true && (
-        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 4 }}>
-          {tieneCoords
-            ? 'Toca el mapa o arrastra el pin para corregir la ubicación'
-            : (terrenosDir && terrenosDir.length)
-              ? 'Mapa en el predio de la dirección según catastro: toca el predio para colocar el pin'
-            : centradoEnDir
-              ? 'Mapa centrado en la dirección escrita (aproximado): toca el predio para colocar el pin'
-              : 'Captura tu ubicación o toca el mapa en el predio para colocar el pin'}
-        </div>
-      )}
       <div ref={mapRef} className={'mapa-gps' + (gmListo === true ? '' : ' mapa-gps-sin')}>
         {gmListo !== true && (
           <span>
@@ -1210,6 +1199,19 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir }) {
           </span>
         )}
       </div>
+      {/* Bajo el mapa, no encima: así el mapa arranca a la altura del panel
+          «Predio» de la derecha. */}
+      {gmListo === true && (
+        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
+          {tieneCoords
+            ? 'Toca el mapa o arrastra el pin para corregir la ubicación'
+            : (terrenosDir && terrenosDir.length)
+              ? 'Mapa en el predio de la dirección según catastro: toca el predio para colocar el pin'
+            : centradoEnDir
+              ? 'Mapa centrado en la dirección escrita (aproximado): toca el predio para colocar el pin'
+              : 'Captura tu ubicación o toca el mapa en el predio para colocar el pin'}
+        </div>
+      )}
       {gmListo === true && (
         <div className="mapa-leyenda" aria-hidden="true">
           <span><i style={{ borderColor: COLOR_PREDIO_DIR }} />Predio de la dirección</span>
@@ -1925,6 +1927,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   const [busyPOT, setBusyPOT]   = React.useState(false);
   const [busyCat, setBusyCat]   = React.useState(false);
   const [catResultados, setCatRes] = React.useState(null);
+  // Tecleando código/ficha a mano: las casillas no se esconden a media
+  // escritura cuando los dos campos dejan de estar vacíos.
+  const [catEditando, setCatEditando] = React.useState(false);
   // Flag independiente: ¿es predio del Municipio de Bello?
   // catResultados solo se setea cuando hay >1 ficha (propiedad horizontal);
   // este flag se setea SIEMPRE que la búsqueda catastral encuentre fichas
@@ -2006,10 +2011,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // dejaría de ser la de este predio.
   const fichaAplicada = catResultados && catResultados.length === 1 &&
     catResultados[0].catastral === d.catastral ? catResultados[0] : null;
-  // Código y ficha se escriben a mano solo si catastro no dio el predio: con
-  // ficha aplicada ya los muestra el panel «Predio», y con varias unidades
-  // (PH) se eligen ahí. Corregirlos = mover el pin o elegir otra ficha.
-  const catastralManual = !fichaAplicada && !(catResultados && catResultados.length > 1);
+  // Código y ficha se escriben a mano solo si faltan: el panel «Predio» ya
+  // los muestra (con tarjeta si catastro los dio en esta sesión, en una línea
+  // si vienen de la BD), y con varias unidades (PH) se eligen ahí.
+  // Corregirlos = mover el pin o elegir otra ficha.
+  const catastralManual = !fichaAplicada && !(catResultados && catResultados.length > 1) &&
+    (catEditando || !d.catastral || !d.ficha);
   const _cmpBruto = compararUbicacion(terrenosDir, d.lat, d.lon);
   // Una confirmación vigente con dirección y punto en predios distintos es un
   // «usar el del punto» ya decidido: ubicPreferirPunto no se guarda en BD, así
@@ -4269,6 +4276,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             ejecutarBusquedaCatastral(lat, lon, true);
           }} />
         </div>
+        <div className="ubic-lado">
         <_PanelPredio
           esRural={_esRuralUbic} estadoBusq={predioDirEstado} predioDir={predioDir}
           terrenoElegido={terrenoDirElegido} onElegir={setTerrenoDirElegido}
@@ -4285,44 +4293,44 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           onUsarPunto={usarPredioPunto}
           onUbicarEnDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
           onConfirmar={confirmarUbicacion} />
-        </div>
 
-        {/* Norma POT: franja a todo el ancho bajo mapa y panel (antes sección
-            aparte «Consulta norma POT»). Pegada al mapa a propósito: mover el
-            pin la vuelve a consultar y, separada, no se veía qué cambiaba. */}
-        <div className="norma-franja">
-          <div className="norma-franja-nota">
-            Norma POT del punto del mapa: si mueves el pin, se vuelve a consultar sola.
+        {/* Norma POT bajo «Predio», en la columna del mapa: mover el pin la
+            vuelve a consultar y así se ve qué cambió sin bajar. Filas de
+            etiqueta + control para que quepa junto al mapa. */}
+        <div className="norma-panel">
+          <div className="norma-panel-titulo">
+            Norma POT <span className="predio-nota">· se vuelve a consultar al mover el pin</span>
           </div>
           {catastralManual && (
-            <div className="norma-grid-4">
+            <div className="norma-manual">
               <_Campo label="Código catastral">
-                <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
+                <_Input mono value={d.catastral}
+                  onChange={v => { setCatEditando(true); setCampo('catastral', v); }} />
               </_Campo>
               <_Campo label="N° ficha predial">
-                <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
+                <_Input mono value={d.ficha}
+                  onChange={v => { setCatEditando(true); setCampo('ficha', v); }} />
               </_Campo>
             </div>
           )}
-          {/* Un renglón de 4 en escritorio; en móvil, uno debajo de otro. */}
-          <div className="norma-grid-4">
-            <_Campo label="Polígono de uso del suelo">
-              <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
-                placeholder="ZR-CN-1" />
-            </_Campo>
-            <_Campo label="¿Amenaza?">
-              <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
-                opciones={['SI', 'NO']} />
-            </_Campo>
-            <_Campo label="¿Suelo de protección?">
-              <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
-                opciones={['SI', 'NO']} />
-            </_Campo>
-            <_Campo label="¿Dentro de retiro de quebrada?">
-              <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
-                opciones={['SI', 'NO']} />
-            </_Campo>
-          </div>
+          <_Campo label="Polígono de uso del suelo">
+            <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
+              placeholder="ZR-CN-1" />
+          </_Campo>
+          <_Campo label="¿Amenaza?">
+            <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
+          <_Campo label="¿Suelo de protección?">
+            <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
+          <_Campo label="¿Dentro de retiro de quebrada?">
+            <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
+        </div>
+        </div>
         </div>
       </_Seccion>
 

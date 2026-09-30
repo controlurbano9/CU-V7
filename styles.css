@@ -1192,7 +1192,12 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .ubic-mapa-grid > .gps-box { grid-area: gps; margin-bottom: 0; }
 .ubic-mapa-grid > .ubic-mapa { grid-area: mapa; min-width: 0; }
-.ubic-mapa-grid > .predio-panel { grid-area: predio; margin-top: 0; }
+/* Columna derecha: panel «Predio» y, debajo, la norma POT. */
+.ubic-mapa-grid > .ubic-lado {
+  grid-area: predio; min-width: 0;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.ubic-lado > .predio-panel { margin-top: 0; }
 @media (min-width: 900px) {
   .ubic-mapa-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1205,6 +1210,11 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   /* 4:3 con tope: cuadrado a media pantalla de 1920 medía ~950 px de alto. */
   .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 4 / 3; max-height: 560px; }
   .ubic-mapa-grid .mapa-gps.mapa-gps-sin { aspect-ratio: auto; }
+  /* Si «Predio» + norma miden más que el 4:3, el mapa crece hasta su alto
+     (con el mismo tope) en vez de dejar un hueco debajo: el 4:3 es el mínimo. */
+  .ubic-mapa-grid > .ubic-mapa { align-self: stretch; display: flex; flex-direction: column; }
+  .ubic-mapa > div { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .ubic-mapa .mapa-gps { flex: 1 1 auto; }
 }
 /* Sin GPS real (ratón): ni caja ni botón; las coordenadas van al panel. */
 @media (hover: hover) and (pointer: fine) {
@@ -1233,16 +1243,32 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .dir-conf-linea > .dir-conf-wrap { flex: 1 1 240px; }
 .dir-conf-linea > .dir-conf-fila { margin-top: 0; }
 
-/* Norma POT: franja a todo el ancho de «Ubicación», bajo mapa y panel.
-   Cuatro columnas en escritorio, una en móvil. */
-.norma-franja { grid-column: 1 / -1; margin-top: 16px; padding-top: 12px;
-  border-top: 1px solid var(--borde); }
-.norma-franja-nota { font-size: 12px; color: var(--texto-suave); margin-bottom: 8px; }
-.norma-grid-4 { display: grid; gap: 0 16px; align-items: end; }  /* etiqueta larga en 2 líneas: controles alineados */
-@media (min-width: 900px) {
-  .norma-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Norma POT bajo «Predio»: mismo recuadro que el panel y filas de etiqueta a
+   la izquierda + control a la derecha, con la columna del control fija para
+   que los SI/NO queden alineados entre filas. */
+.norma-panel {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface, #fff);
 }
-.norma-grid-4 .input-grupo { margin-bottom: 14px; }
+.norma-panel-titulo { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.norma-panel-titulo .predio-nota { font-weight: 400; }
+.norma-panel .input-grupo {
+  margin: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: center; gap: 12px;
+}
+.norma-panel .input-label { margin: 0; }
+.norma-panel .radio-grupo { flex-wrap: nowrap; }
+/* Código y ficha a mano: el código catastral (30 dígitos) no cabe en 190 px,
+   así que esas dos van con la etiqueta encima y a todo el ancho. */
+.norma-panel .norma-manual { display: flex; flex-direction: column; gap: 8px; }
+.norma-panel .norma-manual .input-grupo { display: block; }
+.norma-panel .norma-manual .input-label { margin-bottom: 6px; }
+@media (max-width: 479px) {
+  .norma-panel .input-grupo { grid-template-columns: minmax(0, 1fr) 150px; }
+}
 .form-seccion-accion { margin-left: auto; }
 .sec-consultar { padding: 6px 14px; font-size: 13px; }
 
