@@ -291,6 +291,142 @@ function radicadoDeOficio(radicadoBD, orden, nVisita) {
   return o ? 'OFICIO-' + o : '';
 }
 
+// ── Buscar un caso desde «Nueva visita» (2026-09-30) ───────────
+// Un caso = todas las visitas con el mismo RADICADO (PQR u OFICIO-<orden>).
+// El inspector llega con uno de tres datos: el radicado, el N° de la orden de
+// policía (el papel que tiene en la mano) o la dirección. La orden y el
+// radicado de oficio son el mismo dato escrito distinto: `2026-09-239`,
+// `2026-9-239`, `239` y `OFICIO-2026-09-239` llevan al mismo caso. Sin esto
+// la 2ª visita de un caso de oficio se abría como caso nuevo (fila 1662).
+function _ordenDeFila(f) {
+  var s = String((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').trim();
+  var u = s.toUpperCase();
+  return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
+}
+// Sin ceros a la izquierda en cada tramo numérico (mismo criterio que Buscar).
+function _sinCerosTramos(s) {
+  return String(s == null ? '' : s).replace(/\d+/g, function (n) { return String(parseInt(n, 10)); });
+}
+function _nVisitaDeFila(f) {
+  return parseInt(f && (f['N° VISITA'] || f['N VISITA']), 10) || 1;
+}
+function _direccionDeFila(f) {
+  return String((f && (f['DIRECCION INFRACCION'] || f['DIRECCION'])) || '');
+}
+// Órdenes con que se puede reconocer la fila: la suya y, en un caso de
+// oficio, la de la 1ª visita (va dentro del radicado).
+function _ordenesDeFila(f) {
+  var out = [];
+  var o = _ordenDeFila(f);
+  if (o) out.push(_sinCerosTramos(o.replace(/\s+/g, '')));
+  var rad = String((f && f['RADICADO']) || '').trim().toUpperCase();
+  if (/^OFICIO-/.test(rad)) out.push(_sinCerosTramos(rad.slice(7).replace(/\s+/g, '')));
+  return out;
+}
+
+// Qué tecleó el inspector: 'radicado' (8+ dígitos), 'oficio' (OFICIO-…),
+// 'orden' (AAAA-MM-NNN o solo el consecutivo) o 'direccion'.
+function tipoBusquedaCaso(texto) {
+  var t = String(texto == null ? '' : texto).trim().toUpperCase();
+  if (!t) return '';
+  var compacto = t.replace(/\s+/g, '');
+  if (/^OFICIO-?\d/.test(compacto)) return 'oficio';
+  if (/^\d{8,}$/.test(compacto)) return 'radicado';
+  if (/^\d{4}-\d{1,2}-\d{1,4}$/.test(compacto) || /^\d{1,4}$/.test(compacto)) return 'orden';
+  return 'direccion';
+}
+
+// Agrupa por caso: de cada radicado que coincidió trae TODAS sus visitas (la
+// coincidencia pudo ser por la orden de la 1ª y el caso ya va en la 3ª), de
+// la más reciente a la más vieja. Casos más nuevos primero (fila más baja).
+function _agruparCasos(coincidentes, todas) {
+  var claves = [];
+  coincidentes.forEach(function (f) {
+    var k = claveRadicado(f['RADICADO']);
+    if (claves.indexOf(k) === -1) claves.push(k);
+  });
+  var casos = claves.map(function (k) {
+    var visitas = todas.filter(function (f) { return claveRadicado(f['RADICADO']) === k; })
+      .sort(function (a, b) { return _nVisitaDeFila(b) - _nVisitaDeFila(a); });
+    var ultima = visitas[0];
+    var maxIdx = Math.max.apply(null, visitas.map(function (f) { return Number(f._idx) || 0; }));
+    return {
+      radicado: String(ultima['RADICADO']).trim().toUpperCase(),
+      visitas: visitas,
+      ultima: ultima,
+      nVisitaSig: _nVisitaDeFila(ultima) + 1,
+      _maxIdx: maxIdx,
+    };
+  });
+  casos.sort(function (a, b) { return b._maxIdx - a._maxIdx; });
+  return casos;
+}
+
+function buscarCasos(filas, texto) {
+  var tipo = tipoBusquedaCaso(texto);
+  if (!tipo) return { tipo: '', casos: [] };
+  var t = String(texto).trim().toUpperCase();
+  var lista = (filas || []).filter(function (f) { return f && claveRadicado(f['RADICADO']); });
+  // 1) Radicado exacto, siempre primero (PQR u OFICIO-…).
+  var clave = claveRadicado(t);
+  var exactas = lista.filter(function (f) { return claveRadicado(f['RADICADO']) === clave; });
+  if (exactas.length) return { tipo: tipo, casos: _agruparCasos(exactas, lista) };
+  var coincide = null;
+  if (tipo === 'oficio' || tipo === 'orden') {
+    var q = _sinCerosTramos(t.replace(/\s+/g, '').replace(/^OFICIO-?/, ''));
+    var soloConsecutivo = /^\d+$/.test(q);
+    coincide = function (f) {
+      return _ordenesDeFila(f).some(function (o) {
+        return soloConsecutivo ? o.split('-').pop() === q : o === q;
+      });
+    };
+  } else if (tipo === 'direccion') {
+    var k = claveBusquedaDireccion(t);
+    if (k.length < 4) return { tipo: tipo, casos: [] };
+    coincide = function (f) {
+      var d = _direccionDeFila(f);
+      return !!d && claveBusquedaDireccion(d).indexOf(k) !== -1;
+    };
+  }
+  if (!coincide) return { tipo: tipo, casos: [] };  // 'radicado' sin coincidencia exacta
+  return { tipo: tipo, casos: _agruparCasos(lista.filter(coincide), lista) };
+}
+
+// Casos de OTRO radicado en la misma dirección (misma placa, sin mirar la
+// unidad) o con la misma orden de policía. Solo avisa: dos infracciones
+// distintas en el mismo predio son casos distintos (decisión del usuario
+// 2026-09-30). `motivos` dice por qué salió cada caso.
+function casosRelacionados(filas, opts) {
+  var o = opts || {};
+  var propio = claveRadicado(o.radicadoPropio);
+  var filaPropia = o.filaPropia != null ? Number(o.filaPropia) : null;
+  var cDir = o.direccion ? claveDireccionCatastro(o.direccion) : null;
+  var orden = o.orden ? _sinCerosTramos(String(o.orden).replace(/\s+/g, '')) : '';
+  if (!cDir && !orden) return [];
+  var lista = (filas || []).filter(function (f) { return f && claveRadicado(f['RADICADO']); });
+  var motivosPorCaso = {};
+  var coincidentes = lista.filter(function (f) {
+    var k = claveRadicado(f['RADICADO']);
+    if (propio && k === propio) return false;
+    if (filaPropia != null && Number(f._idx) === filaPropia) return false;
+    var m = [];
+    if (cDir) {
+      var cf = claveDireccionCatastro(_direccionDeFila(f));
+      if (cf && cf.base === cDir.base) m.push('direccion');
+    }
+    if (orden && _ordenesDeFila(f).indexOf(orden) !== -1) m.push('orden');
+    if (!m.length) return false;
+    motivosPorCaso[k] = (motivosPorCaso[k] || []).concat(m.filter(function (x) {
+      return (motivosPorCaso[k] || []).indexOf(x) === -1;
+    }));
+    return true;
+  });
+  return _agruparCasos(coincidentes, lista).map(function (c) {
+    c.motivos = motivosPorCaso[claveRadicado(c.radicado)] || [];
+    return c;
+  });
+}
+
 function borradorEsDeLaFila(borrador, radicadoFila) {
   var actual = _normRadicado(radicadoFila);
   if (!borrador || !actual) return true;
@@ -758,6 +894,19 @@ function ubicacionConfirmadaVigente(conf, d) {
     txt(conf.catastral) !== '' && txt(conf.catastral) === txt(d.catastral);
 }
 
+// ── Predio en PH sin la unidad identificada ────────────────
+// Cuando el inspector no logra saber cuál apartamento o local es (la placa no
+// trae interior, nadie atiende), se confirma con el código del predio matriz y
+// sin ficha. NPN de 30: 21 del terreno + condición «9» (PH) + 8 ceros de
+// edificio/piso/unidad — la misma forma que catastro usa para la matriz.
+function codigoPredioMatriz(tcod) {
+  var t = String(tcod == null ? '' : tcod).replace(/\D/g, '');
+  return t.length === 21 ? t + '900000000' : '';
+}
+function esCodigoPredioMatriz(catastral) {
+  return /^\d{21}900000000$/.test(String(catastral == null ? '' : catastral).trim());
+}
+
 // ── Visibilidad por fecha de asignación ───────────────────
 // Una visita programada para el jueves no es trabajo del martes: el visitador
 // solo debe verla a partir del día de su asignación. Antes aparecían todas
@@ -954,6 +1103,8 @@ var _cuUtilsExports = {
   compararUbicacion: compararUbicacion,
   origenUbicacionConfirmada: origenUbicacionConfirmada,
   ubicacionConfirmadaVigente: ubicacionConfirmadaVigente,
+  codigoPredioMatriz: codigoPredioMatriz,
+  esCodigoPredioMatriz: esCodigoPredioMatriz,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
@@ -968,6 +1119,9 @@ var _cuUtilsExports = {
   borradorEsDeLaFila: borradorEsDeLaFila,
   claveRadicado: claveRadicado,
   radicadoDeOficio: radicadoDeOficio,
+  tipoBusquedaCaso: tipoBusquedaCaso,
+  buscarCasos: buscarCasos,
+  casosRelacionados: casosRelacionados,
   puedeDiligenciar: puedeDiligenciar,
   veTodasLasVisitas: veTodasLasVisitas,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,

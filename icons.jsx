@@ -100,6 +100,12 @@ const Icon = {
     React.createElement('line',     { key: 1, x1: 12, y1: 19, x2: 12, y2: 5 }),
     React.createElement('polyline', { key: 2, points: '5 12 12 5 19 12' }),
   ], p?.size),
+  // Volver de la cabecera de la visita. Trazo 2 (no 1.6): es el único
+  // control de la cabecera sin texto y a 1.6 se leía como un guion.
+  ArrowLeft: (p) => _svg([
+    React.createElement('line',     { key: 1, x1: 19, y1: 12, x2: 5, y2: 12, strokeWidth: 2 }),
+    React.createElement('polyline', { key: 2, points: '12 19 5 12 12 5', strokeWidth: 2 }),
+  ], p?.size),
   // Tres puntos: acciones secundarias de la tarjeta de visita. Van rellenos
   // (fill) porque a stroke-width 1.6 tres círculos de r=1 se ven huecos.
   More:    (p) => _svg([
@@ -132,6 +138,11 @@ const Icon = {
   Camera:  (p) => _svg([
     React.createElement('path',   { key: 1, d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
     React.createElement('circle', { key: 2, cx: 12, cy: 13, r: 4 }),
+  ], p?.size),
+  // Bandera — visita de oficio (por iniciativa de la inspección)
+  Flag:    (p) => _svg([
+    React.createElement('path', { key: 1, d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z' }),
+    React.createElement('line', { key: 2, x1: 4, y1: 22, x2: 4, y2: 15 }),
   ], p?.size),
 };
 

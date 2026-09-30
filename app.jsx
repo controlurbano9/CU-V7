@@ -683,6 +683,15 @@ function AppV6() {
   // Salida desde el propio formulario: ya confirmó el usuario, así que se
   // retrocede en el historial en vez de apilar otra entrada (si no, "atrás"
   // reabriría el formulario recién cerrado).
+  // «¿Es un seguimiento?» desde un oficio nuevo sin guardar: se descarta el
+  // formulario en blanco y se vuelve a montar la pantalla con el modal ya
+  // buscando ese caso. Remontar (key nueva) y no reciclar el formulario: el
+  // estado local del formulario en blanco (GPS, catastro, orden…) se colaría
+  // en la visita de seguimiento.
+  function reabrirNuevaConBusqueda(busqueda) {
+    setContextoNueva({ busqueda: busqueda, k: Date.now() });
+  }
+
   function salirFormulario() {
     setContextoNueva(null);
     saltarGuardRef.current = true;
@@ -785,6 +794,9 @@ function AppV6() {
             usuario={usuario}
             filaInicial={contextoNueva?.fila || null}
             datosIniciales={contextoNueva?.datos || null}
+            key={contextoNueva?.k || 'nv'}
+            busquedaInicial={contextoNueva?.busqueda || ''}
+            onReabrirConBusqueda={reabrirNuevaConBusqueda}
             onSalir={salirFormulario} />}
           {pantalla === 'consulta-norma' && <ConsultaNormaScreen />}
           {pantalla === 'admin' && <AdminScreen usuario={usuario} />}

@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const {
   claveDireccionCatastro, clavesCercanasCatastro, direccionDesdeClave, unidadCatastroCalza, puntoEnAnillo,
   distanciaPuntoAnilloM, puntoInteriorAnillo, compararUbicacion,
-  origenUbicacionConfirmada, ubicacionConfirmadaVigente,
+  origenUbicacionConfirmada, ubicacionConfirmadaVigente, codigoPredioMatriz, esCodigoPredioMatriz,
 } = require('../utils.js');
 
 const base = d => (claveDireccionCatastro(d) || {}).base;
@@ -209,4 +209,17 @@ test('la confirmación vale mientras no cambien punto, dirección ni ficha', () 
   assert.equal(ubicacionConfirmadaVigente({ ...conf, catastral: '' }, { ...d, catastral: '' }), false);
   assert.equal(ubicacionConfirmadaVigente(null, d), false);
   assert.equal(ubicacionConfirmadaVigente({ ...conf, origen: '' }, d), false);
+});
+
+// PH sin la unidad identificada: se confirma con el código del predio matriz.
+test('código del predio matriz en PH', () => {
+  const tcod = '050880100010200280019';
+  assert.equal(codigoPredioMatriz(tcod), '050880100010200280019900000000');
+  assert.equal(esCodigoPredioMatriz(codigoPredioMatriz(tcod)), true);
+  assert.equal(esCodigoPredioMatriz(tcod + '901010003'), false);   // una unidad
+  assert.equal(esCodigoPredioMatriz(''), false);
+  assert.equal(codigoPredioMatriz('123'), '');
+  // Confirma sin ficha: basta el código.
+  const d = { lat: 6.3, lon: -75.5, direccion: 'CL 21C # 40B-42', catastral: codigoPredioMatriz(tcod), ficha: '' };
+  assert.equal(ubicacionConfirmadaVigente({ origen: 'MAPA', lat: 6.3, lon: -75.5, direccion: d.direccion, catastral: d.catastral }, d), true);
 });

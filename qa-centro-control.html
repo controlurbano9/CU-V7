@@ -135,6 +135,16 @@ const ESCENARIOS = {
 };
 
 const _e = ESCENARIOS[ESCENARIO] || ESCENARIOS.faltantes;
+// ?estado=ASIGNADO|PENDIENTE|COMPLETADO pisa el estado del escenario: el
+// panel superior cambia de contenido según el estado (faltantes solo con
+// INICIADO).
+if (_params.get('estado') && _e.datos) {
+  _e.datos = Object.assign({}, _e.datos, { 'ESTADO VISITA': _params.get('estado') });
+}
+// ?rad=20261078122 — radicado de largo real (11 dígitos) para medir la cabecera.
+if (_params.get('rad') && _e.datos) {
+  _e.datos = Object.assign({}, _e.datos, { 'RADICADO': _params.get('rad') });
+}
 
 const USUARIO_QA = { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Inspector de Control Urbano' };
 

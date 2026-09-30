@@ -1389,7 +1389,7 @@ function _PanelPredio(p) {
   const bloqueo = !p.hayPin ? 'Falta el punto: toca el predio en el mapa o captura tu ubicación.'
     : p.cmp.estado === 'distinto' ? 'Elige cuál predio es antes de confirmar.'
     : !p.catastral ? (p.faltaUnidad
-        ? 'Elige la unidad en la lista.'
+        ? 'Elige la unidad en la lista, o usa el código del predio si no se identifica.'
         : 'Falta la ficha catastral.')
     : '';
   let lineaDir = null;
@@ -1508,6 +1508,26 @@ function _PanelPredio(p) {
             {p.fichasPH.length} unidades en este predio (propiedad horizontal): elige la correcta.
           </div>
           <_ListaFichasCatastrales fichas={p.fichasPH} onSeleccionar={p.onSeleccionarFicha} maxAlto={260} />
+          {/* Sin la unidad (placa sin interior, nadie atiende): se confirma
+              con el código del predio matriz y sin ficha. Solo aquí, donde
+              catastro sí dio el predio pero no dice cuál unidad es. */}
+          <div className="predio-fila" style={{ marginTop: 8 }}>
+            <button type="button" className="btn-neutro predio-btn" onClick={p.onSinUnidad}>
+              No se identifica la unidad: usar el código del predio
+            </button>
+          </div>
+        </div>
+      ) : p.sinUnidad ? (
+        <div>
+          <div className="predio-nota">
+            Propiedad horizontal sin la unidad identificada ({p.fichasPH.length} unidades): se usa el código del predio, sin ficha.
+          </div>
+          <div className="predio-nota predio-mono">{p.catastral}</div>
+          <div className="predio-fila">
+            <button type="button" className="btn-neutro predio-btn" onClick={p.onElegirUnidad}>
+              Elegir la unidad
+            </button>
+          </div>
         </div>
       ) : p.fichaInfo ? (
         <>
@@ -1535,42 +1555,57 @@ function _PanelPredio(p) {
 // ══════════════════════════════════════════════════════════════
 //   MODAL INICIO — Elige tipo de visita y busca radicado
 // ══════════════════════════════════════════════════════════════
-function ModalInicioVisita({ onResult, onCancelar }) {
-  const [paso, setPaso]         = React.useState('tipo');    // 'tipo' | 'radicado' | 'resultado'
-  const [radicado, setRadicado] = React.useState('');
+// Rediseño 2026-09-30: la primera pregunta ya no es «¿PQR u oficio?» sino
+// «¿el caso ya existe?». Una 2ª visita de un caso de oficio ES un caso con
+// radicado (OFICIO-…), y con la pregunta vieja el inspector la abría como
+// oficio nuevo (fila 1662). Buscar va primero y acepta radicado, orden de
+// policía o dirección (buscarCasos, utils.js); «Abrir caso de oficio nuevo»
+// queda como la otra salida, rotulada solo para la primera visita.
+// `busquedaInicial`: el aviso «¿Es un seguimiento?» del formulario reabre el
+// modal ya buscando el caso que encontró.
+function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
+  const [paso, setPaso]         = React.useState('inicio');  // 'inicio' | 'lista' | 'vacio' | 'resultado'
+  const [texto, setTexto]       = React.useState(busquedaInicial || '');
   const [buscando, setBuscando] = React.useState(false);
+  const [casos, setCasos]       = React.useState([]);
+  const [tipoBusq, setTipoBusq] = React.useState('');
   const [resultado, setResultado] = React.useState(null);
-  // resultado: { encontrado, visitas[], ultimaVisita, nVisitaSig }
+  // resultado: { encontrado, radicado, visitas[], ultimaVisita, nVisitaSig }
 
-  async function buscarRadicado() {
-    if (!radicado.trim()) return;
+  React.useEffect(() => {
+    if (busquedaInicial) buscarCaso(busquedaInicial);
+  }, []);
+
+  async function buscarCaso(q) {
+    const consulta = String(q == null ? texto : q).trim();
+    if (!consulta) return;
     setBuscando(true);
     try {
       const { datos } = await leerVisitas({ forzar: true });
-      // Sin distinguir mayúsculas ni espacios: «Oficio-…» debe encontrar
-      // «OFICIO-…» (caso 2026-09-29, ver claveRadicado en utils.js).
-      const buscado = claveRadicado(radicado);
-      const visitasRad = datos.filter(f => claveRadicado(f['RADICADO']) === buscado);
-      // Ordenar por N° visita descendente
-      visitasRad.sort((a, b) =>
-        parseInt(b['N° VISITA'] || b['N VISITA'] || 1) -
-        parseInt(a['N° VISITA'] || a['N VISITA'] || 1)
-      );
-      const ultima = visitasRad[0] || null;
-      const nMax = ultima
-        ? parseInt(ultima['N° VISITA'] || ultima['N VISITA'] || 1)
-        : 0;
-      setResultado({
-        encontrado: visitasRad.length > 0,
-        visitas: visitasRad,
-        ultimaVisita: ultima,
-        nVisitaSig: nMax + 1,
-      });
-      setPaso('resultado');
+      const r = buscarCasos(datos, consulta);
+      setTipoBusq(r.tipo);
+      setCasos(r.casos);
+      if (r.casos.length === 1) abrirCaso(r.casos[0]);
+      else setPaso(r.casos.length ? 'lista' : 'vacio');
     } catch (e) {
       await appAlert('Error al buscar: ' + e.message, { tono: 'error', titulo: 'Error' });
     }
     setBuscando(false);
+  }
+
+  function abrirCaso(caso) {
+    setResultado({
+      encontrado: true,
+      radicado: caso.radicado,
+      visitas: caso.visitas,
+      ultimaVisita: caso.ultima,
+      nVisitaSig: caso.nVisitaSig,
+    });
+    setPaso('resultado');
+  }
+
+  function volverABuscar() {
+    setPaso('inicio'); setResultado(null); setCasos([]);
   }
 
   // Iniciar visita con datos precargados de una fila existente
@@ -1602,7 +1637,7 @@ function ModalInicioVisita({ onResult, onCancelar }) {
   function iniciarSinDatos() {
     onResult({
       tipo: 'pqr_manual',
-      radicado: radicado.trim().toUpperCase(),
+      radicado: texto.replace(/\s+/g, '').toUpperCase(),
     });
   }
 
@@ -1620,93 +1655,135 @@ function ModalInicioVisita({ onResult, onCancelar }) {
     border: '1px solid var(--borde)', boxShadow: 'var(--sombra-md)',
     padding: 28, maxWidth: 440, width: '100%',
   };
-  const estiloBtn = (accent) => ({
-    display: 'flex', alignItems: 'center', gap: 12, width: '100%',
-    padding: '16px 20px', border: '1.5px solid ' + (accent ? 'var(--brand-accent)' : 'var(--borde-med)'),
-    borderRadius: 'var(--r-md)', background: accent ? 'var(--brand-bg)' : 'var(--superficie)',
-    cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600,
-    color: accent ? 'var(--brand-ink)' : 'var(--texto)', textAlign: 'left',
-    transition: 'border-color 0.15s',
+  // Íconos de la app (icons.jsx, trazo fino) en un cuadro de color, no emojis.
+  const cajaIcono = (tono) => ({
+    flex: '0 0 auto', width: 40, height: 40, borderRadius: 'var(--r-md)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: tono === 'brand' ? 'var(--brand-bg)' : 'var(--gris-bg)',
+    color: tono === 'brand' ? 'var(--brand-ink)' : 'var(--texto)',
   });
+  const estiloOpcion = {
+    display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64,
+    padding: '14px 16px', border: '1.5px solid var(--borde-med)',
+    borderRadius: 'var(--r-md)', background: 'var(--superficie)',
+    cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600,
+    color: 'var(--texto)', textAlign: 'left', transition: 'border-color 0.15s',
+  };
+  const textoAyuda = { fontSize: 12, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2, lineHeight: 1.35 };
+  const QUE_SE_BUSCO = { orden: 'esa orden de policía', oficio: 'ese radicado de oficio', direccion: 'esa dirección' };
+
+  const botonOficioNuevo = (
+    <button type="button" style={estiloOpcion} onClick={iniciarOficio}>
+      <span style={cajaIcono('gris')}><Icon.Plus size={20} /></span>
+      <div>
+        <div>Abrir caso de oficio nuevo</div>
+        <div style={textoAyuda}>
+          Solo la <strong>primera</strong> visita, sin radicado. El caso toma el número
+          de la orden de policía.
+        </div>
+      </div>
+    </button>
+  );
 
   return (
     <div className="pantalla activa" style={estiloModal}>
       <div style={estiloCard}>
-        {/* PASO 1: Elegir tipo */}
-        {paso === 'tipo' && (
+        {/* PASO 1: buscar un caso existente o abrir uno de oficio */}
+        {paso === 'inicio' && (
           <>
-            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
               Nueva visita
             </div>
-            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 24, textAlign: 'center' }}>
-              ¿Qué tipo de visita vas a realizar?
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <button type="button" style={estiloBtn(true)} onClick={() => setPaso('radicado')}>
-                <span style={{ fontSize: 24 }}>📋</span>
-                <div>
-                  <div>Visita PQR / Radicado</div>
-                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2 }}>
-                    Atención a una queja o solicitud con número de radicado
-                  </div>
-                </div>
+            <label htmlFor="nv-buscar-caso" style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              Buscar un caso existente
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                id="nv-buscar-caso"
+                type="text"
+                className="input-campo"
+                placeholder="Radicado, orden o dirección"
+                value={texto}
+                onChange={e => setTexto(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && buscarCaso()}
+                autoFocus
+                autoComplete="off"
+                style={{ flex: 1, minWidth: 0, fontSize: 16, padding: 12 }}
+              />
+              <button type="button" onClick={() => buscarCaso()} disabled={buscando || !texto.trim()}
+                className="btn-principal" aria-label="Buscar"
+                style={{ margin: 0, flex: '0 0 auto', width: 'auto', minWidth: 52, minHeight: 48, padding: '0 14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {buscando ? '…' : <Icon.Search size={20} />}
               </button>
-              <button type="button" style={estiloBtn(false)} onClick={iniciarOficio}>
-                <span style={{ fontSize: 24 }}>🏗️</span>
-                <div>
-                  <div>Visita de oficio</div>
-                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2 }}>
-                    Inspección por iniciativa propia, sin radicado previo
-                  </div>
-                </div>
-              </button>
             </div>
+            <div style={{ ...textoAyuda, marginTop: 8 }}>
+              Una PQR, o la 2ª visita en adelante de un caso de oficio
+              (ej. <span className="mono">20251143210</span>, <span className="mono">2026-09-239</span> o <span className="mono">CL 50 # 32-10</span>).
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0', color: 'var(--texto-suave)', fontSize: 12 }}>
+              <span style={{ flex: 1, height: 1, background: 'var(--borde)' }} />o
+              <span style={{ flex: 1, height: 1, background: 'var(--borde)' }} />
+            </div>
+
+            {botonOficioNuevo}
+
             <button type="button" onClick={onCancelar} className="btn-texto"
               style={{ marginTop: 16, width: '100%' }}>← Volver al inicio</button>
           </>
         )}
 
-        {/* PASO 2: Ingresar radicado */}
-        {paso === 'radicado' && (
+        {/* Varios casos coinciden (orden sin año, dirección): elegir */}
+        {paso === 'lista' && (
           <>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-              Buscar radicado
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+              {casos.length} casos coinciden
             </div>
-            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 16 }}>
-              Ingresa el número de radicado para cargar los datos de la BD
+            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 14 }}>
+              Con «{texto.trim()}». Elige el de esta visita.
             </div>
-            <input
-              type="text"
-              className="input-campo mono"
-              placeholder="Ej: 20251143210"
-              value={radicado}
-              onChange={e => setRadicado(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && buscarRadicado()}
-              autoFocus
-              style={{ fontSize: 16, padding: 14, marginBottom: 12 }}
-            />
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={buscarRadicado} disabled={buscando || !radicado.trim()}
-                className="btn-principal secundario" style={{ flex: 1, margin: 0, fontSize: 14 }}>
-                {buscando ? 'Buscando...' : 'Buscar en BD'}
-              </button>
-              <button type="button" onClick={() => setPaso('tipo')} className="btn-neutro">Atrás</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '50vh', overflowY: 'auto' }}>
+              {casos.slice(0, 20).map(c => {
+                const u = c.ultima;
+                const est = normalizarEstado(u['ESTADO VISITA']);
+                const dir = u['DIRECCION INFRACCION'] || u['DIRECCION'] || '';
+                const orden = ordenPoliciaDe(u);
+                return (
+                  <button key={c.radicado} type="button" style={{ ...estiloOpcion, minHeight: 56, padding: '10px 14px' }}
+                    onClick={() => abrirCaso(c)}>
+                    <span style={cajaIcono(/^OFICIO-/.test(c.radicado) ? 'gris' : 'brand')}>
+                      {/^OFICIO-/.test(c.radicado) ? <Icon.Flag size={18} /> : <Icon.File size={18} />}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mono" style={{ fontSize: 14 }}>{c.radicado}</div>
+                      <div style={textoAyuda}>
+                        Visita N°{u['N° VISITA'] || u['N VISITA'] || 1} · {est || '—'}
+                        {dir ? ' · ' + dir : ''}{orden ? ' · Orden ' + orden : ''}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+            {casos.length > 20 && (
+              <div style={{ ...textoAyuda, marginTop: 8 }}>Se muestran 20 de {casos.length}: escribe algo más preciso.</div>
+            )}
+            <button type="button" onClick={volverABuscar} className="btn-neutro" style={{ width: '100%', marginTop: 14 }}>Buscar de nuevo</button>
           </>
         )}
 
-        {/* PASO 3: Resultado de búsqueda */}
-        {paso === 'resultado' && resultado && (
+        {/* Ningún caso: un radicado PQR se puede cargar a mano; una orden o
+            dirección sin caso es, casi siempre, un oficio nuevo. */}
+        {paso === 'vacio' && (
           <>
-            {/* Radicado NO encontrado */}
-            {!resultado.encontrado && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8, color: 'var(--texto-suave)' }}><Icon.Search size={36} /></div>
+            {tipoBusq === 'radicado' ? (
               <>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon.Search size={36} /></div>
                 <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
                   Radicado no encontrado
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 20 }}>
-                  El radicado <strong>{radicado}</strong> no está en la base de datos.
+                  El radicado <strong className="mono">{texto.trim()}</strong> no está en la base de datos.
                   Los datos deberán ingresarse manualmente.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1714,10 +1791,30 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                     className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
                     Continuar sin datos precargados
                   </button>
-                  <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} className="btn-neutro" style={{ width: '100%' }}>Buscar otro radicado</button>
+                  <button type="button" onClick={volverABuscar} className="btn-neutro" style={{ width: '100%' }}>Buscar otro</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
+                  No hay casos con {QUE_SE_BUSCO[tipoBusq] || 'ese dato'}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 20 }}>
+                  «<strong>{texto.trim()}</strong>» no aparece en la base de datos.
+                  Si es la primera visita de un caso de oficio, ábrelo aquí.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {botonOficioNuevo}
+                  <button type="button" onClick={volverABuscar} className="btn-neutro" style={{ width: '100%' }}>Buscar otro</button>
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {/* PASO 3: el caso encontrado */}
+        {paso === 'resultado' && resultado && (
+          <>
 
             {/* Radicado encontrado */}
             {resultado.encontrado && (() => {
@@ -1732,10 +1829,10 @@ function ModalInicioVisita({ onResult, onCancelar }) {
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-                    {esCompletada ? <Icon.Check size={36} /> : esIniciada ? <Icon.Refresh size={36} /> : '📋'}
+                    {esCompletada ? <Icon.Check size={36} /> : esIniciada ? <Icon.Refresh size={36} /> : <Icon.File size={36} />}
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>
-                    Radicado {radicado}
+                    Radicado <span className="mono">{resultado.radicado}</span>
                   </div>
                   {/* Resumen de la visita existente */}
                   <div style={{
@@ -1803,13 +1900,66 @@ function ModalInicioVisita({ onResult, onCancelar }) {
                         )}
                       </>
                     )}
-                    <button type="button" onClick={() => { setPaso('radicado'); setResultado(null); }} className="btn-neutro" style={{ width: '100%' }}>Buscar otro radicado</button>
+                    <button type="button" onClick={volverABuscar} className="btn-neutro" style={{ width: '100%' }}>Buscar otro caso</button>
                   </div>
                 </>
               );
             })()}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Aviso de casos relacionados (misma dirección u orden de otro radicado).
+// Solo avisa (decisión del usuario 2026-09-30). En un oficio nuevo sin
+// guardar ofrece «Es un seguimiento», que abre ese caso y registra la visita
+// como la siguiente de él; «Es otro caso» oculta el aviso y el guardado crea
+// un caso aparte. En una PQR, o con la visita ya guardada, solo informa.
+function _AvisoCasosRelacionados({ casos, motivo, ofrecerSeguimiento, onAbrir, onOcultar }) {
+  if (!casos || !casos.length) return null;
+  const donde = motivo === 'orden' ? 'con esta orden de policía' : 'en esta dirección';
+  return (
+    <div className="full-width" role="status" style={{
+      border: '1px solid var(--amarillo)', background: 'var(--amarillo-bg)',
+      borderRadius: 'var(--r-md)', padding: '12px 14px', fontSize: 13, color: 'var(--texto)',
+      display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: 'var(--cafe)' }}>
+        <Icon.Alert size={18} />
+        {ofrecerSeguimiento ? '¿Es un seguimiento?' : (casos.length === 1 ? 'Hay otro caso ' + donde : 'Hay ' + casos.length + ' casos ' + donde)}
+      </div>
+      {ofrecerSeguimiento && (
+        <div>
+          Ya {casos.length === 1 ? 'existe un caso' : 'existen casos'} {donde}. Si esta visita es la
+          continuación, ábrela desde ese caso para que quede como su visita siguiente.
+        </div>
+      )}
+      {casos.slice(0, 3).map(c => {
+        const u = c.ultima;
+        return (
+          <div key={c.radicado} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+              <span className="mono" style={{ fontWeight: 600 }}>{c.radicado}</span>
+              <span style={{ color: 'var(--texto-suave)' }}>
+                {' · Visita N°' + (u['N° VISITA'] || u['N VISITA'] || 1) + ' · ' + (normalizarEstado(u['ESTADO VISITA']) || '—')}
+              </span>
+            </div>
+            {ofrecerSeguimiento && (
+              <button type="button" className="btn-neutro" style={{ minHeight: 44 }}
+                onClick={() => onAbrir(c.radicado)}>Abrir ese caso</button>
+            )}
+          </div>
+        );
+      })}
+      {!ofrecerSeguimiento && (
+        <div style={{ color: 'var(--texto-suave)' }}>Esta visita queda como un caso aparte.</div>
+      )}
+      <div>
+        <button type="button" className="btn-texto" style={{ minHeight: 44, padding: '0 4px' }} onClick={onOcultar}>
+          {ofrecerSeguimiento ? 'Es otro caso, seguir aquí' : 'Entendido'}
+        </button>
       </div>
     </div>
   );
@@ -1833,66 +1983,78 @@ function _tonoEstadoVisita(estado) {
   }
 }
 
-// Entregables pendientes para el panel superior: solo los que aplican.
-// El informe no aplica en visitas COMPLETADAS (su renglón tampoco se
-// muestra) y el registro fotográfico solo cuando ya hay fotos que lo
-// alimenten.
+// Faltantes del panel superior (decisión del usuario 2026-09-30): solo acta,
+// orden escaneada y registro fotográfico, y solo con la visita INICIADA —
+// en una asignada «falta el acta» es obvio y era ruido. El informe no se
+// lista (vive en su renglón de entregables) y la ubicación sin confirmar
+// tampoco (la avisa el bloqueo al generar). La orden cuenta solo si la
+// visita tiene N° real; el registro, solo si ya hay fotos que lo alimenten.
 function _pendientesPanel(p) {
   const pendientes = [];
-  if (!p.tieneActa) pendientes.push('Acta sin generar');
-  if (!p.tieneInforme && String(p.estadoVisita || '').toUpperCase() !== 'COMPLETADO') {
-    pendientes.push('Informe sin generar');
-  }
-  if (p.ordenRelevante && !p.ordenEscaneada) pendientes.push('Orden sin escanear');
-  if (p.fotos && p.fotos.subidas > 0 && !p.tieneRF) pendientes.push('Registro fotográfico sin generar');
+  if (!p.tieneActa) pendientes.push('Acta');
+  if (p.ordenRelevante && !p.ordenEscaneada) pendientes.push('Orden escaneada');
+  if (p.fotos && p.fotos.subidas > 0 && !p.tieneRF) pendientes.push('Registro fotográfico');
   return pendientes;
 }
 
-// Panel superior: identidad + estado + entregables pendientes. Reemplaza la
-// caja de info del header, que decía qué visita era pero no cómo va.
+// Panel superior, dos renglones como máximo: (1) estado + identidad + lugar,
+// (2) qué falta, solo con la visita INICIADA (o el aviso de visita sin
+// guardar). Antes el radicado iba a 12 px gris —lo menos legible de la
+// cabecera siendo lo más importante— y la fecha colgaba de la dirección sin
+// decir de qué era.
 function PanelEstadoVisita(p) {
+  const iniciada = String(p.estadoVisita || '').toUpperCase() === 'INICIADO';
+  const pendientes = _pendientesPanel(p);
+  const lugar = [
+    p.direccion,
+    p.barrio && p.barrio !== '__otro__' ? p.barrio : '',
+    p.comuna ? 'Comuna ' + p.comuna : '',
+  ].filter(Boolean).join(' · ');
   return (
     <div className="estado-panel" role="status" aria-label="Estado de la visita">
       <div className="estado-panel-top">
         <span className={'estado-badge ep-' + _tonoEstadoVisita(p.estadoVisita)}>
           {String(p.estadoVisita || '—').toUpperCase()}
         </span>
-        <span className="estado-id">{p.identificador}</span>
+        {/* El prefijo «RAD» se separa para poder ocultarlo en móvil: ahí
+            chip + prefijo + 11 dígitos no caben en un renglón. */}
+        <span className="estado-id">
+          {/^RAD /.test(p.identificador || '')
+            ? <><span className="estado-id-pref">RAD </span>{p.identificador.slice(4)}</>
+            : p.identificador}
+        </span>
         {p.nVisita > 1 && <span className="estado-visita-n">Visita N°{p.nVisita}</span>}
-        {/* La dirección va dentro del top (último hijo) para que ocupe el
-            sobrante de la fila con ellipsis — la cabecera compacta mete las
-            acciones a la derecha y la dirección ya no tiene fila propia. */}
-        {p.direccion && (
+        {/* Último hijo: ocupa el sobrante del renglón y se corta con «…». */}
+        {(lugar || p.fechaVisita) && (
           <div className="estado-dir">
-            {p.direccion}{p.barrio && p.barrio !== '__otro__' ? ' · ' + p.barrio : ''}
-            {p.comuna ? ' · Comuna ' + p.comuna : ''}
-            {p.fechaVisita ? ' · ' + p.fechaVisita : ''}
+            {lugar}
+            {p.fechaVisita && (
+              <span className="estado-fecha">{(lugar ? ' · ' : '') + 'Visita ' + p.fechaVisita}</span>
+            )}
           </div>
         )}
       </div>
-      {/* El panel solo lista lo que falta: un entregable resuelto no deja
-          chip, y el detalle de campos faltantes es la alerta al intentar
-          generar (no hay lista en pantalla). Antes de guardar no hay
-          entregables que pedir — el aviso inferior ya lo explica. */}
-      {p.filaEditando && (
-        <div className="estado-resumen" aria-label="Progreso de la visita">
-          {_pendientesPanel(p).length === 0
+      {!p.filaEditando && (
+        <div className="estado-aviso">
+          Sin guardar: al guardar se crea la carpeta en Drive y se habilitan los entregables.
+        </div>
+      )}
+      {p.filaEditando && iniciada && (
+        <div className="estado-resumen" aria-label="Entregables pendientes">
+          {pendientes.length === 0
             ? <span className="resumen-chip rc-ok">
                 <span className="rc-dot" aria-hidden="true" />Entregables completos
               </span>
-            : _pendientesPanel(p).map(function (t) {
-                return (
-                  <span key={t} className="resumen-chip rc-pend">
-                    <span className="rc-dot" aria-hidden="true" />{t}
-                  </span>
-                );
-              })}
-        </div>
-      )}
-      {!p.filaEditando && (
-        <div className="estado-aviso">
-          Visita sin guardar: al guardar se crea la carpeta en Drive y se habilitan
-          fotos, orden escaneada y documentos.
+            : <>
+                <span className="resumen-titulo">Falta:</span>
+                {pendientes.map(function (t) {
+                  return (
+                    <span key={t} className="resumen-chip rc-pend">
+                      <span className="rc-dot" aria-hidden="true" />{t}
+                    </span>
+                  );
+                })}
+              </>}
         </div>
       )}
     </div>
@@ -1936,7 +2098,7 @@ function FilaEntregable({ icono, nombre, meta, estadoTono, estadoTexto, nota, pr
 // ══════════════════════════════════════════════════════════════
 //   PANTALLA
 // ══════════════════════════════════════════════════════════════
-function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
+function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busquedaInicial, onReabrirConBusqueda }) {
   // ── Fase: 'modal' muestra el selector de tipo, 'formulario' muestra el form ──
   const tieneDatos = filaInicial != null || datosIniciales != null;
   const [fase, setFase] = React.useState(tieneDatos ? 'formulario' : 'modal');
@@ -2411,6 +2573,27 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setDirty(JSON.stringify({ d: _snapshotLimpia(d), b: barrioOtro }) !== _lastSavedRef.current);
   }, [fase, d, barrioOtro]);
 
+  // Alto real de la cabecera fija → --nv-header-h en la pantalla. El panel
+  // mide uno o dos renglones según el estado (los faltantes solo salen con
+  // la visita INICIADA), así que una constante dejaba el tablero de
+  // entregables (≥1440) descolgado respecto de «Identificación del caso».
+  // Mismo patrón que --header-h en app.jsx.
+  const nvHeaderRef = React.useRef(null);
+  React.useEffect(function() {
+    if (fase !== 'formulario') return;
+    const cab = nvHeaderRef.current;
+    if (!cab || typeof ResizeObserver === 'undefined') return;
+    const pantalla = cab.parentElement;
+    const medir = function() {
+      const alto = Math.round(cab.getBoundingClientRect().height);
+      if (alto > 0 && pantalla) pantalla.style.setProperty('--nv-header-h', alto + 'px');
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(cab);
+    return function() { ro.disconnect(); };
+  }, [fase]);
+
   // (6) ¿El guardado de ESTA visita está en la cola offline? La barra fija
   // lo anuncia como estado propio (⇡ en cola), no solo como "sin conexión".
   React.useEffect(function() {
@@ -2484,6 +2667,46 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       setUltimoGuardadoMs(Date.now());
     });
   }, [filaEditando]);
+
+  // (10) Casos de otro radicado en la misma dirección o con la misma orden
+  // (decisión del usuario 2026-09-30: solo avisa, no bloquea). Solo en la 1ª
+  // visita de un caso sin completar: en un seguimiento el caso ya está
+  // elegido. La lista sale de la copia local de la BD (sin esperar red) y se
+  // recalcula al dejar de teclear.
+  const [casosRelac, setCasosRelac] = React.useState([]);
+  const [casosRelacVistos, setCasosRelacVistos] = React.useState('');
+  // Una sola lectura por formulario: pasado el minuto de caché en memoria,
+  // cada leerVisitas() dispara un refresco por red, y esto corre a cada pausa
+  // del teclado.
+  const casosBDRef = React.useRef(null);
+  const _primeraVisita = (parseInt(d.nVisita, 10) || 1) === 1;
+  React.useEffect(() => {
+    if (fase !== 'formulario' || !_primeraVisita || estadoVisita === 'COMPLETADO'
+        || typeof casosRelacionados !== 'function') {
+      setCasosRelac([]);
+      return;
+    }
+    let cancelado = false;
+    const t = setTimeout(async () => {
+      try {
+        if (!casosBDRef.current) casosBDRef.current = (await leerVisitas()).datos || [];
+        const datos = casosBDRef.current;
+        if (cancelado) return;
+        // Oficio sin guardar: aún no tiene radicado propio, y si su orden ya
+        // es la de otro caso, ese caso es justo el que hay que avisar.
+        const propio = d.esOficio
+          ? (filaEditando ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : '')
+          : d.radicado;
+        setCasosRelac(casosRelacionados(datos, {
+          direccion: d.direccion,
+          orden: d.esOficio ? d.orden : '',
+          radicadoPropio: propio,
+          filaPropia: filaEditando,
+        }));
+      } catch (e) { /* sin copia local ni red: no hay con qué avisar */ }
+    }, 700);
+    return () => { cancelado = true; clearTimeout(t); };
+  }, [fase, _primeraVisita, estadoVisita, d.esOficio, d.direccion, d.orden, d.radicado, filaEditando]);
 
   // ── Callback del modal: configura el formulario según la elección ──
   function handleModalResult(res) {
@@ -2798,7 +3021,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
   // ── Si estamos en fase modal, mostrar solo el selector ──
   if (fase === 'modal') {
-    return <ModalInicioVisita onResult={handleModalResult} onCancelar={onSalir} />;
+    return <ModalInicioVisita onResult={handleModalResult} onCancelar={onSalir} busquedaInicial={busquedaInicial} />;
   }
 
   // ── Geocode botón — al obtener coords dispara consulta POT automática ─
@@ -3017,8 +3240,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       // el predio y nunca se reescribe el código ni se avisa nada.
       const guardada = opts && opts.alAbrir && d.catastral &&
         res.find(r => r.catastral === d.catastral);
+      // Guardada como PH sin unidad: vuelve la lista de unidades de ese predio.
+      const phSinUnidad = opts && opts.alAbrir && esCodigoPredioMatriz(d.catastral) &&
+        res.filter(r => r.terrenoCodigo === String(d.catastral).trim().slice(0, 21));
       if (guardada) {
         setCatRes([guardada]);
+      } else if (phSinUnidad && phSinUnidad.length > 1) {
+        setCatRes(phSinUnidad);
       } else if (opts && opts.alAbrir && (d.catastral || !res.length)) {
         // código escrito a mano fuera de este predio, o el punto sin predio
       } else if (!res.length) {
@@ -3126,6 +3354,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     setCampo('catastral', item.catastral);
     setCampo('ficha', String(item.ficha));
     setCatRes([item]);   // queda a la vista la unidad elegida
+  }
+
+  // PH sin la unidad identificada: código del predio matriz y ficha vacía.
+  // La lista de unidades se conserva para poder volver a elegir.
+  function confirmarSinUnidad() {
+    const tcod = catResultados && catResultados[0] && catResultados[0].terrenoCodigo;
+    const cod = codigoPredioMatriz(tcod);
+    if (!cod) return;
+    setCampo('catastral', cod);
+    setCampo('ficha', '');
   }
 
   // ── Geolocalización progresiva del dispositivo ─────────────
@@ -3423,7 +3661,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       habitado:       d.habitado,
       situacion:      d.actuacion,
       catastral:      d.catastral,
-      ficha:          d.ficha,
+      // PH sin la unidad identificada: el acta lo dice en vez de quedar en
+      // blanco. Solo en el acta; en BD la ficha sigue vacía.
+      ficha:          esCodigoPredioMatriz(d.catastral) && !d.ficha ? 'Sin identificar' : d.ficha,
       poligono:       d.poligono,
       amenaza:        d.amenaza,
       sueloProt:      d.sueloProt,
@@ -3500,7 +3740,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
     // Norma POT (franja de Ubicación)
     req(d.catastral, 'Código catastral');
-    req(d.ficha, 'N° ficha predial');
+    // PH sin la unidad identificada: basta el código del predio (sin ficha).
+    if (!esCodigoPredioMatriz(d.catastral)) req(d.ficha, 'N° ficha predial');
     req(d.poligono, 'Polígono de uso del suelo');
     req(d.amenaza, '¿Amenaza? (SI/NO)');
     req(d.sueloProt, '¿Suelo de protección? (SI/NO)');
@@ -4000,6 +4241,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // nVisita puede venir como string del Sheet ("2") o number (1). Normalizar
   // antes de comparar para evitar la coerción frágil "10" > 1 (=true) vs "2" > 1 (=true por casualidad).
   const _nVisitaNum = parseInt(d.nVisita, 10) || 0;
+  // Aviso de casos relacionados (efecto (10)). «Es otro caso» lo oculta
+  // mientras la lista de casos no cambie.
+  const _casosRelacClave = casosRelac.map(c => c.radicado).join('|');
+  const _verCasosRelac = casosRelac.length > 0 && _casosRelacClave !== casosRelacVistos;
+  const _ofrecerSeguimiento = !!d.esOficio && !filaEditando && typeof onReabrirConBusqueda === 'function';
+  const _casosRelacPor = motivo => _verCasosRelac ? casosRelac.filter(c => c.motivos.indexOf(motivo) !== -1) : [];
+  async function _abrirCasoRelacionado(radicado) {
+    const ok = await appConfirm(
+      'Se descarta lo que llevas en este formulario y se abre el caso ' + radicado +
+      ' para registrar la visita como su seguimiento.',
+      { tono: 'info', titulo: '¿Es un seguimiento?', btnOk: 'Abrir el caso' }
+    );
+    if (ok) onReabrirConBusqueda(radicado);
+  }
 
   // Insumos del centro de control: estado por sección y bloqueo compartido
   // de generadores (una sola acción de documento a la vez).
@@ -4062,12 +4317,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           siempre qué visita está diligenciando, salir sin subir y guardar
           sin ir al fondo del scroll (antes Guardar vivía en una barra
           fija inferior que se comía ~92 px de pantalla). */}
-      <div className="nv-header">
+      <div className="nv-header" ref={nvHeaderRef}>
         <div className="nv-header-top">
           {onSalir && (
-            <button onClick={_confirmarVolver} className="btn-neutro"
-              aria-label="Volver" title="Volver"
-              style={{ padding: '8px 10px', fontSize: 14, flexShrink: 0 }}>&#8592;</button>
+            <button onClick={_confirmarVolver} className="btn-neutro nv-volver"
+              aria-label="Volver" title="Volver"><Icon.ArrowLeft size={20} /></button>
           )}
           {/* Centro de control: estado + identidad + qué falta, visible sin
               scroll. Antes esta caja solo decía qué visita era. */}
@@ -4087,7 +4341,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             ordenRelevante={_hayOrdenReal(d.orden)}
             ordenEscaneada={!!d.linkOrdenPolicia}
             tieneActa={!!d.linkXlsxActa}
-            tieneInforme={!!d.linkDocxInforme}
             tieneRF={!!d.linkRegistroFotos}
           />
           {/* Acción principal y estado de guardado: mismo contenido que
@@ -4131,7 +4384,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             fontSize: 14, fontWeight: 600,
             color: d.esOficio ? 'var(--cafe)' : 'var(--brand-ink)',
           }}>
-            <span>{d.esOficio ? '🏗️' : '📋'}</span>
+            {d.esOficio ? <Icon.Flag size={16} /> : <Icon.File size={16} />}
             {d.esOficio ? 'Visita de oficio' : 'PQR / Radicado'}
             {_nVisitaNum > 1 && <span style={{ marginLeft: 4, opacity: 0.7 }}>· Visita N°{_nVisitaNum}</span>}
           </div>
@@ -4194,6 +4447,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             </div>
           </_Campo>
         )}
+        <_AvisoCasosRelacionados casos={_casosRelacPor('orden')} motivo="orden"
+          ofrecerSeguimiento={_ofrecerSeguimiento} onAbrir={_abrirCasoRelacionado}
+          onOcultar={() => setCasosRelacVistos(_casosRelacClave)} />
         <_Campo label="Fecha de visita">
           <_Input type="date" value={d.fechaVisita} onChange={v => setCampo('fechaVisita', v)} />
         </_Campo>
@@ -4242,6 +4498,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           )}
           </div>
         </div>
+        {/* Si el caso ya salió por la orden, no se repite aquí. */}
+        <_AvisoCasosRelacionados
+          casos={_casosRelacPor('direccion').filter(c => c.motivos.indexOf('orden') === -1)}
+          motivo="direccion"
+          ofrecerSeguimiento={_ofrecerSeguimiento} onAbrir={_abrirCasoRelacionado}
+          onOcultar={() => setCasosRelacVistos(_casosRelacClave)} />
         <_Campo label="Barrio / Vereda">
           <_SelectBarrio
             barrio={d.barrio}
@@ -4340,6 +4602,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           dirPredioDir={((terrenosDir || []).find(t => t.tcod === cmpUbic.tcod) || {}).direccion}
           faltaUnidad={!!(catResultados && catResultados.length > 1)}
           fichasPH={catResultados || []} onSeleccionarFicha={seleccionarCatastral}
+          sinUnidad={!!(catResultados && catResultados.length > 1) && esCodigoPredioMatriz(d.catastral)}
+          onSinUnidad={confirmarSinUnidad}
+          onElegirUnidad={() => { setCampo('catastral', ''); setCampo('ficha', ''); }}
           vigente={ubicVigente}
           fichaInfo={fichaAplicada}
           coords={d.lat != null && d.lat !== '' && d.lon != null && d.lon !== ''
@@ -4831,7 +5096,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           Cada pieza es un renglón con estado + acciones; el único botón
           relleno de la pantalla es "Guardar cambios" (barra fija). Antes
           eran hasta 4 botones a ancho completo compitiendo entre sí. */}
-      <div className="form-seccion nv-entregables" style={{ marginTop: 14 }}>
+      <div className="form-seccion nv-entregables">
         <span className="form-seccion-titulo">Entregables de la visita</span>
 
         {/* Antes del primer guardado no hay entregables: la transición se
