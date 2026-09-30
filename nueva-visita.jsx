@@ -1022,7 +1022,7 @@ function _resaltarPredioCatastral(map, polysRef, lat, lon, excluir) {
 
 // Mapa Google Maps con pin arrastrable para corregir coordenadas.
 // Sin coordenadas muestra vista general de Bello; con coords, zoom 18 + pin.
-function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir }) {
+function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir, conflicto }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`, convención guion bajo del archivo (3 refs seguidas)
   const mapRef = React.useRef(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -1162,6 +1162,21 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir }) {
       });
     }
   }, [_claveDir, gmListo, tieneCoords]);
+
+  // Dirección y pin en predios distintos: se encuadran los dos para que el
+  // inspector vea entre qué elige (a 60 m el de la dirección quedaba fuera).
+  // Una vez al aparecer el conflicto, no a cada movimiento del pin.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  useEffectNV(() => {
+    if (!conflicto || gmListo !== true || !gMapRef.current || !terrenosDir || !terrenosDir.length) return;
+    const b = new google.maps.LatLngBounds();
+    terrenosDir.forEach(function (t) { t.anillo.forEach(function (c) { b.extend({ lat: c[0], lng: c[1] }); }); });
+    b.extend({ lat: Number(lat), lng: Number(lon) });
+    gMapRef.current.fitBounds(b, 40);
+    google.maps.event.addListenerOnce(gMapRef.current, 'idle', function () {
+      if (gMapRef.current && gMapRef.current.getZoom() > 19) gMapRef.current.setZoom(19);
+    });
+  }, [conflicto, _claveDir, gmListo]);
 
   // Contorno catastral del predio bajo el pin (se redibuja al moverlo).
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
@@ -1363,6 +1378,13 @@ window._ListaFichasCatastrales = _ListaFichasCatastrales;
 // ficha del predio — es con lo que el inspector decide si confirma. Los
 // mensajes del proceso solo salen cuando piden algo: si dirección y punto
 // cuadran, no se dice (antes eran dos renglones que repetían lo mismo).
+// Dirección de catastro en el formato de la app (`TV 56A N 49-15 AP 201` →
+// `TV 56A # 49-15`); si no se reconoce, tal cual.
+function _dirCatastro(dir) {
+  const k = dir && claveDireccionCatastro(dir);
+  return (k && direccionDesdeClave(k.base)) || dir || '';
+}
+
 function _PanelPredio(p) {
   const bloqueo = !p.hayPin ? 'Falta el punto: toca el predio en el mapa o captura tu ubicación.'
     : p.cmp.estado === 'distinto' ? 'Elige cuál predio es antes de confirmar.'
@@ -1433,22 +1455,42 @@ function _PanelPredio(p) {
           </button>
         </div>
       )}
+      {/* Conflicto: se pregunta por el predio, no por «dirección o punto».
+          Cada opción lleva la dirección que catastro tiene para ese predio y
+          el color de su contorno en el mapa, que en conflicto encuadra los
+          dos. Elegir el del pin NO cambia la dirección de la visita. */}
       {p.cmp.estado === 'distinto' && (
-        <div className="predio-conflicto" role="group" aria-label="Dirección y punto en predios distintos">
-          <div>La dirección y el punto caen en predios distintos (a {p.cmp.distM} m).</div>
-          <div className="predio-fila">
-            <button type="button" className="btn-neutro predio-btn" onClick={p.onUsarDireccion}>
-              Usar el de la dirección
+        <div className="predio-conflicto" role="group" aria-label="¿Cuál es el predio de la visita?">
+          <strong>¿Cuál es el predio de la visita?</strong>
+          <div className="predio-opcion">
+            <i className="predio-muestra" style={{ borderColor: COLOR_PREDIO_DIR }} aria-hidden="true" />
+            <div className="predio-opcion-txt">
+              <div className="predio-mono">{_dirCatastro(p.dirPredioDir) || p.direccion}</div>
+              <div className="predio-nota">El de la dirección escrita · a {p.cmp.distM} m del pin</div>
+            </div>
+            <button type="button" className="btn-neutro predio-btn" onClick={p.onUsarDireccion}
+              aria-label="Es el predio de la dirección escrita (mueve el pin)">
+              Es este
             </button>
-            <button type="button" className="btn-neutro predio-btn" onClick={p.onUsarPunto}>
-              Usar el del punto
+          </div>
+          <div className="predio-opcion">
+            <i className="predio-muestra" style={{ borderColor: COLOR_PREDIO_PIN }} aria-hidden="true" />
+            <div className="predio-opcion-txt">
+              <div className="predio-mono">{_dirCatastro(p.fichasPH[0] && p.fichasPH[0].direccion) || 'Predio sin dirección en catastro'}</div>
+              <div className="predio-nota">
+                Donde está el pin{p.fichasPH.length > 1 ? ' · ' + p.fichasPH.length + ' unidades' : ''}
+              </div>
+            </div>
+            <button type="button" className="btn-neutro predio-btn" onClick={p.onUsarPunto}
+              aria-label="Es el predio donde está el pin">
+              Es este
             </button>
           </div>
         </div>
       )}
       {/* Propiedad horizontal: la lista vive solo aquí; elegir la unidad es
           parte de la confirmación. Con la ficha ya elegida, su tarjeta. */}
-      {!p.catastral && p.faltaUnidad ? (
+      {p.cmp.estado === 'distinto' ? null : !p.catastral && p.faltaUnidad ? (
         <div>
           <div className="predio-nota">
             {p.fichasPH.length} unidades en este predio (propiedad horizontal): elige la correcta.
@@ -2904,7 +2946,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // punto nuevo cae en varias fichas (hay que elegir) o en ninguna. El botón
   // manual re-busca el mismo punto y no la toca.
   // `opts.ignorarDireccion`: el inspector eligió el predio del pin aunque la
-  // dirección caiga en otro («Usar el del punto»).
+  // dirección caiga en otro («Es este» en el predio del pin).
   async function ejecutarBusquedaCatastral(latArg, lonArg, puntoNuevo, opts) {
     const lat = (latArg != null) ? latArg : d.lat;
     const lon = (lonArg != null) ? lonArg : d.lon;
@@ -3019,35 +3061,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     ejecutarBusquedaCatastral(q[0], q[1], true);
   }
 
-  // «Usar el del punto»: el predio es el del pin. Se ofrece la dirección que
-  // catastro tiene para ese predio; si el inspector la rechaza, se deja
-  // constancia de la elección (ubicPreferirPunto) para no volver a preguntar
-  // mientras el punto y la dirección sigan iguales.
-  async function usarPredioPunto() {
+  // «Es este» en el predio del pin. La dirección de la visita NO se toca
+  // (decisión del usuario 2026-09-30): se deja constancia de la elección
+  // (ubicPreferirPunto) para no volver a preguntar mientras el punto y la
+  // dirección sigan iguales.
+  function usarPredioPunto() {
     const lat = d.lat, lon = d.lon;
-    let sugerida = '';
-    try {
-      const ts = await poligonosCatastroGPS(Number(lat), Number(lon));
-      if (ts.length) {
-        const fichas = await fichasCatastroTerreno(ts[0].tcod);
-        for (let i = 0; i < fichas.length && !sugerida; i++) {
-          const k = claveDireccionCatastro(fichas[i].direccion);
-          if (k) sugerida = direccionDesdeClave(k.base);
-        }
-      }
-    } catch (e) { /* sin catastro: sin sugerencia */ }
-    if (sugerida && sugerida !== normalizarDireccion(d.direccion)) {
-      const cambiar = await appConfirm(
-        'Catastro registra el predio del punto como «' + sugerida + '». ¿Cambiar la dirección de la visita a esa?' +
-        (d.linkDrive ? ' La carpeta de Drive ya existe y conserva su nombre actual.' : ''),
-        { titulo: 'Dirección del predio', btnOk: 'Cambiar dirección', btnCancel: 'Dejar la mía' });
-      if (cambiar) {
-        // Con la dirección de catastro, dirección y pin pasan a coincidir.
-        setCampo('direccion', sugerida);
-        setDirConfirmada(false);
-        return;
-      }
-    }
     setCampo('ubicPreferirPunto', { lat: lat, lon: lon, direccion: d.direccion });
     ejecutarBusquedaCatastral(lat, lon, true, { ignorarDireccion: true });
   }
@@ -4258,6 +4277,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
         </div>
         <div className="ubic-mapa">
           <_MapaGPS lat={d.lat} lon={d.lon} terrenosDir={terrenosDir}
+            conflicto={cmpUbic.estado === 'distinto'}
             // Sin barrio a propósito: medido en «Cómo llegar», con barrio la
             // consulta cae en Medellín.
             direccion={d.direccion ? d.direccion + ', Bello, Antioquia' : ''}
@@ -4282,7 +4302,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           terrenoElegido={terrenoDirElegido} onElegir={setTerrenoDirElegido}
           cmp={cmpUbic} hayPin={cmpUbic.estado !== 'sin-pin' && d.lat != null && d.lat !== '' && d.lon != null && d.lon !== ''}
           preferirPunto={preferirPunto}
-          catastral={d.catastral} ficha={d.ficha}
+          catastral={d.catastral} ficha={d.ficha} direccion={d.direccion}
+          dirPredioDir={((terrenosDir || []).find(t => t.tcod === cmpUbic.tcod) || {}).direccion}
           faltaUnidad={!!(catResultados && catResultados.length > 1)}
           fichasPH={catResultados || []} onSeleccionarFicha={seleccionarCatastral}
           vigente={ubicVigente}

@@ -1159,6 +1159,18 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .predio-ok { color: var(--green-ink); }
 .predio-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .predio-btn { min-height: var(--tap); }
+/* Conflicto: una tarjeta por predio, con el color de su contorno en el mapa. */
+.predio-opcion {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--surface, #fff); border: 1px solid var(--line, #ddd);
+}
+.predio-muestra {
+  flex: 0 0 auto; width: 16px; height: 16px; border-radius: 3px;
+  border: 3px solid; background: rgba(0, 0, 0, .06);
+}
+.predio-opcion-txt { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.predio-opcion .predio-btn { flex: 0 0 auto; min-width: 92px; }
 .predio-conflicto {
   display: flex; flex-direction: column; gap: 8px;
   padding: 10px 12px; border-radius: var(--r-sm);
