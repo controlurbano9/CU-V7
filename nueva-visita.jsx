@@ -2002,6 +2002,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
       String(x.direccion || '') === String(d.direccion || '');
   };
   const ubicVigente = ubicacionConfirmadaVigente(d.ubicConf, d);
+  // Ficha que describe el código del campo: reescrito a mano, la tarjeta
+  // dejaría de ser la de este predio.
+  const fichaAplicada = catResultados && catResultados.length === 1 &&
+    catResultados[0].catastral === d.catastral ? catResultados[0] : null;
+  // Código y ficha se escriben a mano solo si catastro no dio el predio: con
+  // ficha aplicada ya los muestra el panel «Predio», y con varias unidades
+  // (PH) se eligen ahí. Corregirlos = mover el pin o elegir otra ficha.
+  const catastralManual = !fichaAplicada && !(catResultados && catResultados.length > 1);
   const _cmpBruto = compararUbicacion(terrenosDir, d.lat, d.lon);
   // Una confirmación vigente con dirección y punto en predios distintos es un
   // «usar el del punto» ya decidido: ubicPreferirPunto no se guarda en BD, así
@@ -2835,7 +2843,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Cliente puro (turf.js + GeoJSONs en GitHub, igual que producción).
   // Acepta lat/lon opcionales para encadenarse tras geocoding sin
   // depender del state batched de React.
-  // «Consultar» de Consulta norma POT: catastro y POT juntos para el punto
+  // «Consultar» de Ubicación: catastro y POT juntos para el punto
   // actual. Sin coordenadas avisa una sola vez (cada función avisaría aparte).
   async function consultarNorma() {
     if (d.lat == null || d.lon == null || d.lat === '' || d.lon === '') {
@@ -3423,8 +3431,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
     req(ubicacionConfirmadaVigente(d.ubicConf, d),
         'Ubicación confirmada (dirección, punto y ficha catastral, junto al mapa)');
 
-    sec = 'Consulta norma POT';
-    // POT
+    // Norma POT (franja de Ubicación)
     req(d.catastral, 'Código catastral');
     req(d.ficha, 'N° ficha predial');
     req(d.poligono, 'Polígono de uso del suelo');
@@ -4127,7 +4134,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
 
       {/* 2. UBICACIÓN ─────────────────────────────────────── */}
       <_Seccion titulo="Ubicación del inmueble"
-        estado={estadosSeccion["Ubicación del inmueble"]} color="azul">
+        estado={estadosSeccion["Ubicación del inmueble"]} color="azul"
+        // Un solo «Consultar» (catastro + POT): mover el pin ya dispara las
+        // dos consultas; esto solo las repite. La norma no se calcula: se
+        // consulta en las capas del POT.
+        accion={
+          <button type="button" className="btn-neutro sec-consultar"
+            onClick={consultarNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
+            {busyCat || busyPOT
+              ? <><span className="spinner-btn" aria-hidden="true" /> Consultando…</>
+              : 'Consultar'}
+          </button>
+        }>
         {/* Grupo escrito a mano en vez de <_Campo>: envolvemos el input para el
             check de confirmación y el <label for> quedaría apuntando al div
             (mismo caso que el Radicado). Se normaliza al salir del campo, no
@@ -4260,10 +4278,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           faltaUnidad={!!(catResultados && catResultados.length > 1)}
           fichasPH={catResultados || []} onSeleccionarFicha={seleccionarCatastral}
           vigente={ubicVigente}
-          // La tarjeta solo si describe el código del campo: reescrito a mano,
-          // dejaría de ser la ficha de este predio.
-          fichaInfo={catResultados && catResultados.length === 1 && catResultados[0].catastral === d.catastral
-            ? catResultados[0] : null}
+          fichaInfo={fichaAplicada}
           coords={d.lat != null && d.lat !== '' && d.lon != null && d.lon !== ''
             ? Number(d.lat).toFixed(6) + ', ' + Number(d.lon).toFixed(6) : 'Sin coordenadas'}
           onUsarDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
@@ -4271,57 +4286,43 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           onUbicarEnDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
           onConfirmar={confirmarUbicacion} />
         </div>
-      </_Seccion>
 
-      {/* 2b. CONSULTA NORMA POT ─────────────────────────── */}
-      {/* Pegada a Ubicación a propósito: mover el pin recalcula estos campos
-          y, separados, el inspector no veía qué había cambiado. */}
-      <_Seccion titulo="Consulta norma POT"
-        estado={estadosSeccion["Consulta norma POT"]} color="gris"
-        // Un solo «Consultar» (catastro + POT): mover el pin ya dispara las
-        // dos consultas; esto solo las repite. La norma no se calcula: se
-        // consulta en las capas del POT.
-        accion={
-          <button type="button" className="btn-neutro sec-consultar"
-            onClick={consultarNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
-            {busyCat || busyPOT
-              ? <><span className="spinner-btn" aria-hidden="true" /> Consultando…</>
-              : 'Consultar'}
-          </button>
-        }>
-        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 8 }}>
-          Se consulta para el punto del mapa; si mueves el pin, se vuelve a consultar sola.
-        </div>
-        <div className="norma-grid-3">
-          <_Campo label="Código catastral">
-            <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
-          </_Campo>
-          <_Campo label="N° ficha predial">
-            <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
-          </_Campo>
-          <_Campo label="Polígono de uso del suelo">
-            <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
-              placeholder="ZR-CN-1" />
-          </_Campo>
-        </div>
-        {/* La tarjeta de la ficha, el aviso de predio municipal y la lista de
-            propiedad horizontal viven en el panel «Predio», junto al mapa. */}
-
-        {/* Las tres preguntas SI/NO en un renglón en escritorio; en móvil,
-            una debajo de otra (norma-grid-3 colapsa a una columna). */}
-        <div className="norma-grid-3">
-          <_Campo label="¿Amenaza?">
-            <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
-              opciones={['SI', 'NO']} />
-          </_Campo>
-          <_Campo label="¿Suelo de protección?">
-            <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
-              opciones={['SI', 'NO']} />
-          </_Campo>
-          <_Campo label="¿Dentro de retiro de quebrada?">
-            <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
-              opciones={['SI', 'NO']} />
-          </_Campo>
+        {/* Norma POT: franja a todo el ancho bajo mapa y panel (antes sección
+            aparte «Consulta norma POT»). Pegada al mapa a propósito: mover el
+            pin la vuelve a consultar y, separada, no se veía qué cambiaba. */}
+        <div className="norma-franja">
+          <div className="norma-franja-nota">
+            Norma POT del punto del mapa: si mueves el pin, se vuelve a consultar sola.
+          </div>
+          {catastralManual && (
+            <div className="norma-grid-4">
+              <_Campo label="Código catastral">
+                <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
+              </_Campo>
+              <_Campo label="N° ficha predial">
+                <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
+              </_Campo>
+            </div>
+          )}
+          {/* Un renglón de 4 en escritorio; en móvil, uno debajo de otro. */}
+          <div className="norma-grid-4">
+            <_Campo label="Polígono de uso del suelo">
+              <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
+                placeholder="ZR-CN-1" />
+            </_Campo>
+            <_Campo label="¿Amenaza?">
+              <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
+                opciones={['SI', 'NO']} />
+            </_Campo>
+            <_Campo label="¿Suelo de protección?">
+              <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
+                opciones={['SI', 'NO']} />
+            </_Campo>
+            <_Campo label="¿Dentro de retiro de quebrada?">
+              <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
+                opciones={['SI', 'NO']} />
+            </_Campo>
+          </div>
         </div>
       </_Seccion>
 

@@ -1233,12 +1233,16 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .dir-conf-linea > .dir-conf-wrap { flex: 1 1 240px; }
 .dir-conf-linea > .dir-conf-fila { margin-top: 0; }
 
-/* Consulta norma POT: tres columnas en escritorio, una en móvil. */
-.norma-grid-3 { grid-column: 1 / -1; display: grid; gap: 0 16px; }
+/* Norma POT: franja a todo el ancho de «Ubicación», bajo mapa y panel.
+   Cuatro columnas en escritorio, una en móvil. */
+.norma-franja { grid-column: 1 / -1; margin-top: 16px; padding-top: 12px;
+  border-top: 1px solid var(--borde); }
+.norma-franja-nota { font-size: 12px; color: var(--texto-suave); margin-bottom: 8px; }
+.norma-grid-4 { display: grid; gap: 0 16px; align-items: end; }  /* etiqueta larga en 2 líneas: controles alineados */
 @media (min-width: 900px) {
-  .norma-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .norma-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
-.norma-grid-3 .input-grupo { margin-bottom: 14px; }
+.norma-grid-4 .input-grupo { margin-bottom: 14px; }
 .form-seccion-accion { margin-left: auto; }
 .sec-consultar { padding: 6px 14px; font-size: 13px; }
 
