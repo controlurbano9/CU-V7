@@ -646,7 +646,8 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
 // `estado`: 'ok' → check verde; 'pend' → punto ámbar (solo tras un intento
 // de generar fallido, ver `mostrarPendientes`); undefined → sin indicador
 // (secciones sin campos obligatorios, p. ej. Observaciones).
-function _Seccion({ titulo, color, estado, children }) {
+// `accion`: botón opcional a la derecha de la cabecera (p. ej. «Recalcular»).
+function _Seccion({ titulo, color, estado, accion, children }) {
   return (
     <div className="form-seccion">
       <div className="form-seccion-cabecera">
@@ -657,6 +658,7 @@ function _Seccion({ titulo, color, estado, children }) {
         {estado === 'pend' && (
           <span className="sec-ind sec-ind-pend" role="img" aria-label="Faltan campos en esta sección" title="Faltan campos en esta sección" />
         )}
+        {accion && <span className="form-seccion-accion">{accion}</span>}
       </div>
       <div className="form-grid-2col" style={{ marginTop: 12 }}>{children}</div>
     </div>
@@ -1377,13 +1379,38 @@ function _PanelPredio(p) {
   const candidatos = !p.predioDir ? [] :
     !p.predioDir.exacta ? p.predioDir.terrenos :
     (p.predioDir.terrenos.length > 1 && !p.hayPin ? p.predioDir.terrenos : []);
+  // Confirmada y sin nada que decidir: un solo renglón. Cualquier conflicto,
+  // candidato o unidad por elegir lo vuelve a abrir solo.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_PanelPredio`, convención guion bajo del archivo
+  const [detalle, setDetalle] = React.useState(false);
+  const plegado = p.vigente && !detalle && p.cmp.estado !== 'distinto' &&
+    !candidatos.length && !(!p.catastral && p.faltaUnidad);
+  if (plegado) {
+    return (
+      <div className="predio-panel predio-plegado">
+        <div className="predio-fila">
+          <span className="ent-dot ed-ok" title="Ubicación confirmada" aria-hidden="true" />
+          <span className="predio-ok">Ubicación confirmada</span>
+          <span className="predio-nota predio-mono">· Ficha {p.ficha || '—'}</span>
+          <button type="button" className="btn-texto predio-detalle" onClick={() => setDetalle(true)}>
+            Ver detalle
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="predio-panel" style={{ gridColumn: '1 / -1' }}>
+    <div className="predio-panel">
       <div className="predio-fila predio-titulo">
         <span className={'ent-dot ' + (p.vigente ? 'ed-ok' : 'ed-pend')}
           title={p.vigente ? 'Ubicación confirmada' : 'Ubicación sin confirmar'} aria-hidden="true" />
         <strong>Predio</strong>
         <span className="sr-only">{p.vigente ? 'Ubicación confirmada' : 'Ubicación sin confirmar'}</span>
+        {detalle && p.vigente && (
+          <button type="button" className="btn-texto predio-detalle" onClick={() => setDetalle(false)}>
+            Ocultar detalle
+          </button>
+        )}
       </div>
       {lineaDir && <div className="predio-nota">{lineaDir}</div>}
       {candidatos.length > 0 && (
@@ -2829,6 +2856,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
   // Cliente puro (turf.js + GeoJSONs en GitHub, igual que producción).
   // Acepta lat/lon opcionales para encadenarse tras geocoding sin
   // depender del state batched de React.
+  // «↻ Recalcular» de Consulta norma POT: catastro y POT juntos para el punto
+  // actual. Sin coordenadas avisa una sola vez (cada función avisaría aparte).
+  async function recalcularNorma() {
+    if (d.lat == null || d.lon == null || d.lat === '' || d.lon === '') {
+      await appAlert('Necesitas coordenadas primero: captura tu ubicación o toca el predio en el mapa.', { tono: 'aviso', titulo: 'Sin GPS' });
+      return;
+    }
+    await Promise.all([ejecutarBusquedaCatastral(), ejecutarPOT()]);
+  }
+
   async function ejecutarPOT(latArg, lonArg) {
     const lat = (latArg != null) ? latArg : d.lat;
     const lon = (lonArg != null) ? lonArg : d.lon;
@@ -4121,6 +4158,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             cambia (tests/direcciones.test.js). */}
         <div className="input-grupo full-width">
           <label className="input-label" htmlFor="nv-direccion">Dirección del inmueble</label>
+          {/* «¿Es correcta?» al lado del campo, no debajo: en escritorio
+              sobra ancho y el renglón extra alargaba la sección. */}
+          <div className="dir-conf-linea">
           <div className={'dir-conf-wrap' + (requiereDir && dirConfirmada ? ' dir-conf-ok' : '')}>
             <input id="nv-direccion" type="text" className="input-campo"
               value={d.direccion || ''}
@@ -4147,6 +4187,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 onClick={() => setDirConfirmada(true)}>Sí</button>
             </div>
           )}
+          </div>
         </div>
         <_Campo label="Barrio / Vereda">
           <_SelectBarrio
@@ -4163,7 +4204,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             placeholder="4" />
         </_Campo>
 
-        <div className="gps-box" style={{ gridColumn: '1 / -1' }}>
+        {/* Escritorio: mapa cuadrado a la izquierda y, a su derecha, las
+            coordenadas y el panel «Predio» — lo que cambia al mover el pin
+            queda a la vista junto al pin. Móvil: coordenadas, mapa, predio. */}
+        <div className="ubic-mapa-grid">
+        <div className="gps-box">
           <div style={{ flex: 1 }}>
             <div className="gps-coords">
               {d.lat != null && d.lon != null
@@ -4179,7 +4224,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
                 }, '±' + gpsAccuracy + 'm · ' + label);
               })()}
             </div>
-            <div className="gps-dir">{d.direccion || '—'}</div>
             {busyGeo && gpsAccuracy != null && React.createElement('div', {
               style: { fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }
             }, 'Refinando señal GPS… Puedes aceptar la ubicación actual o esperar mayor precisión.')}
@@ -4209,7 +4253,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
             }, React.createElement(Icon.Close, { size: 14 }), 'Cancelar')}
           </div>
         </div>
-        <div style={{ gridColumn: '1 / -1' }}>
+        <div className="ubic-mapa">
           <_MapaGPS lat={d.lat} lon={d.lon} terrenosDir={terrenosDir}
             // Sin barrio a propósito: medido en «Cómo llegar», con barrio la
             // consulta cae en Medellín.
@@ -4242,41 +4286,43 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           onUsarPunto={usarPredioPunto}
           onUbicarEnDireccion={() => _pinEnPredioDireccion(cmpUbic.tcod)}
           onConfirmar={confirmarUbicacion} />
+        </div>
       </_Seccion>
 
       {/* 2b. CONSULTA NORMA POT ─────────────────────────── */}
       {/* Pegada a Ubicación a propósito: mover el pin recalcula estos campos
           y, separados, el inspector no veía qué había cambiado. */}
       <_Seccion titulo="Consulta norma POT"
-        estado={estadosSeccion["Consulta norma POT"]} color="gris">
-        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)' }}>
+        estado={estadosSeccion["Consulta norma POT"]} color="gris"
+        // Un solo «Recalcular» (catastro + POT): mover el pin ya dispara las
+        // dos consultas; esto solo las repite. Antes eran dos botones, uno a
+        // todo el ancho con su ayuda debajo.
+        accion={
+          <button type="button" className="btn-neutro sec-recalcular"
+            onClick={recalcularNorma} disabled={busyCat || busyPOT} aria-busy={busyCat || busyPOT}>
+            {busyCat || busyPOT
+              ? <><span className="spinner-btn" aria-hidden="true" /> Calculando…</>
+              : '↻ Recalcular'}
+          </button>
+        }>
+        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 8 }}>
           Calculado para el punto del mapa: si mueves el pin, estos datos se actualizan.
         </div>
-        {/* Búsqueda automática primero (al inicio del bloque, ancho completo,
-            centrado y con icono que indica que rellena código catastral y ficha). */}
-        <div style={{ gridColumn: '1 / -1' }}>
-          {/* El borde PUNTEADO significa "placeholder / incompleto" en cualquier
-              gramática visual; aquí marcaba una acción real. Sólido + spinner. */}
-          <button type="button" onClick={() => ejecutarBusquedaCatastral()} disabled={busyCat}
-            aria-busy={busyCat} className="btn-accion"
-            style={{ width: '100%', fontSize: 14, padding: '12px 16px' }}>
-            {busyCat
-              ? <><span className="spinner-btn" aria-hidden="true" /> Buscando en catastro…</>
-              : 'Buscar datos catastrales'}
-          </button>
-          <div style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'center', marginTop: 4 }}>
-            Llena automáticamente código catastral y ficha usando las coordenadas GPS.
-          </div>
+        <div className="norma-grid-3">
+          <_Campo label="Código catastral">
+            <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
+          </_Campo>
+          <_Campo label="N° ficha predial">
+            <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
+          </_Campo>
+          <_Campo label="Polígono de uso del suelo">
+            <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
+              placeholder="ZR-CN-1" />
+          </_Campo>
         </div>
-        <_Campo label="Código catastral">
-          <_Input mono value={d.catastral} onChange={v => setCampo('catastral', v)} />
-        </_Campo>
-        <_Campo label="N° ficha predial">
-          <_Input mono value={d.ficha} onChange={v => setCampo('ficha', v)} />
-        </_Campo>
 
         {catResultados && catResultados.length > 0 && (
-          <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
             {/* Alerta si alguna ficha es del Municipio de Bello */}
             {catResultados.some(r => r.municipal) && (
               <div style={{
@@ -4307,26 +4353,21 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir }) {
           </div>
         )}
 
-        <_Campo label="Polígono de uso del suelo">
-          <_Input mono value={d.poligono} onChange={v => setCampo('poligono', v)}
-            placeholder="ZR-CN-1" />
-        </_Campo>
-        <_Campo label="¿Amenaza?">
-          <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <_Campo label="¿Suelo de protección?">
-          <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <_Campo label="¿Dentro de retiro de quebrada?">
-          <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <_BtnAccion busy={busyPOT} onClick={() => ejecutarPOT()}>
-            {busyPOT ? 'Consultando POT…' : 'Consultar POT por coordenadas'}
-          </_BtnAccion>
+        {/* Las tres preguntas SI/NO en un renglón en escritorio; en móvil,
+            una debajo de otra (norma-grid-3 colapsa a una columna). */}
+        <div className="norma-grid-3">
+          <_Campo label="¿Amenaza?">
+            <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
+          <_Campo label="¿Suelo de protección?">
+            <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
+          <_Campo label="¿Dentro de retiro de quebrada?">
+            <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
+              opciones={['SI', 'NO']} />
+          </_Campo>
         </div>
       </_Seccion>
 

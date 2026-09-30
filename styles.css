@@ -1182,6 +1182,46 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   .mapa-norma { height: 600px; }
 }
 
+/* Ubicación: coordenadas, mapa y panel «Predio» (nueva-visita.jsx). En móvil
+   van uno debajo de otro; en escritorio el mapa es cuadrado a la izquierda y
+   lo que cambia al mover el pin queda a su derecha, a la vista. */
+.ubic-mapa-grid {
+  grid-column: 1 / -1;
+  display: grid; gap: 10px;
+  grid-template-areas: "gps" "mapa" "predio";
+}
+.ubic-mapa-grid > .gps-box { grid-area: gps; margin-bottom: 0; }
+.ubic-mapa-grid > .ubic-mapa { grid-area: mapa; min-width: 0; }
+.ubic-mapa-grid > .predio-panel { grid-area: predio; margin-top: 0; }
+@media (min-width: 900px) {
+  .ubic-mapa-grid {
+    grid-template-columns: 45% minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "mapa gps" "mapa predio";
+    gap: 12px 16px;
+    align-items: start;
+    margin-bottom: 14px;
+  }
+  .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 1 / 1; }
+  .ubic-mapa-grid .mapa-gps.mapa-gps-sin { aspect-ratio: auto; }
+}
+.predio-plegado { padding: 6px 14px; }
+.predio-detalle { margin-left: auto; min-height: var(--tap); }
+
+/* Dirección + «¿Es correcta? [Sí]» en un renglón; envuelve si no cabe. */
+.dir-conf-linea { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.dir-conf-linea > .dir-conf-wrap { flex: 1 1 240px; }
+.dir-conf-linea > .dir-conf-fila { margin-top: 0; }
+
+/* Consulta norma POT: tres columnas en escritorio, una en móvil. */
+.norma-grid-3 { grid-column: 1 / -1; display: grid; gap: 0 16px; }
+@media (min-width: 900px) {
+  .norma-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.norma-grid-3 .input-grupo { margin-bottom: 14px; }
+.form-seccion-accion { margin-left: auto; }
+.sec-recalcular { padding: 6px 14px; font-size: 13px; }
+
 /* Usado por el indicador "Grabando..." del dictado por voz (nueva-visita) */
 @keyframes pulsar { 0%,100%{opacity:1} 50%{opacity:.3} }
 
@@ -2126,7 +2166,7 @@ body.is-offline .header {
   }
   .form-grid-2col .input-grupo { margin-bottom: 14px; }
   .form-grid-2col .input-grupo.full-width,
-  .form-grid-2col .gps-box,
+  .form-grid-2col > .gps-box,
   .form-grid-2col textarea.input-campo {
     grid-column: 1 / -1;
   }
