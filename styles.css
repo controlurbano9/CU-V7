@@ -1150,6 +1150,35 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .mapa-norma { width: 100%; height: 380px; }
 
+/* Consulta norma: predios candidatos de una búsqueda por ficha o matrícula
+   (consulta-norma.jsx). Renglones táctiles de 44 px mínimo; el elegido se
+   marca con barra lateral además del fondo (el color solo no basta). */
+.cn-cand-lista { max-height: 264px; overflow-y: auto; border-top: 1px solid var(--borde); }
+.cn-cand {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 52px; padding: 8px 16px;
+  background: none; border: none; border-bottom: 1px solid var(--borde);
+  border-left: 3px solid transparent;
+  font: inherit; color: var(--texto); text-align: left; cursor: pointer;
+}
+.cn-cand:last-child { border-bottom: none; }
+.cn-cand:hover { background: var(--gris-bg); }
+.cn-cand:focus-visible { outline-offset: -2px; }
+.cn-cand[aria-pressed="true"] { background: var(--azul-bg); border-left-color: var(--azul); }
+.cn-cand-txt { flex: 1; min-width: 0; }
+.cn-cand-dir {
+  display: block; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cn-cand-meta { display: block; font-size: 11px; color: var(--texto-suave); font-family: var(--font-mono); }
+/* Icon.Chevron apunta hacia abajo (desplegar); aquí el renglón lleva al
+   predio, así que se gira a «ir». */
+.cn-cand-ir { color: var(--texto-suave); display: inline-flex; flex-shrink: 0; transform: rotate(-90deg); }
+.cn-cat-rotulo {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--texto-suave); margin-bottom: 6px;
+}
+
 /* Leyenda de contornos bajo el mapa del formulario (nueva-visita.jsx). El
    color va en el borde de la muestra: es un contorno, no un relleno. */
 .mapa-leyenda {

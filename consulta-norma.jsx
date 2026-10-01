@@ -129,6 +129,13 @@ function ConsultaNormaScreen() {
   const [error, setError] = useStateCN('');
   // Aviso neutro (no error): la placa no está en catastro y el pin se puso en el vecino.
   const [aviso, setAviso] = useStateCN('');
+  // Búsqueda por ficha, matrícula o código catastral (buscarCatastroPorDato).
+  // `candidatos`: el dato está en varios predios y el usuario elige cuál.
+  // `hallado`: { etiqueta, tcod, catastrales } del predio que se está viendo,
+  // para destacar la ficha que calzó sobre el resto de las del predio.
+  const [candidatos, setCandidatos] = useStateCN(null);
+  const [hallado, setHallado] = useStateCN(null);
+  const resultadosRef = useRefCN(null);
 
   const mapDivRef = useRefCN(null);
   const mapRef = useRefCN(null);
@@ -282,10 +289,16 @@ function ConsultaNormaScreen() {
   // Búsqueda unificada: detecta automáticamente si es coordenada o dirección
   async function buscar() {
     setError(''); setAviso(''); setResultado(null);
+    setCandidatos(null); setHallado(null);
     var txt = consulta.trim();
-    if (!txt) { setError('Ingresa una dirección o coordenadas.'); return; }
+    if (!txt) { setError('Ingresa una dirección, coordenadas o un dato catastral.'); return; }
 
-    // Intentar parsear como coordenadas primero
+    // Dato catastral antes que coordenadas: un código escrito con espacios
+    // (`05 088 01 …`) se leería como latitud y longitud.
+    var claveCat = claveBusquedaCatastral(txt);
+    if (claveCat) { await buscarPorDatoCatastral(claveCat, txt); return; }
+
+    // Intentar parsear como coordenadas
     var coords = _parsearCoordenadas(txt);
     if (coords) {
       if (!dentroDeBello(coords.lat, coords.lon)) {
@@ -354,13 +367,92 @@ function ConsultaNormaScreen() {
     setBusyGeo(false);
   }
 
-  async function consultarNorma(lat, lon) {
-    setBusyPOT(true); setBusyCat(true); setResultado(null); setCatastro(null);
-    // Consultar POT y catastro en paralelo (independientes)
+  // Ficha, matrícula o código catastral → predio. Con un solo predio va
+  // directo; con varios (matrícula repetida, o un número que es ficha de uno
+  // y matrícula de otro) se listan para elegir.
+  async function buscarPorDatoCatastral(clave, txt) {
+    setBusyGeo(true);
+    try {
+      var res = await buscarCatastroPorDato(clave);
+      var que = clave.tipo === 'matricula' ? 'matrícula'
+        : clave.tipo === 'numero' ? 'ficha o matrícula' : 'código catastral';
+      if (!res.predios.length) {
+        // Sin resultado no queda a la vista el predio de la consulta anterior:
+        // se leería como si fuera el del dato que se acaba de teclear.
+        quitarPin(); setCatastro(null);
+        setError(clave.tipo === 'codigo'
+          ? 'Ese código catastral no está en el catastro 2026. Revisa los dígitos: son 30 (o los 21 del terreno).'
+          : 'No hay ningún predio con ' + que + ' ' + txt + ' en el catastro 2026.');
+      } else if (res.predios.length === 1) {
+        irAPredio(res.predios[0], res.unidadNoHallada
+          ? 'Esa unidad no está en catastro, pero el terreno sí: se muestran todas sus fichas.'
+          : '');
+      } else {
+        setCandidatos({ titulo: res.predios.length + ' predios con ' + que + ' ' + txt, predios: res.predios });
+      }
+    } catch (e) {
+      setError('No se pudo consultar el catastro. Revisa la conexión e intenta de nuevo.');
+    }
+    setBusyGeo(false);
+  }
+
+  // En una columna (móvil) la ficha y la norma quedan debajo del mapa: al
+  // elegir un candidato no se veía cambiar nada. Si ya están a la vista
+  // (dos columnas), no se mueve la pantalla.
+  function mostrarResultados() {
+    setTimeout(function () {
+      var el = resultadosRef.current;
+      if (el && el.getBoundingClientRect().top > window.innerHeight * 0.6) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 0);
+  }
+
+  function quitarPin() {
+    setPunto(null);
+    if (markerRef.current) { markerRef.current.setMap(null); markerRef.current = null; }
+  }
+
+  function irAPredio(p, avisoExtra) {
+    var numero = function (campo) {
+      var f = p.fichas.filter(function (r) { return p.halladas.indexOf(r.catastral) >= 0; })[0];
+      return f ? ' ' + f[campo] : '';
+    };
+    setHallado({
+      tcod: p.tcod,
+      catastrales: p.halladas,
+      etiqueta: p.por === 'ficha' ? 'Ficha' + numero('ficha')
+        : p.por === 'matricula' ? 'Matrícula' + numero('matricula') : 'Código catastral',
+    });
+    setCatastroOpen(true);
+    var q = p.anillo && puntoInteriorAnillo(p.anillo);
+    if (q) {
+      colocarPin(q[0], q[1], false);
+      consultarNorma(q[0], q[1], p);
+      if (avisoExtra) setAviso(avisoExtra);
+      return;
+    }
+    // Terreno sin contorno en catastro.json: hay ficha, pero no dónde poner
+    // el pin ni con qué punto cruzar el POT.
+    setError(''); setResultado(null);
+    quitarPin();
+    setCatastro(p.fichas);
+    setAviso('Este predio está en catastro pero sin contorno en el mapa: se muestra su ficha. ' +
+      'Para la norma POT, toca el mapa sobre el predio.');
+  }
+
+  // `predio` (búsqueda por dato catastral): sus fichas ya se conocen, no se
+  // vuelven a buscar por el punto. Sin él —mapa, GPS, dirección— la consulta
+  // deja de ser la de ese dato y se olvidan el destacado y los candidatos.
+  async function consultarNorma(lat, lon, predio) {
+    setBusyPOT(true); setResultado(null); setCatastro(null);
     consultarPOT(lat, lon)
       .then(r => setResultado(r))
       .catch(e => setError('Error consultando POT: ' + e.message))
       .finally(() => setBusyPOT(false));
+    if (predio) { setCatastro(predio.fichas); setBusyCat(false); return; }
+    setHallado(null); setCandidatos(null);
+    setBusyCat(true);
     buscarCatastroGPS(lat, lon)
       .then(r => setCatastro(r))
       .catch(e => { console.warn('Catastro:', e); setCatastro([]); })
@@ -370,6 +462,7 @@ function ConsultaNormaScreen() {
   function limpiar() {
     setConsulta(''); setError(''); setAviso('');
     setPunto(null); setResultado(null); setCatastro(null);
+    setCandidatos(null); setHallado(null);
     if (markerRef.current) {
       markerRef.current.setMap(null);
       markerRef.current = null;
@@ -387,15 +480,15 @@ function ConsultaNormaScreen() {
           norma POT) a la derecha. Solo JSX movido, la lógica no cambia. */}
       <div className="page-title" style={{ marginBottom: 6 }}>Consultar norma POT</div>
       <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
-        Busca por dirección o coordenadas, captura tu ubicación GPS o toca el mapa.
+        Busca por dirección, coordenadas, ficha, matrícula o código catastral; captura tu ubicación GPS o toca el mapa.
       </div>
 
       <div className="cn-col">
 
-      {/* Campo unificado: dirección o coordenadas */}
+      {/* Campo unificado: dirección, coordenadas o dato catastral */}
       <div className="card" style={{ marginBottom: 12 }}>
         <label htmlFor="cn-direccion-coordenadas" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
-          Dirección o coordenadas
+          Dirección, coordenadas o dato catastral
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
@@ -403,7 +496,8 @@ function ConsultaNormaScreen() {
             value={consulta}
             onChange={e => setConsulta(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') buscar(); }}
-            placeholder="CL 50 32-10 o 6.337, -75.557"
+            placeholder="CL 50 32-10, ficha o matrícula"
+            aria-describedby="cn-busqueda-ayuda"
             style={{
               flex: 1, padding: '10px 12px', borderRadius: 8,
               border: '1px solid var(--borde)', background: 'var(--superficie)',
@@ -415,8 +509,8 @@ function ConsultaNormaScreen() {
             {busyGeo ? '...' : 'Buscar'}
           </button>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
-          Acepta direccion, coordenadas decimales, DMS, DMM o link de Google Maps.
+        <div id="cn-busqueda-ayuda" style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
+          Catastro: ficha, matrícula (con o sin 01N-) o código de 30 dígitos. Coordenadas: decimales, DMS, DMM o link de Google Maps.
         </div>
         <button onClick={capturarGPS} disabled={busyGPS} style={{
           marginTop: 8, width: '100%', padding: '10px 14px', borderRadius: 8,
@@ -436,6 +530,39 @@ function ConsultaNormaScreen() {
             color: gpsAccCN <= 10 ? 'var(--verde-dark)' : gpsAccCN <= 25 ? 'var(--cafe)' : 'var(--rojo)' }
         }, 'Precisión: ±' + gpsAccCN + 'm')}
       </div>
+
+      {/* El dato catastral está en varios predios: se elige uno. La lista se
+          queda a la vista para poder pasar de uno a otro sin volver a buscar. */}
+      {candidatos && (
+        <div className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px 10px' }}>
+            <div className="card-titulo" style={{ margin: 0 }}>{candidatos.titulo}</div>
+            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 2 }}>
+              Elige el predio que buscas.
+            </div>
+          </div>
+          <div className="cn-cand-lista">
+            {candidatos.predios.map(p => {
+              var f = p.fichas.filter(r => p.halladas.indexOf(r.catastral) >= 0)[0] || p.fichas[0];
+              var activo = !!hallado && hallado.tcod === p.tcod;
+              return (
+                <button type="button" key={p.tcod} className="cn-cand"
+                  aria-pressed={activo} onClick={() => { irAPredio(p); mostrarResultados(); }}>
+                  <span className="cn-cand-txt">
+                    <span className="cn-cand-dir">{f.direccion || 'Sin dirección'}</span>
+                    <span className="cn-cand-meta">
+                      {p.por === 'ficha' ? 'Ficha ' + f.ficha : 'Matrícula ' + f.matricula}
+                      {p.por === 'ficha' ? (f.matricula ? ' · Matrícula ' + f.matricula : '') : ' · Ficha ' + f.ficha}
+                      {p.halladas.length > 1 ? ' · ' + p.halladas.length + ' fichas' : ''}
+                    </span>
+                  </span>
+                  <span className="cn-cand-ir"><Icon.Chevron size={14} /></span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Mapa Google Maps */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
@@ -475,7 +602,7 @@ function ConsultaNormaScreen() {
       </div>{/* .cn-col */}
 
       {/* Alerta predio municipal: fuera del panel de catastro, justo después del mapa */}
-      <div className="cn-col cn-col-der">
+      <div className="cn-col cn-col-der" ref={resultadosRef} style={{ scrollMarginTop: 12 }}>
       {!busyCat && catastro && catastro.some(r => r.municipal) && (
         <div style={{
           padding: '12px 14px', borderRadius: 'var(--r-md)', marginBottom: 12,
@@ -525,11 +652,34 @@ function ConsultaNormaScreen() {
                   El punto no cae dentro de ningún predio del catastro 2026.
                 </div>
               )}
-              {!busyCat && catastro && catastro.length > 0 && (
-                catastro.length === 1
-                  ? <_TarjetaFichaCatastral r={catastro[0]} expandida={true} />
-                  : <_ListaFichasCatastrales fichas={catastro} maxAlto={420} />
-              )}
+              {!busyCat && catastro && catastro.length > 0 && (() => {
+                // Búsqueda por ficha o matrícula en una PH: la que calzó va
+                // arriba y abierta; el resto del predio, debajo y aparte.
+                var cats = hallado ? hallado.catastrales : [];
+                var halladas = catastro.filter(r => cats.indexOf(r.catastral) >= 0);
+                if (!halladas.length) {
+                  return catastro.length === 1
+                    ? <_TarjetaFichaCatastral r={catastro[0]} expandida={true} />
+                    : <_ListaFichasCatastrales fichas={catastro} maxAlto={420} />;
+                }
+                var resto = catastro.filter(r => cats.indexOf(r.catastral) < 0);
+                return (
+                  <>
+                    <div className="cn-cat-rotulo">Coincide con tu búsqueda · {hallado.etiqueta}</div>
+                    {halladas.map(r => (
+                      <_TarjetaFichaCatastral key={r.catastral} r={r} expandida={halladas.length <= 3} />
+                    ))}
+                    {resto.length > 0 && (
+                      <>
+                        <div className="cn-cat-rotulo" style={{ marginTop: 12 }}>
+                          {resto.length === 1 ? 'Otra ficha del mismo predio' : 'Otras ' + resto.length + ' fichas del mismo predio'}
+                        </div>
+                        <_ListaFichasCatastrales key={hallado.tcod} fichas={resto} maxAlto={320} />
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -540,7 +690,9 @@ function ConsultaNormaScreen() {
         <div className="card-titulo" style={{ marginBottom: 12 }}>Norma POT</div>
         {!resultado && !busyPOT && (
           <div style={{ color: 'var(--texto-suave)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
-            Sin consulta — busca una dirección o haz click en el mapa.
+            {catastro && catastro.length > 0 && !punto
+              ? 'Sin punto en el mapa — toca el mapa sobre el predio para ver su norma.'
+              : 'Sin consulta — busca un predio o toca el mapa.'}
           </div>
         )}
         {busyPOT && (

@@ -71,3 +71,81 @@ test('backend: actualizar compara el radicado ANTES de escribir la fila', opts, 
   assert.ok(control > 0, "'actualizar' no lee radicadoConocido");
   assert.ok(escritura > control, 'el control debe ir antes del setValues');
 });
+
+// ── AP-FILA-TODO (2026-10-01): el resto de acciones por número de fila ──
+function cargarControl(celdaRadicado, ultimaFila) {
+  const src = fs.readFileSync(BACKEND, 'utf8');
+  const piezas = [
+    /function _colIndex\([^)]*\) \{[\s\S]*?\n\}/.exec(src),
+    /function _normRadicadoFila\([^)]*\) \{[\s\S]*?\n\}/.exec(src),
+    /var _ACCIONES_FILA_BD = \{[\s\S]*?\};/.exec(src),
+    /function _controlFilaVisita\([^)]*\) \{[\s\S]*?\n\}/.exec(src),
+  ];
+  piezas.forEach((p, i) => assert.ok(p, 'falta la pieza ' + i + ' del control de fila'));
+  const logs = [];
+  const ctx = vm.createContext({
+    HOJA_BD: 'BD VISITAS',
+    Utilities: { formatDate: () => '01/10/2026 10:00' },
+    registrarLog: (ss, quien, texto) => logs.push(texto),
+  });
+  vm.runInContext(piezas.map(p => p[0]).join('\n'), ctx);
+  const ss = { getSheetByName: () => ({
+    getLastColumn: () => 2,
+    getLastRow: () => ultimaFila,
+    getRange: (f) => f === 1
+      ? { getValues: () => [['ATENCION PQR', 'RADICADO']] }
+      : { getValue: () => celdaRadicado },
+  }) };
+  return { control: vm.runInContext('_controlFilaVisita', ctx), ss, logs };
+}
+
+test('backend: asignar/completar se niegan si la fila tiene otro radicado', opts, () => {
+  const { control, ss, logs } = cargarControl(20261084284, 100);
+  for (const accion of ['asignarRadicado', 'desasignarRadicado', 'completarRegistro',
+                        'crearNuevaVisitaAsignada', 'subirOrdenPolicia', 'generarSolicitudVigilancia']) {
+    const r = control(ss, { accion, fila: 50, radicadoConocido: '20261079955' }, {});
+    assert.equal(r && r.ok, false, accion);
+    assert.equal(r.filaMovida, true, accion);
+  }
+  assert.equal(logs.length, 6);
+});
+
+test('backend: misma visita → pasa (celda numérica contra texto del cliente)', opts, () => {
+  const { control, ss } = cargarControl(20261079955, 100);
+  assert.equal(control(ss, { accion: 'completarRegistro', fila: 50, radicadoConocido: ' 20261079955 ' }, {}), null);
+});
+
+test('backend: fila vacía o fuera de la hoja también bloquea', opts, () => {
+  assert.equal(cargarControl('', 100).control(cargarControl('', 100).ss,
+    { accion: 'asignarRadicado', fila: 50, radicadoConocido: '20261079955' }, {}).filaMovida, true);
+  const fuera = cargarControl(20261079955, 40);
+  assert.equal(fuera.control(fuera.ss,
+    { accion: 'asignarRadicado', fila: 50, radicadoConocido: '20261079955' }, {}).filaMovida, true);
+});
+
+test('backend: cliente viejo (sin radicadoConocido) y acciones ajenas no se tocan', opts, () => {
+  const { control, ss } = cargarControl(20261084284, 100);
+  assert.equal(control(ss, { accion: 'asignarRadicado', fila: 50 }, {}), null);
+  assert.equal(control(ss, { accion: 'toggleActivo', fila: 50, radicadoConocido: 'X' }, {}), null);
+});
+
+test('backend: el control corre antes del dedup y del switch', opts, () => {
+  const src = fs.readFileSync(BACKEND, 'utf8');
+  const ini = src.indexOf('function doPost(e)');
+  const control = src.indexOf('_controlFilaVisita(ss, datos, auth)', ini);
+  assert.ok(control > ini);
+  assert.ok(control < src.indexOf('_dedupRequestInicio(datos)', ini));
+  assert.ok(control < src.indexOf('switch (datos.accion)', ini));
+});
+
+test('cliente: asignar, desasignar y completar mandan radicadoConocido', () => {
+  const buscar = fs.readFileSync(path.join(__dirname, '..', 'buscar.jsx'), 'utf8');
+  for (const accion of ['asignarRadicado', 'crearNuevaVisitaAsignada', 'desasignarRadicado', 'completarRegistro']) {
+    const i = buscar.indexOf("accion: '" + accion + "'");
+    assert.ok(i > 0, accion);
+    assert.ok(buscar.slice(i, i + 160).includes('radicadoConocido'), accion + ' sin radicadoConocido');
+  }
+  const agenda = fs.readFileSync(path.join(__dirname, '..', 'agenda.jsx'), 'utf8');
+  const j = agenda.indexOf("accion: 'asignarRadicado'");
+  assert.ok(agenda.slice(j, j + 160).includes('radicadoConocido'));
+});

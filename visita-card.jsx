@@ -98,7 +98,7 @@ function ordenPoliciaDe(f) {
   return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
 }
 
-function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, mostrarPersonaAtiende, labelBadge, children, accionesMt }) {
+function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, mostrarPersonaAtiende, mostrarReiterados, labelBadge, children, accionesMt }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const tono = TONOS_VISITA[est] || { cls: '', label: est || '—' };
   const textoBadge = labelBadge != null ? labelBadge : tono.label;
@@ -116,11 +116,14 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
   const personaAtiende = mostrarPersonaAtiende
     ? ((f['NOMBRE PERSONA ATIENDE'] || '').toString().trim())
     : '';
+  // Igual que «atiende»: solo cuando la búsqueda coincidió con un reiterado,
+  // para que se vea por qué salió una tarjeta con otro radicado.
+  const reiterados = mostrarReiterados ? radicadosReiterados(f).join(', ') : '';
   // Fecha del radicado — siempre visible junto al número, no depende de prop.
   // Para Oficio, FECHA RADICADO = fecha de la visita (mismo valor, ver CLAUDE.md).
   const fechaRadicado = formatearFecha(f['FECHA RADICADO'] || '');
 
-  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende;
+  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende || reiterados;
   const mt = (accionesMt != null) ? accionesMt : 12;
 
   return (
@@ -158,6 +161,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
               {fechaAsig   && <span>asignada {fechaAsig}</span>}
               {orden       && <span>Orden {orden}</span>}
               {personaAtiende && <span>atiende {personaAtiende}</span>}
+              {reiterados  && <span>reitera {reiterados}</span>}
             </div>
           )}
         </div>

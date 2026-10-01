@@ -198,6 +198,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
   // más abajo — sin esto, cada re-render de BuscarScreen (ej. un keystroke
   // en otro filtro) les pasaba callbacks con identidad nueva y anulaba el memo.
+  // Para sacar el radicado de una fila dentro de callbacks memoizados sin
+  // meter `datos` en sus dependencias (viaja como radicadoConocido).
+  const datosRef = useRefB(datos);
+  datosRef.current = datos;
   const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion) => {
     // Relevar una visita INICIADA no es lo mismo que asignar una pendiente:
     // el backend conserva el estado, pero por la regla del diligenciador el
@@ -219,6 +223,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     try {
       await gasPost({
         accion: 'asignarRadicado', fila, inspector,
+        radicadoConocido: (f && f['RADICADO']) || '',
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
@@ -234,8 +239,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector, fechaAsignacion) => {
     setBusyFila(filaOrigen);
     try {
+      const fOrigen = datosRef.current.find(x => x._idx === filaOrigen);
       const r = await gasPost({
         accion: 'crearNuevaVisitaAsignada',
+        radicadoConocido: (fOrigen && fOrigen['RADICADO']) || '',
         fila: filaOrigen, inspector,
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
@@ -257,7 +264,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     if (!ok) return;
     setBusyFila(fila);
     try {
-      await gasPost({ accion: 'desasignarRadicado', fila });
+      await gasPost({ accion: 'desasignarRadicado', fila, radicadoConocido: rad || '' });
       invalidarCache('visitas');
       await cargar(true);
     } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
@@ -293,6 +300,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             fila: f._idx,
             idCarpetaVisita: idCarpeta,
             radicado:        f['RADICADO'] || '',
+            radicadoConocido: f['RADICADO'] || '',
             // La celda puede llegar como Date serializada a ISO: el nombre del
             // archivo salía «…_20260924T05:00:00.000Z». Se manda DD/MM/YYYY.
             fechaVisita:     formatearFecha(f['FECHA DE VISITA']) || '',
@@ -302,7 +310,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           });
           // Con la orden ya escaneada, deja armado el PDF único para la
           // policía (solicitud + orden). Sin orden todavía no arma nada.
-          await armarSolicitudUnificada(f._idx, idCarpeta);
+          await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '');
         } catch (e) {
           await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
           setBusyFila(null);
@@ -337,6 +345,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       const dias = fechaAsig ? diasDesde(fechaAsig) : '';
       await gasPost({
         accion: 'completarRegistro', fila,
+        radicadoConocido: (f && f['RADICADO']) || '',
         dias: dias || '',
         fecha: hoyDDMMAAAA(),
       });
@@ -446,7 +455,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           .some(k => (f[k] || '').toString().toUpperCase().includes(lq))
           || (!!lqDir && ['DIRECCION INFRACCION', 'DIRECCION']
             .some(k => !!f[k] && claveBusquedaDireccion(f[k]).includes(lqDir)))
-          || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)));
+          || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)))
+          // Radicado reiterado: anotado en la fila del caso principal.
+          || coincideReiterado(f, lq);
         if (!hay) return false;
       }
       if (filtroComunas.length) {
@@ -904,6 +915,7 @@ function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar, q,
       <VisitaCard f={f}
         mostrarFecha mostrarInspector mostrarAsignado mostrarOrden
         mostrarPersonaAtiende={coincideAtiende(f, q)}
+        mostrarReiterados={coincideReiterado(f, q)}
         labelBadge={est || '—'}
         accionesMt={10}>
         <AccionesFilaVisita

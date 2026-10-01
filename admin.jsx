@@ -88,6 +88,7 @@ function TabVigilancia() {
         fila:             f._idx,
         idCarpetaVisita:  idCarpeta,
         radicado:         f['RADICADO'] || '',
+        radicadoConocido: f['RADICADO'] || '',
         // Date serializada a ISO rompía el nombre del archivo → DD/MM/YYYY.
         fechaVisita:      formatearFecha(f['FECHA DE VISITA']) || '',
         nOrdenPolicia:    f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '',
@@ -97,7 +98,7 @@ function TabVigilancia() {
       // Si la orden ya está escaneada, se arma de una vez el PDF único que se
       // envía a la policía (solicitud + orden). Si todavía no lo está, no se
       // arma nada: lo hará el escáner al subirla.
-      if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta);
+      if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '');
       // Refrescar para mostrar el link recién escrito en BD
       await cargar(true);
       if (r.linkDoc) window.open(r.linkDoc, '_blank', 'noopener,noreferrer');

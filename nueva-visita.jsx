@@ -623,7 +623,11 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
     d.orden || '',                                // AS N° ORDEN DE POLICIA
     citFmt,                                       // AT FECHA CITACION
     _primeraMayus(d.actuacion) + (d.obsConclusion ? '\n══CONCLUSIONES══\n' + d.obsConclusion : ''), // AU ACTUACION / OBSERVACIONES (incluye conclusiones)
-    '',                                           // AV RADICADOS REITERADOS
+    // Se anota a mano en el Sheet y la app no lo edita: se devuelve lo que
+    // traía la fila (mandar '' lo borraba en cada guardado). Una visita de
+    // seguimiento los hereda de la fila que se clonó: son del caso, y van
+    // en cada visita nueva (decisión del usuario 2026-10-01).
+    textoReiterados(filaPendiente),               // AV RADICADOS REITERADOS
     // Número, NUNCA string: un "6.345587" escrito como texto lo reinterpreta
     // el locale del Sheet (punto = separador de miles) y queda 6345587.
     d.lat != null ? Number(Number(d.lat).toFixed(6)) : '',  // AW LATITUD
@@ -1600,6 +1604,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
       visitas: caso.visitas,
       ultimaVisita: caso.ultima,
       nVisitaSig: caso.nVisitaSig,
+      reiterado: caso.reiterado || '',
     });
     setPaso('resultado');
   }
@@ -1759,6 +1764,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                       <div style={textoAyuda}>
                         Visita N°{u['N° VISITA'] || u['N VISITA'] || 1} · {est || '—'}
                         {dir ? ' · ' + dir : ''}{orden ? ' · Orden ' + orden : ''}
+                        {c.reiterado ? ' · reitera ' + c.reiterado : ''}
                       </div>
                     </div>
                   </button>
@@ -1834,6 +1840,11 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                   <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>
                     Radicado <span className="mono">{resultado.radicado}</span>
                   </div>
+                  {resultado.reiterado && (
+                    <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 10 }}>
+                      <span className="mono">{resultado.reiterado}</span> es un radicado reiterado de este caso.
+                    </div>
+                  )}
                   {/* Resumen de la visita existente */}
                   <div style={{
                     background: 'var(--gris-bg)', borderRadius: 'var(--r-md)',
@@ -3978,6 +3989,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       }
       window.abrirInformeF43({
         fila: filaEditando,
+        // El radicado que tiene la fila en BD (no el del formulario, que puede
+        // estar editado sin guardar): el backend lo compara antes de escribir.
+        radicadoFila: _radicadoFilaRef.current,
         idCarpeta: d.idCarpetaVisita,
         // Oficio: el radicado no vive en el state, se deriva de la orden
         // (mismo criterio que _construirPayload y _construirDatosF46).
@@ -5137,6 +5151,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             <EscanerOrdenPolicia
               idCarpetaVisita={d.idCarpetaVisita}
               fila={filaEditando}
+              radicadoFila={_radicadoFilaRef.current}
               orden={d.orden}
               linkInicial={d.linkOrdenPolicia}
               onSubido={link => setCampo('linkOrdenPolicia', link)}

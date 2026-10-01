@@ -1274,6 +1274,7 @@ function _construirPayloadF43Plantilla(tFinal) {
     fuente_localizacion:     locImg.fuente === 'qgis' ? 'QGIS' : 'Google Maps',
     idCarpetaVisita:         V6_CTX.idCarpeta,
     fila:                    V6_CTX.fila,
+    radicadoConocido:        V6_CTX.radicadoFila || '',
     radicado:                V6_CTX.radicado || 'informe',
     // Siempre true: llegar aquí es haber recorrido el wizard y pedir un informe
     // nuevo. Con false el backend devolvía el F-GGO-43 que ya estuviera en la
@@ -4354,6 +4355,9 @@ function prefillDesdeURL() {
   V6_CTX.fila      = p.get('fila') || null;
   V6_CTX.idCarpeta = p.get('idCarpeta') || null;
   V6_CTX.radicado  = p.get('radicado') || null;
+  // Radicado que tiene la fila en BD: viaja como radicadoConocido para que el
+  // backend no escriba el link del informe en la fila de otra visita.
+  V6_CTX.radicadoFila = p.get('radicadoFila') || '';
   V6_CTX.direccion = p.get('direccion') || null;
   V6_CTX.lat       = p.get('lat') || null;
   V6_CTX.lon       = p.get('lon') || null;
@@ -4551,6 +4555,7 @@ async function subirInformeAlDrive(blob) {
         sesionUsuario: SESION_USUARIO,
         sesionHash: SESION_HASH,
         fila: V6_CTX.fila,
+        radicadoConocido: V6_CTX.radicadoFila || '',
         idCarpeta: V6_CTX.idCarpeta,
         nombreArchivo: nombre,
         base64: base64

@@ -324,6 +324,43 @@ function _ordenesDeFila(f) {
   return out;
 }
 
+// ── Radicados reiterados (col AV de BD VISITAS) ────────────────
+// Otros radicados que llegaron por el mismo caso, anotados a mano en la fila
+// del caso principal. Buscar uno de ellos debe llevar a esa fila, y guardar
+// desde la app no puede borrarlos (hasta 2026-10-01 el payload mandaba ''
+// en esa posición).
+function textoReiterados(f) {
+  if (!f) return '';
+  var v = f['RADICADOS REITERADOS'];
+  if (v == null) v = f['RADICADO REITERADO'];
+  if (v == null) {
+    // Encabezado escrito distinto en la hoja: cualquiera que diga «REITERAD».
+    for (var k in f) {
+      if (/REITERAD/i.test(k)) { v = f[k]; break; }
+    }
+  }
+  return String(v == null ? '' : v).trim();
+}
+// Como claves comparables (claveRadicado). La celda es texto libre: los
+// radicados van separados por coma, espacio, salto de línea, «/» o «y».
+function radicadosReiterados(f) {
+  var t = textoReiterados(f);
+  if (!t) return [];
+  var out = [];
+  t.toUpperCase().split(/[^0-9A-Z-]+/).forEach(function (p) {
+    // Sin dígitos es una palabra suelta («Y», «RAD»), no un radicado.
+    if (/\d/.test(p) && out.indexOf(p) === -1) out.push(p);
+  });
+  return out;
+}
+// ¿La fila tiene `texto` entre sus reiterados? En Buscar se teclea a medias,
+// así que basta que un reiterado lo contenga (mínimo 4 caracteres).
+function coincideReiterado(f, texto) {
+  var q = claveRadicado(texto);
+  if (q.length < 4) return false;
+  return radicadosReiterados(f).some(function (r) { return r.indexOf(q) !== -1; });
+}
+
 // Qué tecleó el inspector: 'radicado' (8+ dígitos), 'oficio' (OFICIO-…),
 // 'orden' (AAAA-MM-NNN o solo el consecutivo) o 'direccion'.
 function tipoBusquedaCaso(texto) {
@@ -371,6 +408,18 @@ function buscarCasos(filas, texto) {
   var clave = claveRadicado(t);
   var exactas = lista.filter(function (f) { return claveRadicado(f['RADICADO']) === clave; });
   if (exactas.length) return { tipo: tipo, casos: _agruparCasos(exactas, lista) };
+  // 2) Radicado reiterado: no tiene fila propia, está anotado en la del caso
+  // principal. `reiterado` le dice al modal por qué salió otro radicado.
+  // Sin mirar `tipo`: en la BD hay reiterados `2025-123456` (36 celdas,
+  // medido 2026-10-01), que tipoBusquedaCaso toma por dirección.
+  if (clave.length >= 8) {
+    var conReiterado = lista.filter(function (f) { return radicadosReiterados(f).indexOf(clave) !== -1; });
+    if (conReiterado.length) {
+      var casosR = _agruparCasos(conReiterado, lista);
+      casosR.forEach(function (c) { c.reiterado = clave; });
+      return { tipo: tipo, casos: casosR };
+    }
+  }
   var coincide = null;
   if (tipo === 'oficio' || tipo === 'orden') {
     var q = _sinCerosTramos(t.replace(/\s+/g, '').replace(/^OFICIO-?/, ''));
@@ -927,6 +976,32 @@ function esCodigoPredioMatriz(catastral) {
   return /^\d{21}900000000$/.test(String(catastral == null ? '' : catastral).trim());
 }
 
+// ── Búsqueda por dato catastral (Consulta norma) ───────────
+// ¿Lo que se tecleó es un dato de catastro y no una dirección ni coordenadas?
+//   '15093'                  → { tipo: 'numero', numero }    ficha O matrícula
+//   '01N-5358461'            → { tipo: 'matricula', numero } con círculo registral
+//   30 dígitos (NPN)         → { tipo: 'codigo', tcod, sufijo }
+//   21 dígitos (terreno)     → { tipo: 'codigo', tcod, sufijo: '' }
+// Ficha y matrícula son números del mismo largo (medido en catastro.json:
+// fichas de 5 a 9 dígitos, matrículas hasta 7, y 1.127 números existen como
+// las dos cosas): un número suelto no se puede clasificar, se busca en ambas.
+// El código admite espacios y guiones (así viene impreso) y la forma sin el
+// `05088` del municipio. Nada con punto o coma: eso son coordenadas. Menos de
+// 4 dígitos no se toma: sería el número de una vía a medio escribir.
+function claveBusquedaCatastral(texto) {
+  var s = String(texto == null ? '' : texto).trim().toUpperCase();
+  if (!s) return null;
+  var mm = s.match(/^\d{1,3}[A-Z]\s*-?\s*(\d{1,9})$/);
+  if (mm) return { tipo: 'matricula', numero: Number(mm[1]) };
+  if (/^\d{4,9}$/.test(s)) return { tipo: 'numero', numero: Number(s) };
+  if (!/^\d[\d\s-]*\d$/.test(s)) return null;
+  var d = s.replace(/[\s-]/g, '');
+  if (d.length === 25 || d.length === 16) d = '05088' + d;
+  if (d.length === 30) return { tipo: 'codigo', tcod: d.slice(0, 21), sufijo: d.slice(21) };
+  if (d.length === 21) return { tipo: 'codigo', tcod: d, sufijo: '' };
+  return null;
+}
+
 // ── Visibilidad por fecha de asignación ───────────────────
 // Una visita programada para el jueves no es trabajo del martes: el visitador
 // solo debe verla a partir del día de su asignación. Antes aparecían todas
@@ -1142,6 +1217,7 @@ var _cuUtilsExports = {
   ubicacionConfirmadaVigente: ubicacionConfirmadaVigente,
   codigoPredioMatriz: codigoPredioMatriz,
   esCodigoPredioMatriz: esCodigoPredioMatriz,
+  claveBusquedaCatastral: claveBusquedaCatastral,
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
@@ -1156,6 +1232,9 @@ var _cuUtilsExports = {
   borradorEsDeLaFila: borradorEsDeLaFila,
   claveRadicado: claveRadicado,
   radicadoDeOficio: radicadoDeOficio,
+  textoReiterados: textoReiterados,
+  radicadosReiterados: radicadosReiterados,
+  coincideReiterado: coincideReiterado,
   tipoBusquedaCaso: tipoBusquedaCaso,
   buscarCasos: buscarCasos,
   casosRelacionados: casosRelacionados,

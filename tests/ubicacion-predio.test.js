@@ -240,3 +240,36 @@ test('vecino preferido: mismo costado antes que placa más cercana', () => {
   assert.equal(terrenoVecinoPreferido(c, []), null);
   assert.equal(terrenoVecinoPreferido(null, ts), null);
 });
+
+// ── Búsqueda por dato catastral (Consulta norma) ──────────────
+// Lo que se vigila: que una dirección o unas coordenadas nunca se tomen por
+// ficha (dejarían de buscarse como lo que son), y que un código escrito con
+// espacios no se lea como latitud y longitud.
+test('dato catastral: ficha, matrícula y código', () => {
+  const { claveBusquedaCatastral: k } = require('../utils.js');
+  assert.deepEqual(k('15093'), { tipo: 'numero', numero: 15093 });
+  assert.deepEqual(k(' 5358461 '), { tipo: 'numero', numero: 5358461 });
+  assert.deepEqual(k('01N-5358461'), { tipo: 'matricula', numero: 5358461 });
+  assert.deepEqual(k('01n 5358461'), { tipo: 'matricula', numero: 5358461 });
+  const tcod = '050880100030100150006';
+  assert.deepEqual(k(tcod), { tipo: 'codigo', tcod, sufijo: '' });
+  assert.deepEqual(k(tcod + '901040004'), { tipo: 'codigo', tcod, sufijo: '901040004' });
+  // Como viene impreso, y sin el 05088 del municipio.
+  assert.deepEqual(k('05088 01 00 03 01 0015 0006 9 01 04 0004'), { tipo: 'codigo', tcod, sufijo: '901040004' });
+  assert.deepEqual(k('0100030100150006901040004'), { tipo: 'codigo', tcod, sufijo: '901040004' });
+  assert.deepEqual(k('0100030100150006'), { tipo: 'codigo', tcod, sufijo: '' });
+});
+
+test('dato catastral: direcciones y coordenadas no lo son', () => {
+  const { claveBusquedaCatastral: k } = require('../utils.js');
+  assert.equal(k('6.337, -75.557'), null);
+  assert.equal(k('6.337 -75.557'), null);
+  assert.equal(k('6 -75'), null);
+  assert.equal(k('CL 50 32-10'), null);
+  assert.equal(k('50 32-10'), null);
+  assert.equal(k('50'), null);          // número de vía a medio escribir
+  assert.equal(k('123'), null);
+  assert.equal(k('1234567890'), null);  // 10 dígitos: ni ficha ni código
+  assert.equal(k(''), null);
+  assert.equal(k(null), null);
+});

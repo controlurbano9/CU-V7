@@ -65,6 +65,55 @@ test('radicado PQR inexistente no cae a otras búsquedas', () => {
   assert.equal(buscarCasos(FILAS, '20269999999').casos.length, 0);
 });
 
+// ── Radicados reiterados (col AV) ──────────────────────────────
+const { textoReiterados, radicadosReiterados, coincideReiterado } = require('../utils.js');
+const FILAS_R = FILAS.concat([
+  { _idx: 60, 'RADICADO': '20261050000', 'N° VISITA': '1', 'DIRECCION': 'CL 20 # 10-05',
+    'RADICADOS REITERADOS': '20261060001, 20261070002 / oficio-2026-09-300 y 20261080003' },
+  { _idx: 70, 'RADICADO': '20261050000', 'N° VISITA': '2', 'DIRECCION': 'CL 20 # 10-05', 'RADICADOS REITERADOS': '' },
+]);
+
+test('radicadosReiterados separa la celda de texto libre', () => {
+  assert.deepEqual(radicadosReiterados(FILAS_R[5]),
+    ['20261060001', '20261070002', 'OFICIO-2026-09-300', '20261080003']);
+  assert.deepEqual(radicadosReiterados(FILAS_R[6]), []);
+  assert.deepEqual(radicadosReiterados(null), []);
+  // Encabezado escrito distinto en la hoja.
+  assert.equal(textoReiterados({ 'Radicados reiterados ': ' 123 ' }), '123');
+});
+
+test('un radicado reiterado lleva al caso principal, con todas sus visitas', () => {
+  for (const q of ['20261070002', 'Oficio-2026-09-300']) {
+    const r = buscarCasos(FILAS_R, q);
+    assert.equal(r.casos.length, 1, q);
+    assert.equal(r.casos[0].radicado, '20261050000', q);
+    assert.equal(r.casos[0].reiterado, q.toUpperCase(), q);
+    assert.deepEqual(r.casos[0].visitas.map(f => f['N° VISITA']), ['2', '1'], q);
+  }
+});
+
+test('reiterado con forma AAAA-NNNNNN, en celda de varias líneas', () => {
+  const filas = FILAS.concat([{ _idx: 80, 'RADICADO': '20261050009', 'N° VISITA': '1',
+    'DIRECCION': 'CL 30 # 40-12', 'RADICADOS REITERADOS': '2025-123456\n20261060009 RPTA' }]);
+  assert.deepEqual(radicadosReiterados(filas[5]), ['2025-123456', '20261060009']);
+  const r = buscarCasos(filas, '2025-123456');
+  assert.deepEqual(r.casos.map(c => c.radicado), ['20261050009']);
+  assert.equal(r.casos[0].reiterado, '2025-123456');
+});
+
+test('el radicado propio gana sobre el reiterado y no lleva la marca', () => {
+  const r = buscarCasos(FILAS_R, '20261050000');
+  assert.equal(r.casos.length, 1);
+  assert.equal(r.casos[0].reiterado, undefined);
+});
+
+test('coincideReiterado: parcial desde 4 caracteres (Buscar)', () => {
+  assert.equal(coincideReiterado(FILAS_R[5], '2026107'), true);
+  assert.equal(coincideReiterado(FILAS_R[5], '202'), false);
+  assert.equal(coincideReiterado(FILAS_R[5], '20269999'), false);
+  assert.equal(coincideReiterado(FILAS_R[6], '2026107'), false);
+});
+
 test('casosRelacionados: misma placa (sin mirar el apto) de otro radicado', () => {
   const c = casosRelacionados(FILAS, { direccion: 'CR 68C # 59E-51', radicadoPropio: '20261099999' });
   assert.deepEqual(c.map(x => x.radicado), ['OFICIO-2026-09-239']);

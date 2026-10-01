@@ -157,6 +157,7 @@ function AgendaScreen({ usuario, onContinuar }) {
     try {
       await gasPost({
         accion: 'asignarRadicado', fila, inspector,
+        radicadoConocido: (f && f['RADICADO']) || '',
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
@@ -475,7 +476,7 @@ function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setA
           </div>
 
           <PanelSeleccionInspector
-            f={{ _idx: it.fila, 'ESTADO VISITA': it.estado || 'PENDIENTE' }}
+            f={{ _idx: it.fila, 'RADICADO': it.radicado, 'ESTADO VISITA': it.estado || 'PENDIENTE' }}
             busy={busyFila === it.fila}
             abierto={asignandoFila === it.fila}
             inspectores={inspectores}

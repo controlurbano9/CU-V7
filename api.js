@@ -778,8 +778,12 @@ async function generarSolicitudVigilancia(params) {
 // no manda CORS, el navegador no puede bajarlos solo) y aquí se unen con
 // pdf-lib. Ver [SEC:SolicitudUnificada] en el backend.
 // Retorna { ok, solicitud, orden, hayOrden, nombre }.
-async function obtenerPdfsSolicitud(fila) {
-  return gasPost({ accion: 'obtenerPdfsSolicitud', fila });
+// `radicadoConocido` (aquí y en las demás acciones que van por número de
+// fila): el radicado que el cliente cree que hay en esa fila. Si en el Sheet
+// se borró una fila de más arriba, todas se corren y el número apunta a la
+// visita de otro; el backend compara y se niega (_controlFilaVisita).
+async function obtenerPdfsSolicitud(fila, radicadoConocido) {
+  return gasPost({ accion: 'obtenerPdfsSolicitud', fila, radicadoConocido: radicadoConocido || '' });
 }
 
 async function subirSolicitudUnificada(params) {
@@ -823,10 +827,10 @@ function _bytesAB64(bytes) {
 // Sin orden escaneada no se arma nada: un "PDF unificado" con una sola pieza
 // no aporta, y dejarlo sin generar es lo que hace que al escanear la orden
 // más tarde se arme por primera vez.
-async function armarSolicitudUnificada(fila, idCarpetaVisita) {
+async function armarSolicitudUnificada(fila, idCarpetaVisita, radicadoConocido) {
   try {
     if (!fila || !idCarpetaVisita) return '';
-    const r = await obtenerPdfsSolicitud(fila);
+    const r = await obtenerPdfsSolicitud(fila, radicadoConocido);
     if (!r || !r.ok || !r.hayOrden) return '';
 
     const { PDFDocument } = await cargarPdfLib();
@@ -841,6 +845,7 @@ async function armarSolicitudUnificada(fila, idCarpetaVisita) {
 
     const res = await subirSolicitudUnificada({
       fila, idCarpetaVisita,
+      radicadoConocido: radicadoConocido || '',
       base64: _bytesAB64(await salida.save()),
       nombre: r.nombre,
     });
@@ -1043,11 +1048,12 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
 // (raíz, no /Fotos) y deja el link en BD col LINK_ORDEN_POLICIA.
 // El PDF llega ya armado desde el cliente (escaner-orden.jsx). Mismo trato
 // offline que las fotos: sin red se encola y sube al recuperar conexión.
-async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden) {
+async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden, radicadoConocido) {
   const body = {
     accion: 'subirOrdenPolicia',
     idCarpeta: idCarpetaVisita,
     fila: fila,
+    radicadoConocido: radicadoConocido || '',
     base64: base64,
     nombre: nombre,
     orden: orden || '',
@@ -1576,7 +1582,7 @@ function _indiceDireccionesCatastro() {
           }
         }
         if (i < tcods.length) { setTimeout(tramo, 0); return; }
-        _anilloPorTcod = new Map(data.p.map(function (p) { return [p[0], p[5]]; }));
+        _anillosCatastro(data);
         _indiceDir = idx;
         _indiceDirPromesa = null;
         resolve(idx);
@@ -1632,6 +1638,54 @@ async function buscarCatastroPorDireccion(dir) {
   return { exacta: exacta, terrenos: terrenos, fichaUnidad: fichaUnidad };
 }
 
+function _anillosCatastro(data) {
+  if (!_anilloPorTcod) _anilloPorTcod = new Map(data.p.map(function (p) { return [p[0], p[5]]; }));
+  return _anilloPorTcod;
+}
+
+// ── CATASTRO — búsqueda por ficha, matrícula o código ─────────
+// `clave` viene de claveBusquedaCatastral (utils.js). Devuelve
+//   { predios: [{ tcod, anillo, fichas, halladas, por }], unidadNoHallada }
+// `fichas` = todas las del terreno (formato de buscarCatastroGPS); `halladas`
+// = códigos catastrales de las que calzaron; `por` = 'ficha' | 'matricula' |
+// 'codigo'. `anillo` es null en los terrenos sin contorno (714 de 49.719).
+// Un número suelto se busca como ficha Y como matrícula; una matrícula puede
+// estar en varios predios (133 repetidas), así que puede volver más de uno.
+// Sin índice: recorrer las ~225.000 fichas comparando enteros toma
+// milisegundos, a diferencia de las direcciones, que hay que normalizar.
+async function buscarCatastroPorDato(clave) {
+  const data = await _cargarCatastro();
+  const anillos = _anillosCatastro(data);
+  const porTcod = new Map();
+  let unidadNoHallada = false;
+  function anotar(tcod, rec, por) {
+    let p = porTcod.get(tcod);
+    if (!p) {
+      p = { tcod: tcod, anillo: anillos.get(tcod) || null, fichas: _fichasDeTerreno(data, tcod), halladas: [], por: por };
+      porTcod.set(tcod, p);
+    }
+    if (rec) p.halladas.push(tcod + rec[1]);
+  }
+  if (clave && clave.tipo === 'codigo') {
+    const fs = data.f[clave.tcod];
+    if (fs) {
+      const rec = clave.sufijo ? fs.find(function (r) { return r[1] === clave.sufijo; }) : null;
+      unidadNoHallada = !!clave.sufijo && !rec;
+      anotar(clave.tcod, rec, 'codigo');
+    }
+  } else if (clave && (clave.tipo === 'numero' || clave.tipo === 'matricula')) {
+    const n = clave.numero, soloMatricula = clave.tipo === 'matricula';
+    for (const tcod in data.f) {
+      const fs = data.f[tcod];
+      for (let k = 0; k < fs.length; k++) {
+        if (!soloMatricula && fs[k][0] === n) anotar(tcod, fs[k], 'ficha');
+        else if (fs[k][4] === n) anotar(tcod, fs[k], 'matricula');
+      }
+    }
+  }
+  return { predios: Array.from(porTcod.values()), unidadNoHallada: unidadNoHallada };
+}
+
 // Contorno del terreno (o terrenos, si se traslapan) que contiene el punto,
 // para resaltarlo en el mapa. Mismo filtro bbox + ray casting que
 // buscarCatastroGPS; devuelve [{ tcod, anillo: [[lat,lon],...] }]. Comparte la descarga
@@ -1670,7 +1724,7 @@ Object.assign(window, {
   describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,
   buscarCatastroGPS, poligonosCatastroGPS, formatearCOP,
-  fichasCatastroTerreno, buscarCatastroPorDireccion,
+  fichasCatastroTerreno, buscarCatastroPorDireccion, buscarCatastroPorDato,
   SESSION_V6: SESSION,
   invalidarCache,
 });

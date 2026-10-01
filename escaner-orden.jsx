@@ -637,7 +637,7 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
 
 // ─── Componente ────────────────────────────────────────────────
 
-function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubido }) {
+function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, orden, linkInicial, onSubido }) {
   // paginas: [{ id, file, rot, cuad, vista, dataUrl, w, h }] — se guarda el
   // File original para que rotar o recortar reprocese desde la fuente en vez
   // de degradar el JPEG. `cuad` = esquinas de la hoja normalizadas a [0,1]
@@ -830,7 +830,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
     try {
       const nombre = 'ORDEN_POLICIA_' + String(orden || 'SN').replace(/[\/\\:*?"<>|]/g, '-') + '.pdf';
       setOcupado('Subiendo a Drive...');
-      const r = await subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden || '');
+      const r = await subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden || '', radicadoFila);
 
       setOcupado('');
       if (r.encolado) {
@@ -853,7 +853,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, orden, linkInicial, onSubi
       // la policía queda desactualizado en cuanto cambia la orden: se rearma.
       // Best-effort y sin bloquear — devuelve '' si no hay solicitud todavía,
       // y entonces lo armará Admin → Vigilancia al generarla.
-      armarSolicitudUnificada(fila, idCarpetaVisita);
+      armarSolicitudUnificada(fila, idCarpetaVisita, radicadoFila);
       // AP8: el PDF puede haber quedado en Drive sin registrarse en BD o sin
       // permiso de lectura — eso se dice, no se oculta tras un "listo".
       if (r.avisoBD || r.aviso) {
