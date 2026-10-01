@@ -119,10 +119,14 @@ function SemanaCard({ f, movil, onAbrir }) {
 }
 
 // ── Componente principal ───────────────────────────────────────
-function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir }) {
+function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector }) {
   const prefs0 = _svPrefs();
   const [offset, setOffset] = useStateSV(prefs0.offset || 0);
-  const [inspector, setInspector] = useStateSV(prefs0.inspector || '');
+  // El filtro de inspector lo comparte Inicio con la lista de Alertas: si el
+  // padre lo maneja (onInspector), manda el suyo; si no, es estado propio.
+  const [inspectorLocal, setInspectorLocal] = useStateSV(prefs0.inspector || '');
+  const inspector = onInspector ? (inspectorExt || '') : inspectorLocal;
+  const setInspector = onInspector || setInspectorLocal;
   const [diaSel, setDiaSel] = useStateSV(null);
   const [movil, setMovil] = useStateSV(() => {
     try { return window.matchMedia(SV_MOVIL).matches; } catch (e) { return false; }

@@ -9,9 +9,9 @@ const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 // Término legal de respuesta a derechos de petición (PQR), Ley 1755/2015 (CPACA): 15 días hábiles.
 const PQR_PLAZO_DIAS_HABILES = 15;
 
-// Días hábiles que una asignada puede estar sin iniciarse antes de alertar.
-// Mismo umbral que la alerta de "lleva N días sin completar".
-const DIAS_ALERTA_SIN_INICIAR = 5;
+// Días hábiles que una asignada puede estar sin iniciarse, o una iniciada sin
+// completarse, antes de alertar. Un solo umbral para las dos.
+const DIAS_ALERTA_DEMORA = 5;
 
 function HomeScreen({ usuario, onContinuar }) {
   const [datos, setDatos] = useStateH([]);
@@ -23,6 +23,12 @@ function HomeScreen({ usuario, onContinuar }) {
   // la regla del diligenciador. Aquí no hay acciones de gestión que separar.
   const veTodo = veTodasLasVisitas(usuario.rol);
   const miNombre = usuario.usuario.toUpperCase();
+
+  // Filtro de inspector: uno solo para la Semana y para Alertas (los chips
+  // viven en la cabecera de la Semana). Arranca del que la Semana recordaba.
+  const [inspector, setInspector] = useStateH(() => _svPrefs().inspector || '');
+  // Filtro por tipo de alerta: '' | 'urgente' | 'sinIniciar' | 'sinCompletar'.
+  const [filtroAlerta, setFiltroAlerta] = useStateH('');
 
   useEffectH(() => { cargar(); }, []);
   // La lista sale de la copia local al instante; si la red trae cambios se
@@ -126,6 +132,10 @@ function HomeScreen({ usuario, onContinuar }) {
         }
         // Tampoco alerta por una visita que todavía no se le ha entregado.
         if (!asignadaVisibleHoy(f)) return;
+      } else if (inspector && !_esVisitaDe(f, inspector)) {
+        // Admin/supervisor con un inspector elegido en la Semana: misma regla
+        // del diligenciador que aplica la rejilla (agruparSemana).
+        return;
       }
 
       // Alerta roja: PQR cerca de vencer o vencida (término legal 15 días
@@ -142,9 +152,10 @@ function HomeScreen({ usuario, onContinuar }) {
             const n = Math.abs(diasRestantes);
             rojas.push({
               f: f,
-              mensaje: vencida
-                ? 'PQR vencida hace ' + n + ' día' + (n === 1 ? '' : 's') + ' hábil' + (n === 1 ? '' : 'es') + ' (plazo legal 15 días)'
-                : 'PQR vence en ' + n + ' día' + (n === 1 ? '' : 's') + ' hábil' + (n === 1 ? '' : 'es') + ' (plazo legal)',
+              mensaje: n === 0 ? 'PQR vence hoy' : vencida
+                ? 'PQR vencida · ' + n + ' día' + (n === 1 ? '' : 's') + ' háb.'
+                : 'PQR vence en ' + n + ' día' + (n === 1 ? '' : 's') + ' háb.',
+              detalle: 'radicada ' + formatearFecha(f['FECHA RADICADO'] || ''),
               diasH: diasRestantes,
             });
           }
@@ -157,12 +168,12 @@ function HomeScreen({ usuario, onContinuar }) {
       // nunca. Umbral 5 días hábiles, el mismo de "lleva N días sin completar":
       // una sola noción de "se está demorando" en toda la pantalla.
       const sinIniciar = diasSinIniciar(f);
-      if (sinIniciar !== null && sinIniciar >= DIAS_ALERTA_SIN_INICIAR) {
-        // El visitador ya lo pinta AlertaCard debajo del mensaje.
+      if (sinIniciar !== null && sinIniciar >= DIAS_ALERTA_DEMORA) {
         amarillas.push({
           f: f,
-          mensaje: 'Asignada el ' + formatearFecha(f['FECHA ASIGNACION VISITA'] || '') +
-                   ', sin iniciar (' + sinIniciar + ' días hábiles)',
+          cat: 'sinIniciar',
+          mensaje: 'Sin iniciar · ' + sinIniciar + ' días háb.',
+          detalle: 'asignada ' + formatearFecha(f['FECHA ASIGNACION VISITA'] || ''),
           dias: sinIniciar,
           // La alerta NO mueve la visita a hoy: lleva al usuario a la semana
           // en que está programada.
@@ -183,24 +194,24 @@ function HomeScreen({ usuario, onContinuar }) {
               f: f,
               mensaje: diasH === 0
                 ? 'Tiene audiencia HOY'
-                : 'Audiencia en ' + diasH + ' día' + (diasH > 1 ? 's' : '') + ' hábil' + (diasH > 1 ? 'es' : ''),
+                : 'Audiencia en ' + diasH + ' día' + (diasH > 1 ? 's' : '') + ' háb.',
               diasH: diasH,
             });
           }
         }
       }
 
-      // Alerta amarilla: iniciada hace ≥5 días calendario sin completar
-      const fechaVis = f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || '';
-      if (fechaVis) {
-        const d = diasDesde(fechaVis);
-        if (d !== null && d >= 5) {
-          amarillas.push({
-            f: f,
-            mensaje: 'Lleva ' + d + ' días sin completar',
-            dias: d,
-          });
-        }
+      // Alerta: iniciada hace ≥5 días hábiles sin completar. Hábiles, igual
+      // que «sin iniciar»: las dos se ordenan juntas por días.
+      const sinCompletar = diasSinCompletar(f);
+      if (sinCompletar !== null && sinCompletar >= DIAS_ALERTA_DEMORA) {
+        amarillas.push({
+          f: f,
+          cat: 'sinCompletar',
+          mensaje: 'Sin completar · ' + sinCompletar + ' días háb.',
+          detalle: 'visita ' + formatearFecha(f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || ''),
+          dias: sinCompletar,
+        });
       }
     });
 
@@ -223,8 +234,17 @@ function HomeScreen({ usuario, onContinuar }) {
     });
     const amarillasU = amarillas.filter(a => !vistas.has(a.f._idx || a.f['RADICADO'] || a.f));
 
-    return { rojas: rojasU, amarillas: amarillasU, total: rojasU.length + amarillasU.length };
-  }, [datos, veTodo, miNombre]);
+    // Una sola lista, urgentes primero. El conteo por tipo alimenta los chips.
+    const lista = rojasU.map(a => Object.assign({ cat: 'urgente' }, a)).concat(amarillasU);
+    const conteo = { urgente: 0, sinIniciar: 0, sinCompletar: 0 };
+    lista.forEach(a => { conteo[a.cat]++; });
+    return { lista, conteo, total: lista.length };
+  }, [datos, veTodo, miNombre, inspector]);
+
+  // Un filtro que se quedó sin alertas (cambió el inspector o llegaron datos
+  // nuevos) no deja la lista vacía: vuelve a «Todas».
+  const filtroAl = alertas.conteo[filtroAlerta] ? filtroAlerta : '';
+  const alertasVisibles = filtroAl ? alertas.lista.filter(a => a.cat === filtroAl) : alertas.lista;
 
   // Inspectores activos para los chips de filtro de la semana. Misma fuente
   // que Buscar (USUARIOS vía listarInspectoresActivos, cacheado 60 s): sacar
@@ -290,23 +310,43 @@ function HomeScreen({ usuario, onContinuar }) {
             miNombre={miNombre}
             inspectores={inspectores}
             onAbrir={onContinuar}
+            inspector={inspector}
+            onInspector={setInspector}
           />
         )}
       </div>
 
-      {/* ── Alertas urgentes ── */}
-      {!cargando && alertas.total > 0 && (
+      {/* ── Alertas ── Con un inspector elegido la columna se queda aunque
+          no tenga alertas: si desapareciera, la rejilla saltaría de ancho al
+          cambiar de chip. */}
+      {!cargando && (alertas.total > 0 || (veTodo && inspector)) && (
         <div style={{ marginBottom: 8 }}>
-          <SeccionHeader
-            titulo="Alertas"
-            count={alertas.total}
-            tono={alertas.rojas.length > 0 ? 'rojo' : 'amarillo'}
-          />
-          {alertas.rojas.map((a, i) => (
-            <AlertaCard key={'r' + (a.f._idx || i)} alerta={a} tipo="rojo" onContinuar={onContinuar} />
-          ))}
-          {alertas.amarillas.map((a, i) => (
-            <AlertaCard key={'a' + (a.f._idx || i)} alerta={a} tipo="amarillo" onContinuar={onContinuar} />
+          <div className="al-head">
+            <SeccionHeader
+              titulo="Alertas"
+              count={alertas.total}
+              tono={alertas.conteo.urgente > 0 ? 'rojo' : 'amarillo'}
+            />
+            {alertas.total > 0 && (
+              <div className="sv-chips al-chips">
+                {[['', 'Todas', alertas.total],
+                  ['urgente', 'Urgentes', alertas.conteo.urgente],
+                  ['sinIniciar', 'Sin iniciar', alertas.conteo.sinIniciar],
+                  ['sinCompletar', 'Sin completar', alertas.conteo.sinCompletar],
+                ].filter(c => c[2] > 0).map(c => (
+                  <button key={c[0]} type="button" aria-pressed={filtroAl === c[0]}
+                    className={'sv-chip' + (filtroAl === c[0] ? ' activo' : '')}
+                    onClick={() => setFiltroAlerta(c[0])}>{c[1]} {c[2]}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          {alertas.total === 0 && (
+            <div className="sv-vacio">Sin alertas para {titleCaseNombre(inspector).split(/\s+/)[0]}</div>
+          )}
+          {alertasVisibles.map((a, i) => (
+            <AlertaCard key={a.cat + (a.f._idx || i)} alerta={a}
+              mostrarInspector={veTodo && !inspector} onContinuar={onContinuar} />
           ))}
         </div>
       )}
@@ -353,8 +393,6 @@ function SeccionHeader({ titulo, count, tono }) {
   );
 }
 
-// ── Tarjeta de alerta — estilo editorial palette terracota/crema ────
-// rojo (urgencia alta: audiencia ≤3 días hábiles), amarillo (más de 5 días sin completar).
 // Lleva la rejilla de la semana a la fecha indicada. Va por evento y no por
 // prop porque el offset es estado interno de SemanaVisitas: subirlo hasta
 // HomeScreen solo para esto obligaría a pasarlo por dos componentes que no lo
@@ -367,94 +405,45 @@ function irASemana(fecha) {
   if (rejilla && rejilla.scrollIntoView) rejilla.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-function AlertaCard({ alerta, tipo, onContinuar }) {
+// Tarjeta de alerta, compacta (3 renglones, acción a la derecha): la columna
+// es una lista de trabajo y deben verse muchas de un vistazo.
+// La barra lateral y la etiqueta dicen el ESTADO con el mismo código de la
+// Semana (ocre = asignada, azul = iniciada); el color solo no basta, por eso
+// la etiqueta va en texto. La urgencia (PQR, audiencia) va en el motivo, en rojo.
+function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   const f = alerta.f;
-  const esRojo = tipo === 'rojo';
-  const c = esRojo
-    ? { fg: 'var(--rojo)',     bg: 'var(--rojo-bg)',     stripe: 'var(--rojo)',     border: 'rgba(180,58,46,0.18)', glow: 'rgba(180,58,46,0.06)' }
-    : { fg: 'var(--cafe)',     bg: 'var(--amarillo-bg)', stripe: 'var(--amarillo)', border: 'rgba(184,135,58,0.22)', glow: 'rgba(184,135,58,0.06)' };
+  const iniciada = normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'INICIADO';
+  const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
+  const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
+  const meta = [barrio, mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
+  // Un supervisor ve alertas de visitas ajenas: para esas solo consulta.
+  const puede = puedeDiligenciar(f);
 
   return (
-    <article style={{
-      position: 'relative', overflow: 'hidden',
-      background: 'var(--superficie)', borderRadius: 'var(--r-md)',
-      border: '0.5px solid ' + c.border,
-      boxShadow: '0 1px 2px ' + c.glow,
-      marginBottom: 8,
-    }}>
-      {/* franja vertical de acento */}
-      <span aria-hidden="true" style={{
-        position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
-        background: c.stripe,
-      }} />
-      <div style={{ padding: '12px 14px 12px 17px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
-        }}>
-          <span aria-hidden="true" style={{
-            display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-            background: c.stripe, flexShrink: 0,
-          }} />
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-            textTransform: 'uppercase', color: c.fg,
-            fontFamily: 'var(--font-mono)',
-          }}>{alerta.mensaje}</span>
+    <article className={'al-card' + (iniciada ? ' al-iniciada' : '') + (alerta.cat === 'urgente' ? ' al-urgente' : '')}>
+      <div className="al-txt">
+        <div className="al-motivo">
+          <span className="al-estado">{iniciada ? 'Iniciada' : 'Asignada'}</span>
+          <span className="al-msg">{alerta.mensaje}</span>
         </div>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between',
-          alignItems: 'flex-end', gap: 10, flexWrap: 'wrap',
-        }}>
-          {/* Base de 200 px: si los botones no caben al lado, bajan a su propia
-              línea en vez de estrujar la dirección a una palabra por renglón. */}
-          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-            <div style={{
-              fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600,
-              lineHeight: 1.3, color: 'var(--texto)',
-              overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección'}
-            </div>
-            <div style={{
-              fontSize: 11, color: 'var(--texto-suave)',
-              marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-ink)' }}>
-                {f['RADICADO'] || '—'}
-              </span>
-              {f['BARRIO/VEREDA'] && <span aria-hidden="true">·</span>}
-              {f['BARRIO/VEREDA'] && <span>{f['BARRIO/VEREDA']}</span>}
-              {visitadoresBD(f) && <span aria-hidden="true">·</span>}
-              {visitadoresBD(f) && <span>{primerVisitador(visitadoresBD(f))}</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
-          {alerta.irSemana && (
-            <button type="button" onClick={() => irASemana(alerta.irSemana)} style={{
-              background: 'transparent', color: c.fg,
-              border: '0.5px solid ' + c.border,
-              borderRadius: 'var(--r-sm)', padding: '6px 11px',
-              fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
-              cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>Ver en su semana</button>
-          )}
-          {/* Un supervisor ve alertas de visitas ajenas: para esas solo consulta. */}
-          <button type="button" onClick={() => puedeDiligenciar(f)
-              ? onContinuar(f._idx, f)
-              : (window.abrirVisitaDetail && window.abrirVisitaDetail(f))} style={{
-            background: c.bg, color: c.fg,
-            border: '0.5px solid ' + c.border,
-            borderRadius: 'var(--r-sm)', padding: '6px 11px',
-            fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
-            cursor: 'pointer', whiteSpace: 'nowrap',
-            transition: 'background .15s, transform .1s',
-          }}
-          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
-          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-          >{puedeDiligenciar(f) ? 'Continuar →' : 'Ver datos →'}</button>
-          </div>
+        <div className="al-dir" title={dir}>{dir}</div>
+        <div className="al-meta" title={meta}>
+          <span className="sv-rad">{f['RADICADO'] || '—'}</span>
+          {meta && ' · ' + meta}
         </div>
+      </div>
+      <div className="al-acc">
+        {alerta.irSemana && (
+          <button type="button" className="al-icono" title="Ver en su semana"
+            aria-label="Ver en su semana" onClick={() => irASemana(alerta.irSemana)}>
+            <Icon.Agenda size={14} />
+          </button>
+        )}
+        <button type="button" className="al-btn" onClick={() => puede
+          ? onContinuar(f._idx, f)
+          : (window.abrirVisitaDetail && window.abrirVisitaDetail(f))}>
+          {!puede ? 'Ver datos' : (iniciada ? 'Continuar' : 'Iniciar')}
+        </button>
       </div>
     </article>
   );

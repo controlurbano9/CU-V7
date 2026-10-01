@@ -749,6 +749,26 @@ function clavesCercanasCatastro(clave, rango) {
   return out;
 }
 
+// Entre los candidatos de la búsqueda aproximada (placa inexistente en
+// catastro), el vecino más probable: primero el del MISMO costado de la vía
+// (misma paridad de placa: pares a un lado, impares al otro), y dentro de él
+// el de placa más cercana. `DG 58 # 45-16` no existe → `45-14` (par, dif 2)
+// antes que `45-15` (impar, dif 1), que está en la acera de enfrente.
+// Lo usa Consulta norma para ubicar el pin; el formulario no preselecciona.
+function terrenoVecinoPreferido(clave, terrenos) {
+  if (!clave || !terrenos || !terrenos.length) return null;
+  var par = clave.placa % 2;
+  var mejor = null, mejorPeso = Infinity;
+  terrenos.forEach(function (t) {
+    var ct = claveDireccionCatastro(t.direccion);
+    var dif = ct && ct.cuadra === clave.cuadra ? Math.abs(ct.placa - clave.placa) : (t.dif || 99);
+    var otroLado = ct && ct.cuadra === clave.cuadra ? (ct.placa % 2 !== par) : true;
+    var peso = (otroLado ? 1000 : 0) + dif;
+    if (peso < mejorPeso) { mejorPeso = peso; mejor = t; }
+  });
+  return mejor;
+}
+
 // ¿La unidad que escribió el inspector es la de esta ficha? Catastro suele
 // agregar el piso (`AP 102 PI2`) que el inspector no escribe (`APTO 102`):
 // calza si la de catastro empieza por la del inspector y lo que sigue es otra
@@ -1073,6 +1093,22 @@ function diasSinIniciar(fila, hoy) {
   return n > 0 ? n : 0;
 }
 
+// Días hábiles que lleva una visita INICIADA sin completarse, desde la fecha
+// de visita (o la de asignación si aquella falta). Misma unidad que
+// diasSinIniciar: las dos alertas se ordenan juntas en Inicio y antes esta
+// contaba días calendario, así que «145» y «142» no eran comparables.
+function diasSinCompletar(fila, hoy) {
+  if (!fila) return null;
+  var e = _normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '');
+  if (e !== 'INICIADO') return null;
+  var d = parsearFecha(fila['FECHA DE VISITA'] || '') ||
+          parsearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+  if (!d) return null;
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var n = _diasHabilesEntre(d, ref);
+  return n > 0 ? n : 0;
+}
+
 // Cuántas semanas separan la semana de `fecha` de la semana de `hoy`. Es lo
 // que necesita «Ver en su semana» para saltar del panel de alertas al día en
 // que la visita está programada, sin moverla de sitio.
@@ -1095,6 +1131,7 @@ var _cuUtilsExports = {
   claveBusquedaDireccion: claveBusquedaDireccion,
   claveDireccionCatastro: claveDireccionCatastro,
   clavesCercanasCatastro: clavesCercanasCatastro,
+  terrenoVecinoPreferido: terrenoVecinoPreferido,
   direccionDesdeClave: direccionDesdeClave,
   unidadCatastroCalza: unidadCatastroCalza,
   puntoEnAnillo: puntoEnAnillo,
@@ -1134,6 +1171,7 @@ var _cuUtilsExports = {
   fechaAgendaVisita: fechaAgendaVisita,
   agruparSemana: agruparSemana,
   diasSinIniciar: diasSinIniciar,
+  diasSinCompletar: diasSinCompletar,
   offsetSemanaDe: offsetSemanaDe,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,

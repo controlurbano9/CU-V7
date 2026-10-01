@@ -13,7 +13,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  claveDireccionCatastro, clavesCercanasCatastro, direccionDesdeClave, unidadCatastroCalza, puntoEnAnillo,
+  claveDireccionCatastro, clavesCercanasCatastro, terrenoVecinoPreferido, direccionDesdeClave, unidadCatastroCalza, puntoEnAnillo,
   distanciaPuntoAnilloM, puntoInteriorAnillo, compararUbicacion,
   origenUbicacionConfirmada, ubicacionConfirmadaVigente, codigoPredioMatriz, esCodigoPredioMatriz,
 } = require('../utils.js');
@@ -222,4 +222,21 @@ test('código del predio matriz en PH', () => {
   // Confirma sin ficha: basta el código.
   const d = { lat: 6.3, lon: -75.5, direccion: 'CL 21C # 40B-42', catastral: codigoPredioMatriz(tcod), ficha: '' };
   assert.equal(ubicacionConfirmadaVigente({ origen: 'MAPA', lat: 6.3, lon: -75.5, direccion: d.direccion, catastral: d.catastral }, d), true);
+});
+
+// ── Vecino preferido (placa que no está en catastro) ──────────
+// Caso real: DG 58 # 45-16 no existe; hay 45-14, 45-15 y 45-19. El 45-15
+// está a 1 de placa pero en la acera de enfrente: gana el 45-14.
+test('vecino preferido: mismo costado antes que placa más cercana', () => {
+  const c = claveDireccionCatastro('DG 58 45-16');
+  const ts = [
+    { direccion: 'DG 58 N 45-15', dif: 1 },
+    { direccion: 'DG 58 N 45-14', dif: 2 },
+    { direccion: 'DG 58 N 45-19', dif: 3 },
+  ];
+  assert.equal(terrenoVecinoPreferido(c, ts).direccion, 'DG 58 N 45-14');
+  // Sin nadie del mismo costado, el más cercano del otro.
+  assert.equal(terrenoVecinoPreferido(c, ts.filter(t => !t.direccion.endsWith('14'))).direccion, 'DG 58 N 45-15');
+  assert.equal(terrenoVecinoPreferido(c, []), null);
+  assert.equal(terrenoVecinoPreferido(null, ts), null);
 });

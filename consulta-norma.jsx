@@ -127,6 +127,8 @@ function ConsultaNormaScreen() {
   const [catastro, setCatastro] = useStateCN(null);  // array de fichas o null
   const [catastroOpen, setCatastroOpen] = useStateCN(true);
   const [error, setError] = useStateCN('');
+  // Aviso neutro (no error): la placa no está en catastro y el pin se puso en el vecino.
+  const [aviso, setAviso] = useStateCN('');
 
   const mapDivRef = useRefCN(null);
   const mapRef = useRefCN(null);
@@ -195,7 +197,7 @@ function ConsultaNormaScreen() {
   }, [punto, gmListoCN]);
 
   function colocarPin(lat, lon, consultar) {
-    setError('');
+    setError(''); setAviso('');
     setPunto({ lat, lon });
     var map = mapRef.current;
     if (!map) return;
@@ -217,6 +219,7 @@ function ConsultaNormaScreen() {
           return;
         }
         setPunto({ lat: lt, lon: ln });
+        setAviso('');
         consultarNorma(lt, ln);
       });
       markerRef.current = m;
@@ -278,7 +281,7 @@ function ConsultaNormaScreen() {
 
   // Búsqueda unificada: detecta automáticamente si es coordenada o dirección
   async function buscar() {
-    setError(''); setResultado(null);
+    setError(''); setAviso(''); setResultado(null);
     var txt = consulta.trim();
     if (!txt) { setError('Ingresa una dirección o coordenadas.'); return; }
 
@@ -296,13 +299,23 @@ function ConsultaNormaScreen() {
     // No son coordenadas → geocodificar como dirección
     setBusyGeo(true);
     // Catastro primero: si la dirección está tal cual, el pin va dentro de su
-    // predio (exacto y sin red). Si no, sigue el geocoder como antes.
+    // predio (exacto y sin red). Si la placa no existe pero hay vecinas en la
+    // misma cuadra, el pin va al vecino del mismo costado: el geocoder de
+    // Google interpola sobre la vía y se iba decenas de metros (DG 58 45-16
+    // caía en 45-84, a 63 m). Solo sin nada en catastro se usa el geocoder.
     if (typeof buscarCatastroPorDireccion === 'function') {
       try {
         var pc = await buscarCatastroPorDireccion(txt);
-        var q0 = pc && pc.exacta && pc.terrenos.length && puntoInteriorAnillo(pc.terrenos[0].anillo);
+        var t0 = null;
+        if (pc && pc.exacta && pc.terrenos.length) t0 = pc.terrenos[0];
+        else if (pc && pc.terrenos.length) t0 = terrenoVecinoPreferido(claveDireccionCatastro(txt), pc.terrenos);
+        var q0 = t0 && puntoInteriorAnillo(t0.anillo);
         if (q0) {
           colocarPin(q0[0], q0[1], true);
+          if (!pc.exacta) {
+            setAviso('La placa no está en catastro. El pin quedó en el predio vecino ' +
+              t0.direccion + '; si no es el de la visita, toca el mapa sobre el correcto.');
+          }
           setBusyGeo(false);
           return;
         }
@@ -355,7 +368,7 @@ function ConsultaNormaScreen() {
   }
 
   function limpiar() {
-    setConsulta(''); setError('');
+    setConsulta(''); setError(''); setAviso('');
     setPunto(null); setResultado(null); setCatastro(null);
     if (markerRef.current) {
       markerRef.current.setMap(null);
@@ -443,6 +456,14 @@ function ConsultaNormaScreen() {
         )}
       </div>
 
+      {aviso && !error && (
+        <div className="card" style={{
+          color: 'var(--cafe)', background: 'var(--amarillo-bg)',
+          marginBottom: 12, fontSize: 13,
+        }}>
+          {aviso}
+        </div>
+      )}
       {error && (
         <div className="card" style={{
           color: 'var(--rojo)', background: 'var(--rojo-bg)',

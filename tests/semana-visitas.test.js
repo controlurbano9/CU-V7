@@ -11,7 +11,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { rangoSemana, fechaAgendaVisita, agruparSemana, diasSinIniciar, offsetSemanaDe } = require('../utils.js');
+const { rangoSemana, fechaAgendaVisita, agruparSemana, diasSinIniciar, diasSinCompletar, offsetSemanaDe } = require('../utils.js');
 
 const dd = (d) => (d ? d.getDate() + '/' + (d.getMonth() + 1) : null);
 
@@ -191,6 +191,28 @@ test('diasSinIniciar — sin fecha legible no alerta', () => {
   assert.equal(diasSinIniciar({ 'ESTADO VISITA': 'ASIGNADO' }, new Date(2026, 8, 18)), null);
   assert.equal(diasSinIniciar({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': 'N/A' }, new Date(2026, 8, 18)), null);
   assert.equal(diasSinIniciar(null, new Date(2026, 8, 18)), null);
+});
+
+// ── diasSinCompletar ───────────────────────────────────────────
+// Misma unidad y mismo umbral (5 hábiles) que diasSinIniciar.
+
+test('diasSinCompletar — cuenta hábiles desde la fecha de visita', () => {
+  const f = { 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '11/09/2026' };
+  assert.equal(diasSinCompletar(f, new Date(2026, 8, 17)), 4);
+  assert.equal(diasSinCompletar(f, new Date(2026, 8, 18)), 5);
+});
+
+test('diasSinCompletar — sin fecha de visita cae en la de asignación', () => {
+  const f = { 'ESTADO VISITA': 'INICIADO', 'FECHA ASIGNACION VISITA': '11/09/2026' };
+  assert.equal(diasSinCompletar(f, new Date(2026, 8, 18)), 5);
+});
+
+test('diasSinCompletar — solo aplica a las iniciadas', () => {
+  const base = { 'FECHA DE VISITA': '01/09/2026' };
+  assert.equal(diasSinCompletar({ ...base, 'ESTADO VISITA': 'ASIGNADO' }, new Date(2026, 8, 18)), null);
+  assert.equal(diasSinCompletar({ ...base, 'ESTADO VISITA': 'COMPLETADO' }, new Date(2026, 8, 18)), null);
+  assert.equal(diasSinCompletar({ 'ESTADO VISITA': 'INICIADO' }, new Date(2026, 8, 18)), null);
+  assert.equal(diasSinCompletar(null, new Date(2026, 8, 18)), null);
 });
 
 // -- offsetSemanaDe --------------------------------------------
