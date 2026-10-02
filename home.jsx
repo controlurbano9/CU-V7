@@ -414,8 +414,14 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   const f = alerta.f;
   const iniciada = normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'INICIADO';
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
-  const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
-  const meta = [barrio, mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
+  // Sin barrio: la dirección ya ubica el caso y el renglón se leía como una
+  // fila de la hoja. Un RADICADO con varios valores muestra el primero + «+N».
+  const rads = String(f['RADICADO'] || '').split(/\s*[\/,;\n]\s*/).filter(Boolean);
+  const rad = rads.length ? rads[0] + (rads.length > 1 ? ' +' + (rads.length - 1) : '') : '—';
+  const meta = [mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
+  // «Sin iniciar»/«Sin completar» repetían la etiqueta de estado: queda solo el
+  // conteo. La urgente conserva su motivo (PQR, audiencia), que es lo que importa.
+  const motivo = alerta.cat === 'urgente' ? alerta.mensaje : alerta.dias + ' días háb.';
   // Un supervisor ve alertas de visitas ajenas: para esas solo consulta.
   const puede = puedeDiligenciar(f);
 
@@ -424,11 +430,11 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
       <div className="al-txt">
         <div className="al-motivo">
           <span className="al-estado">{iniciada ? 'Iniciada' : 'Asignada'}</span>
-          <span className="al-msg">{alerta.mensaje}</span>
+          <span className="al-msg" title={alerta.mensaje}>{motivo}</span>
         </div>
         <div className="al-dir" title={dir}>{dir}</div>
-        <div className="al-meta" title={meta}>
-          <span className="sv-rad">{f['RADICADO'] || '—'}</span>
+        <div className="al-meta" title={[f['RADICADO'], meta].filter(Boolean).join(' · ')}>
+          <span className="sv-rad">{rad}</span>
           {meta && ' · ' + meta}
         </div>
       </div>

@@ -2495,7 +2495,7 @@ body.is-offline .header {
   background: var(--amarillo-bg); color: var(--amarillo);
 }
 .al-iniciada .al-estado { background: var(--azul-bg); color: var(--azul); }
-.al-msg { font-weight: 600; color: var(--texto-suave); }
+.al-msg { font-weight: 600; color: var(--texto-suave); margin-left: auto; }
 .al-urgente .al-msg { color: var(--rojo); }
 .al-dir {
   font-family: var(--font-serif); font-size: 14px; font-weight: 600; line-height: 1.3;
@@ -2516,8 +2516,9 @@ body.is-offline .header {
 .al-icono {
   width: 28px; height: 28px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 0.5px solid var(--line-2); border-radius: var(--r-sm);
-  background: var(--superficie); color: var(--texto-suave); cursor: pointer;
+  /* Acción secundaria: sin borde ni fondo para no competir con «Iniciar». */
+  border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--texto-suave); cursor: pointer;
 }
 .al-btn:hover, .al-icono:hover { background: var(--gris-bg); }
 /* Táctil: piso de 44 px y la dirección puede envolver (no hay hover para
