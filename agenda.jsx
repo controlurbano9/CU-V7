@@ -54,8 +54,15 @@ function resolverJornada(jornada, ajuste, maxConfig) {
   if (!grupos.length) return { items: [], grupos, n, grupo: null, sugerida: null };
   const elegido = ajuste && ajuste.comuna != null
     ? grupos.find(g => String(g.comuna) === String(ajuste.comuna)) : null;
+  // Jornada que hoy no se sugiere (miércoles mañana, viernes tarde): no se
+  // preselecciona nada, pero el admin puede elegir comuna y agendarla igual.
+  if (!jornada.activa && !elegido) return { items: [], grupos, n, grupo: null, sugerida: null };
   const grupo = elegido || grupos[0];
-  return { items: grupo.visitas.slice(0, n), grupos, n, grupo, sugerida: grupos[0].comuna };
+  // Dentro de la comuna, las del mismo barrio van juntas (utils.js).
+  const j = armarJornadaPorBarrio(grupo.visitas, n, ajuste && ajuste.barrio);
+  return { items: j.items, grupos, n, grupo,
+    sugerida: jornada.activa ? grupos[0].comuna : null,
+    barrios: j.barrios, barrio: j.barrio, barrioSugerido: j.sugerido };
 }
 
 // Inspectores habilitados para la agenda: se definen en ⚙ Admin → Agenda
@@ -275,17 +282,20 @@ function AgendaScreen({ usuario, onContinuar }) {
                 </button>
               </div>
 
-              {jornada && jornada.activa && s.grupo && (
+              {jornada && s.grupos && s.grupos.length > 0 && (
                 <AjusteJornada
                   s={s}
-                  ajustada={String(s.grupo.comuna) !== String(s.sugerida) || s.n !== maxConfig}
-                  onComuna={c => ajustarJornada(tab, { comuna: c })}
+                  ajustada={!!s.grupo && (String(s.grupo.comuna) !== String(s.sugerida) || s.n !== maxConfig
+                    || s.barrio !== s.barrioSugerido)}
+                  // Otra comuna = otros barrios: el barrio elegido no viaja.
+                  onComuna={c => ajustarJornada(tab, { comuna: c, barrio: null })}
+                  onBarrio={b => ajustarJornada(tab, { barrio: b })}
                   onNumero={n => ajustarJornada(tab, { n })}
                   onRestablecer={() => ajustarJornada(tab, null)}
                 />
               )}
 
-              {jornada && jornada.activa && items.length > 0 && (
+              {jornada && items.length > 0 && (
                 <div className="card">
                   <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
                     Confirmar jornada — asignar todas a:
@@ -345,16 +355,21 @@ function AgendaScreen({ usuario, onContinuar }) {
 // del radicado más urgente) va primera y marcada con ★; elegirla de nuevo
 // guarda comuna null para que siga a la sugerencia si esta cambia al
 // asignarse visitas.
-function AjusteJornada({ s, ajustada, onComuna, onNumero, onRestablecer }) {
+function AjusteJornada({ s, ajustada, onComuna, onBarrio, onNumero, onRestablecer }) {
   const g = s.grupo;
-  // El backend manda hasta AGENDA_MAX_VISITAS candidatas por comuna; si el
-  // n guardado supera lo que hay, se muestra (y se ajusta desde) lo que hay.
-  const mostradas = Math.min(s.n, g.visitas.length);
+  // Si el n guardado supera las pendientes de la comuna, se muestra (y se
+  // ajusta desde) lo que hay.
+  // g es null en una jornada sin sugerencia hasta que el admin elige comuna.
+  const tope = g ? Math.min(AGENDA_MAX_VISITAS, g.visitas.length) : 0;
+  const mostradas = Math.min(s.n, tope);
+  const barrios = (g && s.barrios) || [];
   return (
     <div className="card" style={{ marginBottom: 12 }}>
       <div className="agenda-ajuste-fila">
         <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
-          Comuna · sugerida <strong>{etiquetaComuna(s.sugerida)}</strong> (radicado más urgente)
+          {s.sugerida != null
+            ? <>Comuna · sugerida <strong>{etiquetaComuna(s.sugerida)}</strong> (radicado más urgente)</>
+            : 'Comuna · hoy no hay sugerencia para esta jornada; elige una para agendarla'}
         </div>
         {ajustada && (
           <button type="button" className="agenda-restablecer" onClick={onRestablecer}>
@@ -364,8 +379,8 @@ function AjusteJornada({ s, ajustada, onComuna, onNumero, onRestablecer }) {
       </div>
       <div className="inspector-chips" role="group" aria-label="Comuna de la jornada">
         {s.grupos.map(gr => {
-          const activa = String(gr.comuna) === String(g.comuna);
-          const esSugerida = String(gr.comuna) === String(s.sugerida);
+          const activa = !!g && String(gr.comuna) === String(g.comuna);
+          const esSugerida = s.sugerida != null && String(gr.comuna) === String(s.sugerida);
           return (
             <button key={gr.comuna} type="button" aria-pressed={activa}
               className={'inspector-chip' + (activa ? ' sel' : '')}
@@ -377,7 +392,31 @@ function AjusteJornada({ s, ajustada, onComuna, onNumero, onRestablecer }) {
           );
         })}
       </div>
-      <div className="agenda-ajuste-fila" style={{ marginTop: 12 }}>
+      {/* Barrio: las visitas cercanas van juntas. Con un solo barrio no hay
+          nada que elegir. */}
+      {barrios.length > 1 && (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 12 }}>
+            Barrio · primero las de un mismo barrio; si no alcanzan, las más urgentes de la comuna
+          </div>
+          <div className="inspector-chips" role="group" aria-label="Barrio de la jornada">
+            {barrios.map(b => {
+              const activo = b.clave === s.barrio;
+              const esSugerido = b.clave === s.barrioSugerido;
+              return (
+                <button key={b.clave} type="button" aria-pressed={activo}
+                  className={'inspector-chip' + (activo ? ' sel' : '')}
+                  title={`${b.nombre}: ${b.total} pendiente(s)${esSugerido ? ' · sugerido' : ''}`}
+                  onClick={() => onBarrio(esSugerido ? null : b.clave)}>
+                  {esSugerido && '★ '}{b.nombre}
+                  <span className="agenda-comuna-total">{b.total}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {g && <div className="agenda-ajuste-fila" style={{ marginTop: 12 }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>Visitas en la jornada</div>
           <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }}>
@@ -388,10 +427,10 @@ function AjusteJornada({ s, ajustada, onComuna, onNumero, onRestablecer }) {
           <button type="button" aria-label="Una visita menos" disabled={mostradas <= 1}
             onClick={() => onNumero(mostradas - 1)}>−</button>
           <span aria-live="polite">{mostradas}</span>
-          <button type="button" aria-label="Una visita más" disabled={mostradas >= g.visitas.length}
+          <button type="button" aria-label="Una visita más" disabled={mostradas >= tope}
             onClick={() => onNumero(mostradas + 1)}>+</button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -426,7 +465,7 @@ function ItemsLista({ items, busyFila, onAbrir, inspectores, asignandoFila, setA
                 {it.direccion || 'Sin dirección'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
-                {it.barrio || '—'} {it.comuna && `· C${it.comuna}`}
+                {it.barrio || '—'} {it.comuna && `· ${etiquetaComuna(it.comuna)}`}
               </div>
               {it.visitador && (
                 <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>

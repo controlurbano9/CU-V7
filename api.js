@@ -156,6 +156,7 @@ const _ACCIONES_SOLO_LECTURA = {
   leerHoja: true, listarInspectoresActivos: true, login: true,
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
+  linksPdfReiterados: true,
 };
 // Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
@@ -449,6 +450,7 @@ function _procesarVisitas(filas, nums) {
   const headers = filas[0];
   const conNums = Array.isArray(nums) && nums.length === filas.length - 1;
   const jAt = headers.findIndex(h => (h || '').toString().trim().toUpperCase() === 'ATENCION PQR');
+  const jEst = headers.findIndex(h => (h || '').toString().trim().toUpperCase() === 'ESTADO VISITA');
   const datos = filas.slice(1)
     .map((fila, i) => {
       const obj = { _idx: conNums ? nums[i] : i + 2 };
@@ -462,7 +464,10 @@ function _procesarVisitas(filas, nums) {
     .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '')
     // NO COMPETENCIA fuera de toda la app (decisión del usuario, 2026-09-25).
     // El backend compacto ya no las manda; esto cubre la hoja entera.
-    .filter(o => jAt < 0 || !_esNoCompetencia(o[jAt]));
+    .filter(o => jAt < 0 || !_esNoCompetencia(o[jAt]))
+    // Fila propia de una PQR marcada como reiterada de otro caso: no es una
+    // visita por hacer (mismo criterio que _compactarBdVisitas del backend).
+    .filter(o => jEst < 0 || (o[jEst] || '').toUpperCase() !== 'REITERADO');
   return { headers, datos };
 }
 
@@ -790,6 +795,29 @@ async function subirSolicitudUnificada(params) {
   const r = await gasPost(Object.assign({ accion: 'subirSolicitudUnificada' }, params));
   invalidarCache('visitas'); // LINK_SOLICITUD_PDF cambia en BD
   return r;
+}
+
+// ── Radicados reiterados de un caso ────────────────────────────
+// Solo ADMIN (lo exige el backend). `fechaReiterado` en DD/MM/YYYY: el
+// servidor rechaza el que se radicó más de 3 meses después del principal
+// (ese es un caso nuevo, con su fila). Devuelve { ok, reiterados, aviso }.
+async function agregarReiterado(radicadoPrincipal, reiterado, fechaReiterado) {
+  const r = await gasPost({ accion: 'agregarReiterado', radicadoPrincipal, reiterado, fechaReiterado: fechaReiterado || '' });
+  invalidarCache('visitas');
+  return r;
+}
+
+async function quitarReiterado(radicadoPrincipal, reiterado) {
+  const r = await gasPost({ accion: 'quitarReiterado', radicadoPrincipal, reiterado });
+  invalidarCache('visitas');
+  return r;
+}
+
+// Enlaces a los PDF de los reiterados, buscados por nombre en Drive. No hay
+// columna en la BD para ellos: se piden al abrir el detalle del caso.
+// Devuelve { ok, links: { <radicado>: <url> } } (sin entrada = aún sin PDF).
+async function linksPdfReiterados(radicados) {
+  return gasPost({ accion: 'linksPdfReiterados', radicados: radicados || [] });
 }
 
 // pdf-lib — solo para unir la solicitud con la orden. A diferencia de jsPDF
@@ -1761,6 +1789,7 @@ Object.assign(window, {
   subirFotoConDescripcion,
   subirOrdenPolicia, cargarJsPDF,
   obtenerPdfsSolicitud, subirSolicitudUnificada, armarSolicitudUnificada,
+  agregarReiterado, quitarReiterado, linksPdfReiterados,
   listarFotosActa, describirFotoDesdeId,
   describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,

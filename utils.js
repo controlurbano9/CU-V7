@@ -353,6 +353,13 @@ function radicadosReiterados(f) {
   });
   return out;
 }
+// Forma de un radicado que puede anotarse como reiterado: 11 dígitos (PQR) o
+// AAAA-NNNNNN (memorando). La misma que valida el backend (_formaRadicadoValida)
+// y la que sabe descargar el scraper.
+function formaRadicadoValida(r) {
+  var k = claveRadicado(r);
+  return /^\d{11}$/.test(k) || /^\d{4}-\d{4,}$/.test(k);
+}
 // ¿La fila tiene `texto` entre sus reiterados? En Buscar se teclea a medias,
 // así que basta que un reiterado lo contenga (mínimo 4 caracteres).
 function coincideReiterado(f, texto) {
@@ -1252,8 +1259,224 @@ function offsetSemanaDe(fecha, hoy) {
   return Math.round((lunesObj.getTime() - lunesRef.getTime()) / 604800000);
 }
 
+// ── Agenda: jornada agrupada por barrio (2026-10-02) ───────────
+// Clave para comparar barrios: en BD el mismo barrio aparece como «LA
+// GABRIELA» y «La Gabriela», «Vda. La Union» y «VDA. LA UNIÓN». Medido el
+// 2026-10-02 sobre las 161 pendientes sugeribles: 98 textos distintos quedan
+// en 77 barrios solo con mayúsculas, tildes y puntuación. Copia en el backend
+// (`_claveBarrio`): si cambia aquí, se repite allá.
+function claveBarrio(texto) {
+  var s = String(texto == null ? '' : texto).toUpperCase();
+  if (s.normalize) s = s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return s.replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Arma la jornada de una comuna poniendo juntas las visitas cercanas.
+// `visitas` llega en orden de urgencia. La primera es el ancla: su barrio es
+// el sugerido, así lo urgente nunca espera por agrupar. Se toman primero las
+// del barrio (elegido o sugerido) y, si no alcanzan para `n`, las más
+// urgentes del resto de la comuna; lo elegido se pinta con cada barrio junto.
+// Una visita sin barrio no forma grupo ni sale como opción.
+function armarJornadaPorBarrio(visitas, n, barrioElegido) {
+  var lista = visitas || [];
+  var barrios = [];
+  var porClave = {};
+  lista.forEach(function (v) {
+    var k = claveBarrio(v && v.barrio);
+    if (!k) return;
+    if (!porClave[k]) {
+      porClave[k] = { clave: k, nombre: String(v.barrio).trim(), total: 0 };
+      barrios.push(porClave[k]);
+    }
+    porClave[k].total++;
+  });
+  var sugerido = lista.length ? claveBarrio(lista[0].barrio) : '';
+  var barrio = (barrioElegido && porClave[barrioElegido]) ? barrioElegido : sugerido;
+  var propias = [], resto = [];
+  lista.forEach(function (v) {
+    (barrio && claveBarrio(v.barrio) === barrio ? propias : resto).push(v);
+  });
+  var tope = Math.max(0, n || 0);
+  var elegidas = propias.concat(resto).slice(0, tope);
+  // Cada barrio junto, en el orden en que aparece su primera visita.
+  var orden = [];
+  var grupos = {};
+  elegidas.forEach(function (v, i) {
+    var k = claveBarrio(v.barrio) || ('\u0000' + i);
+    if (!grupos[k]) { grupos[k] = []; orden.push(k); }
+    grupos[k].push(v);
+  });
+  var items = [];
+  orden.forEach(function (k) { items = items.concat(grupos[k]); });
+  return { barrios: barrios, barrio: barrio, sugerido: sugerido, items: items };
+}
+
+// ── Mis visitas: lista de deuda + panel de detalle (2026-10-02) ─
+// La pantalla dejó de ser un archivador por estado: es lo que el inspector
+// debe, ordenado por antigüedad. Toda la regla vive aquí; mis-visitas.jsx
+// solo pinta. tests/mis-visitas.test.js.
+
+// N° de orden de policía de la fila, '' si no tiene. El encabezado llega con
+// y sin "°" según la hoja, y las filas migradas de V2 traen 'N/A' en vez de
+// vacío (mismo criterio que _hayOrdenReal de nueva-visita.jsx). Vivía en
+// visita-card.jsx; se movió aquí porque entregablesFaltantes la necesita.
+function ordenPoliciaDe(f) {
+  var s = String((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').trim();
+  var u = s.toUpperCase();
+  return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
+}
+
+// Id de un archivo de Drive a partir de su enlace (`/d/<id>/` o `?id=<id>`),
+// '' si no es un enlace de archivo. Para armar la vista previa embebida.
+function idArchivoDrive(link) {
+  var s = String(link || '');
+  var m = /\/d\/([a-zA-Z0-9_-]{20,})/.exec(s) || /[?&]id=([a-zA-Z0-9_-]{20,})/.exec(s);
+  return m ? m[1] : '';
+}
+
+// Qué le falta a una visita INICIADA para poder cerrarse: acta, orden
+// escaneada (solo si la visita tiene N° de orden real) y registro
+// fotográfico. Misma lista que la cabecera del formulario (_pendientesPanel),
+// con una diferencia decidida por el usuario el 2026-10-02: aquí el registro
+// cuenta siempre que no exista, porque la fila no dice si ya hay fotos
+// subidas. El informe no se lista, igual que allá.
+function entregablesFaltantes(fila) {
+  if (!fila) return [];
+  if (_normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '') !== 'INICIADO') return [];
+  var out = [];
+  if (!(fila['LINK_XLSX_ACTA'] || fila['LINK_PDF_ACTA'])) out.push('Acta');
+  if (ordenPoliciaDe(fila) && !fila['LINK_ORDEN_POLICIA']) out.push('Orden escaneada');
+  if (!fila['LINK_REGISTRO_FOTOS']) out.push('Registro fotográfico');
+  return out;
+}
+
+// Las visitas de `miNombre` en tres grupos:
+//   hacer  [{ f, dias }]          PENDIENTE/ASIGNADO visibles hoy (asignadaVisibleHoy)
+//   curso  [{ f, dias, faltan }]  INICIADO
+//   hechas [{ f, fecha }]         COMPLETADO, la más reciente primero
+// `dias` son días hábiles (diasSinIniciar / diasSinCompletar): la misma
+// cuenta de las alertas de Inicio, para que una visita diga el mismo número
+// en las dos pantallas. En hacer y curso va primero la más demorada; la que
+// no tiene fecha legible (dias null) va al final, no desaparece.
+// Regla del diligenciador vía _esVisitaDe. Sin nombre no devuelve nada: aquí
+// «sin filtro» serían las visitas de todos.
+function agruparMisVisitas(filas, miNombre, hoy) {
+  var out = { hacer: [], curso: [], hechas: [] };
+  if (!String(miNombre || '').trim()) return out;
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  (filas || []).forEach(function (f) {
+    if (!f || !_esVisitaDe(f, miNombre)) return;
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '');
+    if (e === 'PENDIENTE' || e === 'ASIGNADO') {
+      if (!asignadaVisibleHoy(f, ref)) return;
+      out.hacer.push({ f: f, dias: diasSinIniciar(f, ref) });
+    } else if (e === 'INICIADO') {
+      out.curso.push({ f: f, dias: diasSinCompletar(f, ref), faltan: entregablesFaltantes(f) });
+    } else if (e === 'COMPLETADO') {
+      out.hechas.push({ f: f, fecha: parsearFecha(f['FECHA DE VISITA'] || '') || parsearFecha(f['FECHA DEVOLUCION'] || '') });
+    }
+  });
+  var porDemora = function (a, b) {
+    return (b.dias == null ? -1 : b.dias) - (a.dias == null ? -1 : a.dias);
+  };
+  out.hacer.sort(porDemora);
+  out.curso.sort(porDemora);
+  out.hechas.sort(function (a, b) {
+    return (b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0);
+  });
+  return out;
+}
+
+// Completadas por mes de visita, en el orden en que llegan (la más reciente
+// primero). `limite` corta cuántas se pintan en total, pero `total` cuenta
+// todas las del mes: el rótulo no puede decir «3» porque el resto esté tras
+// «Mostrar más». El año solo se escribe si no es el actual.
+var _MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+function mesesMisVisitas(hechas, limite, hoy) {
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var tope = limite == null ? Infinity : limite;
+  var out = [], idx = {};
+  (hechas || []).forEach(function (h, i) {
+    var d = h.fecha;
+    var k = d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : '';
+    if (idx[k] === undefined) {
+      idx[k] = out.length;
+      out.push({
+        clave: k, total: 0, items: [],
+        rotulo: d
+          ? 'Completadas en ' + _MESES_ES[d.getMonth()] + (d.getFullYear() !== ref.getFullYear() ? ' de ' + d.getFullYear() : '')
+          : 'Completadas sin fecha de visita',
+      });
+    }
+    out[idx[k]].total++;
+    if (i < tope) out[idx[k]].items.push(h);
+  });
+  return out.filter(function (g) { return g.items.length > 0; });
+}
+
+// Titular de la pantalla: cuánto se debe y, si alguna pasó el umbral de
+// demora, cuántos días lleva la peor. Devuelve las partes por separado para
+// que el componente pinte los días en rojo:
+//   { base, dias, cola, unica }  →  «<base> La más antigua lleva <dias> días <cola>.»
+// dias null = nada demorado (o sin deuda): solo se pinta `base`.
+function titularMisVisitas(grupos, umbral) {
+  var hacer = (grupos && grupos.hacer) || [], curso = (grupos && grupos.curso) || [];
+  var h = hacer.length, c = curso.length, n = h + c;
+  if (!n) return { base: 'Estás al día.', dias: null, cola: '', unica: false };
+  var base;
+  if (h && c) base = 'Debes ' + n + ' visitas: ' + h + ' por hacer y ' + c + ' en curso.';
+  else if (h) base = 'Debes ' + h + (h === 1 ? ' visita' : ' visitas') + ' por hacer.';
+  else base = 'Tienes ' + c + (c === 1 ? ' visita' : ' visitas') + ' en curso sin completar.';
+  var peor = null;
+  hacer.forEach(function (x) {
+    if (x.dias != null && (!peor || x.dias > peor.dias)) peor = { dias: x.dias, cola: 'sin iniciar' };
+  });
+  curso.forEach(function (x) {
+    if (x.dias != null && (!peor || x.dias > peor.dias)) peor = { dias: x.dias, cola: 'sin completar' };
+  });
+  if (!peor || peor.dias < (umbral || 0)) return { base: base, dias: null, cola: '', unica: n === 1 };
+  return { base: base, dias: peor.dias, cola: peor.cola, unica: n === 1 };
+}
+
+// Recorrido del caso para el panel: radicada → asignada → visita → completada.
+// Cada paso: { clave, rotulo, valor, hecho, espera, dias }. `espera` marca el
+// paso donde el caso está detenido (uno solo, o ninguno si ya se completó) y
+// `dias` los días hábiles que lleva ahí. `valor` es la fecha DD/MM/AAAA, o
+// «Sin iniciar» / «Sin completar» en el paso detenido, o '' si no hay dato.
+function recorridoVisita(fila, hoy) {
+  if (!fila) return [];
+  var e = _normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '');
+  var empezada = e === 'INICIADO' || e === 'COMPLETADO';
+  var completa = e === 'COMPLETADO';
+  var fRad = formatearFecha(fila['FECHA RADICADO'] || '');
+  var fAsig = formatearFecha(fila['FECHA ASIGNACION VISITA'] || '');
+  var pasos = [
+    { clave: 'radicada', rotulo: 'Radicada', valor: fRad, hecho: !!fRad },
+    { clave: 'asignada', rotulo: 'Asignada', valor: fAsig, hecho: !!fAsig },
+    { clave: 'visita', rotulo: 'Visita', valor: empezada ? formatearFecha(fila['FECHA DE VISITA'] || '') : '', hecho: empezada },
+    { clave: 'completada', rotulo: 'Completada', valor: completa ? formatearFecha(fila['FECHA DEVOLUCION'] || '') : '', hecho: completa },
+  ];
+  pasos.forEach(function (p) { p.espera = false; p.dias = null; });
+  if (!empezada) {
+    pasos[2].espera = true; pasos[2].valor = 'Sin iniciar'; pasos[2].dias = diasSinIniciar(fila, hoy);
+  } else if (!completa) {
+    pasos[3].espera = true; pasos[3].valor = 'Sin completar'; pasos[3].dias = diasSinCompletar(fila, hoy);
+  }
+  return pasos;
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
+  ordenPoliciaDe: ordenPoliciaDe,
+  idArchivoDrive: idArchivoDrive,
+  entregablesFaltantes: entregablesFaltantes,
+  agruparMisVisitas: agruparMisVisitas,
+  mesesMisVisitas: mesesMisVisitas,
+  titularMisVisitas: titularMisVisitas,
+  recorridoVisita: recorridoVisita,
+  claveBarrio: claveBarrio,
+  armarJornadaPorBarrio: armarJornadaPorBarrio,
   normalizarDireccion: normalizarDireccion,
   direccionRequiereConfirmar: direccionRequiereConfirmar,
   claveBusquedaDireccion: claveBusquedaDireccion,
@@ -1288,6 +1511,7 @@ var _cuUtilsExports = {
   textoReiterados: textoReiterados,
   radicadosReiterados: radicadosReiterados,
   coincideReiterado: coincideReiterado,
+  formaRadicadoValida: formaRadicadoValida,
   tipoBusquedaCaso: tipoBusquedaCaso,
   buscarCasos: buscarCasos,
   casosRelacionados: casosRelacionados,

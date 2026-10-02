@@ -165,13 +165,13 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     try { sessionStorage.setItem(SV_PREFS, JSON.stringify({ offset, inspector })); } catch (e) {}
   }, [offset, inspector]);
 
-  const { dias, porDia, sinFecha, hoyIdx } = useMemoSV(() => {
+  const { dias, porDia, hoyIdx } = useMemoSV(() => {
     const r = rangoSemana(new Date(), offset);
     const g = agruparSemana(datos, r.dias, { esAdmin, miNombre, inspector });
     const hoy = new Date();
     let idx = -1;
     r.dias.forEach((d, i) => { if (_svMismoDia(d, hoy)) idx = i; });
-    return { dias: r.dias, porDia: g.porDia, sinFecha: g.sinFecha, hoyIdx: idx };
+    return { dias: r.dias, porDia: g.porDia, hoyIdx: idx };
   }, [datos, esAdmin, miNombre, inspector, offset]);
 
   // Sin selección explícita se abre en hoy; fuera de la semana actual (o en
@@ -206,12 +206,10 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     </div>
   );
 
-  const pie = sinFecha > 0 && (
-    <div className="sv-sinfecha">
-      {sinFecha === 1 ? '1 visita sin fecha programada' : sinFecha + ' visitas sin fecha programada'}
-      {' · se encuentran en Buscar'}
-    </div>
-  );
+  // El pie «N visitas sin fecha programada» se quitó (2026-10-02): contaba
+  // filas no pendientes sin fecha de asignación ni de visita — casi todas
+  // viejas — y se leía como trabajo por hacer. agruparSemana lo sigue dando.
+  const pie = null;
 
   // ── Móvil: tira de días + lista del día ──
   if (movil) {
@@ -250,6 +248,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
           <div key={i} className={'sv-col' + (i === hoyIdx ? ' hoy' : '')}>
             <div className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}>
               {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
+              {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
             </div>
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (

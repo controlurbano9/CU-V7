@@ -771,6 +771,13 @@ function AppV6() {
         {/* ── SIDEBAR DESKTOP ── */}
         {isDesktop && (
           <div id="sidebar-desktop" style={{ display: 'flex' }}>
+            {/* En escritorio «Nueva visita» va aquí con su nombre: el «+»
+                flotante quedaba en la esquina, lejos del contenido. */}
+            {!enFormulario && (
+              <button type="button" className="sidebar-nueva" onClick={irNueva}>
+                <Icon.Plus size={18} /> Nueva visita
+              </button>
+            )}
             {tabs.map(t => (
               <SidebarBtn key={t.k} pantalla={pantalla} setPantalla={navegar}
                 k={t.k} label={t.label} Icono={t.Icono} />
@@ -785,7 +792,7 @@ function AppV6() {
 
         {/* ── CONTENT ── */}
         <div id="content-desktop">
-          {pantalla === 'home' && <HomeScreen usuario={usuario} onContinuar={irContinuar} />}
+          {pantalla === 'home' && <HomeScreen usuario={usuario} onContinuar={irContinuar} onNavegar={navegar} />}
           {pantalla === 'mis-visitas' && <MisVisitasScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
             onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
@@ -812,8 +819,8 @@ function AppV6() {
           </div>
         )}
 
-        {/* ── FAB "+" (nueva visita) ── */}
-        {!enFormulario && (
+        {/* ── FAB "+" (nueva visita): solo sin barra lateral ── */}
+        {!isDesktop && !enFormulario && (
           <button type="button" className="fab-nueva" onClick={irNueva}
             title="Nueva visita" aria-label="Nueva visita">
             <Icon.Plus size={26} />

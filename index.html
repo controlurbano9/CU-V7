@@ -12,7 +12,9 @@
      'unsafe-eval' por la API JS de Google Maps (histórico).
      *.googleusercontent.com en img-src: drive.google.com/thumbnail responde 302 a
      lh3.googleusercontent.com, y la CSP también se aplica al destino de la
-     redirección — sin él no salen las miniaturas del modal de registro fotográfico. -->
+     redirección — sin él no salen las miniaturas del modal de registro fotográfico.
+     drive.google.com en frame-src (2026-10-02): el panel de Mis visitas muestra el
+     PDF de la PQR con la vista previa de Drive (/file/d/<id>/preview). -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com https://*.googleapis.com;
@@ -20,7 +22,7 @@
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://drive.google.com https://*.googleusercontent.com;
   connect-src 'self' https://script.google.com https://script.googleusercontent.com https://raw.githubusercontent.com https://*.googleapis.com;
-  frame-src 'self';
+  frame-src 'self' https://drive.google.com;
   object-src 'none';
   base-uri 'self';
 ">
@@ -29,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=143">
+<link rel="stylesheet" href="styles.css?v=145">
 
 <style>
   /* Hacer visible #pantalla-login aunque styles.css lo oculte por defecto */
@@ -67,8 +69,8 @@
 <!-- offline-queue debe cargar ANTES de api.js: api.js usa offlineEnqueue al fallar por red -->
 <script src="env.js?v=80" defer></script>
 <script src="offline-queue.js?v=83" defer></script>
-<script src="api.js?v=117" defer></script>
-<script src="utils.js?v=106" defer></script>
+<script src="api.js?v=118" defer></script>
+<script src="utils.js?v=109" defer></script>
 
 <!-- ─────────────────────────────────────────────────────────────
      PRODUCCIÓN: bundle.min.js pre-transpilado y minificado con esbuild.
@@ -76,7 +78,7 @@
      y ~400 ms de transpilación en cada arranque.
      Regenerar tras editar JSX:  node build.js   (o npm run build)
      ───────────────────────────────────────────────────────────── -->
-<script src="bundle.min.js?v=192" defer></script>
+<script src="bundle.min.js?v=196" defer></script>
 
 
 <!-- Registro del Service Worker (cache de assets estáticos) -->

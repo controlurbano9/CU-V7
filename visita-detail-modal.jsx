@@ -169,6 +169,9 @@ function VisitaDetailUI({ f, onCerrar }) {
             <_CampoVD l="N° orden policía"    v={_g(f, 'N° ORDEN DE POLICIA', 'N ORDEN DE POLICIA', 44)} />
           </_SeccionVD>
 
+          {/* key: el modal se reutiliza al abrir otra visita y la lista vive en state. */}
+          <ReiteradosVD key={String(f._idx) + '|' + _g(f, 'RADICADO')} f={f} />
+
           <_SeccionVD titulo="2. Ubicación del inmueble">
             <_CampoVD l="Dirección"           v={_g(f, 'DIRECCION INFRACCION', 'DIRECCION', 3)} />
             <_CampoVD l="Barrio / Vereda"     v={_g(f, 'BARRIO/VEREDA', 'BARRIO', 4)} />
@@ -246,6 +249,159 @@ function VisitaDetailUI({ f, onCerrar }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Radicados reiterados del caso (2026-10-02) ─────────────────
+// Otras PQR sobre el mismo caso, anotadas en la col RADICADOS REITERADOS de
+// todas sus visitas. Cada una con su PDF, que se busca por nombre en Drive al
+// abrir (no hay columna de enlaces). Solo el admin agrega o quita; el backend
+// rechaza el que se radicó más de 3 meses después del principal: ese es un
+// caso nuevo, con su propia fila. La sección no aparece si no hay reiterados
+// y quien mira no es admin.
+function ReiteradosVD({ f }) {
+  const principal = String(_g(f, 'RADICADO') || '').trim();
+  const [lista, setLista] = useStateVD(() => radicadosReiterados(f).filter(r => r !== claveRadicado(principal)));
+  const [links, setLinks] = useStateVD({});
+  const [buscandoPdf, setBuscandoPdf] = useStateVD(false);
+  const [rad, setRad] = useStateVD('');
+  const [fecha, setFecha] = useStateVD('');      // yyyy-mm-dd (input date)
+  const [ocupado, setOcupado] = useStateVD(false);
+  const [msg, setMsg] = useStateVD(null);        // { error: bool, texto }
+
+  const claveLista = lista.join(',');
+  useEffectVD(() => {
+    if (!lista.length) return;
+    let vivo = true;
+    setBuscandoPdf(true);
+    linksPdfReiterados(lista)
+      .then(r => { if (vivo && r && r.links) setLinks(r.links); })
+      .catch(() => {})
+      .finally(() => { if (vivo) setBuscandoPdf(false); });
+    return () => { vivo = false; };
+  }, [claveLista]);
+
+  let esAdmin = false;
+  try {
+    const s = (typeof SESSION_V6 !== 'undefined') ? SESSION_V6.leer() : null;
+    esAdmin = !!s && s.rol === 'ADMIN';
+  } catch (e) {}
+  if (!lista.length && !esAdmin) return null;
+
+  const radLimpio = claveRadicado(rad);
+  const puedeAgregar = !ocupado && formaRadicadoValida(radLimpio) && !!fecha;
+  // Las listas de detrás (Buscar, Inicio) tienen la fila vieja: se refrescan
+  // por detrás y se re-pintan solas con `cu-visitas-actualizadas`.
+  const refrescarListas = () => { leerVisitas({ forzar: true }).catch(() => {}); };
+
+  async function agregar() {
+    if (!puedeAgregar) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await agregarReiterado(principal, radLimpio, _isoADDMMAAAA(fecha));
+      setLista(r.reiterados || lista.concat([radLimpio]));
+      setRad(''); setFecha('');
+      const partes = [r.yaEstaba ? 'Ya estaba anotado.' : 'Reiterado agregado.'];
+      if (r.filaPropiaOcultada) partes.push('Su fila propia salió de la lista de visitas.');
+      if (r.aviso) partes.push(r.aviso);
+      setMsg({ error: false, texto: partes.join(' ') });
+      refrescarListas();
+    } catch (e) {
+      setMsg({ error: true, texto: e.message || 'No se pudo agregar.' });
+    }
+    setOcupado(false);
+  }
+
+  async function quitar(r) {
+    const ok = await appConfirm('¿Quitar ' + r + ' de los reiterados de este caso?',
+      { titulo: 'Quitar reiterado', btnOk: 'Quitar', peligro: true });
+    if (!ok) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const res = await quitarReiterado(principal, r);
+      setLista(res.reiterados || lista.filter(x => x !== r));
+      setMsg({ error: false, texto: res.filaPropiaDevuelta
+        ? 'Reiterado quitado. Su fila volvió a la lista de visitas.' : 'Reiterado quitado.' });
+      refrescarListas();
+    } catch (e) {
+      setMsg({ error: true, texto: e.message || 'No se pudo quitar.' });
+    }
+    setOcupado(false);
+  }
+
+  const estiloChipPdf = {
+    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 8,
+    background: 'var(--brand-bg)', color: 'var(--brand-ink)', border: '1px solid var(--brand-accent)',
+    fontSize: 10, fontWeight: 700, textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
+  };
+
+  return (
+    <_SeccionVD titulo={'Radicados reiterados' + (lista.length ? ' (' + lista.length + ')' : '')}>
+      <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {!lista.length && (
+          <div style={{ color: 'var(--texto-suave, #5C5142)' }}>Este caso no tiene radicados reiterados.</div>
+        )}
+        {lista.map(r => (
+          <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 32 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r}</span>
+            {links[r]
+              ? <a href={links[r]} target="_blank" rel="noopener noreferrer" style={estiloChipPdf}
+                  title="Abrir el PDF de la PQR reiterada (pestaña nueva)"><Icon.File size={11} /> PQR</a>
+              : <span style={{ fontSize: 11, color: 'var(--texto-suave, #5C5142)' }}>
+                  {buscandoPdf ? 'Buscando PDF…' : 'PDF aún sin descargar'}
+                </span>}
+            {esAdmin && (
+              <button type="button" onClick={() => quitar(r)} disabled={ocupado}
+                aria-label={'Quitar el reiterado ' + r} title="Quitar de los reiterados"
+                style={{ marginLeft: 'auto', minWidth: 44, minHeight: 44, background: 'transparent',
+                  border: 'none', color: 'var(--texto-suave, #5C5142)', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon.Close size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+
+        {esAdmin && (
+          <div style={{ borderTop: lista.length ? '1px solid var(--borde, rgba(31,27,22,0.08))' : 'none',
+            paddingTop: lista.length ? 10 : 0, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+              <label htmlFor="vd-rei-rad" style={{ display: 'block', fontSize: 11, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
+                Radicado reiterado
+              </label>
+              <input id="vd-rei-rad" type="text" className="input-campo" inputMode="numeric" autoComplete="off"
+                placeholder="20261012345" value={rad} disabled={ocupado}
+                onChange={e => setRad(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && agregar()}
+                style={{ width: '100%', minHeight: 44, fontSize: 16, padding: 10 }} />
+            </div>
+            <div style={{ flex: '0 1 170px' }}>
+              <label htmlFor="vd-rei-fecha" style={{ display: 'block', fontSize: 11, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
+                Fecha de ese radicado
+              </label>
+              <input id="vd-rei-fecha" type="date" className="input-campo" value={fecha} disabled={ocupado}
+                onChange={e => setFecha(e.target.value)}
+                style={{ width: '100%', minHeight: 44, fontSize: 16, padding: 10 }} />
+            </div>
+            <button type="button" className="btn-principal" onClick={agregar} disabled={!puedeAgregar}
+              style={{ margin: 0, width: 'auto', minHeight: 44, padding: '0 16px', fontSize: 14 }}>
+              {ocupado ? '…' : 'Agregar'}
+            </button>
+            <div style={{ flexBasis: '100%', fontSize: 11, color: 'var(--texto-suave, #5C5142)', lineHeight: 1.4 }}>
+              Solo si se radicó hasta 3 meses después del caso principal; pasado ese plazo es un
+              radicado nuevo y se ingresa con su propia fila.
+            </div>
+          </div>
+        )}
+
+        {msg && (
+          <div role={msg.error ? 'alert' : 'status'} style={{ fontSize: 12, lineHeight: 1.4,
+            color: msg.error ? 'var(--rojo, #B42318)' : 'var(--verde-dark, #1B6B3A)' }}>
+            {msg.texto}
+          </div>
+        )}
+      </div>
+    </_SeccionVD>
   );
 }
 

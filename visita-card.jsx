@@ -89,14 +89,8 @@ function BotonPdfRadicado({ f, titulo }) {
 //   children         JSX adicional (botones, panel) — se renderiza debajo del header
 //   accionesMt       margin-top del bloque de children (default 12)
 // ═══════════════════════════════════════════════════════════════
-// N° de orden de policía de la fila, '' si no tiene. El encabezado llega con
-// y sin "°" según la hoja, y las filas migradas de V2 traen 'N/A' en vez de
-// vacío (mismo criterio que _hayOrdenReal de nueva-visita.jsx).
-function ordenPoliciaDe(f) {
-  const s = ((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').toString().trim();
-  const u = s.toUpperCase();
-  return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
-}
+// ordenPoliciaDe(f) vive en utils.js desde 2026-10-02 (la usa también la
+// lista de faltantes de Mis visitas, que se prueba sin el bundle).
 
 function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, mostrarPersonaAtiende, mostrarReiterados, labelBadge, children, accionesMt }) {
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');

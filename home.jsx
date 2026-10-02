@@ -1,19 +1,25 @@
 // ═══════════════════════════════════════════════════════════════
 // v6/home.jsx — Pantalla Inicio: dashboard tipo Asana
-//   - Estadísticas compactas (2×2)
-//   - Solo visitas asignadas hoy (iniciables desde aquí, antes de las alertas)
-//   - Alertas urgentes (audiencia en ≤3 días hábiles, +5 días sin completar)
+//   - Indicadores: el recorrido de una visita (por realizar → por completar
+//     → completadas del mes anterior y del actual)
+//   - Semana de visitas
+//   - Alertas (audiencia en ≤3 días hábiles, +5 días sin iniciar o completar)
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 
-// Término legal de respuesta a derechos de petición (PQR), Ley 1755/2015 (CPACA): 15 días hábiles.
-const PQR_PLAZO_DIAS_HABILES = 15;
-
 // Días hábiles que una asignada puede estar sin iniciarse, o una iniciada sin
-// completarse, antes de alertar. Un solo umbral para las dos.
+// completarse, antes de alertar. Un solo umbral para las dos. En pantalla se
+// lee «días» a secas (decisión del usuario 2026-10-02): la cuenta sigue hábil.
 const DIAS_ALERTA_DEMORA = 5;
 
-function HomeScreen({ usuario, onContinuar }) {
+// Abre Buscar con un filtro de estado ya puesto. Buscar restaura sus filtros
+// de sessionStorage al montar, así que se le deja escrito lo que debe traer.
+function _irBuscarConEstados(estados, onNavegar) {
+  try { sessionStorage.setItem('cu_buscar_v1', JSON.stringify({ filtrosEstado: estados })); } catch (e) {}
+  onNavegar('buscar');
+}
+
+function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
   const [error, setError] = useStateH('');
@@ -63,14 +69,14 @@ function HomeScreen({ usuario, onContinuar }) {
   //   INICIADO/COMPLETADO → solo el diligenciador (primer nombre en VISITADOR(ES))
   // Para admin las stats son globales (vista de sistema). Antes todas eran
   // globales y daban inconsistencia con la sección "Asignadas hoy" debajo.
+  // Cada visita abierta cae en una sola ficha: PENDIENTE (sin inspector) es
+  // «por realizar»; ASIGNADO e INICIADO son «por completar».
   const stats = useMemoH(() => {
-    if (!datos.length) return { pendientes: 0, mes: 0, asigPorHacer: 0, realHoy: 0 };
-    const hoyStr = hoyDDMMAAAA();
+    const r = { porRealizar: 0, prioridadAlta: 0, asignadas: 0, iniciadas: 0, demoradas: 0, mesActual: 0, mesAnterior: 0 };
+    if (!datos.length) return r;
     const hoy = new Date();
-    const mesActual = hoy.getMonth();
-    const anioActual = hoy.getFullYear();
+    const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
 
-    let pendientes = 0, mes = 0, asigPorHacer = 0, realHoy = 0;
     datos.forEach(f => {
       const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
       // Filtro por rol — admin ve todo, inspector aplica regla diligenciador.
@@ -88,34 +94,33 @@ function HomeScreen({ usuario, onContinuar }) {
         // son la vista de sistema.
         if (!asignadaVisibleHoy(f)) return;
       }
-      if (e === 'PENDIENTE' || e === 'ASIGNADO') pendientes++;
-      // «Realizadas este mes» cuenta por FECHA DE VISITA (el día que el
-      // inspector salió), no por FECHA DEVOLUCION: una visita realizada a
-      // fin de mes y devuelta en el siguiente contaba en el mes equivocado.
-      if (e === 'INICIADO' || e === 'COMPLETADO') {
+      if (e === 'PENDIENTE') {
+        r.porRealizar++;
+        // PRIORIDAD llega como «7 - Alto» (priorizacion_radicados.gs).
+        if (/CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''))) r.prioridadAlta++;
+      } else if (e === 'ASIGNADO') {
+        r.asignadas++;
+        if ((diasSinIniciar(f) || 0) >= DIAS_ALERTA_DEMORA) r.demoradas++;
+      } else if (e === 'INICIADO') {
+        r.iniciadas++;
+        if ((diasSinCompletar(f) || 0) >= DIAS_ALERTA_DEMORA) r.demoradas++;
+      } else if (e === 'COMPLETADO') {
+        // Por FECHA DE VISITA (el día que el inspector salió), no por FECHA
+        // DEVOLUCION: una visita de fin de mes devuelta en el siguiente
+        // contaba en el mes equivocado.
         const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
-        if (dVis && dVis.getMonth() === mesActual && dVis.getFullYear() === anioActual) mes++;
-      }
-      if (e === 'INICIADO') {
-        const dVis = parsearFecha(f['FECHA DE VISITA'] || '');
-        if (dVis && formatearFecha(dVis) === hoyStr) realHoy++;
-      }
-      // Mismo criterio que la lista "Asignadas por hacer" de abajo (PENDIENTE
-      // o ASIGNADO): antes la tarjeta contaba solo ASIGNADO y el número no
-      // cuadraba con las tarjetas listadas. Entra lo de hoy y lo atrasado,
-      // nunca lo de mañana (asignadaVisibleHoy).
-      if (e === 'PENDIENTE' || e === 'ASIGNADO') {
-        const dAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
-        if (dAsig && asignadaVisibleHoy(f)) asigPorHacer++;
+        if (!dVis) return;
+        if (dVis.getMonth() === hoy.getMonth() && dVis.getFullYear() === hoy.getFullYear()) r.mesActual++;
+        else if (dVis.getMonth() === mesAnt.getMonth() && dVis.getFullYear() === mesAnt.getFullYear()) r.mesAnterior++;
       }
     });
-    return { pendientes, mes, asigPorHacer, realHoy };
+    return r;
   }, [datos, veTodo, miNombre]);
 
   // ── Alertas urgentes ──
   const alertas = useMemoH(() => {
     const rojas = [];   // audiencia en ≤3 días hábiles
-    const amarillas = []; // +5 días sin completar
+    const amarillas = []; // +5 días sin iniciar o sin completar
 
     datos.forEach(f => {
       const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
@@ -138,29 +143,9 @@ function HomeScreen({ usuario, onContinuar }) {
         return;
       }
 
-      // Alerta roja: PQR cerca de vencer o vencida (término legal 15 días
-      // hábiles desde FECHA RADICADO). Aplica en cualquier estado salvo
-      // COMPLETADO — ya se respondió.
-      const esPQR = String(f['ATENCION PQR'] || '').trim().toUpperCase() === 'SI';
-      if (esPQR && e !== 'COMPLETADO') {
-        const dRad = parsearFecha(f['FECHA RADICADO'] || '');
-        if (dRad) {
-          const diasTranscurridos = -diasHabilesHasta(dRad); // fecha pasada → negativo; invertir a conteo positivo
-          const diasRestantes = PQR_PLAZO_DIAS_HABILES - diasTranscurridos;
-          if (diasRestantes <= 3) {
-            const vencida = diasRestantes <= 0;
-            const n = Math.abs(diasRestantes);
-            rojas.push({
-              f: f,
-              mensaje: n === 0 ? 'PQR vence hoy' : vencida
-                ? 'PQR vencida · ' + n + ' día' + (n === 1 ? '' : 's') + ' háb.'
-                : 'PQR vence en ' + n + ' día' + (n === 1 ? '' : 's') + ' háb.',
-              detalle: 'radicada ' + formatearFecha(f['FECHA RADICADO'] || ''),
-              diasH: diasRestantes,
-            });
-          }
-        }
-      }
+      // Urgente es solo la audiencia cercana (decisión del usuario 2026-10-02).
+      // La alerta de «PQR por vencer» se quitó: comparaba ATENCION PQR con
+      // 'SI' y esa columna es una fórmula que trae días, así que nunca disparó.
 
       // Alerta: asignada que nadie inicia. Va ANTES del corte de abajo a
       // propósito: ese `return` descarta todo lo que no esté en INICIADO, así
@@ -172,7 +157,7 @@ function HomeScreen({ usuario, onContinuar }) {
         amarillas.push({
           f: f,
           cat: 'sinIniciar',
-          mensaje: 'Sin iniciar · ' + sinIniciar + ' días háb.',
+          mensaje: 'Sin iniciar · ' + sinIniciar + ' días',
           detalle: 'asignada ' + formatearFecha(f['FECHA ASIGNACION VISITA'] || ''),
           dias: sinIniciar,
           // La alerta NO mueve la visita a hoy: lleva al usuario a la semana
@@ -194,7 +179,7 @@ function HomeScreen({ usuario, onContinuar }) {
               f: f,
               mensaje: diasH === 0
                 ? 'Tiene audiencia HOY'
-                : 'Audiencia en ' + diasH + ' día' + (diasH > 1 ? 's' : '') + ' háb.',
+                : 'Audiencia en ' + diasH + ' día' + (diasH > 1 ? 's' : ''),
               diasH: diasH,
             });
           }
@@ -208,7 +193,7 @@ function HomeScreen({ usuario, onContinuar }) {
         amarillas.push({
           f: f,
           cat: 'sinCompletar',
-          mensaje: 'Sin completar · ' + sinCompletar + ' días háb.',
+          mensaje: 'Sin completar · ' + sinCompletar + ' días',
           detalle: 'visita ' + formatearFecha(f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || ''),
           dias: sinCompletar,
         });
@@ -258,35 +243,67 @@ function HomeScreen({ usuario, onContinuar }) {
   }, [veTodo]);
 
   // ── Render ──
-  const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const hoyR = new Date();
+  const fechaHoy = hoyR.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const mesNombre = d => d.toLocaleDateString('es-CO', { month: 'long' });
+  const mesActualTxt = mesNombre(hoyR);
+  const mesAnteriorTxt = mesNombre(new Date(hoyR.getFullYear(), hoyR.getMonth() - 1, 1));
+  const num = n => (cargando ? '—' : n);
+  const porCompletar = stats.asignadas + stats.iniciadas;
 
   return (
     <div className="pantalla activa pad-bottom home-pantalla">
-      {/* ── Título ── */}
-      <div className="page-title titulo-fijo" style={{ marginBottom: 2 }}>Inicio</div>
-      <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
-        {fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}
+      {/* ── Título, fecha y recargar en un renglón ── */}
+      <div className="titulo-fijo home-cab">
+        <div className="page-title">Inicio</div>
+        <span className="home-fecha">{fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}</span>
+        <button onClick={recargar} className={'btn-texto home-recargar' + (refrescando ? ' icono-girando' : '')}
+          disabled={refrescando} aria-busy={refrescando}>
+          <Icon.Refresh size={14} /> Recargar
+        </button>
       </div>
 
-      {/* ── Estadísticas compactas 2×2 ── */}
-      <div className="stats-grid-2x2 compact">
-        <div className="stat-box-v2 acento compact">
-          <div className="stat-num-v2">{cargando ? '—' : stats.pendientes}</div>
-          <div className="stat-label-v2">Pendientes</div>
+      {/* ── Indicadores: el recorrido de una visita. «Por realizar» es lo que
+          no tiene inspector, así que solo lo ve quien ve todas las visitas. ── */}
+      <div className={'ind-fila' + (veTodo ? '' : ' ind-3')}>
+        {veTodo && (
+          <button type="button" className="ind ind-realizar" title="Visitas sin inspector asignado. Abre Buscar"
+            onClick={() => _irBuscarConEstados(['PENDIENTE'], onNavegar)}>
+            <div className="ind-cab"><span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Por realizar</span></div>
+            <div className="ind-sub">
+              {!cargando && stats.prioridadAlta > 0
+                ? <b className="rojo">{stats.prioridadAlta} de prioridad alta</b>
+                : 'Sin inspector asignado'}
+            </div>
+          </button>
+        )}
+        <button type="button" className="ind ind-completar" title="Asignadas e iniciadas sin completar"
+          onClick={() => veTodo ? _irBuscarConEstados(['ASIGNADO', 'INICIADO'], onNavegar) : onNavegar('mis-visitas')}>
+          <div className="ind-cab"><span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Por completar</span></div>
+          <div className="ind-sub">
+            {cargando ? ' ' : <>
+              {stats.asignadas} asignada{stats.asignadas === 1 ? '' : 's'} · {stats.iniciadas} iniciada{stats.iniciadas === 1 ? '' : 's'}
+              {stats.demoradas > 0 && <> · <b>{stats.demoradas} con +{DIAS_ALERTA_DEMORA} días</b></>}
+            </>}
+          </div>
+        </button>
+        <div className="ind ind-hecho">
+          <div className="ind-cab"><span className="ind-num">{num(stats.mesAnterior)}</span><span className="ind-rot">Completadas en {mesAnteriorTxt}</span></div>
+          <div className="ind-sub ind-sub-ancho">Mes anterior</div>
         </div>
-        <div className="stat-box-v2 compact">
-          <div className="stat-num-v2">{cargando ? '—' : stats.mes}</div>
-          <div className="stat-label-v2">Realizadas este mes</div>
-        </div>
-        <div className="stat-box-v2 compact">
-          <div className="stat-num-v2">{cargando ? '—' : stats.asigPorHacer}</div>
-          <div className="stat-label-v2">Por hacer</div>
-        </div>
-        <div className="stat-box-v2 verde compact">
-          <div className="stat-num-v2">{cargando ? '—' : stats.realHoy}</div>
-          <div className="stat-label-v2">Iniciadas hoy</div>
+        <div className="ind ind-hecho">
+          <div className="ind-cab"><span className="ind-num">{num(stats.mesActual)}</span><span className="ind-rot">Completadas en {mesActualTxt}</span></div>
+          <div className="ind-sub ind-sub-ancho">Mes actual</div>
         </div>
       </div>
+
+      {/* ── Urgentes (audiencia en ≤3 días): franja solo cuando hay ── */}
+      {!cargando && alertas.conteo.urgente > 0 && (
+        <div className="home-urg" role="status">
+          <span><b>{alertas.conteo.urgente} urgente{alertas.conteo.urgente === 1 ? '' : 's'}:</b> audiencia en 3 días o menos</span>
+          <button type="button" className="al-btn" onClick={() => setFiltroAlerta('urgente')}>Ver urgentes</button>
+        </div>
+      )}
 
       {error && (
         <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
@@ -351,14 +368,6 @@ function HomeScreen({ usuario, onContinuar }) {
         </div>
       )}
       </div>{/* .home-2col */}
-
-      {/* ── Footer: recargar datos ── */}
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <button onClick={recargar} className={'btn-texto' + (refrescando ? ' icono-girando' : '')}
-          disabled={refrescando} aria-busy={refrescando}>
-          <Icon.Refresh size={14} /> Recargar datos
-        </button>
-      </div>
     </div>
   );
 }
@@ -421,7 +430,7 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   const meta = [mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
   // «Sin iniciar»/«Sin completar» repetían la etiqueta de estado: queda solo el
   // conteo. La urgente conserva su motivo (PQR, audiencia), que es lo que importa.
-  const motivo = alerta.cat === 'urgente' ? alerta.mensaje : alerta.dias + ' días háb.';
+  const motivo = alerta.cat === 'urgente' ? alerta.mensaje : alerta.dias + ' días';
   // Un supervisor ve alertas de visitas ajenas: para esas solo consulta.
   const puede = puedeDiligenciar(f);
 
