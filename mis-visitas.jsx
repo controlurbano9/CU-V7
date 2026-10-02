@@ -8,7 +8,7 @@
 //     visita elegida: recorrido del caso, mapa, entregables, lo diligenciado
 //     y la PQR legible ahí mismo. Por debajo, la lista sola y «Ver datos»
 //     abre el modal de siempre.
-//   - La regla (quién ve qué, orden, faltantes, titular, recorrido) vive en
+//   - La regla (quién ve qué, orden, faltantes, recorrido) vive en
 //     utils.js y se prueba en tests/mis-visitas.test.js; aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateMV, useEffect: useEffectMV, useMemo: useMemoMV, useRef: useRefMV } = React;
@@ -58,6 +58,9 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const [limiteCompletadas, setLimiteCompletadas] = useStateMV(COMPLETADAS_INICIAL);
 
   const conPanel = useAnchoPanelMV();
+  // La prioridad de la PQR la ven solo admin y supervisores (decisión del
+  // usuario 2026-10-02), igual que el «N de prioridad alta» de Inicio.
+  const verPrioridad = veTodasLasVisitas(usuario.rol);
 
   // ── Carga de datos ──
   useEffectMV(() => { cargar(); }, []);
@@ -91,7 +94,6 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   // Regla del diligenciador, visibilidad por fecha de asignación y orden por
   // demora: agruparMisVisitas (utils.js).
   const grupos = useMemoMV(() => agruparMisVisitas(datos, usuario.usuario), [datos, usuario]);
-  const titular = useMemoMV(() => titularMisVisitas(grupos, DIAS_ALERTA_DEMORA), [grupos]);
   const meses = useMemoMV(() => mesesMisVisitas(grupos.hechas, limiteCompletadas), [grupos, limiteCompletadas]);
 
   const conteo = { hacer: grupos.hacer.length, curso: grupos.curso.length, hecha: grupos.hechas.length };
@@ -113,33 +115,22 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const elegir = (f) => setSelIdx(f._idx);
 
   const listo = !cargando && !error;
-  const textoTitular = (
-    <>
-      {titular.base}
-      {titular.dias != null && (
-        <> {titular.unica ? 'Lleva' : 'La más antigua lleva'} <b>{_plural(titular.dias, 'día', 'días')}</b> {titular.cola}.</>
-      )}
-    </>
-  );
   const fila = (x, tipo) => (
     <FilaMV key={x.f._idx} x={x} tipo={tipo} conPanel={conPanel} elegida={sel === x.f}
-      onElegir={elegir} onContinuar={onContinuar} />
+      verPrioridad={verPrioridad} onElegir={elegir} onContinuar={onContinuar} />
   );
 
   // ── Render ──
   return (
     <div className="pantalla activa pad-bottom mv-pantalla">
-      {/* Título, titular y recargar en un renglón (en móvil el titular baja
-          y queda fuera de la cabecera fija). */}
+      {/* Título y recargar en un renglón, como en Inicio. */}
       <div className="titulo-fijo mv-cab">
         <div className="page-title">Mis visitas</div>
-        {listo && total > 0 && <span className="mv-titular mv-titular-esc">{textoTitular}</span>}
         <button onClick={recargar} className={'btn-texto mv-recargar' + (refrescando ? ' icono-girando' : '')}
           disabled={refrescando} aria-busy={refrescando}>
           <Icon.Refresh size={14} /> Recargar
         </button>
       </div>
-      {listo && total > 0 && <div className="mv-titular mv-titular-mov">{textoTitular}</div>}
 
       {/* Error */}
       {error && (
@@ -211,7 +202,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
             )}
           </div>
 
-          {sel && <PanelVisitaMV f={sel} onContinuar={onContinuar} />}
+          {sel && <PanelVisitaMV f={sel} verPrioridad={verPrioridad} onContinuar={onContinuar} />}
         </div>
       )}
     </div>
@@ -226,7 +217,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
 // «Cómo llegar» / «Ver datos» viven allá; sin panel se quedan aquí, con
 // texto (en campo el icono solo se descubre peor y no hay tooltip).
 // ═══════════════════════════════════════════════════════════════
-function FilaMV({ x, tipo, conPanel, elegida, onElegir, onContinuar }) {
+function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinuar }) {
   const f = x.f;
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
   const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
@@ -252,7 +243,7 @@ function FilaMV({ x, tipo, conPanel, elegida, onElegir, onContinuar }) {
           {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
           {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
         </div>
-        <NotaFilaMV x={x} tipo={tipo} />
+        <NotaFilaMV x={x} tipo={tipo} verPrioridad={verPrioridad} />
       </div>
 
       {(conCta || !conPanel) && (
@@ -287,7 +278,7 @@ function _fechaCortaMV(d) {
 //   por hacer   → hace cuánto está asignada (rojo desde el umbral de demora)
 //   en curso    → qué le falta y hace cuánto se visitó
 //   completada  → solo lo que quedó sin generar; si está entera, nada
-function NotaFilaMV({ x, tipo }) {
+function NotaFilaMV({ x, tipo, verPrioridad }) {
   const f = x.f;
   const partes = [];
   if (tipo === 'hacer') {
@@ -299,7 +290,7 @@ function NotaFilaMV({ x, tipo }) {
     }
     const fRad = formatearFecha(f['FECHA RADICADO'] || '');
     if (fRad) partes.push(<span key="r">radicada {fRad}</span>);
-    if (/CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''))) partes.push(<b key="p">prioridad alta</b>);
+    if (verPrioridad && /CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''))) partes.push(<b key="p">prioridad alta</b>);
   } else if (tipo === 'curso') {
     partes.push(x.faltan.length
       ? <b key="f" className="falta">Falta: {x.faltan.join(' · ')}</b>
@@ -338,7 +329,7 @@ const _ESTADO_PANEL_MV = {
   COMPLETADO: { cls: ' mv-e-hecha', label: 'Completada' },
 };
 
-function PanelVisitaMV({ f, onContinuar }) {
+function PanelVisitaMV({ f, verPrioridad, onContinuar }) {
   const cajaRef = useRefMV(null);
   // Otra visita: el panel vuelve arriba.
   useEffectMV(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; }, [f._idx]);
@@ -365,7 +356,7 @@ function PanelVisitaMV({ f, onContinuar }) {
   const conDato = (pares) => pares.filter(p => p && p[1] != null && String(p[1]).trim() !== '' && p[1] !== '—');
   const caso = conDato([
     ['Denunciante', _g(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6)],
-    ['Prioridad', f['PRIORIDAD']],
+    verPrioridad && ['Prioridad', f['PRIORIDAD']],
     !completa && ['Días de la PQR', f['ATENCION PQR']],
     ['N° orden de policía', ordenPoliciaDe(f)],
     ['Fecha de citación', f['FECHA CITACION']],

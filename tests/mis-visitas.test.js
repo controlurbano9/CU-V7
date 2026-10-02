@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   ordenPoliciaDe, idArchivoDrive, entregablesFaltantes, agruparMisVisitas,
-  mesesMisVisitas, titularMisVisitas, recorridoVisita, diasSinIniciar, diasSinCompletar,
+  mesesMisVisitas, recorridoVisita, diasSinIniciar, diasSinCompletar,
 } = require('../utils.js');
 
 const HOY = new Date(2026, 8, 18); // viernes 18/09/2026
@@ -171,31 +171,6 @@ test('mesesMisVisitas — el límite corta lo pintado, no el conteo del mes', ()
   assert.equal(m.length, 1, 'agosto no se pinta: quedó tras «Mostrar más»');
   assert.equal(m[0].items.length, 2);
   assert.equal(m[0].total, 3);
-});
-
-// ── titularMisVisitas ──────────────────────────────────────────
-
-test('titularMisVisitas — sin deuda', () => {
-  assert.deepEqual(titularMisVisitas({ hacer: [], curso: [], hechas: [1, 2] }, 5),
-    { base: 'Estás al día.', dias: null, cola: '', unica: false });
-});
-
-test('titularMisVisitas — cuenta y nombra la más demorada cuando pasa el umbral', () => {
-  const t = titularMisVisitas({ hacer: [{ dias: 120 }, { dias: 6 }, { dias: null }], curso: [{ dias: 9 }, { dias: 2 }] }, 5);
-  assert.equal(t.base, 'Debes 5 visitas: 3 por hacer y 2 en curso.');
-  assert.equal(t.dias, 120);
-  assert.equal(t.cola, 'sin iniciar');
-  assert.equal(t.unica, false);
-});
-
-test('titularMisVisitas — singular, solo en curso y nada demorado', () => {
-  assert.equal(titularMisVisitas({ hacer: [{ dias: 1 }], curso: [] }, 5).base, 'Debes 1 visita por hacer.');
-  assert.equal(titularMisVisitas({ hacer: [{ dias: 1 }], curso: [] }, 5).dias, null, 'bajo el umbral no hay días');
-  const c = titularMisVisitas({ hacer: [], curso: [{ dias: 9 }, { dias: 3 }] }, 5);
-  assert.equal(c.base, 'Tienes 2 visitas en curso sin completar.');
-  assert.equal(c.dias, 9);
-  assert.equal(c.cola, 'sin completar');
-  assert.equal(titularMisVisitas({ hacer: [{ dias: 7 }], curso: [] }, 5).unica, true);
 });
 
 // ── recorridoVisita ────────────────────────────────────────────

@@ -1415,30 +1415,6 @@ function mesesMisVisitas(hechas, limite, hoy) {
   return out.filter(function (g) { return g.items.length > 0; });
 }
 
-// Titular de la pantalla: cuánto se debe y, si alguna pasó el umbral de
-// demora, cuántos días lleva la peor. Devuelve las partes por separado para
-// que el componente pinte los días en rojo:
-//   { base, dias, cola, unica }  →  «<base> La más antigua lleva <dias> días <cola>.»
-// dias null = nada demorado (o sin deuda): solo se pinta `base`.
-function titularMisVisitas(grupos, umbral) {
-  var hacer = (grupos && grupos.hacer) || [], curso = (grupos && grupos.curso) || [];
-  var h = hacer.length, c = curso.length, n = h + c;
-  if (!n) return { base: 'Estás al día.', dias: null, cola: '', unica: false };
-  var base;
-  if (h && c) base = 'Debes ' + n + ' visitas: ' + h + ' por hacer y ' + c + ' en curso.';
-  else if (h) base = 'Debes ' + h + (h === 1 ? ' visita' : ' visitas') + ' por hacer.';
-  else base = 'Tienes ' + c + (c === 1 ? ' visita' : ' visitas') + ' en curso sin completar.';
-  var peor = null;
-  hacer.forEach(function (x) {
-    if (x.dias != null && (!peor || x.dias > peor.dias)) peor = { dias: x.dias, cola: 'sin iniciar' };
-  });
-  curso.forEach(function (x) {
-    if (x.dias != null && (!peor || x.dias > peor.dias)) peor = { dias: x.dias, cola: 'sin completar' };
-  });
-  if (!peor || peor.dias < (umbral || 0)) return { base: base, dias: null, cola: '', unica: n === 1 };
-  return { base: base, dias: peor.dias, cola: peor.cola, unica: n === 1 };
-}
-
 // Recorrido del caso para el panel: radicada → asignada → visita → completada.
 // Cada paso: { clave, rotulo, valor, hecho, espera, dias }. `espera` marca el
 // paso donde el caso está detenido (uno solo, o ninguno si ya se completó) y
@@ -1473,7 +1449,6 @@ var _cuUtilsExports = {
   entregablesFaltantes: entregablesFaltantes,
   agruparMisVisitas: agruparMisVisitas,
   mesesMisVisitas: mesesMisVisitas,
-  titularMisVisitas: titularMisVisitas,
   recorridoVisita: recorridoVisita,
   claveBarrio: claveBarrio,
   armarJornadaPorBarrio: armarJornadaPorBarrio,
