@@ -20,7 +20,7 @@
 
 // Aliasing por archivo (regla de la app): cada .jsx desestructura los hooks
 // con su propio sufijo para que el bundle no colisione.
-const { useState: useStateVC } = React;
+const { useState: useStateVC, useEffect: useEffectVC } = React;
 
 // ── Tonos por estado para badge-suave ─────────────────────────
 // Capitalizado en español, igual que mis-visitas.jsx
@@ -251,8 +251,29 @@ function BotonVerDatos({ f }) {
 // botón de las listas de Inicio y Mis visitas, para que quede del mismo
 // alto que "Iniciar visita" y "Ver datos".
 // ══════════════════════════════════════════════════════════════
+// Enlace de «Cómo llegar». Arranca con lo que hay en la fila (coordenadas o
+// texto de la dirección) y, si la visita no tiene coordenadas, lo cambia por
+// el punto del predio cuando catastro responde (puntoMapaCatastro, api.js).
+// Si catastro no está a mano o no calza, se queda en el texto: el botón nunca
+// espera. El punto se guarda con su dirección para no servirle a otra fila.
+function useLinkMapaVisita(f) {
+  const [hallado, setHallado] = useStateVC(null);
+  const dir = f ? String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() : '';
+  const necesita = typeof filaNecesitaPuntoCatastro === 'function' && filaNecesitaPuntoCatastro(f);
+  useEffectVC(() => {
+    if (!necesita || typeof puntoMapaCatastro !== 'function') return;
+    let vivo = true;
+    puntoMapaCatastro(dir)
+      .then((p) => { if (vivo && p) setHallado({ dir, p }); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [dir, necesita]);
+  if (typeof linkMapaVisita !== 'function') return '';
+  return linkMapaVisita(f, necesita && hallado && hallado.dir === dir ? hallado.p : null);
+}
+
 function BotonMapaVisita({ f, variante }) {
-  const link = linkMapaVisita(f);
+  const link = useLinkMapaVisita(f);
   if (!link) return null;
   const titulo = 'Abrir la ubicación en Google Maps (pestaña nueva)';
   // Variante icono: la tarjeta de la semana no tiene ancho para el rótulo.

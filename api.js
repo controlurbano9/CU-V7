@@ -1638,6 +1638,47 @@ async function buscarCatastroPorDireccion(dir) {
   return { exacta: exacta, terrenos: terrenos, fichaUnidad: fichaUnidad };
 }
 
+// ── «Cómo llegar»: punto del predio según catastro ────────────
+// Para las visitas sin coordenadas guardadas. Devuelve [lat, lon] o null
+// (null = el botón manda el texto de la dirección a Google, como siempre).
+// La regla de cuándo sirve el predio vive en puntoMapaDesdeCatastro (utils.js).
+//
+// Nunca descarga catastro.json por esto: solo lo usa si ya está en memoria o
+// en la caché del SW (lo deja ahí la precarga de app.jsx). Un botón de lista
+// no justifica bajar 37 MB por datos móviles.
+const _puntoMapaCache = new Map();
+let _catastroLocalPromesa = null, _catastroLocalTs = 0;
+function _catastroDisponibleSinRed() {
+  if (_catastroData) return Promise.resolve(true);
+  if (_catastroLocalPromesa && Date.now() - _catastroLocalTs < 60000) return _catastroLocalPromesa;
+  _catastroLocalTs = Date.now();
+  _catastroLocalPromesa = (async function () {
+    try {
+      // Después de la BD: leer y parsear 37 MB compite con lo que Inicio espera.
+      await Promise.race([esperarPrimeraCargaVisitas(), new Promise(function (r) { setTimeout(r, 8000); })]);
+      if (typeof caches === 'undefined') return false;
+      return !!(await caches.match(new URL('catastro.json', location.href).href));
+    } catch (e) { return false; }
+  })();
+  return _catastroLocalPromesa;
+}
+async function puntoMapaCatastro(dir) {
+  const clave = claveDireccionCatastro(dir);
+  if (!clave) return null;
+  if (_puntoMapaCache.has(clave.base)) return _puntoMapaCache.get(clave.base);
+  if (!(await _catastroDisponibleSinRed())) return null;
+  if (_puntoMapaCache.has(clave.base)) return _puntoMapaCache.get(clave.base);
+  const p = (async function () {
+    const r = await buscarCatastroPorDireccion(dir);
+    if (!r || !r.exacta || r.terrenos.length !== 1) return null;
+    const data = await _cargarCatastro();
+    return puntoMapaDesdeCatastro(r, (data.f[r.terrenos[0].tcod] || []).length);
+  })();
+  _puntoMapaCache.set(clave.base, p);
+  p.catch(function () { _puntoMapaCache.delete(clave.base); });
+  return p;
+}
+
 function _anillosCatastro(data) {
   if (!_anilloPorTcod) _anilloPorTcod = new Map(data.p.map(function (p) { return [p[0], p[5]]; }));
   return _anilloPorTcod;
@@ -1725,6 +1766,7 @@ Object.assign(window, {
   consultarPOT,
   buscarCatastroGPS, poligonosCatastroGPS, formatearCOP,
   fichasCatastroTerreno, buscarCatastroPorDireccion, buscarCatastroPorDato,
+  puntoMapaCatastro,
   SESSION_V6: SESSION,
   invalidarCache,
 });

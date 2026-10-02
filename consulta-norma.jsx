@@ -175,6 +175,9 @@ function ConsultaNormaScreen() {
       fullscreenControl: false,
       zoomControl: true,
       gestureHandling: 'greedy',
+      // Íconos de negocios no tocables: el click traería la coordenada del
+      // negocio, no la del toque.
+      clickableIcons: false,
     });
 
     map.addListener('click', function(e) {

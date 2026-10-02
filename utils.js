@@ -1045,7 +1045,12 @@ function asignadaVisibleHoy(fila, hoy) {
 // que es demasiado para un enlace de lista.
 //
 // Devuelve '' cuando no hay ni coordenadas ni dirección: el botón no se pinta.
-function linkMapaVisita(fila) {
+//
+// `puntoCatastro` ([lat, lon], opcional): el predio que catastro tiene para
+// esa dirección (puntoMapaDesdeCatastro). Va DESPUÉS de las coordenadas
+// guardadas — esas las fijó alguien — y ANTES del texto, que Google interpola
+// sobre la cuadra o resuelve en otro municipio.
+function linkMapaVisita(fila, puntoCatastro) {
   if (!fila) return '';
   var base = 'https://www.google.com/maps/search/?api=1&query=';
   var lat = normalizarCoord(fila['LATITUD'], 'lat');
@@ -1053,6 +1058,9 @@ function linkMapaVisita(fila) {
   if (lat != null && lon != null) return base + lat.toFixed(6) + ',' + lon.toFixed(6);
   var dir = String(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '').trim();
   if (!dir) return '';
+  if (puntoCatastro && isFinite(puntoCatastro[0]) && isFinite(puntoCatastro[1])) {
+    return base + Number(puntoCatastro[0]).toFixed(6) + ',' + Number(puntoCatastro[1]).toFixed(6);
+  }
   // El barrio NO va en la consulta, aunque parezca que ayuda: medido contra
   // Google Maps el 2026-09-18, mandarlo empeora o rompe la resolucion.
   //   "CR 52 # 64-134, Niquia, Bello, Antioquia, Colombia" -> Medellin
@@ -1064,6 +1072,48 @@ function linkMapaVisita(fila) {
   // termina reencuadrando la cadena entera en el area metropolitana.
   // Si se vuelve a tocar esto, medirlo con direcciones reales, no suponerlo.
   return base + encodeURIComponent(dir + ', Bello, Antioquia, Colombia');
+}
+
+// ¿«Cómo llegar» de esta fila puede mejorar con catastro? Solo sin
+// coordenadas guardadas y con una dirección urbana que se deje leer.
+function filaNecesitaPuntoCatastro(fila) {
+  if (!fila) return false;
+  if (normalizarCoord(fila['LATITUD'], 'lat') != null &&
+      normalizarCoord(fila['LONGITUD'], 'lon') != null) return false;
+  return !!claveDireccionCatastro(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '');
+}
+
+// Punta a punta del predio (diagonal de su caja), en metros.
+function diagonalAnilloM(anillo) {
+  if (!anillo || !anillo.length) return 0;
+  var la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
+  anillo.forEach(function (p) {
+    if (p[0] < la0) la0 = p[0]; if (p[0] > la1) la1 = p[0];
+    if (p[1] < lo0) lo0 = p[1]; if (p[1] > lo1) lo1 = p[1];
+  });
+  var kx = 111320 * Math.cos(((la0 + la1) / 2) * Math.PI / 180), ky = 110540;
+  return Math.sqrt(Math.pow((la1 - la0) * ky, 2) + Math.pow((lo1 - lo0) * kx, 2));
+}
+
+// Punto de catastro para «Cómo llegar», o null si debe ir el texto a Google.
+//   resultado: lo que devuelve buscarCatastroPorDireccion (api.js)
+//   nFichas:   fichas del terreno hallado
+// Solo dirección EXACTA en UN predio: las placas vecinas son candidatas para
+// que el inspector elija en el formulario, no para mandarlo sin preguntar.
+// Y solo predio chico: en una urbanización que ocupa la manzana (o varias) el
+// centro cae lejos de la portería y la dirección puede estar sobre otra vía;
+// ahí Google por texto llega mejor (decisión del usuario 2026-10-01).
+// Medido ese día: de 150 visitas por hacer sin coordenadas, 82 calzan exacto
+// en un predio y 17 de esas son grandes → 65 usan este punto.
+var MAPA_PREDIO_MAX_DIAG_M = 100;
+var MAPA_PREDIO_MAX_FICHAS = 50;
+function puntoMapaDesdeCatastro(resultado, nFichas) {
+  if (!resultado || !resultado.exacta) return null;
+  var ts = resultado.terrenos || [];
+  if (ts.length !== 1 || !ts[0].anillo || ts[0].anillo.length < 3) return null;
+  if ((nFichas || 0) > MAPA_PREDIO_MAX_FICHAS) return null;
+  if (diagonalAnilloM(ts[0].anillo) > MAPA_PREDIO_MAX_DIAG_M) return null;
+  return puntoInteriorAnillo(ts[0].anillo);
 }
 
 // ── Semana de visitas (calendario de Inicio) ────────────────
@@ -1244,6 +1294,9 @@ var _cuUtilsExports = {
   linkPdfRadicado: linkPdfRadicado,
   asignadaVisibleHoy: asignadaVisibleHoy,
   linkMapaVisita: linkMapaVisita,
+  filaNecesitaPuntoCatastro: filaNecesitaPuntoCatastro,
+  diagonalAnilloM: diagonalAnilloM,
+  puntoMapaDesdeCatastro: puntoMapaDesdeCatastro,
   normalizarCoord: normalizarCoord,
   numerarVisitasRadicado: numerarVisitasRadicado,
   rangoSemana: rangoSemana,

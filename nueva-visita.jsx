@@ -1076,6 +1076,10 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir, conflicto }) {
         gestureHandling: 'greedy',
         // Cruz y no mano: tocar el mapa marca el punto, no solo lo desplaza.
         draggableCursor: 'crosshair',
+        // Íconos de negocios visibles (orientan) pero no tocables: el click
+        // sobre uno trae la coordenada del negocio, no la del toque, y el pin
+        // caía en otro predio.
+        clickableIcons: false,
       });
       // Tocar el mapa coloca (o mueve) el pin: sirve cuando el GPS no da señal
       // o cuando se diligencia después, lejos del predio. Pasa por onMove igual
@@ -2129,6 +2133,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // Informe F-GGO-43: la "generación" es abrir informe/index.html (pestaña o
   // iframe); este flag solo marca el tramo validación→apertura.
   const [abriendoInforme, setAI] = React.useState(false);
+  // Informe hecho por fuera de la app (Word) que el inspector sube tal cual.
+  const [subiendoInforme, setSI] = React.useState(false);
+  const inputInformeRef = React.useRef(null);
   const [modalFotos,  setModalFotos] = React.useState(null); // null o [{id, nombre, link, descripcion, mimeType}]
   // Total de fotos que trajo listarFotosActa al abrir el modal. Se fija una sola
   // vez y no se recalcula: la lista se va modificando al quitar fotos y el botón
@@ -4036,6 +4043,66 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     }
   }
 
+  // Informe elaborado por fuera de la app: se sube el .docx tal cual (queda
+  // editable en Word) a la carpeta de la visita y ocupa el lugar del generado.
+  // No pasa por _validarAntesDeActa: el documento ya viene escrito, el
+  // formulario no lo alimenta. Mismo nombre que usa el generador
+  // (informe/index.html → subirInformeAlDrive) para que el backend mande a la
+  // papelera la versión anterior en vez de acumular dos informes.
+  async function subirInformeExterno(e) {
+    const archivo = e.target.files && e.target.files[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo
+    if (!archivo || _docOcupadoRef.current) return;
+    if (!/\.docx$/i.test(archivo.name)) {
+      appAlert('El informe debe ser un documento de Word (.docx). Si está en .doc o en otro formato, ábrelo en Word y usa «Guardar como» → Documento de Word (.docx).',
+        { tono: 'aviso', titulo: 'Formato no admitido' });
+      return;
+    }
+    if (archivo.size > 20 * 1024 * 1024) {
+      appAlert('El archivo pesa más de 20 MB. Comprime las imágenes del documento en Word y vuelve a intentarlo.',
+        { tono: 'aviso', titulo: 'Archivo muy grande' });
+      return;
+    }
+    if (d.linkDocxInforme) {
+      const seguir = await appConfirm('Esta visita ya tiene un informe. El archivo que subas lo reemplaza.',
+        { titulo: '¿Reemplazar el informe?', btnOk: 'Reemplazar' });
+      if (!seguir) return;
+    }
+    _docOcupadoRef.current = true;
+    setSI(true);
+    try {
+      const base64 = await new Promise(function(resolve, reject) {
+        const r = new FileReader();
+        r.onload  = function() { resolve((r.result || '').toString().split(',')[1] || ''); };
+        r.onerror = function() { reject(new Error('No se pudo leer el archivo')); };
+        r.readAsDataURL(archivo);
+      });
+      const rad = d.esOficio ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : d.radicado;
+      const mF = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(d.fechaVisita || '').trim());
+      const fechaIso = mF
+        ? mF[3] + '-' + ('0' + mF[2]).slice(-2) + '-' + ('0' + mF[1]).slice(-2)
+        : String(d.fechaVisita || '').slice(0, 10);
+      const r = await gasPost({
+        accion: 'subirInformeF43',
+        fila: filaEditando,
+        radicadoConocido: _radicadoFilaRef.current,
+        idCarpeta: d.idCarpetaVisita,
+        nombreArchivo: 'F-GGO-43_' + String(rad || 'informe').replace(/[^a-zA-Z0-9._-]/g, '_') +
+          '_' + (fechaIso || 'sin_fecha') + '.docx',
+        base64: base64,
+      });
+      if (r.link) setD(function(prev) { return Object.assign({}, prev, { linkDocxInforme: r.link }); });
+      if (typeof invalidarCache === 'function') invalidarCache('visitas');
+      if (r.avisoLink || r.aviso) appAlert(r.avisoLink || r.aviso, { tono: 'aviso', titulo: 'Informe subido con aviso' });
+    } catch (err) {
+      appAlert('No se pudo subir el informe: ' + (err && err.message ? err.message : err),
+        { tono: 'error', titulo: 'Error' });
+    } finally {
+      _docOcupadoRef.current = false;
+      setSI(false);
+    }
+  }
+
   async function _ejecutarGenerarActa(regenerar) {
     // Guarda de doble lanzamiento: cubre el doble clic rápido (disabled
     // llega tras el re-render) y que corra a la vez que el informe o el RF.
@@ -4283,7 +4350,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!pendiente) estadosSeccion[titulo] = 'ok';
     else if (mostrarPendientes) estadosSeccion[titulo] = 'pend';
   });
-  const docOcupado = generandoActa || generandoRF || abriendoInforme;
+  const docOcupado = generandoActa || generandoRF || abriendoInforme || subiendoInforme;
   // La fila en BD y la carpeta en Drive se crean en llamadas distintas: si
   // crearCarpetaVisita falló (típico sin señal en campo) la visita existe
   // pero no hay dónde poner fotos ni documentos. Los renglones que dependen
@@ -4388,17 +4455,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
       <_Seccion titulo="Identificación del caso"
         estado={estadosSeccion["Identificación del caso"]} color="azul">
-        {/* Indicador tipo de visita (solo lectura — se eligió en el modal) */}
+        {/* Indicador tipo de visita (solo lectura — se eligió en el modal).
+            Texto plano, sin fondo ni borde: con la caja de color parecía un
+            botón (igual a .btn-accion). minHeight lo alinea con el input vecino. */}
         <_Campo label="Tipo de visita">
           <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '8px 14px', borderRadius: 'var(--r-md)',
-            background: d.esOficio ? 'var(--amarillo-bg)' : 'var(--brand-bg)',
-            border: '1px solid ' + (d.esOficio ? 'var(--amarillo)' : 'var(--brand-accent)'),
-            fontSize: 14, fontWeight: 600,
-            color: d.esOficio ? 'var(--cafe)' : 'var(--brand-ink)',
+            display: 'flex', alignItems: 'center', gap: 8,
+            minHeight: 'var(--tap)',
+            fontSize: 14, fontWeight: 600, color: 'var(--ink)',
           }}>
-            {d.esOficio ? <Icon.Flag size={16} /> : <Icon.File size={16} />}
+            <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }} aria-hidden="true">
+              {d.esOficio ? <Icon.Flag size={16} /> : <Icon.File size={16} />}
+            </span>
             {d.esOficio ? 'Visita de oficio' : 'PQR / Radicado'}
             {_nVisitaNum > 1 && <span style={{ marginLeft: 4, opacity: 0.7 }}>· Visita N°{_nVisitaNum}</span>}
           </div>
@@ -5207,9 +5275,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 ? 'Generado'
                 : (sinCarpetaVisita
                     ? 'Requiere la carpeta en Drive'
-                    : (abriendoInforme ? 'Abriendo…' : 'Pendiente'))}
-              procesando={abriendoInforme}
+                    : (subiendoInforme ? 'Subiendo…' : (abriendoInforme ? 'Abriendo…' : 'Pendiente')))}
+              procesando={abriendoInforme || subiendoInforme}
             >
+              {/* Informe hecho por fuera de la app: icono, no tercer botón de
+                  texto. No exige lo diligenciado ni el guardado al día — el
+                  documento ya viene escrito —, solo la carpeta de Drive. */}
+              <button type="button" onClick={() => inputInformeRef.current && inputInformeRef.current.click()}
+                disabled={docOcupado || sinCarpetaVisita}
+                className="btn-icono" aria-label="Subir un informe hecho por fuera de la app (Word .docx)"
+                aria-busy={subiendoInforme} title="Subir informe hecho por fuera (.docx)">
+                {subiendoInforme
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Upload size={18} />}
+              </button>
+              <input ref={inputInformeRef} type="file"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={subirInformeExterno} style={{ display: 'none' }} />
               {d.linkDocxInforme ? (<>
                 <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 {/* Mismo patrón de regeneración del acta: el informe ya

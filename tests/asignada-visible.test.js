@@ -10,7 +10,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { asignadaVisibleHoy, linkMapaVisita } = require('../utils.js');
+const { asignadaVisibleHoy, linkMapaVisita, filaNecesitaPuntoCatastro, diagonalAnilloM,
+  puntoMapaDesdeCatastro, puntoEnAnillo } = require('../utils.js');
 
 const HOY = new Date(2026, 8, 18); // 18/09/2026
 
@@ -104,4 +105,55 @@ test('linkMapaVisita — sin coordenadas ni dirección devuelve vacío (el botó
 test('linkMapaVisita — una sola coordenada no basta: cae a la dirección', () => {
   const url = linkMapaVisita({ 'LATITUD': 6.345587, 'DIRECCION': 'CL 50 # 32-10' });
   assert.ok(url.indexOf('CL%2050') !== -1, 'debe usar la dirección, no media coordenada');
+});
+
+// ── «Cómo llegar» con el predio de catastro (2026-10-01) ──────────
+// Cuadrado de ~20 m y de ~200 m de lado alrededor de un punto de Bello.
+function cuadrado(ladoM) {
+  const dLat = ladoM / 110540, dLon = ladoM / (111320 * Math.cos(6.34 * Math.PI / 180));
+  return [[6.34, -75.55], [6.34 + dLat, -75.55], [6.34 + dLat, -75.55 + dLon], [6.34, -75.55 + dLon]];
+}
+const PREDIO_CHICO = { tcod: 'A', anillo: cuadrado(20) };
+const PREDIO_GRANDE = { tcod: 'B', anillo: cuadrado(200) };
+
+test('linkMapaVisita — sin GPS y con punto de catastro abre el punto, no el texto', () => {
+  const url = linkMapaVisita({ 'DIRECCION INFRACCION': 'CL 50 # 32-10' }, [6.3401, -75.5499]);
+  assert.equal(url, 'https://www.google.com/maps/search/?api=1&query=6.340100,-75.549900');
+});
+
+test('linkMapaVisita — las coordenadas guardadas mandan sobre el punto de catastro', () => {
+  const url = linkMapaVisita({ 'LATITUD': 6.345587, 'LONGITUD': -75.553412, 'DIRECCION': 'CL 50 # 32-10' }, [6.3401, -75.5499]);
+  assert.equal(url, 'https://www.google.com/maps/search/?api=1&query=6.345587,-75.553412');
+});
+
+test('filaNecesitaPuntoCatastro — solo sin coordenadas y con dirección urbana legible', () => {
+  assert.equal(filaNecesitaPuntoCatastro({ 'DIRECCION INFRACCION': 'CL 50 # 32-10' }), true);
+  assert.equal(filaNecesitaPuntoCatastro({ 'LATITUD': 6.345587, 'LONGITUD': -75.553412, 'DIRECCION': 'CL 50 # 32-10' }), false);
+  assert.equal(filaNecesitaPuntoCatastro({ 'DIRECCION': 'VEREDA POTRERITO, FINCA LA ESPERANZA' }), false);
+  assert.equal(filaNecesitaPuntoCatastro({}), false);
+  assert.equal(filaNecesitaPuntoCatastro(null), false);
+});
+
+test('diagonalAnilloM — mide el predio de punta a punta', () => {
+  assert.ok(Math.abs(diagonalAnilloM(cuadrado(20)) - 28.3) < 0.5);
+  assert.ok(Math.abs(diagonalAnilloM(cuadrado(200)) - 282.8) < 2);
+  assert.equal(diagonalAnilloM([]), 0);
+});
+
+test('puntoMapaDesdeCatastro — dirección exacta en un predio chico: punto dentro del predio', () => {
+  const p = puntoMapaDesdeCatastro({ exacta: true, terrenos: [PREDIO_CHICO] }, 3);
+  assert.ok(p && puntoEnAnillo(p[0], p[1], PREDIO_CHICO.anillo));
+});
+
+test('puntoMapaDesdeCatastro — predio grande o con muchas fichas va por texto a Google', () => {
+  assert.equal(puntoMapaDesdeCatastro({ exacta: true, terrenos: [PREDIO_GRANDE] }, 3), null);
+  assert.equal(puntoMapaDesdeCatastro({ exacta: true, terrenos: [PREDIO_CHICO] }, 51), null);
+  assert.ok(puntoMapaDesdeCatastro({ exacta: true, terrenos: [PREDIO_CHICO] }, 50));
+});
+
+test('puntoMapaDesdeCatastro — placas vecinas, varios predios o nada: no se adivina', () => {
+  assert.equal(puntoMapaDesdeCatastro({ exacta: false, terrenos: [PREDIO_CHICO] }, 1), null);
+  assert.equal(puntoMapaDesdeCatastro({ exacta: true, terrenos: [PREDIO_CHICO, PREDIO_CHICO] }, 1), null);
+  assert.equal(puntoMapaDesdeCatastro({ exacta: true, terrenos: [] }, 0), null);
+  assert.equal(puntoMapaDesdeCatastro(null, 0), null);
 });
