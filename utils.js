@@ -991,7 +991,9 @@ function esCodigoPredioMatriz(catastral) {
 function claveBusquedaCatastral(texto) {
   var s = String(texto == null ? '' : texto).trim().toUpperCase();
   if (!s) return null;
-  var mm = s.match(/^\d{1,3}[A-Z]\s*-?\s*(\d{1,9})$/);
+  // El círculo registral empieza con 0 (01N, 001); una vía nunca: así «50A 3210»
+  // (placa sin tipo de vía) no se toma por matrícula.
+  var mm = s.match(/^0\d{1,2}[A-Z]\s*-?\s*(\d{1,9})$/);
   if (mm) return { tipo: 'matricula', numero: Number(mm[1]) };
   if (/^\d{4,9}$/.test(s)) return { tipo: 'numero', numero: Number(s) };
   if (!/^\d[\d\s-]*\d$/.test(s)) return null;

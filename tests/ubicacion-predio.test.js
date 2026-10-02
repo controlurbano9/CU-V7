@@ -267,6 +267,8 @@ test('dato catastral: direcciones y coordenadas no lo son', () => {
   assert.equal(k('6 -75'), null);
   assert.equal(k('CL 50 32-10'), null);
   assert.equal(k('50 32-10'), null);
+  assert.equal(k('50A 3210'), null);    // placa sin tipo de vía, no matrícula
+  assert.equal(k('50A-3210'), null);
   assert.equal(k('50'), null);          // número de vía a medio escribir
   assert.equal(k('123'), null);
   assert.equal(k('1234567890'), null);  // 10 dígitos: ni ficha ni código
