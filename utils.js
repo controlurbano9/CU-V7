@@ -647,8 +647,9 @@ function normalizarDireccion(dir) {
   }
   if (!via) return (dir == null ? '' : String(dir)).trim();  // rural u otra cosa: no tocar
   // Separador único `#`. `No.`, `Nro`, `N°` y el guion suelto entre los dos
-  // tramos son la misma cosa escrita distinto.
-  s = s.replace(/\b(NO|NRO|NUM|NUMERO)\b\.?/g, '#')
+  // tramos son la misma cosa escrita distinto. Solo antes de un número:
+  // «(NO EXISTE)» es texto, no separador.
+  s = s.replace(/\b(NO|NRO|NUM|NUMERO)\b\.?(?=\s*\d)/g, '#')
        .replace(/[N#]\s*[°º]/g, '#')
        .replace(/[°º]/g, '#')
        .replace(/#+/g, '#');

@@ -35,6 +35,8 @@ test('grafías urbanas → CL/CR con separador #', () => {
   assert.equal(normalizarDireccion('Cra. 50 32-10'), 'CR 50 # 32-10');
   assert.equal(normalizarDireccion('  CL   50   #  32-10 '), 'CL 50 # 32-10');
   assert.equal(normalizarDireccion('TRANSVERSAL 45 # 12-3'), 'TV 45 # 12-3');
+  // «NO» que no va antes de un número es texto (caso real, fila 577).
+  assert.equal(normalizarDireccion('CL 54 50A-08 (NO EXISTE)'), 'CL 54 # 50A-08 (NO EXISTE)');
 });
 
 test('ya normalizada: idempotente', () => {
