@@ -175,7 +175,9 @@ function TabBandeja({ vig, logDesc, recargarVisitas }) {
     const desde = Date.now() - 7 * 86400000;
     return (logDesc || []).filter(f => {
       const a = String(f[2] || '');
-      if (!/bloqueado/i.test(a) && !/^duplicado/i.test(a)) return false;
+      // Solo BLOQUEADO (incluye «DUPLICADO bloqueado»). «DUPLICADO ignorado» es
+      // el formulario de PQR enviado dos veces, no un guardado bloqueado.
+      if (!/bloqueado/i.test(a)) return false;
       const d = parsearFechaHora(f[0]);
       return !!d && d.getTime() >= desde;
     });
@@ -521,7 +523,7 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
               <span className="vc-rad">{x.f['RADICADO'] || '—'}</span>
               <span className="adm-dem-dir">{x.f['DIRECCION INFRACCION'] || x.f['DIRECCION'] || '—'}</span>
               <b className={x.dias != null && x.dias >= DIAS_DEMORA_ADMIN ? 'demora' : ''}>
-                {x.dias == null ? 's/f' : x.dias + ' días'}
+                {x.dias == null ? 's/f' : x.dias + (x.dias === 1 ? ' día' : ' días')}
               </b>
               <span className="adm-dem-tipo">{x.tipo === 'curso' ? 'En curso' : 'Por hacer'}</span>
             </div>

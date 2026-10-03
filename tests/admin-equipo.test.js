@@ -9,11 +9,14 @@
 // Ejecutar: npm test
 // ═══════════════════════════════════════════════════════════════
 'use strict';
+// formatearFechaHora pinta en America/Bogota y parsearFechaHora lee el texto
+// como hora local: la prueba fija la zona para no depender de la máquina.
+process.env.TZ = 'America/Bogota';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   parsearFechaHora, cargaUsuario, ultimaActividad, categoriaLog,
-  DIAS_DEMORA_ADMIN,
+  DIAS_DEMORA_ADMIN, formatearFechaHora,
 } = require('../utils.js');
 
 const HOY = new Date(2026, 9, 8); // jueves 08/10/2026
@@ -21,6 +24,12 @@ const YO = 'DANIEL PEDRAZA';
 const fila = (extra) => Object.assign({ 'VISITADOR(ES)': YO, 'RADICADO': '20261000001' }, extra);
 
 // ── parsearFechaHora ───────────────────────────────────────────
+
+test('formatearFechaHora — texto del log sin voltear día y mes ni perder la hora', () => {
+  assert.equal(formatearFechaHora('03/10/2026 08:52'), '03/10/2026 08:52');
+  assert.equal(formatearFechaHora('23/09/2026 16:05'), '23/09/2026 16:05');
+  assert.equal(formatearFechaHora('3/10/2026, 2:14:00 p. m.'), '03/10/2026 14:14');
+});
 
 test('parsearFechaHora — Date, ISO y dd/MM/yyyy HH:mm del backend', () => {
   const d = new Date(2026, 9, 3, 8, 30);

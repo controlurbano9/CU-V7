@@ -30,10 +30,13 @@ function formatearFecha(valor) {
 
 // Fecha + hora local (America/Bogota) para timestamps del backend, que
 // llegan como ISO. Devuelve "DD/MM/YYYY HH:mm" o '' si no es parseable.
+// También acepta el texto de LOG_AUDITORIA («dd/MM/yyyy HH:mm» o
+// «d/M/yyyy, h:mm a. m.»): con new Date(texto), «03/10/2026 08:52» salía 10
+// de marzo y con día > 12 se perdía la hora.
 function formatearFechaHora(valor) {
   if (!valor) return '';
-  var d = (valor instanceof Date) ? valor : new Date(String(valor).trim());
-  if (isNaN(d.getTime())) return formatearFecha(valor);
+  var d = parsearFechaHora(valor);
+  if (!d) return formatearFecha(valor);
   var f = new Intl.DateTimeFormat('es-CO', {
     timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
