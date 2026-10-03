@@ -1,84 +1,188 @@
 // ═══════════════════════════════════════════════════════════════
-// v6/admin.jsx — Pantalla piloto Administración (V5 → React)
+// v6/admin.jsx — Pantalla Administración (solo rol ADMIN)
+//
+// Fase 1 (2026-10-03), solo cliente: Bandeja (vigilancia + guardados
+// bloqueados), Equipo (lista de tarjetas + panel de la persona) y Actividad
+// (log con filtros). Reset PIN y Reglas de agenda quedan como estaban, tras
+// dos botones discretos. La regla vive en utils.js (cargaUsuario,
+// ultimaActividad, categoriaLog, parsearFechaHora) y se prueba en
+// tests/admin-equipo.test.js; aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateA, useEffect: useEffectA } = React;
+const { useState: useStateA, useEffect: useEffectA, useMemo: useMemoA, useRef: useRefA } = React;
 
+// La config de agenda guarda palabras clave («MAURICIO» casa con «Mauricio
+// Pérez»). Vivía dentro de TabConfigAgenda; la sube Equipo para saber si una
+// persona recibe visitas de la agenda — sin tocar la lógica.
+function _casa(nombre, palabra) {
+  const n = String(nombre || '').trim().toUpperCase();
+  const k = String(palabra || '').trim().toUpperCase();
+  if (!n || !k) return false;
+  return n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 ||
+         n.lastIndexOf(' ' + k) === n.length - k.length - 1;
+}
+
+// El panel de Equipo existe desde este ancho: mismo corte que .adm-2col en
+// styles.css (patrón de mis-visitas.jsx).
+const ADM_ANCHO_PANEL = '(min-width: 1200px)';
+
+function useAnchoPanelAdm() {
+  const hayMQ = typeof window.matchMedia === 'function';
+  const [ancho, setAncho] = useStateA(() => hayMQ && window.matchMedia(ADM_ANCHO_PANEL).matches);
+  useEffectA(() => {
+    if (!hayMQ) return;
+    const mq = window.matchMedia(ADM_ANCHO_PANEL);
+    const alCambiar = () => setAncho(mq.matches);
+    alCambiar();
+    if (mq.addEventListener) mq.addEventListener('change', alCambiar); else mq.addListener(alCambiar);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', alCambiar); else mq.removeListener(alCambiar);
+    };
+  }, []);
+  return ancho;
+}
+
+// ── Pantalla ────────────────────────────────────────────────────
+// Los tres datos se piden una sola vez al entrar y bajan por props; las
+// secciones nuevas no tienen «Recargar». Re-pinta con suscribirVisitas,
+// como hacía la vieja pestaña de Vigilancia.
 function AdminScreen({ usuario }) {
-  const [tab, setTab] = useStateA('usuarios'); // usuarios | pin | agenda | vigilancia | log
+  const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
+  const [vista, setVista]     = useStateA('');         // '' | 'pin' | 'agenda'
+  const [pinFila, setPinFila] = useStateA(null);       // preselección de TabResetPin
+  const [usuarios, setUsuarios] = useStateA([]);
+  const [visitas, setVisitas]   = useStateA([]);
+  const [log, setLog]           = useStateA([]);
+  const [cargando, setCargando] = useStateA(true);
+  const [error, setError]       = useStateA('');
+  const conPanel = useAnchoPanelAdm();
+
+  useEffectA(() => { cargar(); }, []);
+  useEffectA(() => suscribirVisitas(() => {
+    leerVisitas().then(r => setVisitas(r.datos || [])).catch(() => {});
+  }), []);
+
+  async function cargar() {
+    setCargando(true); setError('');
+    try {
+      const [us, vis, lg] = await Promise.all([
+        listarUsuariosAdmin(),
+        leerVisitas(),
+        leerLogAuditoria(),
+      ]);
+      setUsuarios(us || []);
+      setVisitas(vis.datos || []);
+      setLog(lg || []);
+    } catch (e) { setError(e.message); }
+    setCargando(false);
+  }
+
+  async function recargarUsuarios() {
+    try { setUsuarios(await listarUsuariosAdmin()); }
+    catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
+  }
+
+  async function recargarVisitas() {
+    const { datos } = await leerVisitas({ forzar: true });
+    setVisitas(datos || []);
+  }
+
+  const logDesc = useMemoA(() => (log || []).slice(1).reverse(), [log]);
+
+  // Bandeja: mismo filtro de la vieja pestaña Vigilancia (SUSPENSION = SI y
+  // orden real), repartido en tres grupos. El conteo de «por generar» viaja
+  // al control segmentado, así que se calcula aquí.
+  const vig = useMemoA(() => {
+    const susp = (visitas || []).filter(d => {
+      const s = (d['SUSPENSION DE LA OBRA'] || '').toString().trim().toUpperCase();
+      const orden = (d['N ORDEN DE POLICIA'] || d['N° ORDEN DE POLICIA'] || '').toString().trim();
+      return s === 'SI' && orden;
+    });
+    // localeCompare sobre DD/MM/YYYY ordena por día primero; timestamp para
+    // que "02/02/2026" > "10/01/2026" como debe ser.
+    const ts = (val) => { const d = parsearFecha(val); return d ? d.getTime() : 0; };
+    susp.sort((a, b) => ts(b['FECHA DE VISITA']) - ts(a['FECHA DE VISITA']));
+    return {
+      porGenerar: susp.filter(f => !f['LINK_SOLICITUD_VIGILANCIA']),
+      faltaOrden: susp.filter(f => f['LINK_SOLICITUD_VIGILANCIA'] && !f['LINK_SOLICITUD_PDF']),
+      listos:     susp.filter(f => f['LINK_SOLICITUD_PDF']),
+    };
+  }, [visitas]);
+
+  const nPorGenerar = vig.porGenerar.length;
+
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
   }
-  return (
-    <div className="pantalla activa pad-bottom">
-      <div className="page-title" style={{ marginBottom: 16 }}>Administración</div>
 
-      <div className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--borde)' }}>
+  const irTab = (k) => { setTab(k); setVista(''); };
+  const abrirPin = (fila) => { setPinFila(fila == null ? null : fila); setVista('pin'); };
+
+  return (
+    <div className={'pantalla activa pad-bottom' + (conPanel && tab === 'equipo' && !vista ? ' adm-pantalla' : '')}>
+      <div className="titulo-fijo adm-cab">
+        <div className="page-title">Administración</div>
+        <div className="adm-tabs" role="tablist" aria-label="Secciones de administración">
           {[
-            { k: 'usuarios',   l: 'Usuarios' },
-            { k: 'pin',        l: 'Reset PIN' },
-            { k: 'vigilancia', l: 'Vigilancia' },
-            { k: 'agenda',     l: 'Agenda' },
-            { k: 'log',        l: 'Auditoría' },
+            { k: 'bandeja',   l: <span>Bandeja{nPorGenerar > 0 && <span className="adm-tab-n">{nPorGenerar}</span>}</span> },
+            { k: 'equipo',    l: 'Equipo' },
+            { k: 'actividad', l: 'Actividad' },
           ].map(t => (
-            <button key={t.k} onClick={() => setTab(t.k)} style={{
-              flex: 1, padding: '12px 8px', background: 'none', border: 'none',
-              borderBottom: tab === t.k ? '2px solid var(--brand-accent)' : '2px solid transparent',
-              color: tab === t.k ? 'var(--brand-accent)' : 'var(--texto-suave)',
-              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}>{t.l}</button>
+            <button key={t.k} role="tab" aria-selected={tab === t.k && !vista}
+              className={'adm-tab' + (tab === t.k && !vista ? ' activo' : '')}
+              onClick={() => irTab(t.k)}>{t.l}</button>
           ))}
+        </div>
+        <div className="adm-tools">
+          <button type="button" className="btn-texto" aria-pressed={vista === 'pin'}
+            onClick={() => (vista === 'pin' ? setVista('') : abrirPin(null))}>Reset PIN</button>
+          <button type="button" className="btn-texto" aria-pressed={vista === 'agenda'}
+            onClick={() => setVista(vista === 'agenda' ? '' : 'agenda')}>Reglas de agenda</button>
         </div>
       </div>
 
-      {tab === 'usuarios'   && <TabUsuarios />}
-      {tab === 'pin'        && <TabResetPin />}
-      {tab === 'vigilancia' && <TabVigilancia />}
-      {tab === 'agenda'     && <TabConfigAgenda />}
-      {tab === 'log'        && <TabLog />}
+      {error && (
+        <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
+          {error} &middot;{' '}
+          <button onClick={cargar} style={{
+            background: 'none', border: 'none', color: 'var(--brand-accent)',
+            cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',
+          }}>Reintentar</button>
+        </div>
+      )}
+      {cargando && <div className="cargando"><div className="spinner"></div>Cargando…</div>}
+
+      {!cargando && !error && (
+        vista === 'pin'      ? <TabResetPin filaInicial={pinFila} /> :
+        vista === 'agenda'   ? <TabConfigAgenda /> :
+        tab === 'bandeja'    ? <TabBandeja vig={vig} logDesc={logDesc} recargarVisitas={recargarVisitas} /> :
+        tab === 'actividad'  ? <TabActividad log={log} /> :
+        <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} conPanel={conPanel}
+          onAbrirReglas={() => setVista('agenda')} onAbrirPin={abrirPin}
+          recargarUsuarios={recargarUsuarios} />
+      )}
     </div>
   );
 }
 
-// ── Pestaña Vigilancia: visitas con orden de suspensión preventiva ───
-// Lista las visitas donde SUSPENSION DE LA OBRA === SI y existe
-// N ORDEN DE POLICIA. Permite generar (o reabrir) la solicitud de
-// vigilancia policial guardada en la carpeta de la visita.
-function TabVigilancia() {
-  const [filas, setFilas]       = useStateA([]);
-  const [cargando, setCargando] = useStateA(true);
-  const [error, setError]       = useStateA('');
+// ═══════════════════════════════════════════════════════════════
+// Bandeja — oficios de vigilancia por grupo + guardados bloqueados
+// ═══════════════════════════════════════════════════════════════
+function TabBandeja({ vig, logDesc, recargarVisitas }) {
   const [busyFila, setBusyFila] = useStateA(null);
+  const [listosAbierto, setListosAbierto] = useStateA(false);
 
-  useEffectA(() => { cargar(); }, []);
-  useEffectA(() => suscribirVisitas(() => cargar(false, true)), []);
+  const bloqueadas = useMemoA(() => {
+    const desde = Date.now() - 7 * 86400000;
+    return (logDesc || []).filter(f => {
+      const a = String(f[2] || '');
+      if (!/bloqueado/i.test(a) && !/^duplicado/i.test(a)) return false;
+      const d = parsearFechaHora(f[0]);
+      return !!d && d.getTime() >= desde;
+    });
+  }, [logDesc]);
 
-  async function cargar(forzar, silencioso) {
-    if (!silencioso) { setCargando(true); setError(''); }
-    try {
-      const { datos } = await leerVisitas({ forzar: !!forzar });
-      const susp = datos.filter(d => {
-        const s = (d['SUSPENSION DE LA OBRA'] || '').toString().trim().toUpperCase();
-        const orden = (d['N ORDEN DE POLICIA'] || d['N° ORDEN DE POLICIA'] || '').toString().trim();
-        return s === 'SI' && orden;
-      });
-      // Ordenar por fecha de visita descendente (más recientes primero).
-      // localeCompare sobre DD/MM/YYYY ordena por día primero, no por fecha real;
-      // parseamos a timestamp para que "02/02/2026" > "10/01/2026" como debe ser.
-      susp.sort((a, b) => _ts(b['FECHA DE VISITA']) - _ts(a['FECHA DE VISITA']));
-      setFilas(susp);
-    } catch (e) { if (!silencioso) setError(e.message); }
-    setCargando(false);
-  }
-
-  // Timestamp para ordenar. parsearFecha() (utils.js) ya cubre Date,
-  // DD/MM/YYYY e ISO; antes había aquí una tercera copia del mismo parser.
-  function _ts(val) {
-    const d = parsearFecha(val);
-    return d ? d.getTime() : 0;
-  }
-
+  // Copia sin cambios de la función generar de la vieja TabVigilancia:
+  // payload, armarSolicitudUnificada y apertura del Doc.
   async function generar(f) {
     const idCarpeta = extraerIdCarpetaDrive(f['LINK_DRIVE'] || f[55] || '');
     if (!idCarpeta) { await appAlert('La visita no tiene carpeta de Drive asociada.', { tono: 'aviso', titulo: 'Sin carpeta' }); return; }
@@ -96,11 +200,9 @@ function TabVigilancia() {
         barrio:           f['BARRIO/VEREDA'] || f['BARRIO'] || '',
       });
       // Si la orden ya está escaneada, se arma de una vez el PDF único que se
-      // envía a la policía (solicitud + orden). Si todavía no lo está, no se
-      // arma nada: lo hará el escáner al subirla.
+      // envía a la policía (solicitud + orden). Si no, lo hará el escáner.
       if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '');
-      // Refrescar para mostrar el link recién escrito en BD
-      await cargar(true);
+      await recargarVisitas();
       if (r.linkDoc) window.open(r.linkDoc, '_blank', 'noopener,noreferrer');
     } catch (e) {
       await appAlert('Error generando solicitud: ' + e.message, { tono: 'error', titulo: 'Error' });
@@ -108,187 +210,443 @@ function TabVigilancia() {
     setBusyFila(null);
   }
 
+  const totalVig = vig.porGenerar.length + vig.faltaOrden.length + vig.listos.length;
+  const item = (f, boton, conRegenerar) => {
+    const busy = busyFila === f._idx;
+    return (
+      <div key={f._idx} className="adm-b-item">
+        <div className="adm-b-txt">
+          <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+          <div className="adm-b-dir">{f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—'}
+            {(f['BARRIO/VEREDA'] || f['BARRIO']) && <span> · {f['BARRIO/VEREDA'] || f['BARRIO']}</span>}</div>
+          <div className="adm-b-meta">
+            <span className="vc-sep">Orden</span> {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}
+            <span className="vc-sep">·</span> {f['FECHA DE VISITA'] || 'sin fecha'}
+          </div>
+        </div>
+        <div className="adm-b-acc">
+          {boton}
+          {conRegenerar && (
+            <button type="button" className="vc-btn adm-b-re" aria-label="Regenerar oficio de vigilancia"
+              onClick={() => generar(f)} disabled={busyFila != null}>
+              <Icon.Refresh size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+  const btnGenerar = (f) => (
+    <button type="button" className="vc-btn vc-btn-cta" onClick={() => generar(f)} disabled={busyFila != null}>
+      {busyFila === f._idx ? 'Generando…' : 'Generar'}
+    </button>
+  );
+
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div className="card-titulo">Solicitudes de vigilancia policial</div>
-        <button onClick={() => cargar(true)} style={{
-          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-          padding: '6px 12px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
-        }}>Recargar</button>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 10 }}>
-        Visitas con orden de suspensión preventiva activa. Generar el oficio crea (o reabre)
-        un Google Doc en la carpeta de Drive de la visita.
-      </div>
-      {cargando && <div style={{ padding: 20, textAlign: 'center', color: 'var(--texto-suave)' }}>Cargando...</div>}
-      {error && <div style={{ color: 'var(--rojo)', fontSize: 13 }}>{error}</div>}
-      {!cargando && !error && filas.length === 0 && (
-        <div style={{ padding: 20, textAlign: 'center', color: 'var(--texto-suave)', fontSize: 13 }}>
-          No hay visitas con orden de suspensión.
+    <div className="adm-bandeja">
+      {totalVig === 0 && bloqueadas.length === 0 ? (
+        <div className="card adm-vacio">
+          <b>Nada pendiente</b>
+          <span>No hay oficios de vigilancia por generar ni guardados bloqueados esta semana.</span>
         </div>
-      )}
-      {!cargando && !error && filas.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: 'var(--gris-bg)' }}>
-                <th style={{ padding: 8, textAlign: 'left' }}>Radicado</th>
-                <th style={{ padding: 8, textAlign: 'left' }}>Dirección</th>
-                <th style={{ padding: 8, textAlign: 'center' }}>Orden</th>
-                <th style={{ padding: 8, textAlign: 'center' }}>Fecha visita</th>
-                <th style={{ padding: 8, textAlign: 'center' }}>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filas.map(f => {
-                const link = f['LINK_SOLICITUD_VIGILANCIA'] || '';
-                const linkPdf = f['LINK_SOLICITUD_PDF'] || '';
-                const busy = busyFila === f._idx;
-                return (
-                  <tr key={f._idx} style={{ borderBottom: '1px solid var(--borde)' }}>
-                    <td style={{ padding: 8, fontFamily: 'var(--font-mono)', fontSize: 11 }}>{f['RADICADO'] || '—'}</td>
-                    <td style={{ padding: 8 }}>
-                      <div>{f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—'}</div>
-                      <div style={{ fontSize: 10, color: 'var(--texto-suave)' }}>
-                        {f['BARRIO/VEREDA'] || f['BARRIO'] || ''}
-                      </div>
-                    </td>
-                    <td style={{ padding: 8, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                      {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}
-                    </td>
-                    <td style={{ padding: 8, textAlign: 'center', fontSize: 11 }}>{f['FECHA DE VISITA'] || '—'}</td>
-                    <td style={{ padding: 6, textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button onClick={() => generar(f)} disabled={busy} style={{
-                          background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-                          border: '1px solid var(--brand-accent)', borderRadius: 6,
-                          padding: '4px 10px', fontSize: 11, cursor: busy ? 'wait' : 'pointer',
-                          fontFamily: 'inherit', fontWeight: 600,
-                        }}>{busy ? 'Generando...' : (link ? 'Regenerar' : 'Generar')}</button>
-                        {link && (
-                          <a href={link} target="_blank" rel="noopener noreferrer" style={{
-                            fontSize: 11, color: 'var(--verde-dark)', textDecoration: 'none',
-                            alignSelf: 'center',
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                          }}><Icon.Check size={12} /> Ver oficio</a>
-                        )}
-                        {/* El oficio es un Doc editable; esto es el PDF que se
-                            envía: solicitud primero, orden escaneada después.
-                            Solo aparece cuando la orden ya está escaneada. */}
-                        {linkPdf && (
-                          <a href={linkPdf} target="_blank" rel="noopener noreferrer" style={{
-                            fontSize: 11, color: 'var(--verde-dark)', textDecoration: 'none',
-                            alignSelf: 'center', fontWeight: 600,
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                          }}><Icon.Check size={12} /> PDF para enviar</a>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      ) : (
+        <>
+          {totalVig > 0 && (
+            <div className="card adm-seccion">
+              <div className="card-titulo">Oficios de vigilancia</div>
+              {vig.porGenerar.length > 0 && (
+                <>
+                  <div className="mv-grupo">Por generar<span>{vig.porGenerar.length}</span></div>
+                  {vig.porGenerar.map(f => item(f, btnGenerar(f), false))}
+                </>
+              )}
+              {vig.faltaOrden.length > 0 && (
+                <>
+                  <div className="mv-grupo">Falta la orden escaneada<span>{vig.faltaOrden.length}</span></div>
+                  {vig.faltaOrden.map(f => item(f,
+                    <a className="vc-btn" href={f['LINK_SOLICITUD_VIGILANCIA']} target="_blank" rel="noopener noreferrer">Abrir oficio</a>,
+                    true))}
+                </>
+              )}
+              {vig.listos.length > 0 && (
+                <>
+                  <button type="button" className="adm-grupo-btn" aria-expanded={listosAbierto}
+                    onClick={() => setListosAbierto(v => !v)}>
+                    Listos para enviar ({vig.listos.length})
+                  </button>
+                  {listosAbierto && vig.listos.map(f => item(f,
+                    <a className="vc-btn vc-btn-cta" href={f['LINK_SOLICITUD_PDF']} target="_blank" rel="noopener noreferrer">PDF para enviar</a>,
+                    true))}
+                </>
+              )}
+            </div>
+          )}
+          {bloqueadas.length > 0 && (
+            <div className="card adm-seccion">
+              <div className="card-titulo">Guardados bloqueados<small>últimos 7 días</small></div>
+              {bloqueadas.map((f, i) => (
+                <div key={i} className="adm-log-fila seg">
+                  <div className="adm-log-acc">{f[2]}</div>
+                  <div className="adm-log-meta">
+                    {titleCaseNombre(f[1]) || 'Sistema'} · {formatearFechaHora(f[0])}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function TabUsuarios() {
-  const [usuarios, setUsuarios] = useStateA([]);
-  const [cargando, setCargando] = useStateA(true);
-  const [error, setError] = useStateA('');
-
-  useEffectA(() => { cargar(); }, []);
-
-  async function cargar() {
-    setCargando(true); setError('');
-    try { setUsuarios(await listarUsuariosAdmin()); }
-    catch (e) { setError(e.message); }
-    setCargando(false);
+// ═══════════════════════════════════════════════════════════════
+// Equipo — tarjetas de carga + panel de la persona
+// ═══════════════════════════════════════════════════════════════
+// «hace 2 h» / «ayer» / «hace 9 días»: días de calendario, que es lo que se
+// promete en pantalla. `dias` alimenta el aviso de inactividad (> 7).
+function _actividadRelativa(d, hoy) {
+  if (!d) return { texto: 'sin actividad', dias: null };
+  const dia = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dias = Math.round((dia(hoy) - dia(d)) / 86400000);
+  if (dias <= 0) {
+    const h = Math.floor((hoy.getTime() - d.getTime()) / 3600000);
+    return { texto: h < 1 ? 'hace instantes' : 'hace ' + h + ' h', dias: 0 };
   }
+  if (dias === 1) return { texto: 'ayer', dias: 1 };
+  return { texto: 'hace ' + dias + ' días', dias: dias };
+}
 
-  // busyFila evita el doble POST si se pulsa dos veces mientras responde el
-  // webhook (antes el botón quedaba activo durante toda la petición).
-  const [busyFila, setBusyFila] = useStateA(null);
+function TabEquipo({ usuarios, datos, logDesc, conPanel, onAbrirReglas, onAbrirPin, recargarUsuarios }) {
+  const [sel, setSel]           = useStateA(null); // nombre de la persona elegida
+  const [verInactivos, setVerInactivos] = useStateA(false);
+  const hoy = useMemoA(() => new Date(), []);
 
-  async function togglear(u) {
-    if (busyFila) return;
-    const accion = u.activo ? 'desactivar' : 'activar';
-    if (!(await appConfirm(`¿${accion} a ${u.nombre}?`, {
-      titulo: u.activo ? 'Desactivar usuario' : 'Activar usuario',
-      btnOk: u.activo ? 'Desactivar' : 'Activar',
-      peligro: u.activo,
-    }))) return;
-    setBusyFila(u.fila);
+  const cargas = useMemoA(() => {
+    const m = {};
+    (usuarios || []).forEach(u => {
+      m[u.nombre] = {
+        carga: cargaUsuario(datos, u.nombre, hoy),
+        act: _actividadRelativa(ultimaActividad(datos, logDesc, u.nombre), hoy),
+      };
+    });
+    return m;
+  }, [usuarios, datos, logDesc, hoy]);
+
+  const porDemora = (a, b) => {
+    const ca = cargas[a.nombre] || { carga: {} }, cb = cargas[b.nombre] || { carga: {} };
+    const da = ca.carga.demoradas || 0, db = cb.carga.demoradas || 0;
+    if (db !== da) return db - da;
+    const ta = (ca.carga.hacer || 0) + (ca.carga.curso || 0);
+    const tb = (cb.carga.hacer || 0) + (cb.carga.curso || 0);
+    if (tb !== ta) return tb - ta;
+    return String(a.nombre).localeCompare(String(b.nombre), 'es');
+  };
+
+  const activos = (usuarios || []).filter(u => u.activo);
+  const grupos = [
+    { k: 'inspector', rotulo: 'Inspectores',   lista: activos.filter(u => u.rol === 'INSPECTOR').sort(porDemora) },
+    { k: 'admin',     rotulo: 'Administración', lista: activos.filter(u => u.rol === 'ADMIN').sort(porDemora) },
+    { k: 'sup',       rotulo: 'Supervisión',    lista: activos.filter(u => u.rol === 'SUPERVISOR').sort(porDemora) },
+  ].filter(g => g.lista.length);
+  const inactivos = (usuarios || []).filter(u => !u.activo).sort(porDemora);
+  const plana = grupos.reduce((a, g) => a.concat(g.lista), []);
+
+  // Con panel, siempre hay alguien elegido (la primera tarjeta); sin panel,
+  // solo después de tocar una («‹ Equipo» vuelve a la lista).
+  const elegido = conPanel
+    ? ((sel && (usuarios || []).find(u => u.nombre === sel)) || plana[0] || null)
+    : ((sel && (usuarios || []).find(u => u.nombre === sel)) || null);
+
+  const tarjeta = (u) => (
+    <TarjetaPersona key={u.fila} u={u} info={cargas[u.nombre]} elegida={elegido === u} onElegir={() => setSel(u.nombre)} />
+  );
+
+  return (
+    <div className="adm-2col">
+      {/* En móvil, con una persona elegida el panel reemplaza a la lista. */}
+      {(!elegido || conPanel) && (
+      <div className="adm-lista">
+        {grupos.map(g => (
+          <React.Fragment key={g.k}>
+            <div className="mv-grupo">{g.rotulo}<span>{g.lista.length}</span></div>
+            {g.lista.map(tarjeta)}
+          </React.Fragment>
+        ))}
+        {inactivos.length > 0 && (
+          <>
+            <button type="button" className="adm-grupo-btn" aria-expanded={verInactivos}
+              onClick={() => setVerInactivos(v => !v)}>Inactivos ({inactivos.length})</button>
+            {verInactivos && inactivos.map(tarjeta)}
+          </>
+        )}
+        {!plana.length && !inactivos.length && (
+          <div className="card adm-vacio"><b>Sin usuarios</b><span>No hay personas en USUARIOS.</span></div>
+        )}
+      </div>
+      )}
+
+      {elegido && (conPanel ? (
+        <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
+          onAbrirReglas={onAbrirReglas} onAbrirPin={onAbrirPin} recargarUsuarios={recargarUsuarios} />
+      ) : (
+        <div className="adm-panel-movil">
+          <button type="button" className="adm-volver" onClick={() => setSel(null)}
+            aria-label="Volver a la lista de Equipo"><Icon.ArrowLeft size={16} /> Equipo</button>
+          <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
+            onAbrirReglas={onAbrirReglas} onAbrirPin={onAbrirPin} recargarUsuarios={recargarUsuarios} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TarjetaPersona({ u, info, elegida, onElegir }) {
+  const c = (info && info.carga) || { hacer: 0, curso: 0, demoradas: 0, demoradasHacer: 0, demoradasCurso: 0 };
+  const act = (info && info.act) || { texto: 'sin actividad', dias: null };
+  const abiertas = c.hacer + c.curso;
+  // Barra: por hacer sin demora / en curso sin demora / demoradas. El texto
+  // de abajo dice lo mismo con los totales — el color solo no basta.
+  const segs = abiertas > 0 ? [
+    ['amarillo', Math.max(0, c.hacer - c.demoradasHacer)],
+    ['azul',     Math.max(0, c.curso - c.demoradasCurso)],
+    ['rojo',     c.demoradas],
+  ].filter(s => s[1] > 0) : [];
+  const txt = abiertas > 0
+    ? [c.hacer > 0 && c.hacer + ' por hacer',
+       c.curso > 0 && c.curso + ' en curso',
+       c.demoradas > 0 && c.demoradas + ' con +' + DIAS_DEMORA_ADMIN + ' días',
+      ].filter(Boolean).join(' · ')
+    : 'Sin visitas abiertas';
+  // Aviso de inactividad: persona activa, inspectora y más de 7 días.
+  const aviso = u.activo && u.rol === 'INSPECTOR' && act.dias != null && act.dias > 7;
+
+  return (
+    <div className={'adm-tarjeta' + (elegida ? ' sel' : '')} onClick={onElegir}
+      role="button" tabIndex={0} aria-current={elegida ? 'true' : undefined}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onElegir(); } }}>
+      <div className="adm-t-top">
+        <span className="adm-t-nombre">{titleCaseNombre(u.nombre)}</span>
+        <span className={'adm-t-act' + (aviso ? ' aviso' : '')}>{act.texto}</span>
+      </div>
+      {segs.length > 0 && (
+        <div className="adm-t-barra" aria-hidden="true">
+          {segs.map(s => <span key={s[0]} className={'adm-t-seg ' + s[0]} style={{ flexGrow: s[1] }} />)}
+        </div>
+      )}
+      <div className="adm-t-txt">{txt}</div>
+    </div>
+  );
+}
+
+const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 'Inspector' };
+
+function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, recargarUsuarios }) {
+  const cajaRef = useRefA(null);
+  const [cfg, setCfg] = useStateA(undefined); // undefined cargando · null falló (la fila no aparece)
+  const [busy, setBusy] = useStateA(false);
+  const c = (info && info.carga) || { hacer: 0, curso: 0, demoradas: 0, completadasMes: 0, completadasMesAnterior: 0, masDemoradas: [], futuras: 0 };
+
+  useEffectA(() => {
+    let vivo = true;
+    leerConfigAgenda().then(cf => { if (vivo) setCfg(cf); }).catch(() => { if (vivo) setCfg(null); });
+    return () => { vivo = false; };
+  }, []);
+  // Otra persona: el panel vuelve arriba.
+  useEffectA(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; }, [u.fila]);
+
+  async function togglear() {
+    if (busy) return;
+    const nombre = titleCaseNombre(u.nombre);
+    if (u.activo) {
+      // Visitas abiertas contando las asignadas a futuro: mientras esté
+      // inactivo nadie las verá en Mis visitas.
+      const n = c.hacer + c.curso + c.futuras;
+      const extra = n > 0
+        ? `\n\nTiene ${n} visitas abiertas (${c.hacer} por hacer, ${c.curso} en curso). ` +
+          'Mientras esté inactivo nadie las verá en Mis visitas: reasígnalas desde Buscar.'
+        : '';
+      if (!(await appConfirm(`¿Desactivar a ${nombre}?${extra}`, {
+        titulo: 'Desactivar usuario', btnOk: 'Desactivar', peligro: true }))) return;
+    } else {
+      if (!(await appConfirm(`¿Activar a ${nombre}?`, {
+        titulo: 'Activar usuario', btnOk: 'Activar' }))) return;
+    }
+    setBusy(true);
     try {
       await toggleActivo(u.fila, u.activo ? 'NO' : 'SI');
-      await cargar();
+      await recargarUsuarios();
     } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
-    setBusyFila(null);
+    setBusy(false);
   }
 
+  const iniciales = String(u.nombre || '').trim().split(/\s+/).slice(0, 2)
+    .map(t => t.charAt(0).toUpperCase()).join('');
+  const hoy = new Date();
+  const mesActual = _MESES_ES[hoy.getMonth()];
+  const mesAnterior = _MESES_ES[hoy.getMonth() === 0 ? 11 : hoy.getMonth() - 1];
+  const recibeAgenda = cfg && (cfg.inspectoresAgenda || []).some(k => _casa(u.nombre, k));
+  const suLog = (logDesc || []).filter(f => String(f[1] || '').trim().toUpperCase() === String(u.nombre || '').trim().toUpperCase()).slice(0, 5);
+
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div className="card-titulo">Usuarios del sistema</div>
-        <button onClick={cargar} style={{
-          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-          padding: '6px 12px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
-        }}>Recargar</button>
-      </div>
-      {cargando && <div style={{ padding: 20, textAlign: 'center', color: 'var(--texto-suave)' }}>Cargando...</div>}
-      {error && <div style={{ color: 'var(--rojo)', fontSize: 13 }}>{error}</div>}
-      {!cargando && !error && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: 'var(--gris-bg)' }}>
-                <th style={{ padding: 8, textAlign: 'left' }}>Nombre</th>
-                <th style={{ padding: 8 }}>Cargo</th>
-                <th style={{ padding: 8 }}>Rol</th>
-                <th style={{ padding: 8 }}>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usuarios.map(u => (
-                <tr key={u.fila} style={{ borderBottom: '1px solid var(--borde)' }}>
-                  {/* El estado va en un punto de color antes del nombre, no en
-                      una pill de texto (mismo criterio que los entregables).
-                      Color solo no basta: title + sr-only. */}
-                  <td style={{ padding: 8 }}>
-                    <span className={'ent-dot ' + (u.activo ? 'ed-ok' : 'ed-error')}
-                      title={u.activo ? 'Activo' : 'Inactivo'}
-                      style={{ display: 'inline-block', marginRight: 8, verticalAlign: 'middle' }} />
-                    <span className="sr-only">{u.activo ? 'Activo' : 'Inactivo'}</span>
-                    {u.nombre}
-                  </td>
-                  <td style={{ padding: 8, textAlign: 'center', fontSize: 11 }}>{u.cargo}</td>
-                  <td style={{ padding: 8, textAlign: 'center' }}>{u.rol}</td>
-                  <td style={{ padding: 6, textAlign: 'center' }}>
-                    {/* El botón nombra la ACCIÓN, nunca el estado. Antes decía
-                        "Activo"/"Inactivo", así que pulsar "Activo"
-                        desactivaba al usuario. */}
-                    <button onClick={() => togglear(u)} disabled={busyFila != null} style={{
-                      background: 'var(--gris-bg)', color: u.activo ? 'var(--rojo)' : 'var(--verde)',
-                      border: '1px solid var(--borde)', borderRadius: 6, padding: '4px 10px',
-                      fontSize: 11, cursor: busyFila != null ? 'not-allowed' : 'pointer',
-                      opacity: busyFila != null ? 0.5 : 1, fontFamily: 'inherit', fontWeight: 600,
-                    }}>{busyFila === u.fila ? '...' : (u.activo ? 'Desactivar' : 'Activar')}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <section className="adm-panel" ref={cajaRef} aria-label={'Detalle de ' + titleCaseNombre(u.nombre)}>
+      <div className="adm-p-cab">
+        <span className="adm-iniciales" aria-hidden="true">{iniciales}</span>
+        <div className="adm-p-id">
+          <div className="adm-p-nombre">{String(u.nombre || '').toLowerCase()}</div>
+          <div className="adm-p-sub">
+            {u.cargo && <span>{u.cargo}</span>}
+            {u.rol && <span className="adm-chip-rol">{_ROL_ADM[u.rol] || u.rol}</span>}
+            <span className="adm-p-estado">
+              <span className={'ent-dot ' + (u.activo ? 'ed-ok' : 'ed-error')} aria-hidden="true" />
+              {u.activo ? 'Activo' : 'Inactivo'}
+            </span>
+          </div>
         </div>
+      </div>
+
+      <div className="adm-cifras">
+        <div className="adm-cifra"><b>{c.hacer}</b><span>Por hacer</span></div>
+        <div className="adm-cifra"><b>{c.curso}</b><span>En curso</span>
+          {c.demoradas > 0 && <small>{c.demoradas} con +{DIAS_DEMORA_ADMIN} días</small>}</div>
+        <div className="adm-cifra"><b>{c.completadasMes}</b><span>Completadas en {mesActual}</span></div>
+        <div className="adm-cifra"><b>{c.completadasMesAnterior}</b><span>Completadas en {mesAnterior}</span></div>
+      </div>
+
+      {c.masDemoradas.length > 0 && (
+        <div className="adm-bloque">
+          <h3 className="mv-sub">Más demoradas</h3>
+          {c.masDemoradas.map(x => (
+            <div key={x.f._idx != null ? x.f._idx : x.f['RADICADO']} className="adm-demorada">
+              <span className="vc-rad">{x.f['RADICADO'] || '—'}</span>
+              <span className="adm-dem-dir">{x.f['DIRECCION INFRACCION'] || x.f['DIRECCION'] || '—'}</span>
+              <b className={x.dias != null && x.dias >= DIAS_DEMORA_ADMIN ? 'demora' : ''}>
+                {x.dias == null ? 's/f' : x.dias + ' días'}
+              </b>
+              <span className="adm-dem-tipo">{x.tipo === 'curso' ? 'En curso' : 'Por hacer'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {cfg && (
+        <div className="adm-bloque adm-fila-dato">
+          <span>Recibe visitas de la agenda</span>
+          <b>{recibeAgenda ? 'Sí' : 'No'}</b>
+          <button type="button" className="adm-enlace" onClick={onAbrirReglas}>Cambiar en reglas de agenda</button>
+        </div>
+      )}
+
+      <div className="adm-bloque adm-fila-dato">
+        <span>PIN de acceso</span>
+        <button type="button" className="vc-btn" onClick={() => onAbrirPin(u.fila)}>Restablecer PIN</button>
+      </div>
+
+      {suLog.length > 0 && (
+        <div className="adm-bloque">
+          <h3 className="mv-sub">Actividad reciente</h3>
+          {suLog.map((f, i) => (
+            <div key={i} className="adm-log-fila">
+              <div className="adm-log-acc">{f[2]}</div>
+              <div className="adm-log-meta">{formatearFechaHora(f[0])}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="adm-bloque adm-peligro">
+        <button type="button" className={'adm-btn-texto ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
+          onClick={togglear}>
+          {busy ? '…' : (u.activo ? 'Desactivar…' : 'Activar')}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Actividad — log de auditoría con filtros y búsqueda
+// ═══════════════════════════════════════════════════════════════
+function TabActividad({ log }) {
+  const [filtro, setFiltro] = useStateA('');
+  const [q, setQ] = useStateA('');
+  const [limite, setLimite] = useStateA(200);
+
+  const filas = useMemoA(() => (log || []).slice(1).reverse(), [log]); // más nueva primero
+  const _norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const qn = _norm(q.trim());
+  const cat = (f) => categoriaLog(f[1], f[2]);
+
+  const conteo = useMemoA(() => {
+    const c = { '': filas.length, accesos: 0, visitas: 0, seguridad: 0, sistema: 0, otros: 0 };
+    filas.forEach(f => { c[cat(f)]++; });
+    return c;
+  }, [filas]);
+
+  const filtradas = filas.filter(f =>
+    (!filtro || cat(f) === filtro) &&
+    (!qn || _norm(f[2]).indexOf(qn) !== -1 || _norm(f[1]).indexOf(qn) !== -1));
+  const visibles = filtradas.slice(0, limite);
+
+  // Rótulo de día: «Hoy», «Ayer» o dd/mm/aaaa.
+  const hoy = useMemoA(() => new Date(), []);
+  const diaDe = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const HOY_MS = diaDe(hoy), AYER_MS = HOY_MS - 86400000;
+  const hhmm = (d) => d ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : '';
+
+  const dias = [];
+  visibles.forEach(f => {
+    const d = parsearFechaHora(f[0]);
+    const k = d ? diaDe(d) : 'sin-fecha';
+    let g = dias[dias.length - 1];
+    if (!g || g.k !== k) {
+      g = { k, rotulo: !d ? 'Sin fecha' : (k === HOY_MS ? 'Hoy' : k === AYER_MS ? 'Ayer' : formatearFecha(d)), items: [] };
+      dias.push(g);
+    }
+    g.items.push({ f, d });
+  });
+
+  return (
+    <div className="adm-actividad">
+      <input className="adm-buscar" type="search" value={q} placeholder="Buscar en la acción o el usuario…"
+        aria-label="Buscar en la actividad"
+        onChange={e => { setQ(e.target.value); setLimite(200); }} />
+
+      <div className="sv-chips adm-chips" role="group" aria-label="Filtrar por categoría">
+        {[['', 'Todas'], ['accesos', 'Accesos'], ['visitas', 'Visitas'],
+          ['seguridad', 'Seguridad'], ['sistema', 'Sistema'], ['otros', 'Otros'],
+        ].filter(cc => conteo[cc[0]] > 0).map(cc => (
+          <button key={cc[0]} type="button" aria-pressed={filtro === cc[0]}
+            className={'sv-chip' + (filtro === cc[0] ? ' activo' : '')}
+            onClick={() => { setFiltro(cc[0]); setLimite(200); }}>{cc[1]} {conteo[cc[0]]}</button>
+        ))}
+      </div>
+
+      {visibles.length === 0 && <div className="card adm-vacio"><b>Sin registros</b><span>Ninguna fila del log coincide.</span></div>}
+
+      {dias.map(g => (
+        <React.Fragment key={g.k}>
+          <div className="mv-grupo">{g.rotulo}<span>{g.items.length}</span></div>
+          {g.items.map(({ f, d }, i) => (
+            <div key={i} className={'adm-log-fila' + (cat(f) === 'seguridad' ? ' seg' : '')}>
+              <div className="adm-log-acc">{f[2] || '—'}</div>
+              <div className="adm-log-meta">{titleCaseNombre(f[1]) || 'Sistema'}{d ? ' · ' + hhmm(d) : ''}</div>
+            </div>
+          ))}
+        </React.Fragment>
+      ))}
+
+      {filtradas.length > limite && (
+        <button type="button" className="vc-btn adm-mas"
+          onClick={() => setLimite(l => l + 200)}>
+          Mostrar más <span>({visibles.length} de {filtradas.length})</span>
+        </button>
       )}
     </div>
   );
 }
 
-function TabResetPin() {
+function TabResetPin({ filaInicial }) {
   const [usuarios, setUsuarios] = useStateA([]);
   const [sel, setSel]   = useStateA('');
   const [pin, setPin]   = useStateA('');
@@ -301,6 +659,11 @@ function TabResetPin() {
     listarUsuariosAdmin().then(list => setUsuarios(list.filter(u => u.activo)))
       .catch(e => setError(e.message));
   }, []);
+
+  // Preselección desde el panel de Equipo («Restablecer PIN»).
+  useEffectA(() => {
+    if (filaInicial != null) setSel(String(filaInicial));
+  }, [filaInicial]);
 
   async function ejecutar() {
     setMsg(null);
@@ -378,16 +741,6 @@ function TabConfigAgenda() {
   const [error, setError]               = useStateA('');
   const [busy, setBusy]                 = useStateA(false);
   const [msg, setMsg]                   = useStateA(null);
-
-  // La config guarda palabras clave ("MAURICIO" casa con "Mauricio Pérez");
-  // el checkbox marca al usuario cuyo nombre case con alguna palabra clave.
-  function _casa(nombre, palabra) {
-    const n = String(nombre || '').trim().toUpperCase();
-    const k = String(palabra || '').trim().toUpperCase();
-    if (!n || !k) return false;
-    return n === k || n.indexOf(k + ' ') === 0 || n.indexOf(' ' + k + ' ') !== -1 ||
-           n.lastIndexOf(' ' + k) === n.length - k.length - 1;
-  }
 
   useEffectA(() => { cargar(); }, []);
 
@@ -541,56 +894,6 @@ function TabConfigAgenda() {
               color: msg.t === 'ok' ? 'var(--verde)' : 'var(--rojo)',
             }}>{msg.m}</div>
           )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TabLog() {
-  const [filas, setFilas] = useStateA([]);
-  const [cargando, setCargando] = useStateA(true);
-  const [error, setError] = useStateA('');
-
-  // Antes el log se leía una sola vez al montar: un fallo de red dejaba el
-  // panel muerto y no había forma de reintentar ni de refrescar.
-  function cargar() {
-    setCargando(true); setError('');
-    leerLogAuditoria().then(v => {
-      setFilas((v || []).slice(1).reverse().slice(0, 50));
-      setCargando(false);
-    }).catch(e => { setError(e.message); setCargando(false); });
-  }
-  useEffectA(cargar, []);
-
-  return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div className="card-titulo" style={{ margin: 0 }}>Auditoría · últimos 50</div>
-        <button onClick={cargar} disabled={cargando} style={{
-          background: 'var(--gris-bg)', border: '1px solid var(--borde)', borderRadius: 8,
-          padding: '6px 12px', fontFamily: 'inherit', fontSize: 12,
-          cursor: cargando ? 'not-allowed' : 'pointer', opacity: cargando ? 0.5 : 1,
-        }}>{cargando ? '...' : 'Recargar'}</button>
-      </div>
-      {cargando && <div style={{ color: 'var(--texto-suave)' }}>Cargando...</div>}
-      {error && <div style={{ color: 'var(--rojo)', fontSize: 13 }}>Error al cargar auditoría: {error}</div>}
-      {!cargando && !error && filas.length === 0 && <div style={{ color: 'var(--texto-suave)' }}>Sin registros.</div>}
-      {!cargando && !error && filas.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {/* LOG_AUDITORIA guarda [FECHA, USUARIO, ACCION] (registrarLog en el
-              backend). Antes se pintaba la fecha como título y la acción a la
-              derecha sin cortar línea: las acciones largas se salían. */}
-          {filas.map((f, i) => (
-            <div key={i} style={{
-              padding: '8px 10px', background: 'var(--gris-bg)', borderRadius: 8, fontSize: 12,
-            }}>
-              <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{f[2] || '—'}</div>
-              <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>
-                {f[1] || ''}{f[1] && f[0] ? ' · ' : ''}{formatearFechaHora(f[0])}
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>

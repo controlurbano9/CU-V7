@@ -2797,3 +2797,202 @@ button.ind { cursor: pointer; }
   overflow: hidden; background: var(--surface-2);
 }
 .mv-pqr iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ ADMINISTRACIÓN — Bandeja · Equipo · Actividad (admin.jsx,  ║
+   ║ fase 1, 2026-10-03)                                        ║
+   ╚════════════════════════════════════════════════════════════╝ */
+
+/* Cabecera: título + control segmentado + herramientas discretas. */
+.adm-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.adm-cab .page-title { margin: 0; }
+.adm-tabs {
+  display: inline-flex; padding: 3px; gap: 2px;
+  background: var(--surface-2); border-radius: var(--r);
+}
+.adm-tab {
+  border: 0; background: none; cursor: pointer; border-radius: var(--r-sm);
+  padding: 0 14px; height: 30px; font-family: inherit; font-size: 13px;
+  font-weight: 600; color: var(--ink-3); white-space: nowrap;
+}
+.adm-tab.activo { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.adm-tab-n {
+  display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px;
+  border-radius: var(--r-full); background: var(--red); color: #fff;
+  font-family: var(--font-mono); font-size: 11px; line-height: 17px; text-align: center;
+}
+.adm-tools { margin-left: auto; display: flex; gap: 4px; }
+
+/* Equipo: ≥1200 la lista ocupa su columna y el panel la otra (misma
+   mecánica de .mv-pantalla / .mv-2col: la pantalla no scrollea, lo hacen
+   sus dos columnas). Solo se aplica cuando Equipo está activo. */
+.adm-panel { display: none; }
+@media (min-width: 1200px) {
+  .pantalla.adm-pantalla {
+    display: flex; flex-direction: column;
+    min-height: 0; max-width: none;
+    height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
+  }
+  .pantalla.adm-pantalla > * { flex-shrink: 0; }
+  .adm-2col {
+    flex: 1 1 auto; min-height: 0;
+    display: grid; column-gap: 24px;
+    grid-template-columns: clamp(320px, 30%, 440px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .adm-lista, .adm-panel { min-height: 0; overflow-y: auto; }
+  .adm-lista { padding-right: 4px; }
+  .adm-panel {
+    display: block;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  }
+}
+
+/* Tarjeta de persona. */
+.adm-tarjeta {
+  background: var(--surface); border: 0.5px solid var(--line);
+  padding: 10px 12px; margin-bottom: 5px; cursor: pointer;
+}
+.adm-t-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.adm-t-nombre { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
+.adm-t-act { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); white-space: nowrap; }
+.adm-t-act.aviso { color: var(--amber); font-weight: 600; }
+.adm-t-barra {
+  display: flex; gap: 2px; height: 6px; margin-top: 7px;
+  border-radius: 2px; overflow: hidden;
+}
+.adm-t-seg { flex-basis: 0; }
+.adm-t-seg.amarillo { background: var(--amber); }
+.adm-t-seg.azul     { background: var(--info); }
+.adm-t-seg.rojo     { background: var(--red); }
+.adm-t-txt { font-size: 11px; color: var(--ink-3); margin-top: 5px; }
+.adm-tarjeta.sel { border-color: var(--brand-accent); box-shadow: inset 0 0 0 1px var(--brand-accent); }
+@media (hover: hover) and (pointer: fine) {
+  .adm-tarjeta:not(.sel):hover { background: var(--surface-2); }
+}
+
+/* Grupo plegable (Inactivos, Listos para enviar): mismo peso visual que
+   .mv-grupo, pero clicable. */
+.adm-grupo-btn {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  margin: 16px 0 6px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-3); text-align: left;
+}
+.adm-grupo-btn::before { content: '▸'; font-size: 9px; color: var(--ink-4); }
+.adm-grupo-btn[aria-expanded="true"]::before { content: '▾'; }
+
+/* Panel de la persona. */
+.adm-p-cab { display: flex; align-items: center; gap: 14px; padding: 16px 20px 14px; }
+.adm-iniciales {
+  flex: none; width: 48px; height: 48px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--ink-2);
+  font-family: var(--font-serif); font-size: 18px; font-weight: 600;
+}
+.adm-p-id { min-width: 0; }
+.adm-p-nombre { font-family: var(--font-serif); font-size: 22px; font-weight: 600; line-height: 1.15; text-transform: capitalize; }
+.adm-p-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px; font-size: 12px; color: var(--ink-3); }
+.adm-chip-rol {
+  padding: 2px 8px; border-radius: var(--r-full);
+  background: var(--info-bg); color: var(--info);
+  font-size: 11px; font-weight: 600;
+}
+.adm-p-estado { display: inline-flex; align-items: center; gap: 6px; }
+.adm-cifras {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px; padding: 0 20px 16px; border-bottom: 1px solid var(--line);
+}
+.adm-cifra { padding: 10px 12px; background: var(--surface-2); border-radius: var(--r); }
+.adm-cifra b { display: block; font-family: var(--font-mono); font-size: 20px; color: var(--ink); }
+.adm-cifra span { display: block; font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.adm-cifra small { display: block; font-size: 10px; font-weight: 600; color: var(--red); margin-top: 2px; }
+
+.adm-bloque { padding: 14px 20px 0; }
+.adm-bloque .mv-sub { margin-bottom: 8px; }
+.adm-demorada {
+  display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto auto;
+  gap: 4px 10px; align-items: baseline;
+  padding: 8px 0; border-bottom: 0.5px solid var(--line); font-size: 12px;
+}
+.adm-demorada:last-child { border-bottom: 0; }
+.adm-dem-dir { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adm-demorada b { font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+.adm-demorada b.demora { color: var(--red); }
+.adm-dem-tipo { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4); }
+
+/* Filas de dato simple (agenda / PIN). */
+.adm-fila-dato {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  font-size: 13px;
+}
+.adm-fila-dato > span:first-child { color: var(--ink-3); }
+.adm-fila-dato > b { font-weight: 600; }
+.adm-enlace {
+  margin-left: auto; border: 0; background: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  color: var(--brand-ink); text-decoration: underline;
+}
+
+.adm-peligro { border-top: 1px solid var(--line); margin-top: 16px; padding: 14px 20px 18px; }
+.adm-btn-texto {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; text-decoration: underline;
+}
+.adm-btn-texto.rojo  { color: var(--red); }
+.adm-btn-texto.verde { color: var(--green-ink); }
+.adm-btn-texto:disabled { opacity: 0.5; cursor: wait; }
+
+/* Panel a pantalla completa (<1200). */
+.adm-panel-movil { margin-top: 12px; }
+.adm-volver {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: var(--tap); margin-bottom: 8px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+.adm-panel-movil .adm-panel { display: block; }
+
+/* Bandeja. */
+.adm-seccion { margin-bottom: 12px; }
+.adm-b-item {
+  display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 0.5px solid var(--line);
+}
+.adm-b-item:last-child { border-bottom: 0; }
+.adm-b-txt { flex: 1 1 240px; min-width: 0; }
+.adm-b-dir { font-size: 13px; margin-top: 2px; }
+.adm-b-dir span { color: var(--ink-3); font-size: 11px; }
+.adm-b-meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.adm-b-acc { display: flex; gap: 6px; align-items: center; }
+.adm-b-re { min-width: 40px; min-height: 36px; padding: 0; }
+
+/* Actividad. */
+.adm-buscar {
+  width: 100%; max-width: 420px; padding: 9px 12px; margin-bottom: 10px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); font-family: inherit; font-size: 14px;
+}
+.adm-chips { margin-bottom: 12px; }
+.adm-log-fila {
+  padding: 8px 10px 8px 12px; margin-bottom: 5px;
+  background: var(--surface-2); border-radius: var(--r);
+  border-left: 3px solid transparent;
+}
+.adm-log-fila.seg { border-left-color: var(--red); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.adm-log-acc { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.adm-log-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.adm-mas { display: flex; margin: 12px auto 0; }
+.adm-mas span { font-weight: 400; color: var(--ink-3); }
+
+/* Vacío compartido. */
+.adm-vacio { text-align: center; padding: 28px 16px; }
+.adm-vacio b { display: block; font-family: var(--font-serif); font-size: 15px; }
+.adm-vacio span { display: block; font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+
+/* Móvil: los botones de la Bandeja a 44 px, como el resto de la app. */
+@media (max-width: 1199px), (pointer: coarse) {
+  .adm-b-acc { flex-basis: 100%; }
+  .adm-b-acc .vc-btn { min-height: var(--tap); flex: 1 1 0; }
+  .adm-tools .btn-texto { min-height: var(--tap-min); }
+}

@@ -1442,6 +1442,134 @@ function recorridoVisita(fila, hoy) {
   return pasos;
 }
 
+// ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
+// La pantalla de admin pinta; la regla vive aquí y se prueba en
+// tests/admin-equipo.test.js.
+
+// Fecha + hora a Date, o null si no es parseable. Acepta un Date, un ISO
+// (2026-10-02T19:40:00.000Z, los timestamps del backend), «dd/MM/yyyy HH:mm»
+// (lo que escribe el backend en LOG_AUDITORIA) y «d/M/yyyy, h:mm:ss a. m.»
+// (toLocaleString('es-CO', America/Bogota), ver registrarLog en api.js).
+// dd/MM/yyyy se lee como día/mes a mano, nunca con new Date(texto): con día
+// ≤ 12 voltea día y mes sin avisar.
+function parsearFechaHora(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : valor;
+  var s = String(valor).trim();
+  if (!s) return null;
+  // ISO: lo resuelve Date nativo (en UTC, que es lo que el timestamp es).
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    var dz = new Date(s);
+    return isNaN(dz.getTime()) ? null : dz;
+  }
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[^\d]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (!m) return null;
+  var d = +m[1], mo = +m[2], y = +m[3];
+  var h = m[4] == null ? 0 : +m[4], mi = m[5] == null ? 0 : +m[5], se = m[6] == null ? 0 : +m[6];
+  // sufijo a. m. / p. m. del formato del cliente (12 → 0 / 12 p. m. → 12).
+  var ap = /[ap]\.?\s*m/i.exec(s.slice(m[0].length));
+  if (m[4] != null && ap) {
+    h = h % 12;
+    if (ap[0].charAt(0).toLowerCase() === 'p') h += 12;
+  }
+  var dt = new Date(y, mo - 1, d, h, mi, se);
+  // Igual que parsearFecha: si new Date normalizó un desborde (32/13), la
+  // fecha no era real.
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d ||
+      dt.getHours() !== h || dt.getMinutes() !== mi) return null;
+  return dt;
+}
+
+// Umbral de demora de Administración. Es el mismo que las alertas de Inicio
+// (DIAS_ALERTA_DEMORA en home.jsx): una visita no puede estar «en rojo» aquí
+// y no alertar allá. Constante propia para que el archivo no importe entero.
+var DIAS_DEMORA_ADMIN = 5;
+
+// Carga de trabajo de una persona para la pestaña Equipo. Parte de
+// agruparMisVisitas (regla del diligenciador + visibilidad por fecha de
+// asignación) y agrega lo que la tarjeta y el panel necesitan:
+//   hacer / curso        totales abiertos de hoy
+//   demoradas            abiertas con dias >= DIAS_DEMORA_ADMIN (y por grupo)
+//   futuras              ASIGNADO suyas que asignadaVisibleHoy aún no muestra;
+//                        solo avisan al desactivar a la persona
+//   completadasMes(_Anterior)  por FECHA DE VISITA contra el mes de `hoy`
+//   masDemoradas         hasta 5 abiertas, la más demorada primero
+function cargaUsuario(filas, nombre, hoy) {
+  var g = agruparMisVisitas(filas, nombre, hoy);
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var esDemorada = function (x) { return x.dias != null && x.dias >= DIAS_DEMORA_ADMIN; };
+  var demoradasHacer = g.hacer.filter(esDemorada).length;
+  var demoradasCurso = g.curso.filter(esDemorada).length;
+  var n = String(nombre || '').trim().toUpperCase();
+  var futuras = 0;
+  if (n) (filas || []).forEach(function (f) {
+    if (!f) return;
+    if (_normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') !== 'ASIGNADO') return;
+    if (_esVisitaDe(f, nombre) && !asignadaVisibleHoy(f, ref)) futuras++;
+  });
+  // Meses como un número continuo: enero → diciembre del año anterior sale
+  // solo con restar 1.
+  var mesHoy = ref.getFullYear() * 12 + ref.getMonth();
+  var completadasMes = 0, completadasMesAnterior = 0;
+  g.hechas.forEach(function (h) {
+    if (!h.fecha) return;
+    var k = h.fecha.getFullYear() * 12 + h.fecha.getMonth();
+    if (k === mesHoy) completadasMes++;
+    else if (k === mesHoy - 1) completadasMesAnterior++;
+  });
+  var abiertas = g.hacer.map(function (x) { return { f: x.f, dias: x.dias, tipo: 'hacer' }; })
+    .concat(g.curso.map(function (x) { return { f: x.f, dias: x.dias, tipo: 'curso' }; }));
+  abiertas.sort(function (a, b) {
+    return (b.dias == null ? -1 : b.dias) - (a.dias == null ? -1 : a.dias);
+  });
+  return {
+    hacer: g.hacer.length,
+    curso: g.curso.length,
+    demoradas: demoradasHacer + demoradasCurso,
+    demoradasHacer: demoradasHacer,
+    demoradasCurso: demoradasCurso,
+    futuras: futuras,
+    completadasMes: completadasMes,
+    completadasMesAnterior: completadasMesAnterior,
+    masDemoradas: abiertas.slice(0, 5),
+  };
+}
+
+// Última actividad conocida de una persona: el máximo entre la última visita
+// que guardó (ULTIMA_MODIFICACION por ULTIMA_MODIFICACION_POR) y su última
+// fila del log. null si no hay ninguna de las dos.
+function ultimaActividad(filas, log, nombre) {
+  var n = String(nombre || '').trim().toUpperCase();
+  if (!n) return null;
+  var max = null;
+  var mirar = function (d) {
+    if (d && (!max || d.getTime() > max.getTime())) max = d;
+  };
+  (filas || []).forEach(function (f) {
+    if (!f) return;
+    if (String(f['ULTIMA_MODIFICACION_POR'] || '').trim().toUpperCase() !== n) return;
+    mirar(parsearFechaHora(f['ULTIMA_MODIFICACION']));
+  });
+  (log || []).forEach(function (f, i) {
+    if (!i || !f) return; // la fila 0 es el encabezado [FECHA, USUARIO, ACCION]
+    if (String(f[1] || '').trim().toUpperCase() !== n) return;
+    mirar(parsearFechaHora(f[0]));
+  });
+  return max;
+}
+
+// Categoría de una fila del log para el filtro de Actividad. Se evalúa en
+// este orden: lo que es seguridad nunca se pierde en «visitas» aunque la
+// acción mencione un radicado.
+function categoriaLog(usuario, accion) {
+  var a = String(accion || '').toLowerCase();
+  if (a.indexOf('bloqueado') !== -1) return 'seguridad';
+  if (String(usuario || '').trim().toUpperCase() === 'SISTEMA') return 'sistema';
+  if (/^login|^logout/.test(a) || a.indexOf('pin reseteado') !== -1) return 'accesos';
+  if (a.indexOf('visita') !== -1 || a.indexOf('reiterado') !== -1 || a.indexOf('radicado') !== -1) return 'visitas';
+  return 'otros';
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   ordenPoliciaDe: ordenPoliciaDe,
@@ -1507,6 +1635,11 @@ var _cuUtilsExports = {
   diasSinIniciar: diasSinIniciar,
   diasSinCompletar: diasSinCompletar,
   offsetSemanaDe: offsetSemanaDe,
+  parsearFechaHora: parsearFechaHora,
+  DIAS_DEMORA_ADMIN: DIAS_DEMORA_ADMIN,
+  cargaUsuario: cargaUsuario,
+  ultimaActividad: ultimaActividad,
+  categoriaLog: categoriaLog,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
