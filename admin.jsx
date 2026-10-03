@@ -578,17 +578,16 @@ function TabLog() {
       {!cargando && !error && filas.length === 0 && <div style={{ color: 'var(--texto-suave)' }}>Sin registros.</div>}
       {!cargando && !error && filas.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* LOG_AUDITORIA guarda [FECHA, USUARIO, ACCION] (registrarLog en el
+              backend). Antes se pintaba la fecha como título y la acción a la
+              derecha sin cortar línea: las acciones largas se salían. */}
           {filas.map((f, i) => (
             <div key={i} style={{
-              padding: '8px 10px', background: 'var(--gris-bg)', borderRadius: 8,
-              fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 12,
+              padding: '8px 10px', background: 'var(--gris-bg)', borderRadius: 8, fontSize: 12,
             }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{f[0] || '—'}</div>
-                <div style={{ color: 'var(--texto-suave)' }}>{f[1] || ''}</div>
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--texto-suave)', whiteSpace: 'nowrap' }}>
-                {f[2] || ''}
+              <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{f[2] || '—'}</div>
+              <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>
+                {f[1] || ''}{f[1] && f[0] ? ' · ' : ''}{formatearFechaHora(f[0])}
               </div>
             </div>
           ))}
