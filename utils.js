@@ -510,6 +510,19 @@ function puedeDiligenciar(fila) {
   return s.rol === 'ADMIN' || String(s.usuario || '').toUpperCase() === dilig;
 }
 
+// ── Primer guardado manual ────────────────────────────────────
+// PENDIENTE y ASIGNADO son visitas que nadie ha iniciado: pasan a INICIADO
+// solo cuando el inspector pulsa «Guardar» (primer guardado de guardar() en
+// nueva-visita.jsx). Mientras sigan así, el formulario no se escribe en BD por
+// su cuenta y no se habilitan los entregables. Antes el autoguardado de 60 s
+// guardaba el formulario SIN cambiar el estado y la cabecera decía
+// «✓ Guardado», así que una visita podía quedar diligenciada por completo y
+// seguir ASIGNADA (reportado el 2026-10-05 con el radicado 2026-015246).
+function visitaSinIniciar(estado) {
+  var e = _normEstadoVisitaBD(estado);
+  return e === 'PENDIENTE' || e === 'ASIGNADO';
+}
+
 // Quién ve TODAS las visitas (Inicio, semana, alertas, Buscar), no solo las
 // suyas. SUPERVISOR (col E de USUARIOS, 2026-09-25) ve como el admin pero no
 // gestiona: asignar/completar/Agenda/⚙ Admin siguen atados a rol === 'ADMIN'
@@ -1802,6 +1815,7 @@ var _cuUtilsExports = {
   buscarCasos: buscarCasos,
   casosRelacionados: casosRelacionados,
   puedeDiligenciar: puedeDiligenciar,
+  visitaSinIniciar: visitaSinIniciar,
   veTodasLasVisitas: veTodasLasVisitas,
   extraerIdCarpetaDrive: extraerIdCarpetaDrive,
   linkPdfRadicado: linkPdfRadicado,

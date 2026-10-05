@@ -2014,9 +2014,9 @@ function _pendientesPanel(p) {
 
 // Panel superior, dos renglones como máximo: (1) estado + identidad + lugar,
 // (2) qué falta, solo con la visita INICIADA (o el aviso de visita sin
-// guardar). Antes el radicado iba a 12 px gris —lo menos legible de la
-// cabecera siendo lo más importante— y la fecha colgaba de la dirección sin
-// decir de qué era.
+// guardar o sin iniciar). Antes el radicado iba a 12 px gris —lo menos
+// legible de la cabecera siendo lo más importante— y la fecha colgaba de la
+// dirección sin decir de qué era.
 function PanelEstadoVisita(p) {
   const iniciada = String(p.estadoVisita || '').toUpperCase() === 'INICIADO';
   const pendientes = _pendientesPanel(p);
@@ -2052,6 +2052,11 @@ function PanelEstadoVisita(p) {
       {!p.filaEditando && (
         <div className="estado-aviso">
           Sin guardar: al guardar se crea la carpeta en Drive y se habilitan los entregables.
+        </div>
+      )}
+      {p.filaEditando && visitaSinIniciar(p.estadoVisita) && (
+        <div className="estado-aviso">
+          Sin iniciar: al guardar pasa a INICIADO y se habilitan los entregables.
         </div>
       )}
       {p.filaEditando && iniciada && (
@@ -2346,7 +2351,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   //      distintas al cargar este formulario en blanco.
   //   2) Al reabrir el formulario se restaura automáticamente el borrador
   //      (sin preguntar — decisión de producto).
-  //   3) Si ya existe fila en BD, cada 60 s se hace un POST silencioso
+  //   3) Si ya existe fila en BD Y la visita ya está iniciada (el primer
+  //      «Guardar» es siempre manual), cada 60 s se hace un POST silencioso
   //      al webhook (offline cae en la cola IDB).
   //   4) beforeunload advierte al inspector si hay cambios sin guardar.
   //   5) Cuando la clave del borrador cambia (p.ej. al teclear radicado o
@@ -2527,10 +2533,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return function() { clearTimeout(t); };
   }, [d, barrioOtro, fase, _draftKey, clientId]);
 
-  // (3) Autoguardado remoto cada 60 s — solo si ya existe fila en BD.
+  // (3) Autoguardado remoto cada 60 s — solo si ya existe fila en BD y la
+  // visita ya está iniciada. Pasar a INICIADO es un acto explícito del
+  // inspector con el botón Guardar (decisión del usuario, 2026-09-16), y el
+  // primer guardado nunca puede ser el automático. En PENDIENTE/ASIGNADO este
+  // guardaba el formulario sin cambiar el estado, pero apagaba «cambios sin
+  // guardar» y la cabecera decía «✓ Guardado», con lo que se habilitaban los
+  // entregables: una visita podía quedar diligenciada y seguir ASIGNADA (la
+  // del 14/09; el 2026-10-05 se reportó el radicado 2026-015246 en ese estado).
+  // Sin iniciar solo vive el borrador local de arriba.
   React.useEffect(function() {
     if (fase !== 'formulario') return;
     if (!filaEditando) return;
+    if (visitaSinIniciar(estadoVisita)) return;
     const id = setInterval(async function() {
       if (_guardandoRef.current || _generandoActaRef.current || _generandoRFRef.current) return;
       const snap = JSON.stringify({ d: _snapshotLimpia(_dRef.current), b: _bOtroRef.current });
@@ -2540,11 +2555,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         const bCur = _bOtroRef.current;
         const barrioFinal = dCur.barrio === '__otro__' ? (bCur || '') : dCur.barrio;
         const dFinal = Object.assign({}, dCur, { barrio: barrioFinal });
-        // El autoguardado NO promueve el estado: pasar a INICIADO es un acto
-        // explícito del inspector con el botón Guardar (decisión del usuario,
-        // 2026-09-16). Que la visita del 14/09 se quedara en ASIGNADO no se
-        // arregla aquí sino cerrando la puerta de los entregables: sin guardar
-        // no hay acta, así que no se puede terminar una visita sin pulsarlo.
+        // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
+        // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
         const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
@@ -2834,9 +2846,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // reintento no espera a que cambien los demás datos. El backend resuelve
   // con obtenerOCrearCarpeta: un reintento después de un intento a medias
   // no duplica carpetas.
+  // No corre en PENDIENTE/ASIGNADO: escribe la fila entera sin que se pulse
+  // Guardar (igual que el autoguardado) y dejaba los entregables disponibles
+  // en una visita sin iniciar. La carpeta nace en el primer Guardar, que ya
+  // la crea (guardar() → crearCarpetaVisita).
   useEffectNV(() => {
     if (fase !== 'formulario') return;
     if (!filaEditando) return;             // solo para visitas ya en BD
+    if (visitaSinIniciar(estadoVisita)) return;
     if (d.linkDrive) return;                // ya tiene carpeta
     if (!enLinea) return;                   // sin red: nada que hacer
     if (!d.comuna || !d.direccion || !d.fechaVisita) return;
@@ -4365,6 +4382,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // guardar"), así que aquí basta con cerrar la puerta.
   const sinPersistir = dirty || !!errorGuardar;
   const generacionBloqueada = docOcupado || sinCarpetaVisita || sinPersistir;
+  // Visita sin iniciar (PENDIENTE/ASIGNADO): hasta el primer «Guardar» manual
+  // no hay entregables. No basta con `dirty`: un borrador local restaurado, o
+  // una fila que ya trae datos de BD, abren con `dirty` en falso sin que nadie
+  // haya iniciado la visita.
+  const sinIniciar = visitaSinIniciar(estadoVisita);
   // Callback para que SeccionFotos reporte su conteo al panel de estado. Su
   // lista ya incluye las de Drive y las de esta sesión, así que el número
   // llega completo (sin max()).
@@ -4431,7 +4453,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <div className="nv-acciones">
             <div className={
               'barra-estado-gs' +
-              (guardando ? ' bgs-guardando' : errorGuardar ? ' bgs-error' : dirty ? ' bgs-pendiente' : enColaGuardado ? ' bgs-cola' : '')
+              (guardando ? ' bgs-guardando' : errorGuardar ? ' bgs-error' : (dirty || sinIniciar) ? ' bgs-pendiente' : enColaGuardado ? ' bgs-cola' : '')
             } aria-live="polite">
               {guardando ? (<>
                 <span className="spinner-btn" aria-hidden="true" /> Guardando…
@@ -4440,6 +4462,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               : dirty ? '● Cambios sin guardar'
               : enColaGuardado ? '⇡ Guardado en cola — se envía al recuperar conexión'
               : !enLinea ? 'Sin conexión — guarda y se enviará al recuperar la señal'
+              : sinIniciar ? '● Sin iniciar: guarda'
               : ultimoGuardadoMs
                 ? '✓ Guardado · ' + new Date(ultimoGuardadoMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
                 : 'Sin cambios'}
@@ -5183,11 +5206,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
 
         {/* Antes del primer guardado no hay entregables: la transición se
             cuenta, no se oculta (documentos, fotos y escáner dependen de la
-            carpeta de Drive, que nace al guardar). */}
-        {!filaEditando ? (
+            carpeta de Drive, que nace al guardar). Vale también para una
+            visita ya asignada (fila en BD, estado ASIGNADO): el guardado que
+            la inicia es siempre manual. */}
+        {!filaEditando || sinIniciar ? (
           <div className="ent-aviso">
-            Guarda la visita para crear su carpeta en Drive. Después podrás subir
-            fotos, escanear la orden de policía y generar el acta y el informe.
+            Guarda la visita para iniciarla y crear su carpeta en Drive. Después
+            podrás subir fotos, escanear la orden de policía y generar el acta y
+            el informe.
           </div>
         ) : (<>
           {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
