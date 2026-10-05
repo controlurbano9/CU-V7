@@ -835,7 +835,12 @@ function AppV6() {
             onReabrirConBusqueda={reabrirNuevaConBusqueda}
             onSalir={salirFormulario} />}
           {pantalla === 'consulta-norma' && <ConsultaNormaScreen />}
-          {pantalla === 'admin' && <AdminScreen usuario={usuario} />}
+          {pantalla === 'admin' && <AdminScreen usuario={usuario}
+            onAbrirReglasAgenda={() => {
+              // La Agenda abre ⚙ Reglas al montar si encuentra esta marca.
+              try { sessionStorage.setItem('cu_agenda_abrir_reglas', '1'); } catch (e) {}
+              navegar('agenda');
+            }} />}
         </div>
 
         {/* ── NAV INFERIOR (móvil) ── */}

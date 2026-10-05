@@ -145,7 +145,9 @@ test('cliente: asignar, desasignar y completar mandan radicadoConocido', () => {
     assert.ok(i > 0, accion);
     assert.ok(buscar.slice(i, i + 160).includes('radicadoConocido'), accion + ' sin radicadoConocido');
   }
+  // La Agenda (2026-10-05) ya no asigna de a una: confirmarAgenda manda cada
+  // visita con su fila Y su radicado, y el backend comprueba que calcen.
   const agenda = fs.readFileSync(path.join(__dirname, '..', 'agenda.jsx'), 'utf8');
-  const j = agenda.indexOf("accion: 'asignarRadicado'");
-  assert.ok(agenda.slice(j, j + 160).includes('radicadoConocido'));
+  assert.equal(agenda.indexOf("accion: 'asignarRadicado'"), -1);
+  assert.match(agenda, /fila: v\.fila, radicado: v\.radicado/);
 });

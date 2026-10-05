@@ -1266,8 +1266,7 @@ function offsetSemanaDe(fecha, hoy) {
 // Clave para comparar barrios: en BD el mismo barrio aparece como «LA
 // GABRIELA» y «La Gabriela», «Vda. La Union» y «VDA. LA UNIÓN». Medido el
 // 2026-10-02 sobre las 161 pendientes sugeribles: 98 textos distintos quedan
-// en 77 barrios solo con mayúsculas, tildes y puntuación. Copia en el backend
-// (`_claveBarrio`): si cambia aquí, se repite allá.
+// en 77 barrios solo con mayúsculas, tildes y puntuación.
 function claveBarrio(texto) {
   var s = String(texto == null ? '' : texto).toUpperCase();
   if (s.normalize) s = s.normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -1312,6 +1311,162 @@ function armarJornadaPorBarrio(visitas, n, barrioElegido) {
   var items = [];
   orden.forEach(function (k) { items = items.concat(grupos[k]); });
   return { barrios: barrios, barrio: barrio, sugerido: sugerido, items: items };
+}
+
+// ── Agenda por inspector (2026-10-03) ───────────────────────────
+// Regla del usuario: sin mañana/tarde. Cada inspector tiene su día (meta 3,
+// aunque salgan juntos), cada visita va a uno solo y la ruta empieza en la
+// visita más lejana de la Alcaldía. agenda.jsx solo pinta;
+// tests/agenda-inspector.test.js.
+var AGENDA_OFICINA = { lat: 6.335529, lon: -75.558507 }; // Alcaldía de Bello, CR 50 # 51-00 (catastro)
+
+// Nivel de la prioridad de la PQR (1-10) y el plazo de visita de esa escala
+// (niveles de _nivelDesdePuntaje en priorizacion_radicados.gs).
+function nivelPrioridad(bc) {
+  if (bc === null || bc === undefined || bc === '') return null;
+  var n = Number(bc);
+  if (isNaN(n)) return null;
+  if (n >= 9) return { nivel: 'Crítica', plazo: 5 };
+  if (n >= 7) return { nivel: 'Alta', plazo: 20 };
+  if (n >= 5) return { nivel: 'Media', plazo: 30 };
+  if (n >= 3) return { nivel: 'Baja', plazo: null };
+  return { nivel: 'Mínima', plazo: null };
+}
+
+// El porqué de una sugerida, en vez del puntaje: «Alta · vencida hace 158
+// días», «Baja · 163 días», «Sin análisis · 101 días». `c` = candidata de
+// obtenerAgenda ({ prioridad, dias }).
+function motivoPrioridad(c) {
+  var p = nivelPrioridad(c && c.prioridad);
+  var nivel = p ? p.nivel : 'Sin análisis';
+  var dias = c && typeof c.dias === 'number' && c.dias >= 0 ? c.dias : null;
+  if (dias === null) return { nivel: nivel, texto: '', vencida: false };
+  if (p && p.plazo !== null && dias > p.plazo) {
+    var v = dias - p.plazo;
+    return { nivel: nivel, texto: 'vencida hace ' + v + (v === 1 ? ' día' : ' días'), vencida: true };
+  }
+  return { nivel: nivel, texto: dias + (dias === 1 ? ' día' : ' días'), vencida: false };
+}
+
+// Distancia aproximada en metros (equirrectangular: sobra a escala de Bello).
+function _distanciaM(a, b) {
+  var k = Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  var dx = (a.lon - b.lon) * k, dy = a.lat - b.lat;
+  return Math.sqrt(dx * dx + dy * dy) * 111320;
+}
+
+// Orden del recorrido: primero la más lejana de la oficina; el resto, el
+// orden que suma menos trayecto volviendo a la oficina (todas las
+// permutaciones hasta 7 restantes; con más, vecino más cercano). Las paradas
+// sin punto van al final, en su orden de entrada.
+// `paradas`: [{ punto: { lat, lon } | null, ... }].
+function ordenarRuta(paradas, oficina) {
+  var con = [], sin = [];
+  (paradas || []).forEach(function (p) { (p && p.punto ? con : sin).push(p); });
+  if (con.length < 2) return con.concat(sin);
+  var of = oficina || AGENDA_OFICINA;
+  var iLejos = 0;
+  con.forEach(function (p, i) {
+    if (_distanciaM(p.punto, of) > _distanciaM(con[iLejos].punto, of)) iLejos = i;
+  });
+  var primera = con[iLejos];
+  var resto = con.filter(function (_, i) { return i !== iLejos; });
+  var mejor = [];
+  if (resto.length <= 7) {
+    var mejorCosto = Infinity;
+    (function permutar(prefijo, quedan) {
+      if (!quedan.length) {
+        var costo = 0, prev = primera.punto;
+        prefijo.forEach(function (p) { costo += _distanciaM(prev, p.punto); prev = p.punto; });
+        costo += _distanciaM(prev, of);
+        if (costo < mejorCosto) { mejorCosto = costo; mejor = prefijo; }
+        return;
+      }
+      quedan.forEach(function (p, i) {
+        permutar(prefijo.concat([p]), quedan.slice(0, i).concat(quedan.slice(i + 1)));
+      });
+    })([], resto);
+  } else {
+    var actual = primera.punto, pendientes = resto.slice();
+    while (pendientes.length) {
+      var j = 0;
+      pendientes.forEach(function (p, i) {
+        if (_distanciaM(actual, p.punto) < _distanciaM(actual, pendientes[j].punto)) j = i;
+      });
+      mejor.push(pendientes[j]);
+      actual = pendientes[j].punto;
+      pendientes.splice(j, 1);
+    }
+  }
+  return [primera].concat(mejor, sin);
+}
+
+// Borrador del día (el tablero arranca armado, decisión del usuario): por
+// inspector, en orden, faltan = meta − lo que ya tiene ese día. Toma de la
+// primera comuna que ningún otro inspector use, agrupando por barrio
+// (armarJornadaPorBarrio); si no alcanza, sigue con la siguiente, y solo al
+// final repite comuna. Nunca la misma visita en dos inspectores.
+// `comunas` = respuesta de obtenerAgenda, en orden de urgencia;
+// `yaPorInspector` = { nombre: cuántas tiene ya ese día }.
+function armarBorradorAgenda(comunas, inspectores, meta, yaPorInspector) {
+  var borrador = {};
+  var tomadas = {};
+  var usadas = {};
+  (inspectores || []).forEach(function (nombre) {
+    borrador[nombre] = [];
+    var faltan = Math.max(0, (meta || 0) - ((yaPorInspector && yaPorInspector[nombre]) || 0));
+    [false, true].forEach(function (repetir) {
+      (comunas || []).forEach(function (g) {
+        if (!faltan || (!repetir && usadas[g.comuna])) return;
+        var libres = (g.visitas || []).filter(function (v) { return !tomadas[v.fila]; });
+        if (!libres.length) return;
+        var elegidas = armarJornadaPorBarrio(libres, faltan).items;
+        elegidas.forEach(function (v) { tomadas[v.fila] = true; borrador[nombre].push(v); });
+        usadas[g.comuna] = true;
+        faltan -= elegidas.length;
+      });
+    });
+  });
+  return borrador;
+}
+
+function _soloFecha(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+// Día hábil siguiente (delta > 0) o anterior (delta < 0); salta fines de
+// semana y festivos.
+function moverDiaHabil(fecha, delta) {
+  var d = _soloFecha(fecha);
+  var paso = delta < 0 ? -1 : 1;
+  for (var i = 0; i < 30; i++) {
+    d.setDate(d.getDate() + paso);
+    if (esDiaHabil(d)) return d;
+  }
+  return d;
+}
+
+// La Agenda abre en hoy; en sábado, domingo o festivo, en el siguiente día
+// hábil. El admin cambia el día siempre que quiera.
+function diaInicialAgenda(hoy) {
+  var d = _soloFecha(hoy || new Date());
+  return esDiaHabil(d) ? d : moverDiaHabil(d, 1);
+}
+
+var _DIAS_LARGOS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+// «Lunes 5 de octubre».
+function fechaLargaAgenda(fecha) {
+  return _DIAS_LARGOS_ES[fecha.getDay()] + ' ' + fecha.getDate() + ' de ' + _MESES_ES[fecha.getMonth()];
+}
+
+// Lo que un inspector ya tiene ese día: asignadas o iniciadas cuya fecha de
+// agenda es esa, con la regla del diligenciador. Cuenta para su meta.
+function visitasDelDia(filas, fecha, nombre) {
+  var t = _soloFecha(fecha).getTime();
+  return (filas || []).filter(function (f) {
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
+    if (e !== 'ASIGNADO' && e !== 'INICIADO') return false;
+    var d = fechaAgendaVisita(f);
+    return !!d && _soloFecha(d).getTime() === t && _esVisitaDe(f, nombre);
+  });
 }
 
 // ── Mis visitas: lista de deuda + panel de detalle (2026-10-02) ─
@@ -1591,6 +1746,15 @@ function validarPinNuevo(pin, pin2, pinActual) {
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
+  AGENDA_OFICINA: AGENDA_OFICINA,
+  nivelPrioridad: nivelPrioridad,
+  motivoPrioridad: motivoPrioridad,
+  ordenarRuta: ordenarRuta,
+  armarBorradorAgenda: armarBorradorAgenda,
+  moverDiaHabil: moverDiaHabil,
+  diaInicialAgenda: diaInicialAgenda,
+  fechaLargaAgenda: fechaLargaAgenda,
+  visitasDelDia: visitasDelDia,
   ordenPoliciaDe: ordenPoliciaDe,
   idArchivoDrive: idArchivoDrive,
   entregablesFaltantes: entregablesFaltantes,
