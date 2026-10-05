@@ -55,23 +55,67 @@ const ORDENES = [
   { val: 'dir',      l: 'Dirección' },
 ];
 
+// Solo un radicado con número identifica un caso. Las filas migradas de V2
+// traen en RADICADO textos como «QUEJA VERBAL», «OPERATIVO», «OFICIO» o
+// «SIN RADICADO»: agrupar por ellos juntaba visitas sin relación
+// («OPERATIVO · 20 visitas») y «+ Nueva visita» clonaba una cualquiera.
+// Las coordenadas pegadas en RADICADO tampoco son radicado.
+function _radicadoReal(rad) {
+  const r = String(rad || '').trim().toUpperCase();
+  return /\d/.test(r) && !r.startsWith('LAT ') && !r.startsWith('6.')
+    && !r.startsWith('-75') && r.length <= 60;
+}
+
+// Clave de grupo de una fila. Sin radicado real, cada fila va sola, con una
+// clave propia que empieza por SIN_RADICADO (minúsculas: ningún radicado real
+// en mayúsculas la puede imitar).
+const SIN_RADICADO = 'sin-radicado:';
+function _claveGrupo(f) {
+  // En mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
+  const rad = (f['RADICADO'] || f[1] || '').toString().trim().toUpperCase();
+  return _radicadoReal(rad) ? rad : SIN_RADICADO + f._idx;
+}
+function _esSinRadicado(clave) {
+  return clave.startsWith(SIN_RADICADO) || !_radicadoReal(clave);
+}
+
 // El orden se aplica a los GRUPOS, no a las filas sueltas: la lista pagina
 // por grupo (limite). Para "edit" y "dir" manda la primera fila del grupo.
-// "Sin radicado" queda siempre al final, ordene como ordene.
+// Lo que no tiene radicado real queda siempre al final, ordene como ordene.
+// Antes se comparaba contra 'Sin radicado' literal y la clave va en
+// mayúsculas: «SIN RADICADO» salía de primero.
+//
+// Por radicado se ordena por FECHA RADICADO y, a igual fecha, por el número.
+// Comparar solo el texto ponía «OFICIO-2026-…» antes que cualquier «2026…»
+// (las letras van después de los dígitos). Sin fecha legible, al final de
+// los que sí tienen radicado, en los dos sentidos.
 function _ordenarGrupos(entries, orden) {
   const _dir  = ([, fs]) => (fs[0]['DIRECCION INFRACCION'] || fs[0]['DIRECCION'] || '').toString();
   const _edit = ([, fs]) => {
     const t = Date.parse(fs[0]['ULTIMA_MODIFICACION'] || '');
     return isNaN(t) ? 0 : t;
   };
+  const _fRad = ([, fs]) => {
+    const d = parsearFecha(fs[0]['FECHA RADICADO'] || '');
+    return d ? d.getTime() : null;
+  };
+  const _porRadicado = (a, b, sentido) => {
+    const fa = _fRad(a), fb = _fRad(b);
+    if (fa !== fb) {
+      if (fa == null) return 1;
+      if (fb == null) return -1;
+      return (fa - fb) * sentido;
+    }
+    return a[0].localeCompare(b[0], 'es', { numeric: true }) * sentido;
+  };
   return entries.slice().sort((a, b) => {
-    const aSin = a[0] === 'Sin radicado', bSin = b[0] === 'Sin radicado';
+    const aSin = _esSinRadicado(a[0]), bSin = _esSinRadicado(b[0]);
     if (aSin !== bSin) return aSin ? 1 : -1;
     switch (orden) {
-      case 'rad-asc': return a[0].localeCompare(b[0], 'es', { numeric: true });
+      case 'rad-asc': return _porRadicado(a, b, 1);
       case 'edit':    return _edit(b) - _edit(a);
       case 'dir':     return _dir(a).localeCompare(_dir(b), 'es', { sensitivity: 'base' });
-      default:        return b[0].localeCompare(a[0], 'es', { numeric: true });
+      default:        return _porRadicado(a, b, -1);
     }
   });
 }
@@ -493,16 +537,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       filtrosEstado.includes(normalizarEstado(f['ESTADO VISITA'] || f[13] || '')));
   }, [filtradosSinEstado, filtrosEstado]);
 
-  // Agrupar por radicado
+  // Agrupar por radicado (solo los reales: ver _claveGrupo)
   const grupos = useMemoB(() => {
     const g = {};
     filtrados.forEach(f => {
-      // En mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
-      let rad = (f['RADICADO'] || f[1] || '').toString().trim().toUpperCase();
-      if (!rad || rad.startsWith('LAT ') || rad.startsWith('6.') || rad.startsWith('-75') || rad.length > 60) {
-        rad = 'Sin radicado';
-      }
-      (g[rad] = g[rad] || []).push(f);
+      const k = _claveGrupo(f);
+      (g[k] = g[k] || []).push(f);
     });
     return g;
   }, [filtrados]);
@@ -795,7 +835,9 @@ function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q, onNuevaVi
   const pendiente = ordenadas.find(x =>
     normalizarEstado(x.f['ESTADO VISITA'] || '') === 'PENDIENTE');
   const filaBase = ordenadas.length ? ordenadas[ordenadas.length - 1].f : null;
-  const puedeNueva = esAdmin && onAsignarNuevaVisita && filaBase && radicado !== 'Sin radicado';
+  // Sin radicado real no hay caso que seguir: la visita nueva clonaría una
+  // fila suelta de V2 bajo un «radicado» que comparten casos distintos.
+  const puedeNueva = esAdmin && onAsignarNuevaVisita && filaBase && !_esSinRadicado(radicado);
   const panelNuevaAbierto = !!filaBase && asignandoFila === filaBase._idx;
 
   return (

@@ -36,7 +36,12 @@ const mAnt = /const ANTIGUEDADES = \[[\s\S]*?\n\];/.exec(srcBuscar);
 assert.ok(mAnt, 'no se encontró ANTIGUEDADES en buscar.jsx');
 vm.runInContext(mAnt[0], ctx);
 
-for (const nombre of ['_pasaAntiguedad', '_ordenarGrupos']) {
+// SIN_RADICADO + _radicadoReal/_claveGrupo/_esSinRadicado: dependencias de _ordenarGrupos
+const mSin = /const SIN_RADICADO = '[^']*';/.exec(srcBuscar);
+assert.ok(mSin, 'no se encontró SIN_RADICADO en buscar.jsx');
+vm.runInContext(mSin[0], ctx);
+
+for (const nombre of ['_pasaAntiguedad', '_radicadoReal', '_claveGrupo', '_esSinRadicado', '_ordenarGrupos']) {
   const re = new RegExp('function ' + nombre + '\\([\\s\\S]*?\\n\\}');
   const fn = re.exec(srcBuscar);
   assert.ok(fn, 'no se encontró ' + nombre + ' en buscar.jsx');
@@ -44,6 +49,8 @@ for (const nombre of ['_pasaAntiguedad', '_ordenarGrupos']) {
 }
 const pasaAntiguedad = vm.runInContext('_pasaAntiguedad', ctx);
 const ordenarGrupos = vm.runInContext('_ordenarGrupos', ctx);
+const claveGrupo = vm.runInContext('_claveGrupo', ctx);
+const esSinRadicado = vm.runInContext('_esSinRadicado', ctx);
 
 // ── Helpers ────────────────────────────────────────────────────
 function ddmmaaaaHace(dias) {
@@ -158,4 +165,65 @@ test('ordenar no muta el arreglo recibido', () => {
   const antes = claves(g);
   ordenarGrupos(g, 'dir');
   assert.deepEqual(claves(g), antes);
+});
+
+// ── Radicados sin número (filas migradas de V2) ────────────────
+// Captura real 2026-10-05: con «Radicado ↓», la lista abría con «SIN
+// RADICADO», «QUEJA VERBAL», «ORDEN PREVENTIVA», «OPERATIVO · 20 visitas»…
+// (las letras van después de los dígitos) y los casos de 2026 quedaban abajo.
+const conFecha = (rad, fecha, extra) => [rad, [fila(rad, Object.assign({ 'FECHA RADICADO': fecha }, extra || {}))]];
+
+test('claveGrupo: solo un radicado con número agrupa; cada fila V2 va sola', () => {
+  assert.equal(claveGrupo(fila('20261092195', { _idx: 5 })), '20261092195');
+  assert.equal(claveGrupo(fila('Oficio-2026-09-239', { _idx: 5 })), claveGrupo(fila('OFICIO-2026-09-239', { _idx: 9 })));
+  assert.notEqual(claveGrupo(fila('OPERATIVO', { _idx: 5 })), claveGrupo(fila('OPERATIVO', { _idx: 9 })));
+  for (const rad of ['OPERATIVO', 'QUEJA VERBAL', 'OFICIO', 'OFICIO-SIN ORDEN', 'Sin radicado', 'SIN RADICADO', '', '6.345120, -75.561304', 'LAT 6.34 LON -75.56']) {
+    assert.ok(esSinRadicado(claveGrupo(fila(rad, { _idx: 1 }))), rad + ' no es un radicado real');
+  }
+});
+
+test('«SIN RADICADO» en mayúsculas y los textos de V2 van al final, en cualquier orden', () => {
+  const g = [
+    ['SIN RADICADO', [fila('SIN RADICADO', { 'DIRECCION INFRACCION': 'Aaa' })]],
+    conFecha('20261100002', '01/10/2026', { 'DIRECCION INFRACCION': 'Zarzal' }),
+    ['QUEJA VERBAL', [fila('QUEJA VERBAL', { 'DIRECCION INFRACCION': 'Abc' })]],
+    conFecha('20251100001', '03/02/2025', { 'DIRECCION INFRACCION': 'Belén' }),
+    [claveGrupo(fila('OPERATIVO', { _idx: 7 })), [fila('OPERATIVO', { _idx: 7, 'DIRECCION INFRACCION': 'Aab' })]],
+  ];
+  for (const orden of ['rad-desc', 'rad-asc', 'edit', 'dir']) {
+    const r = claves(ordenarGrupos(g, orden));
+    assert.deepEqual(r.slice(0, 2).sort(), ['20251100001', '20261100002'], orden + ': los radicados reales van primero');
+    assert.ok(r.slice(2).every(esSinRadicado), orden + ': lo demás va al final');
+  }
+});
+
+test('por radicado manda la fecha: «OFICIO-…» ya no salta delante de los «2026…»', () => {
+  const g = [
+    conFecha('OFICIO-2024-09-015', '12/02/2024'),
+    conFecha('20261092195', '01/10/2026'),
+    conFecha('OFICIO-2026-09-239', '29/09/2026'),
+    conFecha('20251031877', '10/03/2025'),
+  ];
+  assert.deepEqual(claves(ordenarGrupos(g, 'rad-desc')),
+    ['20261092195', 'OFICIO-2026-09-239', '20251031877', 'OFICIO-2024-09-015']);
+  assert.deepEqual(claves(ordenarGrupos(g, 'rad-asc')),
+    ['OFICIO-2024-09-015', '20251031877', 'OFICIO-2026-09-239', '20261092195']);
+});
+
+test('a igual fecha, el número; sin fecha legible, al final de los reales en los dos sentidos', () => {
+  const g = [
+    conFecha('20261100005', ''),
+    conFecha('20261100003', '01/10/2026'),
+    conFecha('20261100004', '01/10/2026'),
+    ['OPERATIVO', [fila('OPERATIVO')]],
+  ];
+  assert.deepEqual(claves(ordenarGrupos(g, 'rad-desc')), ['20261100004', '20261100003', '20261100005', 'OPERATIVO']);
+  assert.deepEqual(claves(ordenarGrupos(g, 'rad-asc')), ['20261100003', '20261100004', '20261100005', 'OPERATIVO']);
+});
+
+test('«+ Nueva visita» no se ofrece sobre un grupo sin radicado real', () => {
+  const m = /const puedeNueva = [^;]*;/.exec(srcBuscar);
+  assert.ok(m, 'no se encontró puedeNueva en buscar.jsx');
+  assert.ok(/_esSinRadicado\(radicado\)/.test(m[0]),
+    'puedeNueva debe descartar los grupos sin radicado real con _esSinRadicado');
 });
