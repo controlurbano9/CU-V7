@@ -72,7 +72,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   // Cada visita abierta cae en una sola ficha: PENDIENTE (sin inspector) es
   // «por realizar»; ASIGNADO e INICIADO son «por completar».
   const stats = useMemoH(() => {
-    const r = { porRealizar: 0, prioridadAlta: 0, asignadas: 0, iniciadas: 0, demoradas: 0, mesActual: 0, mesAnterior: 0 };
+    const r = { porRealizar: 0, asignadas: 0, iniciadas: 0, mesActual: 0, mesAnterior: 0 };
     if (!datos.length) return r;
     const hoy = new Date();
     const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
@@ -96,14 +96,10 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       }
       if (e === 'PENDIENTE') {
         r.porRealizar++;
-        // PRIORIDAD llega como «7 - Alto» (priorizacion_radicados.gs).
-        if (/CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''))) r.prioridadAlta++;
       } else if (e === 'ASIGNADO') {
         r.asignadas++;
-        if ((diasSinIniciar(f) || 0) >= DIAS_ALERTA_DEMORA) r.demoradas++;
       } else if (e === 'INICIADO') {
         r.iniciadas++;
-        if ((diasSinCompletar(f) || 0) >= DIAS_ALERTA_DEMORA) r.demoradas++;
       } else if (e === 'COMPLETADO') {
         // Por FECHA DE VISITA (el día que el inspector salió), no por FECHA
         // DEVOLUCION: una visita de fin de mes devuelta en el siguiente
@@ -270,22 +266,11 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           <button type="button" className="ind ind-realizar" title="Visitas sin inspector asignado. Abre Buscar"
             onClick={() => _irBuscarConEstados(['PENDIENTE'], onNavegar)}>
             <div className="ind-cab"><span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Por realizar</span></div>
-            <div className="ind-sub">
-              {!cargando && stats.prioridadAlta > 0
-                ? <b className="rojo">{stats.prioridadAlta} de prioridad alta</b>
-                : 'Sin inspector asignado'}
-            </div>
           </button>
         )}
         <button type="button" className="ind ind-completar" title="Asignadas e iniciadas sin completar"
           onClick={() => veTodo ? _irBuscarConEstados(['ASIGNADO', 'INICIADO'], onNavegar) : onNavegar('mis-visitas')}>
           <div className="ind-cab"><span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Por completar</span></div>
-          <div className="ind-sub">
-            {cargando ? ' ' : <>
-              {stats.asignadas} asignada{stats.asignadas === 1 ? '' : 's'} · {stats.iniciadas} iniciada{stats.iniciadas === 1 ? '' : 's'}
-              {stats.demoradas > 0 && <> · <b>{stats.demoradas} con +{DIAS_ALERTA_DEMORA} días</b></>}
-            </>}
-          </div>
         </button>
         <div className="ind ind-hecho">
           <div className="ind-cab"><span className="ind-num">{num(stats.mesAnterior)}</span><span className="ind-rot">Completadas en {mesAnteriorTxt}</span></div>

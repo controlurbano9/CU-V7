@@ -542,7 +542,7 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrad
   return (
     <section className="ag-caja ag-mapa" aria-labelledby="ag-mapa-t">
       <div className="ag-caja-cab">
-        <h2 id="ag-mapa-t">Dónde está el trabajo</h2>
+        <h2 id="ag-mapa-t">Ruta sugerida</h2>
         <div className="ag-ley">
           <span className="ag-escala">pendientes
             <span><i style={{ background: '#F1EBE1' }}></i><i style={{ background: '#E4D8C6' }}></i><i style={{ background: '#D3C1A6' }}></i><i style={{ background: '#C2AB88' }}></i></span>

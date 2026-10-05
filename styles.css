@@ -2405,7 +2405,8 @@ body.is-offline .header {
   margin: -1px 0 0 -1px;
   font: inherit; color: inherit;
 }
-button.ind { cursor: pointer; }
+/* Un botón centra su contenido en vertical: como columna flex, el número queda arriba como en las fichas sin botón. */
+button.ind { cursor: pointer; display: flex; flex-direction: column; justify-content: flex-start; }
 @media (hover: hover) and (pointer: fine) { button.ind:hover { background: var(--surface-2); } }
 .ind::before {
   content: ''; position: absolute; left: 1px; top: 1px; bottom: 0; width: 3px;
@@ -2421,8 +2422,6 @@ button.ind { cursor: pointer; }
 }
 .ind-rot { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .ind-sub { font-size: 11px; color: var(--ink-3); margin-top: 6px; min-height: 15px; }
-.ind-sub b { color: var(--amber); font-weight: 600; }
-.ind-sub b.rojo { color: var(--red); }
 .home-urg {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin-bottom: 14px; padding: 8px 12px;
