@@ -288,7 +288,7 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
           <div className="adm-b-dir">{f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—'}
             {(f['BARRIO/VEREDA'] || f['BARRIO']) && <span> · {f['BARRIO/VEREDA'] || f['BARRIO']}</span>}</div>
           <div className="adm-b-meta">
-            <span className="vc-sep">Orden</span> {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}
+            <span className="vc-sep">Orden</span> {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}{' '}
             <span className="vc-sep">·</span> {f['FECHA DE VISITA'] || 'sin fecha'}
           </div>
         </div>
