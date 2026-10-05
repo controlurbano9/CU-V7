@@ -1,8 +1,10 @@
 # Pendiente de deploy — Administración fase 2 (backend) · 2026-10-03
 
 Backend escrito y probado en local (`tests/admin-fase2-backend.test.js`, 9 pruebas que corren el
-`doPost` real contra una hoja USUARIOS en memoria). **Sin desplegar.** El frontend de la fase 2
-aún no existe.
+`doPost` real contra una hoja USUARIOS en memoria). **✅ Desplegado el 2026-10-04 como @134**,
+junto con reiterados y agenda por barrio. Respaldo previo:
+`_respaldos/PRODUCCION_pre-deploy_2026-10-04_admin-fase2.js`. El frontend de la fase 2 aún no
+existe.
 
 ## 🚩 Arreglo de seguridad que va incluido
 
