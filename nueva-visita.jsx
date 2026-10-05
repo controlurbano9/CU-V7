@@ -1609,6 +1609,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
       ultimaVisita: caso.ultima,
       nVisitaSig: caso.nVisitaSig,
       reiterado: caso.reiterado || '',
+      sinRadicado: !!caso.sinRadicado,
     });
     setPaso('resultado');
   }
@@ -1758,7 +1759,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                 const dir = u['DIRECCION INFRACCION'] || u['DIRECCION'] || '';
                 const orden = ordenPoliciaDe(u);
                 return (
-                  <button key={c.radicado} type="button" style={{ ...estiloOpcion, minHeight: 56, padding: '10px 14px' }}
+                  <button key={c.clave || c.radicado} type="button" style={{ ...estiloOpcion, minHeight: 56, padding: '10px 14px' }}
                     onClick={() => abrirCaso(c)}>
                     <span style={cajaIcono(/^OFICIO-/.test(c.radicado) ? 'gris' : 'brand')}>
                       {/^OFICIO-/.test(c.radicado) ? <Icon.Flag size={18} /> : <Icon.File size={18} />}
@@ -1868,7 +1869,17 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
 
                   {/* Acciones según estado */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {esCompletada && (
+                    {/* Fila de V2 sin número de radicado («OPERATIVO», «QUEJA
+                        VERBAL»…): ese texto lo comparten casos distintos, así
+                        que no hay caso que seguir. Una visita nueva va como
+                        caso nuevo (mismo criterio que Buscar). */}
+                    {esCompletada && resultado.sinRadicado && (
+                      <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 4 }}>
+                        La visita N°{nVis} ya fue completada. Es una fila migrada de V2 sin
+                        número de radicado: una visita nueva en este predio se abre como caso nuevo.
+                      </div>
+                    )}
+                    {esCompletada && !resultado.sinRadicado && (
                       <>
                         <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 4 }}>
                           La visita N°{nVis} ya fue completada. Puede abrir una visita de
@@ -1954,14 +1965,16 @@ function _AvisoCasosRelacionados({ casos, motivo, ofrecerSeguimiento, onAbrir, o
       {casos.slice(0, 3).map(c => {
         const u = c.ultima;
         return (
-          <div key={c.radicado} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div key={c.clave || c.radicado} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 200px', minWidth: 0 }}>
               <span className="mono" style={{ fontWeight: 600 }}>{c.radicado}</span>
               <span style={{ color: 'var(--texto-suave)' }}>
                 {' · Visita N°' + (u['N° VISITA'] || u['N VISITA'] || 1) + ' · ' + (normalizarEstado(u['ESTADO VISITA']) || '—')}
               </span>
             </div>
-            {ofrecerSeguimiento && (
+            {/* Sin radicado real no hay caso que abrir: buscar «OPERATIVO»
+                traería todas las filas que comparten ese texto. */}
+            {ofrecerSeguimiento && !c.sinRadicado && (
               <button type="button" className="btn-neutro" style={{ minHeight: 44 }}
                 onClick={() => onAbrir(c.radicado)}>Abrir ese caso</button>
             )}

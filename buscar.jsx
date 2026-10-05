@@ -55,28 +55,20 @@ const ORDENES = [
   { val: 'dir',      l: 'Dirección' },
 ];
 
-// Solo un radicado con número identifica un caso. Las filas migradas de V2
-// traen en RADICADO textos como «QUEJA VERBAL», «OPERATIVO», «OFICIO» o
-// «SIN RADICADO»: agrupar por ellos juntaba visitas sin relación
-// («OPERATIVO · 20 visitas») y «+ Nueva visita» clonaba una cualquiera.
-// Las coordenadas pegadas en RADICADO tampoco son radicado.
-function _radicadoReal(rad) {
-  const r = String(rad || '').trim().toUpperCase();
-  return /\d/.test(r) && !r.startsWith('LAT ') && !r.startsWith('6.')
-    && !r.startsWith('-75') && r.length <= 60;
-}
-
-// Clave de grupo de una fila. Sin radicado real, cada fila va sola, con una
-// clave propia que empieza por SIN_RADICADO (minúsculas: ningún radicado real
-// en mayúsculas la puede imitar).
+// Clave de grupo de una fila. Solo un radicado con número identifica un caso
+// (esRadicadoDeCaso, utils.js): las filas de V2 con «QUEJA VERBAL»,
+// «OPERATIVO»… se agrupaban entre sí («OPERATIVO · 20 visitas») y «+ Nueva
+// visita» clonaba una cualquiera. Sin radicado real, cada fila va sola, con
+// una clave propia que empieza por SIN_RADICADO (minúsculas: ningún radicado
+// real en mayúsculas la puede imitar).
 const SIN_RADICADO = 'sin-radicado:';
 function _claveGrupo(f) {
   // En mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
   const rad = (f['RADICADO'] || f[1] || '').toString().trim().toUpperCase();
-  return _radicadoReal(rad) ? rad : SIN_RADICADO + f._idx;
+  return esRadicadoDeCaso(rad) ? rad : SIN_RADICADO + f._idx;
 }
 function _esSinRadicado(clave) {
-  return clave.startsWith(SIN_RADICADO) || !_radicadoReal(clave);
+  return clave.startsWith(SIN_RADICADO) || !esRadicadoDeCaso(clave);
 }
 
 // El orden se aplica a los GRUPOS, no a las filas sueltas: la lista pagina

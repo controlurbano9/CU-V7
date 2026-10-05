@@ -132,3 +132,60 @@ test('casosRelacionados: excluye el caso propio y no avisa sin datos', () => {
   assert.deepEqual(casosRelacionados(FILAS, {}), []);
   assert.deepEqual(casosRelacionados(FILAS, { direccion: 'Vereda La China' }), []);
 });
+
+// ── «Radicados» de V2 sin número (2026-10-05) ──────────────────
+// «OPERATIVO», «QUEJA VERBAL», «OFICIO»… los comparten casos distintos.
+// Agruparlos traía las 20 filas «OPERATIVO» como visitas de un mismo caso
+// y proponía la visita N° 21.
+const { esRadicadoDeCaso } = require('../utils.js');
+const V2 = [
+  { _idx: 60, 'RADICADO': 'OPERATIVO', 'N° VISITA': '1', 'DIRECCION': 'CL 40 # 50-10', 'ESTADO VISITA': 'COMPLETADO' },
+  { _idx: 61, 'RADICADO': 'OPERATIVO', 'N° VISITA': '1', 'DIRECCION': 'CL 41 # 51-11', 'ESTADO VISITA': 'COMPLETADO' },
+  { _idx: 62, 'RADICADO': 'Operativo', 'N° VISITA': '1', 'DIRECCION': 'CR 68C # 59E-51 INT 2', 'ESTADO VISITA': 'COMPLETADO' },
+  { _idx: 63, 'RADICADO': 'QUEJA VERBAL', 'N° VISITA': '1', 'DIRECCION': 'CL 40 # 50-10', 'ESTADO VISITA': 'COMPLETADO' },
+];
+
+test('esRadicadoDeCaso: solo con número, y no coordenadas', () => {
+  for (const r of ['20261092195', 'OFICIO-2026-09-239', '2025-123456']) assert.equal(esRadicadoDeCaso(r), true, r);
+  for (const r of ['OPERATIVO', 'QUEJA VERBAL', 'OFICIO', 'OFICIO-SIN ORDEN', 'SIN RADICADO', '', null, '6.345120, -75.561304', 'LAT 6.34 LON -75.56'])
+    assert.equal(esRadicadoDeCaso(r), false, String(r));
+});
+
+test('un «radicado» V2 sin número: cada fila es su propio caso, sin seguimiento', () => {
+  const r = buscarCasos(FILAS.concat(V2), 'operativo');
+  assert.equal(r.casos.length, 3);
+  for (const c of r.casos) {
+    assert.equal(c.visitas.length, 1);
+    assert.equal(c.sinRadicado, true);
+    assert.equal(c.nVisitaSig, 2);
+  }
+  assert.equal(new Set(r.casos.map(c => c.clave)).size, 3, 'cada caso con su clave (keys de React)');
+});
+
+test('por dirección, una fila V2 no arrastra a las demás que comparten el texto', () => {
+  const r = buscarCasos(FILAS.concat(V2), 'CL 40 # 50-10');
+  assert.deepEqual(r.casos.map(c => c.ultima._idx).sort(), [60, 63]);
+  assert.ok(r.casos.every(c => c.visitas.length === 1));
+});
+
+test('un radicado real sigue agrupando sus visitas y no lleva la marca', () => {
+  const r = buscarCasos(FILAS.concat(V2), 'OFICIO-2026-09-239');
+  assert.equal(r.casos.length, 1);
+  assert.equal(r.casos[0].visitas.length, 2);
+  assert.equal(r.casos[0].sinRadicado, false);
+});
+
+test('casosRelacionados: una fila V2 en la misma placa avisa como caso aparte', () => {
+  const c = casosRelacionados(FILAS.concat(V2), { direccion: 'CR 68C # 59E-51', radicadoPropio: '20261099999' });
+  const v2 = c.filter(x => x.sinRadicado);
+  assert.equal(v2.length, 1);
+  assert.equal(v2[0].visitas.length, 1);
+  assert.deepEqual(v2[0].motivos, ['direccion']);
+});
+
+test('casosRelacionados: un «radicado» propio sin número no esconde otras filas con ese texto', () => {
+  // Otra fila «OPERATIVO» en la misma placa: es otro caso y debe avisar.
+  const otra = { _idx: 64, 'RADICADO': 'OPERATIVO', 'N° VISITA': '1', 'DIRECCION': 'CL 40 # 50-10', 'ESTADO VISITA': 'COMPLETADO' };
+  const c = casosRelacionados(FILAS.concat(V2, [otra]), { direccion: 'CL 40 # 50-10', radicadoPropio: 'OPERATIVO', filaPropia: 60 });
+  assert.deepEqual(c.map(x => x.ultima._idx), [64, 63]);
+});

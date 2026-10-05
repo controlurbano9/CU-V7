@@ -36,12 +36,16 @@ const mAnt = /const ANTIGUEDADES = \[[\s\S]*?\n\];/.exec(srcBuscar);
 assert.ok(mAnt, 'no se encontró ANTIGUEDADES en buscar.jsx');
 vm.runInContext(mAnt[0], ctx);
 
-// SIN_RADICADO + _radicadoReal/_claveGrupo/_esSinRadicado: dependencias de _ordenarGrupos
+// esRadicadoDeCaso (utils.js) + SIN_RADICADO/_claveGrupo/_esSinRadicado
+// (buscar.jsx): dependencias de _ordenarGrupos.
+const mCaso = /function esRadicadoDeCaso\(r\) \{[\s\S]*?\n\}/.exec(srcUtils);
+assert.ok(mCaso, 'no se encontró esRadicadoDeCaso en utils.js');
+vm.runInContext(mCaso[0], ctx);
 const mSin = /const SIN_RADICADO = '[^']*';/.exec(srcBuscar);
 assert.ok(mSin, 'no se encontró SIN_RADICADO en buscar.jsx');
 vm.runInContext(mSin[0], ctx);
 
-for (const nombre of ['_pasaAntiguedad', '_radicadoReal', '_claveGrupo', '_esSinRadicado', '_ordenarGrupos']) {
+for (const nombre of ['_pasaAntiguedad', '_claveGrupo', '_esSinRadicado', '_ordenarGrupos']) {
   const re = new RegExp('function ' + nombre + '\\([\\s\\S]*?\\n\\}');
   const fn = re.exec(srcBuscar);
   assert.ok(fn, 'no se encontró ' + nombre + ' en buscar.jsx');

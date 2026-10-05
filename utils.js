@@ -283,6 +283,17 @@ function _normRadicado(r) {
 // y la 2ª visita nació como radicado aparte, con N° visita 1.
 function claveRadicado(r) { return _normRadicado(r); }
 
+// ¿El RADICADO identifica un caso? Solo si tiene número. Las filas migradas
+// de V2 traen textos como «QUEJA VERBAL», «OPERATIVO», «OFICIO» o «SIN
+// RADICADO» que comparten casos distintos: agrupar por ellos juntaba visitas
+// sin relación («OPERATIVO · 20 visitas») y proponía la visita N° 21.
+// Coordenadas pegadas en la celda tampoco son radicado. La usan Buscar
+// (_claveGrupo) y la búsqueda de casos de «Nueva visita» (_claveCaso).
+function esRadicadoDeCaso(r) {
+  var k = String(r == null ? '' : r).trim().toUpperCase();
+  return /\d/.test(k) && !/^(LAT|6\.|-75)/.test(k) && k.length <= 60;
+}
+
 // RADICADO que se guarda para una visita de oficio. La 1ª visita lo deriva
 // de su orden de policía (OFICIO-<orden>). Una visita de seguimiento (N° > 1)
 // conserva el del caso: si lo recalculara, una orden nueva (o ninguna) le
@@ -383,22 +394,32 @@ function tipoBusquedaCaso(texto) {
   return 'direccion';
 }
 
+// Clave de caso de una fila: su radicado si identifica un caso; si no (V2
+// sin número), la fila sola — no tiene visitas hermanas.
+function _claveCaso(f) {
+  var k = claveRadicado(f && f['RADICADO']);
+  return esRadicadoDeCaso(k) ? k : '#fila' + (f && f._idx);
+}
+
 // Agrupa por caso: de cada radicado que coincidió trae TODAS sus visitas (la
 // coincidencia pudo ser por la orden de la 1ª y el caso ya va en la 3ª), de
 // la más reciente a la más vieja. Casos más nuevos primero (fila más baja).
+// `sinRadicado`: fila de V2 sin número, que no admite visita de seguimiento.
 function _agruparCasos(coincidentes, todas) {
   var claves = [];
   coincidentes.forEach(function (f) {
-    var k = claveRadicado(f['RADICADO']);
+    var k = _claveCaso(f);
     if (claves.indexOf(k) === -1) claves.push(k);
   });
   var casos = claves.map(function (k) {
-    var visitas = todas.filter(function (f) { return claveRadicado(f['RADICADO']) === k; })
+    var visitas = todas.filter(function (f) { return _claveCaso(f) === k; })
       .sort(function (a, b) { return _nVisitaDeFila(b) - _nVisitaDeFila(a); });
     var ultima = visitas[0];
     var maxIdx = Math.max.apply(null, visitas.map(function (f) { return Number(f._idx) || 0; }));
     return {
       radicado: String(ultima['RADICADO']).trim().toUpperCase(),
+      clave: k,
+      sinRadicado: k.charAt(0) === '#',
       visitas: visitas,
       ultima: ultima,
       nVisitaSig: _nVisitaDeFila(ultima) + 1,
@@ -457,7 +478,10 @@ function buscarCasos(filas, texto) {
 // 2026-09-30). `motivos` dice por qué salió cada caso.
 function casosRelacionados(filas, opts) {
   var o = opts || {};
+  // Un «radicado» V2 sin número no es caso: no excluye a las demás filas que
+  // lo comparten (la fila propia la excluye filaPropia).
   var propio = claveRadicado(o.radicadoPropio);
+  if (!esRadicadoDeCaso(propio)) propio = '';
   var filaPropia = o.filaPropia != null ? Number(o.filaPropia) : null;
   var cDir = o.direccion ? claveDireccionCatastro(o.direccion) : null;
   var orden = o.orden ? _sinCerosTramos(String(o.orden).replace(/\s+/g, '')) : '';
@@ -465,7 +489,7 @@ function casosRelacionados(filas, opts) {
   var lista = (filas || []).filter(function (f) { return f && claveRadicado(f['RADICADO']); });
   var motivosPorCaso = {};
   var coincidentes = lista.filter(function (f) {
-    var k = claveRadicado(f['RADICADO']);
+    var k = _claveCaso(f);
     if (propio && k === propio) return false;
     if (filaPropia != null && Number(f._idx) === filaPropia) return false;
     var m = [];
@@ -481,7 +505,7 @@ function casosRelacionados(filas, opts) {
     return true;
   });
   return _agruparCasos(coincidentes, lista).map(function (c) {
-    c.motivos = motivosPorCaso[claveRadicado(c.radicado)] || [];
+    c.motivos = motivosPorCaso[c.clave] || [];
     return c;
   });
 }
@@ -1806,6 +1830,7 @@ var _cuUtilsExports = {
   ponerDiligenciadorPrimero: ponerDiligenciadorPrimero,
   borradorEsDeLaFila: borradorEsDeLaFila,
   claveRadicado: claveRadicado,
+  esRadicadoDeCaso: esRadicadoDeCaso,
   radicadoDeOficio: radicadoDeOficio,
   textoReiterados: textoReiterados,
   radicadosReiterados: radicadosReiterados,
