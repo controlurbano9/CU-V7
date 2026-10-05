@@ -48,8 +48,13 @@ al final del encabezado, la primera vez que se genera un PIN temporal. No se esc
 - **«Cambiar mi PIN»** para todos (menú de usuario): PIN actual + nuevo dos veces → `cambiarMiPin`
   con `hashActual`.
 - **Panel de Equipo:**
-  - «Generar PIN temporal» → `generarPinTemporal` **sin `requestId`**: la respuesta lleva el PIN en
-    claro y el dedup la guardaría 6 h. Se muestra una sola vez, con «vence dd/mm/aaaa hh:mm».
+  - «Generar PIN temporal» → `generarPinTemporal`. Lleva el `requestId` que `gasPost` agrega a
+    toda escritura: el dedup guarda la respuesta (con el PIN) hasta 6 h en la caché del script,
+    asociada a ese UUID. Lo aceptamos porque así un reintento devuelve **el mismo** PIN en vez de
+    generar otro. Se muestra una sola vez, con «vence dd/mm/aaaa hh:mm».
+  - Ojo con la cola offline: los pedidos encolados llevan dentro el `sesionHash` del momento, y
+    al reenviarlos gana ese valor. Tras `cambiarMiPin` hay que reescribirlos con el hash nuevo
+    (ver `TASK-admin-fase2a-pin.md`).
   - Si `pinTemporalVence` existe, el panel lo dice («PIN temporal pendiente, vence …» o «vencido»).
   - Selector de rol → `cambiarRol` con `nombreConocido`.
   - Se quitan «Reset PIN» y `TabResetPin`.
