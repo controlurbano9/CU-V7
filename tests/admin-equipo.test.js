@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   parsearFechaHora, cargaUsuario, ultimaActividad, categoriaLog,
-  DIAS_DEMORA_ADMIN, formatearFechaHora,
+  DIAS_DEMORA_ADMIN, formatearFechaHora, validarPinNuevo,
 } = require('../utils.js');
 
 const HOY = new Date(2026, 9, 8); // jueves 08/10/2026
@@ -157,4 +157,17 @@ test('categoriaLog — un caso por categoría (textos reales del backend)', () =
   assert.equal(categoriaLog(YO, 'Reiterado AGREGADO: 20261054116 en 20261049145'), 'visitas');
   assert.equal(categoriaLog(YO, 'Usuario DESACTIVADO: NELSON …'), 'otros');
   assert.equal(categoriaLog(YO, 'CONFIG_AGENDA actualizada: máx 4/jornada'), 'otros');
+});
+
+// ── validarPinNuevo ────────────────────────────────────────────
+
+test('validarPinNuevo — una regla por rama, en el orden en que se muestran', () => {
+  assert.equal(validarPinNuevo('482', '482'), 'El PIN debe tener 4 dígitos.');
+  assert.equal(validarPinNuevo('48a6', '48a6'), 'El PIN debe tener 4 dígitos.');
+  assert.equal(validarPinNuevo('4826', '4862'), 'Los dos PIN no coinciden.');
+  assert.equal(validarPinNuevo('4826', '4826', '4826'), 'El PIN nuevo debe ser distinto del actual.');
+  assert.equal(validarPinNuevo('1234', '1234'), 'Ese PIN es muy fácil de adivinar. Elige otro.');
+  assert.equal(validarPinNuevo('0000', '0000', '4826'), 'Ese PIN es muy fácil de adivinar. Elige otro.');
+  assert.equal(validarPinNuevo('4826', '4826', '7391'), '');
+  assert.equal(validarPinNuevo('4826', '4826'), '');
 });

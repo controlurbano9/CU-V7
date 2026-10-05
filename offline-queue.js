@@ -276,6 +276,8 @@
   Object.assign(window, {
     offlineEnqueue: offlineEnqueue,
     offlineListar: offlineListar,
+    // cambiarMiPin (api.js) reescribe el sesionHash de lo encolado.
+    offlineActualizar: offlineActualizar,
     offlineEliminar: offlineEliminar,
     offlineCount: offlineCount,
     offlineFlush: offlineFlush,

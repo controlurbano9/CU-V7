@@ -10,6 +10,8 @@ function LoginScreen({ onLogin }) {
   const [pin, setPin] = useStateLG('');
   const [error, setError] = useStateLG('');
   const [verificando, setVerificando] = useStateLG(false);
+  // Usuario que entró con PIN temporal y todavía no eligió el suyo.
+  const [pendiente, setPendiente] = useStateLG(null);
 
   // Cargar inspectores activos al montar.
   // Si falla (sin red al arrancar, webhook caído) el usuario quedaba encerrado
@@ -59,12 +61,23 @@ function LoginScreen({ onLogin }) {
       localStorage.setItem('cu_ultimo_usuario', usuario.usuario);
       SESSION_V6.guardar(usuario);
       registrarLog(usuario.usuario, 'Login V6');
-      onLogin(usuario);
+      // PIN temporal: la sesión queda guardada (es la que autoriza cambiarlo),
+      // pero no se entra a la app hasta elegir el propio.
+      if (usuario.debeCambiarPin) setPendiente(usuario);
+      else onLogin(usuario);
     } else {
       setError(errorMsg);
       setPin('');
     }
     setVerificando(false);
+  }
+
+  if (pendiente) {
+    return (
+      <CambiarPinScreen modo="temporal" nombre={pendiente.usuario}
+        onListo={() => { const u = SESSION_V6.leer() || pendiente; setPendiente(null); onLogin(Object.assign({}, pendiente, { hash: u.hash })); }}
+        onCancelar={() => { SESSION_V6.borrar(); setPendiente(null); setPin(''); }} />
+    );
   }
 
   return (
@@ -138,4 +151,98 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ── Elegir o cambiar el PIN propio (Administración fase 2) ─────────
+// 'temporal': pantalla completa con el marco del login. Se llega con el PIN
+//   que generó el admin; el backend no deja hacer nada más hasta cambiarlo.
+// 'voluntario': modal desde la cabecera; pide también el PIN actual.
+// validarPinNuevo (utils.js) evita el viaje; el backend vuelve a validar y
+// su mensaje se muestra tal cual.
+function CambiarPinScreen({ modo, nombre, onListo, onCancelar }) {
+  const [actual, setActual]     = useStateLG('');
+  const [pin, setPin]           = useStateLG('');
+  const [pin2, setPin2]         = useStateLG('');
+  const [error, setError]       = useStateLG('');
+  const [enviando, setEnviando] = useStateLG(false);
+  const temporal = modo === 'temporal';
+
+  useEffectLG(() => {
+    if (temporal) return;
+    const onKey = (e) => { if (e.key === 'Escape') onCancelar(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [temporal, onCancelar]);
+
+  async function guardar(e) {
+    e.preventDefault();
+    if (enviando) return;
+    if (!temporal && !/^\d{4}$/.test(actual)) { setError('Escribe tu PIN actual.'); return; }
+    const err = validarPinNuevo(pin, pin2, temporal ? '' : actual);
+    if (err) { setError(err); return; }
+    setError('');
+    setEnviando(true);
+    try {
+      await cambiarMiPin(pin, temporal ? '' : actual);
+      onListo();
+    } catch (ex) {
+      setError((ex && ex.message) || 'No se pudo cambiar el PIN.');
+      setEnviando(false);
+    }
+  }
+
+  const campo = (id, etiqueta, valor, set, auto, foco) => (
+    <div className="pin-campo">
+      <label htmlFor={id}>{etiqueta}</label>
+      <input id={id} type="password" inputMode="numeric" pattern="[0-9]*" maxLength={4}
+        autoComplete={auto} autoFocus={foco} value={valor}
+        className={temporal ? 'login-input' : 'pin-input'}
+        onChange={e => { set(e.target.value.replace(/\D/g, '').slice(0, 4)); setError(''); }} />
+    </div>
+  );
+
+  if (temporal) {
+    return (
+      <div id="pantalla-login" style={{ display: 'flex' }}>
+        <div className="login-logo">
+          <img src="logo-login.png" alt="Control Urbano" />
+        </div>
+        <div className="login-titulo">Elige tu PIN</div>
+        <div className="login-sub pin-intro">
+          Hola, {titleCaseNombre(nombre)}. El PIN que te dieron es temporal: elige uno de 4 dígitos
+          que solo tú sepas.
+        </div>
+        <form className="login-form" onSubmit={guardar}>
+          {campo('pin-nuevo', 'Nuevo PIN', pin, setPin, 'new-password', true)}
+          {campo('pin-repite', 'Repite el PIN', pin2, setPin2, 'new-password')}
+          <button type="submit" className="btn-login" disabled={enviando}>
+            {enviando ? 'Guardando…' : 'Guardar mi PIN'}
+          </button>
+          {error && <div role="alert" className="pin-error-oscuro">{error}</div>}
+          <button type="button" className="pin-salir" onClick={onCancelar}>Salir</button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dlg-overlay" onClick={onCancelar}>
+      <form className="dlg pin-dlg" role="dialog" aria-modal="true" aria-labelledby="pin-dlg-t"
+        onClick={e => e.stopPropagation()} onSubmit={guardar}>
+        <div className="dlg-titulo" id="pin-dlg-t">Cambiar mi PIN</div>
+        <div className="dlg-mensaje">Al cambiarlo se cierran tus sesiones abiertas en otros equipos.</div>
+        {campo('pin-actual', 'PIN actual', actual, setActual, 'current-password', true)}
+        {campo('pin-nuevo', 'Nuevo PIN', pin, setPin, 'new-password')}
+        {campo('pin-repite', 'Repite el PIN', pin2, setPin2, 'new-password')}
+        {error && <div role="alert" className="pin-error">{error}</div>}
+        <div className="dlg-acciones">
+          <button type="button" className="dlg-btn dlg-btn-cancel" onClick={onCancelar}>Cancelar</button>
+          <button type="submit" className="dlg-btn dlg-btn-ok" disabled={enviando}>
+            {enviando ? 'Guardando…' : 'Cambiar PIN'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 window.LoginScreen = LoginScreen;
+window.CambiarPinScreen = CambiarPinScreen;

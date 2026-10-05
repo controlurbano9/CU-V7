@@ -1573,6 +1573,22 @@ function categoriaLog(usuario, accion) {
   return 'otros';
 }
 
+// PINes que se rechazan al elegir el propio: los mismos que PINES_DEBILES del
+// backend (cambiarMiPin), que vuelve a validar. Esto solo ahorra el viaje.
+var PINES_DEBILES = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777',
+  '8888', '9999', '1234', '4321', '0123', '1212', '2580', '1010'];
+
+// '' si el PIN nuevo vale; si no, el texto del error para mostrar tal cual.
+// pinActual solo llega al cambiarlo por voluntad (con uno temporal no se pide).
+function validarPinNuevo(pin, pin2, pinActual) {
+  var p = String(pin || '');
+  if (!/^\d{4}$/.test(p)) return 'El PIN debe tener 4 dígitos.';
+  if (p !== String(pin2 || '')) return 'Los dos PIN no coinciden.';
+  if (pinActual && p === String(pinActual)) return 'El PIN nuevo debe ser distinto del actual.';
+  if (PINES_DEBILES.indexOf(p) !== -1) return 'Ese PIN es muy fácil de adivinar. Elige otro.';
+  return '';
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   ordenPoliciaDe: ordenPoliciaDe,
@@ -1643,6 +1659,7 @@ var _cuUtilsExports = {
   cargaUsuario: cargaUsuario,
   ultimaActividad: ultimaActividad,
   categoriaLog: categoriaLog,
+  validarPinNuevo: validarPinNuevo,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

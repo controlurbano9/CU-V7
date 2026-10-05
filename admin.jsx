@@ -3,8 +3,10 @@
 //
 // Fase 1 (2026-10-03), solo cliente: Bandeja (vigilancia + guardados
 // bloqueados), Equipo (lista de tarjetas + panel de la persona) y Actividad
-// (log con filtros). Reset PIN y Reglas de agenda quedan como estaban, tras
-// dos botones discretos. La regla vive en utils.js (cargaUsuario,
+// (log con filtros). Fase 2 (2026-10-05, backend @134): PIN temporal y rol
+// editable en el panel de la persona (se fue Reset PIN), hallazgos por revisar
+// e informes rechazados en la Bandeja, log paginado. Reglas de agenda sigue
+// tras un botón discreto hasta que se mude a Agenda. La regla vive en utils.js (cargaUsuario,
 // ultimaActividad, categoriaLog, parsearFechaHora) y se prueba en
 // tests/admin-equipo.test.js; aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
@@ -47,16 +49,21 @@ function useAnchoPanelAdm() {
 // como hacía la vieja pestaña de Vigilancia.
 function AdminScreen({ usuario }) {
   const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
-  const [vista, setVista]     = useStateA('');         // '' | 'pin' | 'agenda'
-  const [pinFila, setPinFila] = useStateA(null);       // preselección de TabResetPin
+  const [vista, setVista]     = useStateA('');         // '' | 'agenda'
   const [usuarios, setUsuarios] = useStateA([]);
   const [visitas, setVisitas]   = useStateA([]);
   const [log, setLog]           = useStateA([]);
+  const [logTotal, setLogTotal] = useStateA(0);
+  // Bandeja (backend @134): hallazgos por revisar e informes rechazados. Va
+  // aparte de los otros datos: si falla, solo esas secciones lo dicen.
+  const [pend, setPend]           = useStateA(null);   // {hallazgos, informesRechazados}
+  const [pendError, setPendError] = useStateA('');
   const [cargando, setCargando] = useStateA(true);
   const [error, setError]       = useStateA('');
   const conPanel = useAnchoPanelAdm();
+  const esAdmin = usuario.rol === 'ADMIN';
 
-  useEffectA(() => { cargar(); }, []);
+  useEffectA(() => { if (esAdmin) { cargar(); cargarPendientes(); } }, []);
   useEffectA(() => suscribirVisitas(() => {
     leerVisitas().then(r => setVisitas(r.datos || [])).catch(() => {});
   }), []);
@@ -67,13 +74,21 @@ function AdminScreen({ usuario }) {
       const [us, vis, lg] = await Promise.all([
         listarUsuariosAdmin(),
         leerVisitas(),
-        leerLogAuditoria(),
+        // Las últimas 3000 filas bastan para Actividad y para la última
+        // actividad de cada persona; antes bajaba la hoja entera.
+        leerLogAuditoria(3000),
       ]);
       setUsuarios(us || []);
       setVisitas(vis.datos || []);
-      setLog(lg || []);
+      setLog(lg.values || []);
+      setLogTotal(lg.total || 0);
     } catch (e) { setError(e.message); }
     setCargando(false);
+  }
+
+  function cargarPendientes() {
+    setPendError('');
+    leerPendientesAdmin().then(setPend).catch(e => setPendError(e.message || 'No se pudo cargar.'));
   }
 
   async function recargarUsuarios() {
@@ -109,13 +124,13 @@ function AdminScreen({ usuario }) {
   }, [visitas]);
 
   const nPorGenerar = vig.porGenerar.length;
+  const nBandeja = nPorGenerar + (pend ? pend.hallazgos.length : 0);
 
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
   }
 
   const irTab = (k) => { setTab(k); setVista(''); };
-  const abrirPin = (fila) => { setPinFila(fila == null ? null : fila); setVista('pin'); };
 
   return (
     <div className={'pantalla activa pad-bottom' + (conPanel && tab === 'equipo' && !vista ? ' adm-pantalla' : '')}>
@@ -123,7 +138,7 @@ function AdminScreen({ usuario }) {
         <div className="page-title">Administración</div>
         <div className="adm-tabs" role="tablist" aria-label="Secciones de administración">
           {[
-            { k: 'bandeja',   l: <span>Bandeja{nPorGenerar > 0 && <span className="adm-tab-n">{nPorGenerar}</span>}</span> },
+            { k: 'bandeja',   l: <span>Bandeja{nBandeja > 0 && <span className="adm-tab-n">{nBandeja}</span>}</span> },
             { k: 'equipo',    l: 'Equipo' },
             { k: 'actividad', l: 'Actividad' },
           ].map(t => (
@@ -133,8 +148,6 @@ function AdminScreen({ usuario }) {
           ))}
         </div>
         <div className="adm-tools">
-          <button type="button" className="btn-texto" aria-pressed={vista === 'pin'}
-            onClick={() => (vista === 'pin' ? setVista('') : abrirPin(null))}>Reset PIN</button>
           <button type="button" className="btn-texto" aria-pressed={vista === 'agenda'}
             onClick={() => setVista(vista === 'agenda' ? '' : 'agenda')}>Reglas de agenda</button>
         </div>
@@ -152,12 +165,14 @@ function AdminScreen({ usuario }) {
       {cargando && <div className="cargando"><div className="spinner"></div>Cargando…</div>}
 
       {!cargando && !error && (
-        vista === 'pin'      ? <TabResetPin filaInicial={pinFila} /> :
         vista === 'agenda'   ? <TabConfigAgenda /> :
-        tab === 'bandeja'    ? <TabBandeja vig={vig} logDesc={logDesc} recargarVisitas={recargarVisitas} /> :
-        tab === 'actividad'  ? <TabActividad log={log} /> :
+        tab === 'bandeja'    ? <TabBandeja vig={vig} logDesc={logDesc} recargarVisitas={recargarVisitas}
+          pend={pend} pendError={pendError} onReintentarPend={cargarPendientes}
+          onQuitarHallazgo={(fh) => setPend(p => p && Object.assign({}, p, {
+            hallazgos: p.hallazgos.filter(h => h._filaHoja !== fh) }))} /> :
+        tab === 'actividad'  ? <TabActividad log={log} total={logTotal} /> :
         <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} conPanel={conPanel}
-          onAbrirReglas={() => setVista('agenda')} onAbrirPin={abrirPin}
+          yo={usuario.usuario} onAbrirReglas={() => setVista('agenda')}
           recargarUsuarios={recargarUsuarios} />
       )}
     </div>
@@ -167,9 +182,11 @@ function AdminScreen({ usuario }) {
 // ═══════════════════════════════════════════════════════════════
 // Bandeja — oficios de vigilancia por grupo + guardados bloqueados
 // ═══════════════════════════════════════════════════════════════
-function TabBandeja({ vig, logDesc, recargarVisitas }) {
+function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintentarPend, onQuitarHallazgo }) {
   const [busyFila, setBusyFila] = useStateA(null);
   const [listosAbierto, setListosAbierto] = useStateA(false);
+  const [busyHall, setBusyHall] = useStateA(null);   // _filaHoja del hallazgo que se marca
+  const [abiertos, setAbiertos] = useStateA({});     // textos desplegados, por clave
 
   const bloqueadas = useMemoA(() => {
     const desde = Date.now() - 7 * 86400000;
@@ -213,6 +230,55 @@ function TabBandeja({ vig, logDesc, recargarVisitas }) {
   }
 
   const totalVig = vig.porGenerar.length + vig.faltaOrden.length + vig.listos.length;
+  const hallazgos  = (pend && pend.hallazgos) || [];
+  const rechazados = (pend && pend.informesRechazados) || [];
+  const alternar = (k) => setAbiertos(a => Object.assign({}, a, { [k]: !a[k] }));
+  // El backend une las listas con ' | ' al guardarlas en la hoja.
+  const partes = (t) => String(t || '').split(' | ').map(x => x.trim()).filter(Boolean);
+
+  async function marcar(h, estado) {
+    if (busyHall != null) return;
+    setBusyHall(h._filaHoja);
+    try {
+      await marcarHallazgoRevisado(h._filaHoja, h.RADICADO, estado);
+      onQuitarHallazgo(h._filaHoja);
+    } catch (e) {
+      await appAlert(e.message, { tono: 'error', titulo: 'No se pudo marcar el hallazgo' });
+    }
+    setBusyHall(null);
+  }
+
+  // Texto largo recortado a 3 líneas con «Ver más».
+  const textoLargo = (k, texto) => (
+    <>
+      <p className={'adm-pend-txt' + (abiertos[k] ? ' abierto' : '')}>{texto || '—'}</p>
+      {String(texto || '').length > 180 && (
+        <button type="button" className="adm-enlace" aria-expanded={!!abiertos[k]} onClick={() => alternar(k)}>
+          {abiertos[k] ? 'Ver menos' : 'Ver más'}
+        </button>
+      )}
+    </>
+  );
+  // Bloque plegado con lo que generó la IA (listas unidas por ' | ').
+  const plegado = (k, rotulo, bloques) => {
+    const llenos = bloques.filter(b => b[1]);
+    if (!llenos.length) return null;
+    return (
+      <>
+        <button type="button" className="adm-enlace" aria-expanded={!!abiertos[k]} onClick={() => alternar(k)}>{rotulo}</button>
+        {abiertos[k] && (
+          <div className="adm-pend-ia">
+            {llenos.map(b => (
+              <React.Fragment key={b[0]}>
+                <b>{b[0]}</b>
+                {b[2] ? <ul>{partes(b[1]).map((x, i) => <li key={i}>{x}</li>)}</ul> : <p>{b[1]}</p>}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
   const item = (f, boton, conRegenerar) => {
     const busy = busyFila === f._idx;
     return (
@@ -246,10 +312,10 @@ function TabBandeja({ vig, logDesc, recargarVisitas }) {
 
   return (
     <div className="adm-bandeja">
-      {totalVig === 0 && bloqueadas.length === 0 ? (
+      {totalVig === 0 && bloqueadas.length === 0 && !hallazgos.length && !rechazados.length && !pendError ? (
         <div className="card adm-vacio">
           <b>Nada pendiente</b>
-          <span>No hay oficios de vigilancia por generar ni guardados bloqueados esta semana.</span>
+          <span>No hay oficios de vigilancia, hallazgos por revisar, informes rechazados ni guardados bloqueados.</span>
         </div>
       ) : (
         <>
@@ -281,6 +347,63 @@ function TabBandeja({ vig, logDesc, recargarVisitas }) {
                     true))}
                 </>
               )}
+            </div>
+          )}
+          {pendError && (
+            <div className="card adm-seccion">
+              <div className="card-titulo">Hallazgos e informes rechazados</div>
+              <p className="adm-nota">No se pudieron cargar: {pendError}{' '}
+                <button type="button" className="adm-enlace" onClick={onReintentarPend}>Reintentar</button></p>
+            </div>
+          )}
+          {hallazgos.length > 0 && (
+            <div className="card adm-seccion">
+              <div className="card-titulo">Hallazgos por revisar<small>{hallazgos.length}</small></div>
+              <p className="adm-nota">Observaciones a las que ningún hallazgo del catálogo aplicó. Revisa si falta uno en CATALOGO_HALLAZGOS.</p>
+              {hallazgos.map(h => {
+                const k = 'h' + h._filaHoja;
+                return (
+                  <div key={k} className="adm-pend">
+                    <div className="adm-pend-cab">
+                      <span className="vc-rad">{h.RADICADO || '—'}</span>
+                      <span className="adm-pend-meta">{titleCaseNombre(h.INSPECTOR) || '—'} · {h.FECHA}</span>
+                    </div>
+                    {textoLargo(k + 'o', h.OBSERVACIONES)}
+                    {plegado(k + 'g', 'Ver lo que generó la IA', [
+                      ['Conclusiones', h.CONCLUSIONES_GENERADAS, true],
+                      ['Recomendaciones', h.RECOMENDACIONES_GENERADAS, true],
+                    ])}
+                    <div className="adm-pend-acc">
+                      <button type="button" className="vc-btn" disabled={busyHall != null}
+                        onClick={() => marcar(h, 'DESCARTADO')}>Descartar</button>
+                      <button type="button" className="vc-btn vc-btn-cta" disabled={busyHall != null}
+                        onClick={() => marcar(h, 'REVISADO')}>{busyHall === h._filaHoja ? 'Guardando…' : 'Revisado'}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {rechazados.length > 0 && (
+            <div className="card adm-seccion">
+              <div className="card-titulo">Informes rechazados por la verificación<small>últimos 30 días</small></div>
+              {rechazados.map(r => {
+                const k = 'r' + r._filaHoja;
+                return (
+                  <div key={k} className="adm-pend">
+                    <div className="adm-pend-cab">
+                      <span className="vc-rad">{r.RADICADO || '—'}</span>
+                      <span className="adm-pend-meta">{titleCaseNombre(r.INSPECTOR) || '—'} · {r.FECHA}</span>
+                    </div>
+                    <ul className="adm-pend-prob">{partes(r.PROBLEMAS).map((x, i) => <li key={i}>{x}</li>)}</ul>
+                    {plegado(k + 'g', 'Ver el texto generado', [
+                      ['Antecedentes', r.ANTECEDENTES_GENERADOS, false],
+                      ['Conclusiones', r.CONCLUSIONES_GENERADAS, true],
+                      ['Recomendaciones', r.RECOMENDACIONES_GENERADAS, true],
+                    ])}
+                  </div>
+                );
+              })}
             </div>
           )}
           {bloqueadas.length > 0 && (
@@ -319,7 +442,7 @@ function _actividadRelativa(d, hoy) {
   return { texto: 'hace ' + dias + ' días', dias: dias };
 }
 
-function TabEquipo({ usuarios, datos, logDesc, conPanel, onAbrirReglas, onAbrirPin, recargarUsuarios }) {
+function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, recargarUsuarios }) {
   const [sel, setSel]           = useStateA(null); // nombre de la persona elegida
   const [verInactivos, setVerInactivos] = useStateA(false);
   const hoy = useMemoA(() => new Date(), []);
@@ -390,13 +513,13 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, onAbrirReglas, onAbrirP
 
       {elegido && (conPanel ? (
         <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-          onAbrirReglas={onAbrirReglas} onAbrirPin={onAbrirPin} recargarUsuarios={recargarUsuarios} />
+          yo={yo} onAbrirReglas={onAbrirReglas} recargarUsuarios={recargarUsuarios} />
       ) : (
         <div className="adm-panel-movil">
           <button type="button" className="adm-volver" onClick={() => setSel(null)}
             aria-label="Volver a la lista de Equipo"><Icon.ArrowLeft size={16} /> Equipo</button>
           <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-            onAbrirReglas={onAbrirReglas} onAbrirPin={onAbrirPin} recargarUsuarios={recargarUsuarios} />
+            yo={yo} onAbrirReglas={onAbrirReglas} recargarUsuarios={recargarUsuarios} />
         </div>
       ))}
     </div>
@@ -443,10 +566,15 @@ function TarjetaPersona({ u, info, elegida, onElegir }) {
 
 const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 'Inspector' };
 
-function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, recargarUsuarios }) {
+function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, recargarUsuarios }) {
   const cajaRef = useRefA(null);
   const [cfg, setCfg] = useStateA(undefined); // undefined cargando · null falló (la fila no aparece)
   const [busy, setBusy] = useStateA(false);
+  // PIN temporal recién generado: se muestra una sola vez y nunca se guarda
+  // (ni localStorage, ni log, ni consola). Se borra al cambiar de persona.
+  const [pinNuevo, setPinNuevo] = useStateA(null);   // {pin, vence}
+  const [busyPin, setBusyPin]   = useStateA(false);
+  const [busyRol, setBusyRol]   = useStateA(false);
   const c = (info && info.carga) || { hacer: 0, curso: 0, demoradas: 0, completadasMes: 0, completadasMesAnterior: 0, masDemoradas: [], futuras: 0 };
 
   useEffectA(() => {
@@ -455,7 +583,7 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
     return () => { vivo = false; };
   }, []);
   // Otra persona: el panel vuelve arriba.
-  useEffectA(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; }, [u.fila]);
+  useEffectA(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; setPinNuevo(null); }, [u.fila]);
 
   async function togglear() {
     if (busy) return;
@@ -482,6 +610,42 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
     setBusy(false);
   }
 
+  // La persona que usa la app: ni su rol ni su PIN temporal se tocan desde
+  // aquí (para su PIN está «Cambiar mi PIN» de la cabecera).
+  const esYo = String(u.nombre || '').trim().toUpperCase() === String(yo || '').trim().toUpperCase();
+  const estadoPin = !u.conPin ? { texto: 'Sin PIN: no entra a la app', tono: '' }
+    : u.pinTemporalVencido ? { texto: 'PIN temporal vencido', tono: 'demora' }
+    : u.pinTemporalVence ? { texto: 'PIN temporal pendiente · vence ' + u.pinTemporalVence, tono: 'aviso' }
+    : { texto: 'PIN propio', tono: '' };
+
+  async function generarPin() {
+    if (busyPin) return;
+    const nombre = titleCaseNombre(u.nombre);
+    if (!(await appConfirm(`Se genera un PIN temporal para ${nombre}. Su PIN actual deja de funcionar y se ` +
+      'cierran sus sesiones abiertas. Vale 72 horas; al entrar tendrá que elegir el suyo.', {
+      titulo: 'Generar PIN temporal', btnOk: 'Generar', peligro: true }))) return;
+    setBusyPin(true);
+    try {
+      const r = await generarPinTemporal(u.fila, u.nombre);
+      setPinNuevo({ pin: r.pin, vence: r.vence });
+      recargarUsuarios();
+    } catch (e) { await appAlert(e.message, { tono: 'error', titulo: 'No se generó el PIN' }); }
+    setBusyPin(false);
+  }
+
+  async function elegirRol(nuevo) {
+    if (busyRol || esYo || nuevo === u.rol) return;
+    if (!(await appConfirm(`¿Cambiar el rol de ${titleCaseNombre(u.nombre)} de ${_ROL_ADM[u.rol] || u.rol} a ` +
+      `${_ROL_ADM[nuevo]}? Los permisos cambian de inmediato; lo que ve en pantalla, cuando vuelva a iniciar sesión.`, {
+      titulo: 'Cambiar rol', btnOk: 'Cambiar' }))) return;
+    setBusyRol(true);
+    try {
+      await cambiarRol(u.fila, u.nombre, nuevo);
+      await recargarUsuarios();
+    } catch (e) { await appAlert(e.message, { tono: 'error', titulo: 'No se cambió el rol' }); }
+    setBusyRol(false);
+  }
+
   const iniciales = String(u.nombre || '').trim().split(/\s+/).slice(0, 2)
     .map(t => t.charAt(0).toUpperCase()).join('');
   const hoy = new Date();
@@ -498,13 +662,24 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
           <div className="adm-p-nombre">{String(u.nombre || '').toLowerCase()}</div>
           <div className="adm-p-sub">
             {u.cargo && <span>{u.cargo}</span>}
-            {u.rol && <span className="adm-chip-rol">{_ROL_ADM[u.rol] || u.rol}</span>}
             <span className="adm-p-estado">
               <span className={'ent-dot ' + (u.activo ? 'ed-ok' : 'ed-error')} aria-hidden="true" />
               {u.activo ? 'Activo' : 'Inactivo'}
             </span>
           </div>
         </div>
+      </div>
+
+      {/* Rol: el backend no deja cambiar el propio (así siempre queda un admin). */}
+      <div className="adm-bloque">
+        <div className="adm-rol" role="radiogroup" aria-label={'Rol de ' + titleCaseNombre(u.nombre)}>
+          {['ADMIN', 'SUPERVISOR', 'INSPECTOR'].map(r => (
+            <button key={r} type="button" role="radio" aria-checked={u.rol === r}
+              className={'adm-rol-op' + (u.rol === r ? ' activo' : '')}
+              disabled={esYo || busyRol} onClick={() => elegirRol(r)}>{_ROL_ADM[r]}</button>
+          ))}
+        </div>
+        {esYo && <div className="adm-nota">No puedes cambiar tu propio rol.</div>}
       </div>
 
       <div className="adm-cifras">
@@ -541,8 +716,23 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
 
       <div className="adm-bloque adm-fila-dato">
         <span>PIN de acceso</span>
-        <button type="button" className="vc-btn" onClick={() => onAbrirPin(u.fila)}>Restablecer PIN</button>
+        <b className={estadoPin.tono}>{estadoPin.texto}</b>
+        {u.activo && !esYo && (
+          <button type="button" className="vc-btn" disabled={busyPin} onClick={generarPin}>
+            {busyPin ? 'Generando…' : 'Generar PIN temporal'}
+          </button>
+        )}
       </div>
+      {pinNuevo && (
+        <div className="adm-pin-tmp" role="status">
+          <div className="adm-pin-dig" aria-label={'PIN temporal ' + pinNuevo.pin.split('').join(' ')}>
+            {pinNuevo.pin.split('').map((d, i) => <span key={i} aria-hidden="true">{d}</span>)}
+          </div>
+          <p>Díctaselo a {titleCaseNombre(u.nombre)}. No se vuelve a mostrar.</p>
+          <p className="adm-nota">Vence {pinNuevo.vence}. Al entrar tendrá que elegir el suyo.</p>
+          <button type="button" className="vc-btn" onClick={() => setPinNuevo(null)}>Listo</button>
+        </div>
+      )}
 
       {suLog.length > 0 && (
         <div className="adm-bloque">
@@ -556,12 +746,15 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
         </div>
       )}
 
-      <div className="adm-bloque adm-peligro">
-        <button type="button" className={'adm-btn-texto ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
-          onClick={togglear}>
-          {busy ? '…' : (u.activo ? 'Desactivar…' : 'Activar')}
-        </button>
-      </div>
+      {/* Uno mismo no se desactiva: el backend lo rechaza (quedaría sin admin). */}
+      {!esYo && (
+        <div className="adm-bloque adm-peligro">
+          <button type="button" className={'adm-btn-texto ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
+            onClick={togglear}>
+            {busy ? '…' : (u.activo ? 'Desactivar…' : 'Activar')}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -569,7 +762,7 @@ function PanelPersona({ u, info, logDesc, conPanel, onAbrirReglas, onAbrirPin, r
 // ═══════════════════════════════════════════════════════════════
 // Actividad — log de auditoría con filtros y búsqueda
 // ═══════════════════════════════════════════════════════════════
-function TabActividad({ log }) {
+function TabActividad({ log, total }) {
   const [filtro, setFiltro] = useStateA('');
   const [q, setQ] = useStateA('');
   const [limite, setLimite] = useStateA(200);
@@ -638,91 +831,14 @@ function TabActividad({ log }) {
         </React.Fragment>
       ))}
 
+      {total > filas.length && (
+        <p className="adm-nota adm-log-pie">Se muestran los últimos {filas.length} de {total} registros.</p>
+      )}
       {filtradas.length > limite && (
         <button type="button" className="vc-btn adm-mas"
           onClick={() => setLimite(l => l + 200)}>
           Mostrar más <span>({visibles.length} de {filtradas.length})</span>
         </button>
-      )}
-    </div>
-  );
-}
-
-function TabResetPin({ filaInicial }) {
-  const [usuarios, setUsuarios] = useStateA([]);
-  const [sel, setSel]   = useStateA('');
-  const [pin, setPin]   = useStateA('');
-  const [pin2, setPin2] = useStateA('');
-  const [msg, setMsg]   = useStateA(null);
-  const [busy, setBusy] = useStateA(false);
-  const [error, setError] = useStateA('');
-
-  useEffectA(() => {
-    listarUsuariosAdmin().then(list => setUsuarios(list.filter(u => u.activo)))
-      .catch(e => setError(e.message));
-  }, []);
-
-  // Preselección desde el panel de Equipo («Restablecer PIN»).
-  useEffectA(() => {
-    if (filaInicial != null) setSel(String(filaInicial));
-  }, [filaInicial]);
-
-  async function ejecutar() {
-    setMsg(null);
-    if (!sel) { setMsg({ t: 'error', m: 'Selecciona un usuario' }); return; }
-    if (!/^\d{4}$/.test(pin)) { setMsg({ t: 'error', m: 'PIN debe ser 4 dígitos' }); return; }
-    if (pin !== pin2) { setMsg({ t: 'error', m: 'Los dos PIN no coinciden' }); return; }
-    const u = usuarios.find(x => x.fila === parseInt(sel, 10));
-    const ok = await appConfirm(`¿Resetear el PIN de ${u?.nombre}?`, {
-      titulo: 'Resetear PIN', btnOk: 'Resetear', peligro: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await resetPin(parseInt(sel, 10), pin);
-      registrarLog(SESSION_V6.leer()?.usuario || '', `PIN reseteado para: ${u?.nombre}`);
-      setMsg({ t: 'ok', m: 'PIN actualizado correctamente' });
-      setPin('');
-      setPin2('');
-    } catch (e) { setMsg({ t: 'error', m: e.message }); }
-    setBusy(false);
-  }
-
-  return (
-    <div className="card">
-      <div className="card-titulo" style={{ marginBottom: 12 }}>Resetear PIN</div>
-      <label htmlFor="admin-reset-pin-usuario" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>Usuario</label>
-      <select id="admin-reset-pin-usuario" value={sel} onChange={e => setSel(e.target.value)} style={{
-        width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--borde)',
-        background: 'var(--superficie)', fontFamily: 'inherit', fontSize: 14, marginBottom: 12,
-      }}>
-        <option value="">Selecciona...</option>
-        {usuarios.map(u => <option key={u.fila} value={u.fila}>{u.nombre}</option>)}
-      </select>
-      <label htmlFor="admin-reset-pin-nuevo" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>Nuevo PIN (4 dígitos)</label>
-      <input id="admin-reset-pin-nuevo" type="password" value={pin} maxLength={4} inputMode="numeric"
-        onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-        style={{
-          width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--borde)',
-          background: 'var(--superficie)', fontFamily: 'var(--font-mono)', fontSize: 16, marginBottom: 12,
-        }} />
-      <label htmlFor="admin-reset-pin-confirmar" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>Confirmar PIN</label>
-      <input id="admin-reset-pin-confirmar" type="password" value={pin2} maxLength={4} inputMode="numeric"
-        onChange={e => setPin2(e.target.value.replace(/\D/g, ''))}
-        style={{
-          width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--borde)',
-          background: 'var(--superficie)', fontFamily: 'var(--font-mono)', fontSize: 16, marginBottom: 12,
-        }} />
-      <button onClick={ejecutar} disabled={busy} className="btn-principal secundario" style={{ marginTop: 4 }}>
-        {busy ? 'Procesando...' : 'Actualizar PIN'}
-      </button>
-      {error && <div style={{ color: 'var(--rojo)', fontSize: 13, marginTop: 8 }}>Error al cargar usuarios: {error}</div>}
-      {msg && (
-        <div style={{
-          marginTop: 12, padding: 10, borderRadius: 8, fontSize: 13,
-          background: msg.t === 'ok' ? 'rgba(107,122,58,0.12)' : 'rgba(168,52,43,0.12)',
-          color: msg.t === 'ok' ? 'var(--verde)' : 'var(--rojo)',
-        }}>{msg.m}</div>
       )}
     </div>
   );

@@ -132,6 +132,10 @@ const Icon = {
   ], p?.size),
 
   // ── Dominio: GPS, foto, documento ───────────────────────
+  Lock:    (p) => _svg([
+    React.createElement('rect', { key: 1, x: 5, y: 11, width: 14, height: 10, rx: 2 }),
+    React.createElement('path', { key: 2, d: 'M8 11V7a4 4 0 0 1 8 0v4' }),
+  ], p?.size),
   Pin:     (p) => _svg([
     React.createElement('path',   { key: 1, d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }),
     React.createElement('circle', { key: 2, cx: 12, cy: 10, r: 3 }),

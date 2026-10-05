@@ -156,7 +156,7 @@ const _ACCIONES_SOLO_LECTURA = {
   leerHoja: true, listarInspectoresActivos: true, login: true,
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
-  linksPdfReiterados: true,
+  linksPdfReiterados: true, leerPendientesAdmin: true,
 };
 // Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
@@ -211,6 +211,13 @@ function _parsearRespuesta(texto) {
   if (!d || !d.ok) {
     const err = new Error((d && d.error) || 'Apps Script error');
     err.definitivo = !(d && d.enCurso);
+    // Sesión con PIN temporal: el backend solo deja elegir el PIN propio.
+    // app.jsx escucha el evento y muestra esa pantalla, venga de donde venga
+    // el rechazo (p. ej. alguien que cerró la app sin cambiarlo y volvió).
+    if (d && d.debeCambiarPin) {
+      err.debeCambiarPin = true;
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cu-debe-cambiar-pin'));
+    }
     throw err;
   }
   return d;
@@ -670,6 +677,8 @@ async function login(nombre, pin) {
       cargo:   d.cargo || 'Inspector',
       rol:     (d.rol || 'INSPECTOR').toUpperCase(),
       hash:    pinHash,  // se conserva para reusar en llamadas admin
+      // PIN temporal (lo generó el admin): hay que elegir el propio antes de entrar.
+      debeCambiarPin: !!d.debeCambiarPin,
     };
   } catch (e) {
     // gasPost lanza con el mensaje del backend cuando la respuesta llegó
@@ -740,10 +749,54 @@ async function toggleActivo(fila, nuevoEstado) {
   return r;
 }
 
-async function resetPin(fila, pin) {
-  const pinHash = await hashPin(pin);
-  // No invalida visitas ni inspectores — el cambio de PIN no afecta sus listas.
-  return gasPost({ accion: 'resetPin', fila, hash: pinHash });
+// ── ADMIN fase 2: PIN temporal, rol y Bandeja (backend @134) ─────
+// El admin ya no teclea el PIN de nadie: genera uno temporal que ve una sola
+// vez. El requestId que gasPost agrega hace que un reintento devuelva el MISMO
+// PIN (dedup del backend) en vez de generar otro.
+async function generarPinTemporal(fila, nombreConocido) {
+  const d = await gasPost({ accion: 'generarPinTemporal', fila, nombreConocido });
+  return { pin: d.pin, nombre: d.nombre, vence: d.vence };
+}
+
+// Cambia el PIN de quien usa la app. pinActual se omite con un PIN temporal.
+async function cambiarMiPin(pinNuevo, pinActual) {
+  const hashNuevo = await hashPin(pinNuevo);
+  const payload = { accion: 'cambiarMiPin', hashNuevo };
+  if (pinActual) payload.hashActual = await hashPin(pinActual);
+  await gasPost(payload);
+  SESSION.actualizarHash(hashNuevo);
+  // Lo encolado sin señal lleva dentro el hash de cuando se encoló, y al
+  // reenviarlo gana ese (_conCredencialesSesion no lo pisa): tras el cambio
+  // respondería «No autorizado» y quedaría atascado. Se reescribe con el nuevo.
+  try {
+    const s = SESSION.leer();
+    if (s && typeof offlineListar === 'function' && typeof offlineActualizar === 'function') {
+      const items = await offlineListar();
+      for (const it of items) {
+        if (it && it.body && it.body.sesionUsuario === s.usuario) {
+          it.body.sesionHash = hashNuevo;
+          it.intentos = 0;
+          await offlineActualizar(it);
+        }
+      }
+    }
+  } catch (e) { console.warn('[cambiarMiPin] no se pudo actualizar la cola offline', e); }
+  return { ok: true };
+}
+
+async function cambiarRol(fila, nombreConocido, rol) {
+  const d = await gasPost({ accion: 'cambiarRol', fila, nombreConocido, rol });
+  invalidarCache('inspectores'); // la lista pública lleva el rol
+  return d;
+}
+
+async function leerPendientesAdmin() {
+  const d = await gasPost({ accion: 'leerPendientesAdmin' });
+  return { hallazgos: d.hallazgos || [], informesRechazados: d.informesRechazados || [] };
+}
+
+async function marcarHallazgoRevisado(filaHoja, radicado, estado) {
+  return gasPost({ accion: 'marcarHallazgoRevisado', filaHoja, radicado, estado });
 }
 
 // ── ADMIN: reglas de agenda (hoja CONFIG_AGENDA) ────────────────
@@ -1442,11 +1495,16 @@ async function consultarPOT(lat, lon) {
   return result;
 }
 
-async function leerLogAuditoria() {
+// limite: solo las últimas N filas (más el encabezado). total = filas de la
+// hoja; un backend anterior a @134 no lo manda y se toma lo recibido.
+async function leerLogAuditoria(limite) {
   const s = SESSION.leer();
   if (!s || !s.hash) throw new Error('Sesión inválida');
-  const d = await gasPost({ accion: 'leerLogAuditoria', usuario: s.usuario, hash: s.hash });
-  return d.values || [];
+  const p = { accion: 'leerLogAuditoria', usuario: s.usuario, hash: s.hash };
+  if (limite) p.limite = limite;
+  const d = await gasPost(p);
+  const values = d.values || [];
+  return { values, total: d.total != null ? d.total : Math.max(0, values.length - 1) };
 }
 
 // ── Sesión (localStorage) — mismas keys que app.js para coexistir.
@@ -1465,6 +1523,12 @@ const SESSION = {
     localStorage.setItem('cu_rol', s.rol);
     localStorage.setItem('cu_sesion_expira', expira.toString());
     if (s.hash) localStorage.setItem('cu_hash', s.hash);
+  },
+  // Tras cambiar el PIN el hash viejo ya no autentica: se reemplaza sin tocar
+  // la expiración de la sesión.
+  actualizarHash(h) {
+    localStorage.setItem('cu_hash', h);
+    sessionStorage.removeItem('cu_hash');
   },
   leer() {
     const expira = parseInt(localStorage.getItem('cu_sesion_expira') || '0', 10);
@@ -1781,7 +1845,8 @@ Object.assign(window, {
   CFG_V6: CFG,
   hashPin, gasGet, gasPost, leerHoja, leerVisitas, normalizarEstado,
   login, listarInspectoresActivos, listarUsuariosAdmin,
-  toggleActivo, resetPin, registrarLog, leerLogAuditoria,
+  toggleActivo, registrarLog, leerLogAuditoria,
+  generarPinTemporal, cambiarMiPin, cambiarRol, leerPendientesAdmin, marcarHallazgoRevisado,
   leerConfigAgenda, guardarConfigAgenda,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,

@@ -432,6 +432,16 @@ function AppV6() {
   const [pantalla, setPantalla] = useStateApp('home');
   const [contextoNueva, setContextoNueva] = useStateApp(null);
   const [winW, setWinW] = useStateApp(window.innerWidth);
+  // PIN temporal: cualquier respuesta con debeCambiarPin (api.js emite el
+  // evento) lleva a elegir el PIN propio. Cubre a quien cerró la app sin
+  // cambiarlo y volvió con la sesión temporal guardada.
+  const [debeCambiarPin, setDebeCambiarPin] = useStateApp(false);
+  const [cambiandoPin, setCambiandoPin] = useStateApp(false); // «Cambiar mi PIN» de la cabecera
+  useEffectApp(() => {
+    const f = () => setDebeCambiarPin(true);
+    window.addEventListener('cu-debe-cambiar-pin', f);
+    return () => window.removeEventListener('cu-debe-cambiar-pin', f);
+  }, []);
 
   // ── Botón "atrás" del navegador / gesto atrás de Android ──────
   // La navegación es puro state, sin History API: el botón atrás sacaba al
@@ -645,6 +655,21 @@ function AppV6() {
     </>;
   }
 
+  // Salir desde aquí no usa salir(): esa función lee enFormulario, que se
+  // declara después de este return (ReferenceError).
+  if (debeCambiarPin) {
+    return <>
+      <CambiarPinScreen modo="temporal" nombre={usuario.usuario}
+        onListo={() => {
+          setDebeCambiarPin(false);
+          invalidarCache();
+          setUsuario(Object.assign({}, usuario, { hash: (SESSION_V6.leer() || usuario).hash }));
+        }}
+        onCancelar={() => { SESSION_V6.borrar(); setDebeCambiarPin(false); setUsuario(null); }} />
+      <ModalHost />
+    </>;
+  }
+
   const esAdmin = usuario.rol === 'ADMIN';
   const isDesktop = winW >= 900;
 
@@ -763,6 +788,10 @@ function AppV6() {
                   <Icon.Admin size={20} />
                 </button>
               )}
+              <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
+                aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
+                <Icon.Lock size={16} />{isDesktop && <span>PIN</span>}
+              </button>
               <button type="button" className="btn-logout" onClick={salir}>Salir</button>
             </div>
           </div>
@@ -828,6 +857,15 @@ function AppV6() {
         )}
       </div>
 
+      {cambiandoPin && (
+        <CambiarPinScreen modo="voluntario" nombre={usuario.usuario}
+          onCancelar={() => setCambiandoPin(false)}
+          onListo={() => {
+            setCambiandoPin(false);
+            setUsuario(Object.assign({}, usuario, { hash: (SESSION_V6.leer() || usuario).hash }));
+            appAlert('Tu PIN quedó cambiado.', { tono: 'exito', titulo: 'PIN cambiado' });
+          }} />
+      )}
       <ModalHost />
       <InformeModalHost />
       <VisitaDetailModalHost />
