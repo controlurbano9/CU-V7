@@ -259,18 +259,18 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </button>
       </div>
 
-      {/* ── Indicadores: el recorrido de una visita. «Por realizar» es lo que
+      {/* ── Indicadores: el recorrido de una visita. «Pendientes» es lo que
           no tiene inspector, así que solo lo ve quien ve todas las visitas. ── */}
       <div className={'ind-fila' + (veTodo ? '' : ' ind-3')}>
         {veTodo && (
           <button type="button" className="ind ind-realizar" title="Visitas sin inspector asignado. Abre Buscar"
             onClick={() => _irBuscarConEstados(['PENDIENTE'], onNavegar)}>
-            <div className="ind-cab"><span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Por realizar</span></div>
+            <div className="ind-cab"><span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Pendientes</span></div>
           </button>
         )}
         <button type="button" className="ind ind-completar" title="Asignadas e iniciadas sin completar"
           onClick={() => veTodo ? _irBuscarConEstados(['ASIGNADO', 'INICIADO'], onNavegar) : onNavegar('mis-visitas')}>
-          <div className="ind-cab"><span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Por completar</span></div>
+          <div className="ind-cab"><span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Asignadas e iniciadas</span></div>
         </button>
         <div className="ind ind-hecho">
           <div className="ind-cab"><span className="ind-num">{num(stats.mesAnterior)}</span><span className="ind-rot">Completadas en {mesAnteriorTxt}</span></div>

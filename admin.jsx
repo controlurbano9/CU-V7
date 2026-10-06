@@ -676,8 +676,8 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, recargarU
       </div>
 
       <div className="adm-cifras">
-        <div className="adm-cifra"><b>{c.hacer}</b><span>Por hacer</span></div>
-        <div className="adm-cifra"><b>{c.curso}</b><span>En curso</span>
+        <div className="adm-cifra"><b>{c.hacer}</b><span>Asignadas</span></div>
+        <div className="adm-cifra"><b>{c.curso}</b><span>Iniciadas</span>
           {c.demoradas > 0 && <small>{c.demoradas} con +{DIAS_DEMORA_ADMIN} días</small>}</div>
         <div className="adm-cifra"><b>{c.completadasMes}</b><span>Completadas en {mesActual}</span></div>
         <div className="adm-cifra"><b>{c.completadasMesAnterior}</b><span>Completadas en {mesAnterior}</span></div>
@@ -693,7 +693,7 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, recargarU
               <b className={x.dias != null && x.dias >= DIAS_DEMORA_ADMIN ? 'demora' : ''}>
                 {x.dias == null ? 's/f' : x.dias + (x.dias === 1 ? ' día' : ' días')}
               </b>
-              <span className="adm-dem-tipo">{x.tipo === 'curso' ? 'En curso' : 'Por hacer'}</span>
+              <span className="adm-dem-tipo">{x.tipo === 'curso' ? 'Iniciada' : 'Asignada'}</span>
             </div>
           ))}
         </div>

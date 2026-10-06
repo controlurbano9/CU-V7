@@ -1887,7 +1887,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                         </div>
                         <button type="button" onClick={() => crearNuevaVisitaRadicado(u)}
                           className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
-                          Asignar visita N°{resultado.nVisitaSig} (seguimiento)
+                          Iniciar visita N°{resultado.nVisitaSig} (seguimiento)
                         </button>
                       </>
                     )}

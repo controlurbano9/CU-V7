@@ -2429,7 +2429,7 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .home-urg b { color: var(--red); }
 /* Móvil: «Mes anterior / Mes actual» sobra (el rótulo ya nombra el mes) y,
-   con tres fichas, «Por completar» toma el renglón entero. */
+   con tres fichas, «Asignadas e iniciadas» toma el renglón entero. */
 @media (max-width: 899px) {
   .ind-sub-ancho { display: none; }
   .ind-fila.ind-3 .ind-completar { grid-column: 1 / -1; }
