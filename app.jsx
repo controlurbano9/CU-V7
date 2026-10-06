@@ -429,7 +429,9 @@ function OfflineBanner() {
 // ══════════════════════════════════════════════════════════════
 function AppV6() {
   const [usuario, setUsuario] = useStateApp(() => SESSION_V6.leer());
-  const [pantalla, setPantalla] = useStateApp('home');
+  // Pantalla elegida por navegación. La que se pinta es `pantalla` (más abajo):
+  // el inspector no tiene Inicio y su 'home' se lee como Mis visitas.
+  const [pantallaBase, setPantalla] = useStateApp('home');
   const [contextoNueva, setContextoNueva] = useStateApp(null);
   const [winW, setWinW] = useStateApp(window.innerWidth);
   // PIN temporal: cualquier respuesta con debeCambiarPin (api.js emite el
@@ -485,7 +487,7 @@ function AppV6() {
   // del formulario sin la confirmación que sí tiene el botón atrás.
   async function navegar(destino) {
     if (destino === pilaRef.current[pilaRef.current.length - 1]) return;
-    if (pantalla === 'nueva-visita' && typeof window._cuGuardSalir === 'function') {
+    if (pantallaBase === 'nueva-visita' && typeof window._cuGuardSalir === 'function') {
       const ok = await window._cuGuardSalir();
       if (!ok) return;
       setContextoNueva(null);
@@ -672,6 +674,10 @@ function AppV6() {
 
   const esAdmin = usuario.rol === 'ADMIN';
   const isDesktop = winW >= 900;
+  // Inicio (tablero, semana global, alertas) es de admin y supervisores; el
+  // inspector arranca en Mis visitas y no tiene esa pestaña (E3, 2026-10-05).
+  const veTodas = veTodasLasVisitas(usuario.rol);
+  const pantalla = (!veTodas && pantallaBase === 'home') ? 'mis-visitas' : pantallaBase;
 
   // El botón "Salir" vive en el header, que también se ve con el formulario
   // abierto: sin el guard, salir desde ahí se llevaba los cambios sin avisar.
@@ -747,7 +753,7 @@ function AppV6() {
 
   // Pestañas según rol — Icono es un componente de Icon.* (icons.jsx)
   const tabs = [];
-  tabs.push({ k: 'home',          label: 'Inicio',     Icono: Icon.Home   });
+  if (veTodas) tabs.push({ k: 'home', label: 'Inicio', Icono: Icon.Home });
   tabs.push({ k: 'mis-visitas',   label: 'Mis visitas',Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
   if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
@@ -788,6 +794,7 @@ function AppV6() {
                   <Icon.Admin size={20} />
                 </button>
               )}
+              {!enFormulario && <ActualizarDatos ancho={isDesktop} />}
               <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
                 aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
                 <Icon.Lock size={16} />{isDesktop && <span>PIN</span>}
@@ -892,6 +899,41 @@ function AppV6() {
 }
 
 // ── Botón sidebar desktop (icono + label horizontal) ──────────
+// Un solo «Actualizar» para toda la app (E3): fuerza la descarga de BD VISITAS,
+// que es una sola compartida por Inicio, Mis visitas, Buscar y Administración;
+// las pantallas se re-pintan solas con suscribirVisitas si algo cambió. La hora
+// es la de la última confirmación contra la red (ultimaDescargaVisitas), no la
+// del último clic: el refresco silencioso del arranque también cuenta.
+function ActualizarDatos({ ancho }) {
+  const [, setLatido] = useStateApp(0);
+  const [girando, setGirando] = useStateApp(false);
+  useEffectApp(() => {
+    const id = setInterval(() => setLatido(n => n + 1), 20000);
+    const off = suscribirVisitas(() => setLatido(n => n + 1));
+    return () => { clearInterval(id); off(); };
+  }, []);
+  async function actualizar() {
+    if (girando) return;
+    setGirando(true);
+    try { await leerVisitas({ forzar: true }); } catch (e) { /* sin red: la hora no cambia */ }
+    setGirando(false);
+  }
+  const ts = ultimaDescargaVisitas();
+  const min = ts ? Math.max(0, Math.floor((Date.now() - ts) / 60000)) : null;
+  const hace = min == null ? 'sin actualizar'
+    : min < 1 ? 'ahora'
+    : min < 60 ? 'hace ' + min + ' min'
+    : 'hace ' + Math.floor(min / 60) + ' h';
+  const texto = (ancho ? 'Actualizado ' : '') + hace;
+  return (
+    <button type="button" className={'btn-actualizar' + (girando ? ' icono-girando' : '')}
+      onClick={actualizar} disabled={girando} aria-busy={girando}
+      title={'Actualizado ' + hace + ' · tocar para actualizar'} aria-label={'Actualizar datos. Actualizado ' + hace}>
+      <span>{texto}</span><Icon.Refresh size={14} />
+    </button>
+  );
+}
+
 function SidebarBtn({ pantalla, setPantalla, k, label, Icono }) {
   const activo = pantalla === k;
   return (

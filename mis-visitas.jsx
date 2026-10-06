@@ -13,6 +13,9 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateMV, useEffect: useEffectMV, useMemo: useMemoMV, useRef: useRefMV } = React;
 
+// Lista (deuda) o Semana (calendario): se recuerda por equipo.
+const MV_VISTA = 'cu_mv_vista_v1';
+
 // Cantidad inicial de completadas visibles
 const COMPLETADAS_INICIAL = 20;
 const COMPLETADAS_PASO = 20;
@@ -38,6 +41,11 @@ function useAnchoPanelMV() {
   return ancho;
 }
 
+// Nombre del mes (0 = actual, -1 = anterior) para la línea de completadas.
+const _mesNombreMV = (delta) => {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth() + delta, 1).toLocaleDateString('es-CO', { month: 'long' });
+};
 const _plural = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
 // ¿Pasó el umbral de demora? Mismo umbral de las alertas de Inicio
 // (DIAS_ALERTA_DEMORA, home.jsx): una visita no puede estar «en rojo» aquí y
@@ -48,7 +56,15 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const [datos, setDatos]       = useStateMV([]);
   const [cargando, setCargando] = useStateMV(true);
   const [error, setError]       = useStateMV('');
-  const [refrescando, setRefrescando] = useStateMV(false);
+
+  // Lista / Semana (la Semana es la misma de Inicio, filtrada a lo propio).
+  const [vista, setVista] = useStateMV(() => {
+    try { return localStorage.getItem(MV_VISTA) === 'semana' ? 'semana' : 'lista'; } catch (e) { return 'lista'; }
+  });
+  function cambiarVista(v) {
+    setVista(v);
+    try { localStorage.setItem(MV_VISTA, v); } catch (e) {}
+  }
 
   // Chip de estado activo ('' = todas) y visita elegida para el panel.
   const [filtro, setFiltro] = useStateMV('');
@@ -78,23 +94,14 @@ function MisVisitasScreen({ usuario, onContinuar }) {
     setCargando(false);
   }
 
-  // «Recargar» con datos ya pintados no los esconde tras el spinner: siguen a
-  // la vista y solo gira el ícono hasta que responde la red. Sin datos, carga normal.
-  async function recargar() {
-    if (refrescando) return;
-    if (!datos.length) return cargar(true);
-    setRefrescando(true);
-    try {
-      const { datos: all } = await leerVisitas({ forzar: true });
-      setDatos(all); setError('');
-    } catch (e) { setError(e.message); }
-    setRefrescando(false);
-  }
-
   // Regla del diligenciador, visibilidad por fecha de asignación y orden por
   // demora: agruparMisVisitas (utils.js).
   const grupos = useMemoMV(() => agruparMisVisitas(datos, usuario.usuario), [datos, usuario]);
   const meses = useMemoMV(() => mesesMisVisitas(grupos.hechas, limiteCompletadas), [grupos, limiteCompletadas]);
+
+  // Lo mismo que Inicio (utils.js): completadas por mes y audiencias a ≤3 días.
+  const completadas = useMemoMV(() => completadasMesesVisita(grupos.hechas), [grupos]);
+  const audiencias = useMemoMV(() => audienciasProximas(datos, usuario.usuario), [datos, usuario]);
 
   const conteo = { hacer: grupos.hacer.length, curso: grupos.curso.length, hecha: grupos.hechas.length };
   const total = conteo.hacer + conteo.curso + conteo.hecha;
@@ -123,14 +130,34 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   // ── Render ──
   return (
     <div className="pantalla activa pad-bottom mv-pantalla">
-      {/* Título y recargar en un renglón, como en Inicio. */}
+      {/* Título y, al lado, lo completado por mes. El «Actualizar» vive en la
+          barra superior (app.jsx). */}
       <div className="titulo-fijo mv-cab">
         <div className="page-title">Mis visitas</div>
-        <button onClick={recargar} className={'btn-texto mv-recargar' + (refrescando ? ' icono-girando' : '')}
-          disabled={refrescando} aria-busy={refrescando}>
-          <Icon.Refresh size={14} /> Recargar
-        </button>
+        {listo && (completadas.anterior + completadas.actual) > 0 && (
+          <span className="mv-resumen">
+            Completadas: <b>{completadas.anterior}</b> en {_mesNombreMV(-1)} · <b>{completadas.actual}</b> en {_mesNombreMV(0)}
+          </span>
+        )}
       </div>
+
+      {/* Audiencia en ≤3 días hábiles: la única alerta urgente (la regla es la
+          de Inicio). Las demoras ya van en rojo en cada fila. */}
+      {listo && audiencias.length > 0 && (
+        <div className="home-urg mv-urg" role="status">
+          <span>
+            <b>{audiencias[0].dias === 0 ? 'Audiencia HOY' : 'Audiencia en ' + _plural(audiencias[0].dias, 'día', 'días')}:</b>{' '}
+            {audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || 'Sin dirección'}
+            {audiencias[0].f['FECHA CITACION'] && ' · ' + audiencias[0].f['FECHA CITACION']}
+            {audiencias.length > 1 && ' · y ' + (audiencias.length - 1) + ' más'}
+          </span>
+          <button type="button" className="al-btn" onClick={() => {
+            const f = audiencias[0].f;
+            if (conPanel) { cambiarVista('lista'); setFiltro(''); setSelIdx(f._idx); }
+            else if (window.abrirVisitaDetail) window.abrirVisitaDetail(f);
+          }}>Ver</button>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -149,7 +176,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
       )}
 
       {/* Sin visitas */}
-      {listo && total === 0 && (
+      {listo && total === 0 && vista === 'lista' && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 32, fontSize: 13 }}>
           No tienes visitas asignadas.
         </div>
@@ -157,21 +184,39 @@ function MisVisitasScreen({ usuario, onContinuar }) {
 
       {/* Chips de estado: mismos de Alertas; el de conteo 0 no sale, y con un
           solo grupo no hay nada que filtrar. */}
-      {listo && gruposConVisitas > 1 && (
-        <div className="sv-chips mv-chips" role="group" aria-label="Filtrar por estado">
-          {[['', 'Todas', total],
-            ['hacer', 'Por hacer', conteo.hacer],
-            ['curso', 'En curso', conteo.curso],
-            ['hecha', 'Completadas', conteo.hecha],
-          ].filter(c => c[2] > 0).map(c => (
-            <button key={c[0]} type="button" aria-pressed={filtroOk === c[0]}
-              className={'sv-chip' + (filtroOk === c[0] ? ' activo' : '')}
-              onClick={() => setFiltro(c[0])}>{c[1]} {c[2]}</button>
-          ))}
+      {listo && (
+        <div className="mv-barra">
+          <div className="sv-chips mv-vista" role="group" aria-label="Vista">
+            {[['lista', 'Lista'], ['semana', 'Semana']].map(v => (
+              <button key={v[0]} type="button" aria-pressed={vista === v[0]}
+                className={'sv-chip' + (vista === v[0] ? ' activo' : '')}
+                onClick={() => cambiarVista(v[0])}>{v[1]}</button>
+            ))}
+          </div>
+          {vista === 'lista' && gruposConVisitas > 1 && (
+            <div className="sv-chips mv-chips" role="group" aria-label="Filtrar por estado">
+              {[['', 'Todas', total],
+                ['hacer', 'Por hacer', conteo.hacer],
+                ['curso', 'En curso', conteo.curso],
+                ['hecha', 'Completadas', conteo.hecha],
+              ].filter(c => c[2] > 0).map(c => (
+                <button key={c[0]} type="button" aria-pressed={filtroOk === c[0]}
+                  className={'sv-chip' + (filtroOk === c[0] ? ' activo' : '')}
+                  onClick={() => setFiltro(c[0])}>{c[1]} {c[2]}</button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {listo && total > 0 && (
+      {/* Semana: cada visita en su día (la regla del diligenciador ya la aplica
+          agruparSemana). Sin chips de inspector: es solo lo propio. */}
+      {listo && vista === 'semana' && (
+        <SemanaVisitas datos={datos} esAdmin={false} miNombre={usuario.usuario.toUpperCase()}
+          inspectores={[]} onAbrir={onContinuar} />
+      )}
+
+      {listo && vista === 'lista' && total > 0 && (
         <div className="mv-2col">
           <div className="mv-lista">
             {ver('hacer') && conteo.hacer > 0 && (

@@ -125,7 +125,6 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [datos, setDatos]     = useStateB([]);
   const [cargando, setCargando] = useStateB(true);
   const [error, setError]     = useStateB('');
-  const [refrescando, setRefrescando] = useStateB(false);
 
   // Paginación incremental
   const LIMITE_INICIAL = 50;
@@ -198,11 +197,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     }).catch(() => {});
   }, [veTodo]);
 
-  // forzar=true salta el caché (botón "Recargar"). Al primer mount reusa caché.
+  // forzar=true salta el caché (tras asignar/completar; el «Actualizar» global
+  // de app.jsx llama a leerVisitas directo). Al primer mount reusa caché.
   // Declarada ANTES de las acciones admin de abajo: sus useCallback dependen
   // de `cargar` en el array de deps, y siendo const, referenciarla antes de
   // su propia declaración revienta con "Cannot access before initialization".
-  // conservar=true deja la lista a la vista mientras llega la red (botón Recargar).
+  // conservar=true deja la lista a la vista mientras llega la red.
   const cargar = useCallbackB(async (forzar, silencioso, conservar) => {
     if (!silencioso) { if (!conservar) setCargando(true); setError(''); }
     try {
@@ -220,15 +220,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
   useEffectB(() => suscribirVisitas(() => cargar(false, true)), [cargar]);
 
-  // «Recargar» con datos ya pintados no los esconde tras el spinner: solo gira
-  // el ícono hasta que responde la red. Tras asignar/completar sí se espera con
-  // spinner (cargar(true)): una fila vieja a la vista invitaría a repetir la acción.
-  async function recargar() {
-    if (refrescando) return;
-    setRefrescando(true);
-    await cargar(true, false, datos.length > 0);
-    setRefrescando(false);
-  }
+  // Tras asignar/completar se espera con spinner (cargar(true)): una fila vieja
+  // a la vista invitaría a repetir la acción.
 
   // ── Acciones admin: asignar, desasignar, completar ──
   // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
@@ -709,8 +702,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
 
       <div className="buscar-col-der">
       {/* Cabecera de resultados: cuántas son sobre cuántas, con qué filtros,
-          en qué orden. Recargar vive aquí y no en la barra de búsqueda:
-          buscar y sincronizar no son lo mismo y no deben pesar igual. */}
+          en qué orden. El «Actualizar» vive en la barra superior (app.jsx). */}
       {!cargando && !error && (
         <div className="buscar-resultados-head">
           <span className="buscar-conteo">
@@ -734,12 +726,6 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
               {ORDENES.map(o => <option key={o.val} value={o.val}>{o.l}</option>)}
             </select>
           </label>
-
-          <button type="button" className={'buscar-recargar' + (refrescando ? ' icono-girando' : '')}
-            onClick={recargar} disabled={refrescando} aria-busy={refrescando}
-            title="Recargar datos (ignora la copia local)" aria-label="Recargar datos">
-            <Icon.Refresh size={16} />
-          </button>
         </div>
       )}
 

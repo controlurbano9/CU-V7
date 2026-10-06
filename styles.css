@@ -994,15 +994,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   color: var(--ink-2); font-family: inherit; font-size: 12px; font-weight: 600;
   cursor: pointer;
 }
-.buscar-recargar {
-  width: var(--tap-min); height: var(--tap-min);
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-sm); border: 1px solid var(--line-2);
-  background: var(--surface); color: var(--ink-3); cursor: pointer;
-}
-@media (hover: hover) and (pointer: fine) {
-.buscar-recargar:hover { background: var(--surface-2); color: var(--ink-1); }
-}
 /* En móvil el orden baja de línea: con el conteo y los chips no cabe. */
 @media (max-width: 599px) {
   .buscar-orden { margin-left: 0; }
@@ -2392,7 +2383,6 @@ body.is-offline .header {
 .home-cab { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
 .home-cab .page-title { margin: 0; }
 .home-fecha { font-size: 13px; color: var(--texto-suave); }
-.home-recargar { margin-left: auto; align-self: center; }
 .ind-fila {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 14px; overflow: hidden;
@@ -2530,9 +2520,14 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
    ancho (los monitores de la oficina rondan 2300 px). */
 .mv-cab { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
 .mv-cab .page-title { margin: 0; }
-.mv-recargar { margin-left: auto; align-self: center; }
-.mv-chips { margin: 2px 0 12px; }
-.mv-chips .sv-chip { height: 28px; padding: 0 12px; font-size: 12px; }
+/* «Completadas: N en septiembre · N en octubre» junto al título. */
+.mv-resumen { font-size: 12px; color: var(--ink-3); }
+.mv-resumen b { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* Conmutador Lista / Semana y chips de estado en un renglón. */
+.mv-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 2px 0 12px; }
+.mv-barra .sv-chips { margin: 0; }
+.mv-chips .sv-chip, .mv-vista .sv-chip { height: 28px; padding: 0 12px; font-size: 12px; }
+.mv-urg { margin-top: 10px; }
 
 .mv-grupo {
   display: flex; align-items: baseline; gap: 8px; margin: 16px 0 6px;
@@ -2578,7 +2573,7 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .mv-acc .vc-btn { min-height: var(--tap); flex: 1 1 0; }
   /* «Diligencia X» en su renglón: al lado empujaba «Ver datos» a un tercero. */
   .mv-acc .vc-dilig { flex-basis: 100%; }
-  .mv-chips .sv-chip { height: var(--tap-min); }
+  .mv-chips .sv-chip, .mv-vista .sv-chip { height: var(--tap-min); }
 }
 
 .mv-panel { display: none; }
@@ -2592,6 +2587,8 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
     height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
   }
   .pantalla.mv-pantalla > * { flex-shrink: 0; }
+  /* Vista Semana: la pantalla no scrollea, lo hace el calendario. */
+  .pantalla.mv-pantalla > .sv { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   .pantalla.mv-pantalla .mv-2col {
     flex: 1 1 auto; min-height: 0;
     display: grid; column-gap: 24px;
@@ -2960,6 +2957,31 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .pin-dlg .dlg-acciones { margin-top: 16px; }
 .btn-pin { display: inline-flex; align-items: center; gap: 6px; }
+/* «Actualizado hace N min ↻» de la barra superior (app.jsx, E3): uno solo para
+   toda la app. Sin borde: es una referencia de estado antes que un botón. */
+.btn-actualizar {
+  display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap-min);
+  padding: 0 8px; background: none; border: 0; border-radius: var(--r-sm);
+  color: var(--ink-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.btn-actualizar:disabled { cursor: progress; }
+@media (hover: hover) and (pointer: fine) {
+  .btn-actualizar:hover { color: var(--ink-1); background: var(--surface-2); }
+}
+@media (max-width: 479px) {
+  /* A 360 px la hora no cabe junto al título: queda el icono (la hora va en
+     el aria-label y el title). */
+  .btn-actualizar { min-width: var(--tap); min-height: var(--tap); justify-content: center; padding: 0; }
+  .btn-actualizar span { display: none; }
+  /* El botón le quita ~45 px al título, que se partía en tres líneas y hacía
+     crecer la barra. Se devuelve ancho apretando márgenes y huecos (solo aquí):
+     la barra queda igual o más baja que antes de él. */
+  .header { padding-left: 12px; padding-right: 12px; }
+  .header-top { gap: 8px; }
+  .header-top > div + div { gap: 2px !important; }
+  .header .btn-logout:not(.btn-pin) { padding-left: 10px; padding-right: 10px; }
+  .header h1 { font-size: 15px; }
+}
 @media (max-width: 899px) {
   .btn-pin { min-width: var(--tap); min-height: var(--tap); justify-content: center; padding: 0; }
   .adm-rol { display: flex; }

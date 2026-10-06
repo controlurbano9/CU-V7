@@ -442,6 +442,7 @@ let _visitasDeRed = false;    // _visitasUltimas vino de la red en esta pestaña
 let _firmaVisitas = '';       // JSON de values + filas de _visitasUltimas (detecta cambios)
 let _hashVisitas = '';        // firma (MD5) que dio el servidor para esos values; '' = no mandarla
 let _visitasSucias = false;   // hubo escritura desde la última descarga
+let _visitasTs = 0;           // cuándo se confirmó la copia contra la red (o el snapshot local)
 let _genVisitas = 0;          // sube con cada invalidarCache('visitas')
 let _visitasEnVuelo = null;   // { gen, promesa } — una sola descarga compartida
 let _snapVisitasLeida = null; // promesa de la lectura única de IndexedDB
@@ -499,6 +500,7 @@ function _visitasLocales() {
       _visitasUltimas = _procesarVisitas(JSON.parse(reg.json), nums);
       _firmaVisitas = _claveVisitas(reg.json, nums);
       _hashVisitas = typeof reg.firma === 'string' ? reg.firma : '';
+      _visitasTs = typeof reg.ts === 'number' ? reg.ts : 0;
       return _visitasUltimas;
     }).catch(() => null);
   }
@@ -539,6 +541,7 @@ function _descargarVisitas() {
       if (gen === _genVisitas) {
         _visitasDeRed = true;
         _visitasSucias = false;
+        _visitasTs = Date.now();
         _cacheSet('visitas', _visitasUltimas);
       }
       return _visitasUltimas;
@@ -554,6 +557,7 @@ function _descargarVisitas() {
     _hashVisitas = r.firma;
     _visitasDeRed = true;
     _visitasSucias = false;
+    _visitasTs = Date.now();
     _cacheSet('visitas', _visitasUltimas);
     if (cambio || firmaNueva) _snapGuardar(_SNAP_VISITAS, { json, filas: r.filas, firma: r.firma, ts: Date.now() });
     if (cambio) {
@@ -627,6 +631,12 @@ function suscribirVisitas(fn) {
 // Resuelve cuando termina (bien o mal) la primera descarga de la BD: las
 // precargas pesadas de app.jsx esperan a esto para no quitarle ancho de banda.
 function esperarPrimeraCargaVisitas() { return _primeraCargaVisitas; }
+
+// Cuándo (ms epoch) quedó confirmada la copia de BD VISITAS contra la red —
+// 0 si todavía no hay ninguna en esta pestaña. Lo pinta el «Actualizado hace
+// N min» de la barra superior; también cuenta el snapshot local del arranque,
+// que es lo que la primera pantalla sirve.
+function ultimaDescargaVisitas() { return _visitasTs; }
 
 // Fila con la que se abre el formulario. Si la lista se pintó con la copia
 // local y la red aún no confirmó, espera la descarga en curso (máx. 12 s):

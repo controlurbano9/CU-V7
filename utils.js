@@ -1637,6 +1637,49 @@ function recorridoVisita(fila, hoy) {
   return pasos;
 }
 
+// ── Inicio del inspector: lo que Mis visitas hereda de Inicio (2026-10-05) ──
+// Misma regla que los indicadores de Inicio para que las dos pantallas no
+// puedan decir números distintos por una visita que cuenta en una y no en la
+// otra.
+
+// Completadas del mes actual y del anterior, por FECHA DE VISITA (el día que
+// el inspector salió, no el de devolución: una visita de fin de mes devuelta
+// al siguiente contaba en el mes equivocado). Recibe las `hechas` de
+// agruparMisVisitas — la regla del diligenciador ya está aplicada.
+function completadasMesesVisita(hechas, hoy) {
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var ant = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+  var out = { actual: 0, anterior: 0 };
+  (hechas || []).forEach(function (h) {
+    var d = parsearFecha((h && h.f && h.f['FECHA DE VISITA']) || '');
+    if (!d) return;
+    if (d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear()) out.actual++;
+    else if (d.getMonth() === ant.getMonth() && d.getFullYear() === ant.getFullYear()) out.anterior++;
+  });
+  return out;
+}
+
+// Audiencia (FECHA CITACION) a ≤DIAS_ALERTA_AUDIENCIA días hábiles: la única
+// alerta urgente que queda. Franja de Inicio y de Mis visitas — una sola regla.
+// Solo visitas INICIADO (sin visita no hay citación pendiente de cierre).
+// Devuelve [{ f, dias }] con la más próxima primero; 0 = hoy.
+var DIAS_ALERTA_AUDIENCIA = 3;
+function audienciasProximas(filas, nombre, hoy) {
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var out = [];
+  (filas || []).forEach(function (f) {
+    if (!f || !_esVisitaDe(f, nombre)) return;
+    if (_normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') !== 'INICIADO') return;
+    var d = parsearFecha(f['FECHA CITACION'] || '');
+    if (!d) return;
+    var n = _diasHabilesEntre(ref, d);
+    if (n == null || n < 0 || n > DIAS_ALERTA_AUDIENCIA) return;
+    out.push({ f: f, dias: n });
+  });
+  out.sort(function (a, b) { return a.dias - b.dias; });
+  return out;
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -1798,6 +1841,9 @@ var _cuUtilsExports = {
   agruparMisVisitas: agruparMisVisitas,
   mesesMisVisitas: mesesMisVisitas,
   recorridoVisita: recorridoVisita,
+  completadasMesesVisita: completadasMesesVisita,
+  audienciasProximas: audienciasProximas,
+  DIAS_ALERTA_AUDIENCIA: DIAS_ALERTA_AUDIENCIA,
   claveBarrio: claveBarrio,
   armarJornadaPorBarrio: armarJornadaPorBarrio,
   normalizarDireccion: normalizarDireccion,

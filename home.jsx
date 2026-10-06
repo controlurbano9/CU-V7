@@ -23,7 +23,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
   const [error, setError] = useStateH('');
-  const [refrescando, setRefrescando] = useStateH(false);
 
   // Admin y supervisor ven todo (stats, alertas y semana globales); el resto,
   // la regla del diligenciador. Aquí no hay acciones de gestión que separar.
@@ -48,19 +47,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       setDatos(all);
     } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
-  }
-
-  // «Recargar» con datos ya pintados no los esconde tras el spinner: siguen a
-  // la vista y solo gira el ícono hasta que responde la red. Sin datos, carga normal.
-  async function recargar() {
-    if (refrescando) return;
-    if (!datos.length) return cargar(true);
-    setRefrescando(true);
-    try {
-      const { datos: all } = await leerVisitas({ forzar: true });
-      setDatos(all); setError('');
-    } catch (e) { setError(e.message); }
-    setRefrescando(false);
   }
 
   // ── Estadísticas ──
@@ -115,7 +101,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
 
   // ── Alertas urgentes ──
   const alertas = useMemoH(() => {
-    const rojas = [];   // audiencia en ≤3 días hábiles
     const amarillas = []; // +5 días sin iniciar o sin completar
 
     datos.forEach(f => {
@@ -164,24 +149,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
 
       if (e !== 'INICIADO') return;
 
-      // Alerta roja: audiencia/citación en ≤3 días hábiles
-      const fechaCit = f['FECHA CITACION'] || '';
-      if (fechaCit) {
-        const dCit = parsearFecha(fechaCit);
-        if (dCit) {
-          const diasH = diasHabilesHasta(dCit);
-          if (diasH !== null && diasH >= 0 && diasH <= 3) {
-            rojas.push({
-              f: f,
-              mensaje: diasH === 0
-                ? 'Tiene audiencia HOY'
-                : 'Audiencia en ' + diasH + ' día' + (diasH > 1 ? 's' : ''),
-              diasH: diasH,
-            });
-          }
-        }
-      }
-
       // Alerta: iniciada hace ≥5 días hábiles sin completar. Hábiles, igual
       // que «sin iniciar»: las dos se ordenan juntas por días.
       const sinCompletar = diasSinCompletar(f);
@@ -196,8 +163,19 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       }
     });
 
+    // Alerta roja: audiencia/citación en ≤3 días hábiles. La regla vive en
+    // utils.js (audienciasProximas) porque Mis visitas la comparte — es la
+    // franja roja del inicio del inspector. Con nombre vacío no filtra, que es
+    // lo que quiere el admin sin inspector elegido.
+    const rojas = audienciasProximas(datos, veTodo ? (inspector || '') : miNombre).map(a => ({
+      f: a.f,
+      mensaje: a.dias === 0
+        ? 'Tiene audiencia HOY'
+        : 'Audiencia en ' + a.dias + ' día' + (a.dias > 1 ? 's' : ''),
+      diasH: a.dias,
+    }));
+
     // Ordenar: más urgentes primero
-    rojas.sort((a, b) => a.diasH - b.diasH);
     amarillas.sort((a, b) => b.dias - a.dias);
 
     // Una misma visita puede disparar varias alertas a la vez (PQR por vencer
@@ -249,14 +227,11 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
 
   return (
     <div className="pantalla activa pad-bottom home-pantalla">
-      {/* ── Título, fecha y recargar en un renglón ── */}
+      {/* ── Título y fecha en un renglón (el «Actualizar» global vive en la
+          barra superior de app.jsx desde E3) ── */}
       <div className="titulo-fijo home-cab">
         <div className="page-title">Inicio</div>
         <span className="home-fecha">{fechaHoy.charAt(0).toUpperCase() + fechaHoy.slice(1)}</span>
-        <button onClick={recargar} className={'btn-texto home-recargar' + (refrescando ? ' icono-girando' : '')}
-          disabled={refrescando} aria-busy={refrescando}>
-          <Icon.Refresh size={14} /> Recargar
-        </button>
       </div>
 
       {/* ── Indicadores: el recorrido de una visita. «Pendientes» es lo que
