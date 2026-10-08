@@ -2743,6 +2743,14 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
 .fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: 20px; }
+/* Modal «Ver datos» (visita-detail-modal.jsx): el velo y la hoja que alojan la
+   ficha. En celular la hoja sube desde abajo y ocupa casi todo el alto; desde
+   700 px queda centrada. z-index como el del modal anterior: sobre la barra. */
+.fv-velo { position: fixed; inset: 0; z-index: 9000; background: rgba(31,27,22,.45); display: flex; align-items: flex-end; justify-content: center; }
+.fv-hoja { position: relative; width: min(920px, 100%); max-height: 94vh; overflow-y: auto; background: var(--surface);
+  border-radius: var(--r-lg) var(--r-lg) 0 0; container-type: inline-size; box-shadow: var(--shadow-md); outline: none; }
+.fv-hoja .fv-estado, .fv-hoja .fv-dir { padding-right: 48px; }
+@media (min-width: 700px) { .fv-velo { align-items: center; padding: 24px; } .fv-hoja { border-radius: var(--r-lg); max-height: 90vh; } }
 .fv-linea { padding-top: 14px; }
 .fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 28px; padding: 4px 20px 28px; align-items: start; }
 @container (min-width: 900px) {

@@ -1,27 +1,23 @@
 // ═══════════════════════════════════════════════════════════════
-// v6/visita-detail-modal.jsx — Modal solo-lectura con los datos del
-// formulario de una visita ya completada (o cualquier estado).
+// v6/visita-detail-modal.jsx — Modal «Ver datos»: solo el cascarón.
+//
+// El contenido es la ficha única (FichaVisita, ficha-visita.jsx): la misma
+// del panel de Mis visitas. Aquí quedan el velo, la hoja, Esc / clic fuera
+// para cerrar, y ReiteradosVD (que la ficha monta en su sección 1).
 //
 // API global:
 //   window.abrirVisitaDetail(filaBD)
 //
 // Recibe el objeto crudo de BD VISITAS (mismo shape que devuelve
-// listarVisitas), por lo que las claves son los nombres de columna
-// del Sheet (en MAYÚSCULAS, sin tildes salvo "Ó" en "DIRECCIÓN").
-// No edita; solo muestra valores con secciones colapsables.
+// listarVisitas): las claves son los nombres de columna del Sheet.
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateVD, useEffect: useEffectVD } = React;
+const { useState: useStateVD, useEffect: useEffectVD, useRef: useRefVD } = React;
 
 let _pushVisitaDetail = null;
 
-const _TONO_ESTADO_VD = {
-  PENDIENTE:  'badge-amarillo',
-  ASIGNADO:   'badge-amarillo',
-  INICIADO:   'badge-azul',
-  COMPLETADO: 'badge-verde',
-};
-
-function VisitaDetailModalHost() {
+// «Continuar» desde el modal: se cierra primero y luego se abre el formulario,
+// para que el velo no quede tapando la pantalla nueva.
+function VisitaDetailModalHost({ onContinuar }) {
   const [fila, setFila] = useStateVD(null);
 
   useEffectVD(() => {
@@ -37,216 +33,34 @@ function VisitaDetailModalHost() {
   }, [fila]);
 
   if (!fila) return null;
-  return <VisitaDetailUI f={fila} onCerrar={() => setFila(null)} />;
+  return <VisitaDetailUI f={fila} onCerrar={() => setFila(null)}
+    onContinuar={onContinuar ? (idx, f) => { setFila(null); onContinuar(idx, f); } : null} />;
 }
 
-// ── Helpers de lectura tolerante a variantes de nombre de columna ──
+// ── Helper de lectura tolerante a variantes de nombre de columna ──
 function _g(f, ...keys) {
   for (const k of keys) {
     if (f && f[k] != null && f[k] !== '') return f[k];
   }
   return '';
 }
-// Mismo saneo que nueva-visita: las filas viejas traen el decimal comido por
-// el locale del Sheet (ver normalizarCoord en utils.js).
-function _coordsVD(f) {
-  const lat = normalizarCoord(_g(f, 'LATITUD', 48), 'lat');
-  const lon = normalizarCoord(_g(f, 'LONGITUD', 49), 'lon');
-  return (lat != null && lon != null) ? `${lat.toFixed(6)}, ${lon.toFixed(6)}` : '—';
-}
-function _fmt(v) {
-  if (v == null || v === '') return '—';
-  // Fecha tipo "2026-05-19T..." → formato local
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) {
-    try { return typeof formatearFecha === 'function' ? formatearFecha(v) : v; } catch (e) {}
-  }
-  return String(v);
-}
-function _siNo(v) {
-  if (!v) return '—';
-  const s = String(v).toUpperCase().trim();
-  if (s === 'SI' || s === 'SÍ') return 'Sí';
-  if (s === 'NO') return 'No';
-  return v;
-}
 
-function VisitaDetailUI({ f, onCerrar }) {
-  // Separar actuación y conclusiones (almacenadas juntas en BD col AU = índice 46)
-  const _rawAct = _g(f, 'ACTUACION / OBSERVACIONES', 'ACTUACION', 46);
-  const _parts = String(_rawAct || '').split('\n══CONCLUSIONES══\n');
-  const actuacion = _parts[0] || '';
-  const obsConclusion = _parts[1] || '';
+function VisitaDetailUI({ f, onCerrar, onContinuar }) {
+  const hojaRef = useRefVD(null);
+  // La sesión da el rol (regla de quién ve qué y el panel de campos crudos).
+  const usuario = (typeof SESSION_V6 !== 'undefined' && SESSION_V6.leer()) || {};
+  const verPrioridad = veTodasLasVisitas(usuario.rol);
+  const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'visita';
 
-  const estado = String(_g(f, 'ESTADO VISITA') || '').toUpperCase();
-  const linkDrive = _g(f, 'LINK_DRIVE');
-  const linkPdf = _g(f, 'LINK_PDF_ACTA');
-  const linkXlsx = _g(f, 'LINK_XLSX_ACTA');
-  const linkInforme = _g(f, 'LINK_DOCX_INFORME', 'LINK_INFORME_F43');
-  const linkVigilancia = _g(f, 'LINK_SOLICITUD_VIGILANCIA');
-  const linkOrden = _g(f, 'LINK_ORDEN_POLICIA');
-  // PDF de la PQR tal como la radicó el ciudadano. No es un entregable que
-  // produzca la visita, pero se muestra con ellos porque es el otro documento
-  // que el inspector consulta desde acá.
-  const linkPqr = linkPdfRadicado(f);
+  // Foco en la hoja al abrir: Esc y el teclado funcionan sin tocar nada.
+  useEffectVD(() => { if (hojaRef.current) hojaRef.current.focus(); }, []);
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }} style={{
-      position: 'fixed', inset: 0, background: 'rgba(31,27,22,0.55)',
-      zIndex: 9000, padding: '24px 28px',
-      display: 'flex', flexDirection: 'column',
-      backdropFilter: 'blur(2px)',
-    }}>
-      <div style={{
-        background: 'var(--superficie, #FFFBF5)',
-        borderRadius: 14, boxShadow: 'var(--sombra, 0 10px 30px rgba(0,0,0,0.2))',
-        maxWidth: 920, width: '100%', maxHeight: '90vh',
-        margin: '0 auto', display: 'flex', flexDirection: 'column',
-        border: '1px solid var(--borde, rgba(31,27,22,0.08))',
-      }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
-          borderBottom: '1px solid var(--borde, rgba(31,27,22,0.08))',
-        }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8, background: 'var(--brand-bg, #FBE9E0)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--brand-ink, #8A3F26)', fontFamily: 'var(--font-serif)',
-            fontSize: 13, fontWeight: 700,
-          }}>V</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--texto, #1F1B16)' }}>
-              Detalle de visita
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--texto-suave, #5C5142)', fontFamily: 'var(--font-mono)' }}>
-              {_g(f, 'RADICADO') || '—'} · {_fmt(_g(f, 'FECHA DE VISITA'))}
-              {/* El badge estaba fijo en verde: una visita PENDIENTE se leía
-                  como completada. Ahora usa las clases por estado de styles.css. */}
-              {estado && <span className={'badge-suave ' + (_TONO_ESTADO_VD[normalizarEstado(estado)] || 'badge-amarillo')}
-                style={{ marginLeft: 8 }}>{estado}</span>}
-            </div>
-          </div>
-          <button onClick={onCerrar} aria-label="Cerrar" title="Cerrar (Esc)" style={{
-            background: 'transparent', border: '1px solid var(--borde-med, rgba(31,27,22,0.16))',
-            color: 'var(--texto-suave, #5C5142)', borderRadius: 8, padding: '6px 10px',
-            fontFamily: 'inherit', fontSize: 16, cursor: 'pointer', lineHeight: 1,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}><Icon.Close size={16} /></button>
-        </div>
-
-        {/* Body scrollable */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-
-          {/* Links a entregables (si los hay) */}
-          {(linkDrive || linkPdf || linkXlsx || linkInforme || linkVigilancia || linkOrden || linkPqr) && (
-            <_SeccionVD titulo="Entregables">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {linkPqr      && <_LinkBtnVD href={linkPqr}       Icono={Icon.File}   label="PQR radicada (PDF)" />}
-                {linkDrive    && <_LinkBtnVD href={linkDrive}     Icono={Icon.Folder} label="Carpeta Drive" />}
-                {linkPdf      && <_LinkBtnVD href={linkPdf}       Icono={Icon.File}   label="Acta (PDF)" />}
-                {!linkPdf && linkXlsx && <_LinkBtnVD href={linkXlsx} Icono={Icon.File} label="Acta (Sheet)" />}
-                {linkInforme  && <_LinkBtnVD href={linkInforme}   Icono={Icon.Edit}   label="Informe F-43" />}
-                {linkVigilancia && <_LinkBtnVD href={linkVigilancia} Icono={Icon.Alert} label="Vigilancia Policía" />}
-                {linkOrden && <_LinkBtnVD href={linkOrden} Icono={Icon.File} label="Orden de policía" />}
-              </div>
-            </_SeccionVD>
-          )}
-
-          <_SeccionVD titulo="1. Identificación del caso">
-            {/* El chip del PDF va pegado al radicado además de en Entregables:
-                es el sitio donde se lo busca cuando ya se está leyendo el caso. */}
-            <_CampoVD l="Radicado" v={
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {_g(f, 'RADICADO', 1) || '—'}
-                <BotonPdfRadicado f={f} />
-              </span>
-            } />
-            <_CampoVD l="Fecha radicado"      v={_fmt(_g(f, 'FECHA RADICADO', 2))} />
-            <_CampoVD l="Atención PQR"        v={_g(f, 'ATENCION PQR', 0)} />
-            <_CampoVD l="Denunciante"         v={_g(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6)} />
-            <_CampoVD l="N° visita"           v={_g(f, 'N° VISITA', 'N VISITA', 16)} />
-            <_CampoVD l="Fecha visita"        v={_fmt(_g(f, 'FECHA DE VISITA', 15))} />
-            <_CampoVD l="N° orden policía"    v={_g(f, 'N° ORDEN DE POLICIA', 'N ORDEN DE POLICIA', 44)} />
-          </_SeccionVD>
-
-          {/* key: el modal se reutiliza al abrir otra visita y la lista vive en state. */}
-          <ReiteradosVD key={String(f._idx) + '|' + _g(f, 'RADICADO')} f={f} />
-
-          <_SeccionVD titulo="2. Ubicación del inmueble">
-            <_CampoVD l="Dirección"           v={_g(f, 'DIRECCION INFRACCION', 'DIRECCION', 3)} />
-            <_CampoVD l="Barrio / Vereda"     v={_g(f, 'BARRIO/VEREDA', 'BARRIO', 4)} />
-            <_CampoVD l="Comuna"              v={_g(f, 'COMUNA', 5)} />
-            <_CampoVD l="Coordenadas"         v={<MapaVD f={f} />} />
-            <_CampoVD l="Código catastral"    v={_g(f, 'CODIGO CATASTRAL', 'CATASTRAL', 32)} />
-            <_CampoVD l="N° ficha predial"    v={_g(f, 'N° FICHA PREDIAL', 'N FICHA PREDIAL', 33)} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="3. Persona que atiende">
-            <_CampoVD l="Nombre"              v={_g(f, 'NOMBRE PERSONA ATIENDE', 7)} />
-            <_CampoVD l="Identificación"      v={_g(f, 'ID PERSONA ATIENDE', 8)} />
-            <_CampoVD l="Teléfono"            v={_g(f, 'TELEFONO PERSONA ATIENDE', 9)} />
-            <_CampoVD l="Relación con el evento" v={_g(f, 'RELACION CON EL EVENTO', 10)} />
-            <_CampoVD l="Dirección notificación" v={_g(f, 'DIR NOTIFICACION', 11)} />
-            <_CampoVD l="Correo electrónico"  v={_g(f, 'CORREO ELECTRONICO', 12)} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="4. Características de la edificación">
-            <_CampoVD l="Estado de la obra"   v={_g(f, 'ESTADO OBRA', 22)} />
-            <_CampoVD l="Reparación locativa" v={_siNo(_g(f, 'REPARACION LOCATIVA', 26))} />
-            <_CampoVD l="Habitado"            v={_siNo(_g(f, 'HABITADO', 27))} />
-            <_CampoVD l="Altura en pisos"     v={_g(f, 'ALTURA EN PISOS', 28)} />
-            <_CampoVD l="Destinaciones actuales" v={_g(f, 'N° DESTINACIONES ACTUALES', 'N DESTINACIONES ACTUALES', 29)} />
-            <_CampoVD l="Usos actuales"       v={_g(f, 'USOS ACTUALES', 30)} />
-            <_CampoVD l="Tipo cubierta actual" v={_g(f, 'TIPO CUBIERTA ACTUAL', 31)} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="5. Verificación documental (licencia)">
-            <_CampoVD l="Se aportó licencia"  v={_siNo(_g(f, 'SE APORTO LICENCIA', 35))} />
-            <_CampoVD l="N° licencia"         v={_g(f, 'N° LICENCIA', 'N LICENCIA', 34)} />
-            <_CampoVD l="Fecha licencia"      v={_fmt(_g(f, 'FECHA LICENCIA', 36))} />
-            <_CampoVD l="Tipo y modalidad"    v={_g(f, 'TIPO Y MODALIDAD LICENCIA', 'TIPO Y MODALIDAD', 37)} />
-            <_CampoVD l="Pisos aprobados"     v={_g(f, 'PISOS APROBADOS', 38)} />
-            <_CampoVD l="Destinaciones"       v={_g(f, 'DESTINACIONES LICENCIA', 39)} />
-            <_CampoVD l="Cubierta"            v={_g(f, 'CUBIERTA LICENCIA', 40)} />
-            <_CampoVD l="Sistema estructural" v={_g(f, 'SISTEMA ESTRUCTURAL', 'SISTEMA ESTRUCT', 41)} />
-            <_CampoVD l="Observaciones licencia" v={_g(f, 'OBS LICENCIA', 42)} ancho />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="6. Descripción de la situación encontrada">
-            <_CampoLargoVD v={actuacion} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="7. Conclusiones">
-            <_CampoVD l="Tipo de contravención" v={_g(f, 'TIPO DE INFRACCION', 23)} ancho />
-            <_CampoVD l="Área contravención (m²)" v={_g(f, 'AREA CONTRAVENCION m2', 'AREA CONTRAVENCION M2', 24)} />
-            <_CampoVD l="Suspensión de obra" v={_siNo(_g(f, 'SUSPENSION DE LA OBRA', 43))} />
-            <_CampoVD l="Cumple retiro quebrada" v={_siNo(_g(f, 'CUMPLE RETIRO QUEBRADA', 25))} />
-            <_CampoVD l="Fecha citación"      v={_g(f, 'FECHA CITACION', 45)} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="8. Funcionarios">
-            <_CampoVD l="Visitador(es)"       v={_g(f, 'VISITADOR(ES)', 17)} ancho />
-            <_CampoVD l="Fecha asignación"    v={_fmt(_g(f, 'FECHA ASIGNACION VISITA', 14))} />
-            <_CampoVD l="Fecha devolución"    v={_fmt(_g(f, 'FECHA DEVOLUCION', 20))} />
-          </_SeccionVD>
-
-          <_SeccionVD titulo="9. Norma POT">
-            <_CampoVD l="Polígono uso suelo"  v={_g(f, 'POLIGONO USO SUELO', 51)} />
-            <_CampoVD l="Amenaza natural"     v={_siNo(_g(f, 'AMENAZA', 52))} />
-            <_CampoVD l="Suelo de protección" v={_siNo(_g(f, 'SUELO DE PROTECCION', 53))} />
-          </_SeccionVD>
-
-          {obsConclusion && (
-            <_SeccionVD titulo="10. Observaciones y conclusiones">
-              <_CampoLargoVD v={obsConclusion} />
-            </_SeccionVD>
-          )}
-
-          {/* Debug solo para ADMIN: muestra todos los campos no vacíos
-              para diagnosticar cuando algunas secciones aparezcan en blanco.
-              Oculto para inspectores regulares para evitar exponer estructura interna. */}
-          <_DebugRawVD f={f} solo_admin />
-        </div>
+    <div className="fv-velo" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="fv-hoja" ref={hojaRef} tabIndex={-1} role="dialog" aria-modal="true"
+        aria-label={'Datos de la visita ' + dir}>
+        <FichaVisita f={f} usuario={usuario} verPrioridad={verPrioridad}
+          onContinuar={onContinuar} onCerrar={onCerrar} />
       </div>
     </div>
   );
@@ -405,53 +219,6 @@ function ReiteradosVD({ f }) {
   );
 }
 
-function _DebugRawVD({ f, solo_admin }) {
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_DebugRawVD`, convención guion bajo del archivo
-  const [open, setOpen] = useStateVD(false);
-  if (!f) return null;
-  // Si está marcado solo_admin (default), verificar sesión ADMIN
-  if (solo_admin) {
-    try {
-      var s = (typeof SESSION_V6 !== 'undefined') ? SESSION_V6.leer() : null;
-      if (!s || s.rol !== 'ADMIN') return null;
-    } catch (e) { return null; }
-  }
-  // Recolectar pares (clave, valor) — saltar claves numéricas (duplicado)
-  // y vacíos. Si los nombres no encajan con los que busca el modal, la
-  // lista revela cómo están escritos los headers reales del Sheet.
-  const pares = Object.keys(f)
-    .filter(k => isNaN(Number(k)) && k !== '_idx')
-    .map(k => [k, f[k]])
-    .filter(([, v]) => v != null && v !== '');
-  return (
-    <div style={{ marginTop: 8 }}>
-      <button onClick={() => setOpen(!open)} style={{
-        background: 'transparent', border: '1px dashed var(--borde-med, rgba(31,27,22,0.16))',
-        borderRadius: 8, padding: '6px 10px', fontFamily: 'var(--font-mono)',
-        fontSize: 11, color: 'var(--texto-suave, #5C5142)', cursor: 'pointer',
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-      }}>{open ? <Icon.ChevronUp size={12} /> : <Icon.Chevron size={12} />} Ver datos crudos del Sheet ({pares.length} columnas con valor)</button>
-      {open && (
-        <div style={{
-          marginTop: 8, padding: 10, background: 'var(--gris-bg, #F5F1EB)',
-          borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 11,
-          color: 'var(--texto, #1F1B16)', maxHeight: 280, overflowY: 'auto',
-        }}>
-          {pares.length === 0
-            ? <div style={{ color: 'var(--texto-suave)' }}>La fila no contiene datos por nombre — revisa los headers del Sheet.</div>
-            : pares.map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', gap: 8, padding: '2px 0', borderBottom: '1px dashed rgba(31,27,22,0.06)' }}>
-                <span style={{ fontWeight: 600, minWidth: 220, color: 'var(--brand-ink, #8A3F26)' }}>{k}</span>
-                <span style={{ flex: 1, wordBreak: 'break-word' }}>{String(v).slice(0, 200)}</span>
-              </div>
-            ))
-          }
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Subcomponentes ──────────────────────────────────────────────
 function _SeccionVD({ titulo, children }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_SeccionVD`, convención guion bajo del archivo
@@ -483,69 +250,6 @@ function _SeccionVD({ titulo, children }) {
 // Coordenadas + enlace a Google Maps. El detalle es la única vía del
 // co-asignado (que no tiene botón de Continuar) para llegar al sitio, y
 // ahí las coordenadas sueltas no sirven de nada en un teléfono.
-function MapaVD({ f }) {
-  const txt = _coordsVD(f);
-  const link = useLinkMapaVisita(f);
-  if (!link) return txt;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      {txt}
-      <a href={link} target="_blank" rel="noopener noreferrer"
-        style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-ink, #8A3B12)',
-          textDecoration: 'none', border: '1px solid var(--brand-accent, #C2410C)',
-          borderRadius: 8, padding: '2px 8px', whiteSpace: 'nowrap' }}>
-        Cómo llegar
-      </a>
-    </span>
-  );
-}
-
-function _CampoVD({ l, v, ancho }) {
-  return (
-    <div style={{
-      padding: '8px 10px', borderRadius: 8, background: 'var(--superficie, #FFFBF5)',
-      border: '1px solid var(--borde, rgba(31,27,22,0.08))',
-      gridColumn: ancho ? 'span 2' : undefined,
-    }}>
-      <div style={{
-        fontSize: 10, color: 'var(--texto-suave, #5C5142)', textTransform: 'uppercase',
-        letterSpacing: 0.4, marginBottom: 3,
-      }}>{l}</div>
-      <div style={{ fontSize: 13, color: 'var(--texto, #1F1B16)', wordBreak: 'break-word' }}>
-        {v == null || v === '' ? '—' : v}
-      </div>
-    </div>
-  );
-}
-
-function _CampoLargoVD({ v }) {
-  return (
-    <div style={{
-      gridColumn: 'span 2', padding: '10px 12px', borderRadius: 8,
-      background: 'var(--superficie, #FFFBF5)',
-      border: '1px solid var(--borde, rgba(31,27,22,0.08))',
-      fontSize: 13, color: 'var(--texto, #1F1B16)', whiteSpace: 'pre-wrap',
-      lineHeight: 1.5, minHeight: 36,
-    }}>
-      {v || '—'}
-    </div>
-  );
-}
-
-function _LinkBtnVD({ href, Icono, label }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '8px 12px', borderRadius: 8,
-      background: 'var(--brand-bg, #FBE9E0)', color: 'var(--brand-ink, #8A3F26)',
-      border: '1px solid rgba(138,63,38,0.15)', fontSize: 12, fontWeight: 600,
-      textDecoration: 'none', cursor: 'pointer',
-    }}>
-      <Icono size={14} /> {label} ↗
-    </a>
-  );
-}
-
 // API global ─────────────────────────────────────────────────────
 window.abrirVisitaDetail = function(filaBD) {
   if (_pushVisitaDetail) {

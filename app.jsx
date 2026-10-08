@@ -880,7 +880,7 @@ function AppV6() {
       )}
       <ModalHost />
       <InformeModalHost />
-      <VisitaDetailModalHost />
+      <VisitaDetailModalHost onContinuar={irContinuar} />
       {/* Indicador flotante de precarga de mapa (discreto, esquina inferior) */}
       {mapPrecache && <MapPrecacheIndicator
         progreso={mapPrecache === 'done' ? 0 : mapPrecache.progreso}
