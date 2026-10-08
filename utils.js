@@ -1866,6 +1866,187 @@ function validarPinNuevo(pin, pin2, pinActual) {
   return '';
 }
 
+// ── Ficha de la visita (E2) — qué secciones y campos mostrar ──
+// Lógica pura que sustituye la lista fija de campos de VisitaDetailUI:
+// devuelve QUÉ mostrar y la vista (FichaVisita, otro TASK) solo pinta.
+//
+//   seccionesFicha(f, rol) → [{ n, clave, titulo, campos, sinDato, resumen }]
+//
+//   n        número de la sección del formulario; se conserva aunque una
+//            vecina quede reducida u omitida
+//   clave    slug estable para la vista y los estilos
+//   campos   [{ l, v, ancho?, largo? }] — solo los que aplican y tienen dato
+//   sinDato  etiquetas de los que aplican y están vacíos («Sin dato: …» al
+//            pie de la sección; sin filas de «—»)
+//   resumen  solo en «sin visita» (FECHA DE VISITA vacía y PENDIENTE/ASIGNADO):
+//            las secciones 3, 4, 5, 6, 7 y 9 se reducen a una línea
+//
+// Reglas (PLAN_2026-10-05 § E2): lo que está en la cabecera fija no se
+// repite abajo; lo que no aplica no se menciona; lectura por nombre de
+// columna, nunca por índice (los índices numéricos van de últimos, igual
+// que en el _g del modal, como último recurso para encabezados variantes).
+
+function _gFicha(f) {
+  for (var i = 1; i < arguments.length; i++) {
+    var k = arguments[i];
+    if (f && f[k] != null && f[k] !== '') return f[k];
+  }
+  return '';
+}
+
+function _siNoFicha(v) {
+  if (v == null || v === '') return '';
+  var s = String(v).toUpperCase().trim();
+  if (s === 'SI' || s === 'SÍ') return 'Sí';
+  if (s === 'NO') return 'No';
+  return String(v);
+}
+
+function seccionesFicha(f, rol) {
+  if (!f) return [];
+
+  // Separar actuación y conclusiones (van juntas en BD col AU, con el
+  // mismo marcador que separa VisitaDetailUI).
+  var partes = String(_gFicha(f, 'ACTUACION / OBSERVACIONES', 'ACTUACION', 46) || '')
+    .split('\n══CONCLUSIONES══\n');
+  var actuacion = (partes[0] || '').trim();
+  var obsConclusion = (partes[1] || '').trim();
+
+  // «Sin visita»: aún no se hizo. Las secciones 3–7 y 9 se reducen a línea.
+  var sinVisita = !String(f['FECHA DE VISITA'] || '').trim()
+    && visitaSinIniciar(f['ESTADO VISITA']);
+
+  var secciones = [];
+  function seccion(n, clave, titulo) {
+    var s = { n: n, clave: clave, titulo: titulo, campos: [], sinDato: [], resumen: '' };
+    secciones.push(s);
+    return s;
+  }
+  // Aplica y vacío → sinDato; aplica y con dato → campos. Lo que no aplica
+  // ni siquiera se construye (no se menciona).
+  function campo(s, l, v, extra) {
+    if (v == null || v === '') { s.sinDato.push(l); return; }
+    var c = { l: l, v: String(v) };
+    if (extra) Object.assign(c, extra);
+    s.campos.push(c);
+  }
+
+  // 1. Identificación del caso — radicado, Atención PQR y fecha de visita
+  // van en la cabecera fija; no se repiten.
+  var s1 = seccion(1, 'identificacion', 'Identificación del caso');
+  campo(s1, 'Fecha radicado', formatearFecha(_gFicha(f, 'FECHA RADICADO', 2)));
+  campo(s1, 'Denunciante', _gFicha(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6));
+  campo(s1, 'N° visita', _gFicha(f, 'N° VISITA', 'N VISITA', 16));
+  campo(s1, 'N° orden policía', _gFicha(f, 'N° ORDEN DE POLICIA', 'N ORDEN DE POLICIA', 44));
+
+  // 2. Ubicación del inmueble — dirección, barrio y comuna van en la
+  // cabecera. Coordenadas con el mismo saneo que _coordsVD del modal.
+  var s2 = seccion(2, 'ubicacion', 'Ubicación del inmueble');
+  var lat = normalizarCoord(_gFicha(f, 'LATITUD', 48), 'lat');
+  var lon = normalizarCoord(_gFicha(f, 'LONGITUD', 49), 'lon');
+  campo(s2, 'Coordenadas', (lat != null && lon != null) ? lat.toFixed(6) + ', ' + lon.toFixed(6) : '');
+  campo(s2, 'Código catastral', _gFicha(f, 'CODIGO CATASTRAL', 'CATASTRAL', 32));
+  campo(s2, 'N° ficha predial', _gFicha(f, 'N° FICHA PREDIAL', 'N FICHA PREDIAL', 33));
+
+  // 3. Persona que atiende — igual para todos los roles, como el modal de
+  // hoy. Ocultarle datos del tercero al inspector sería un cambio de
+  // comportamiento que nadie decidió; `rol` queda en la firma por si se decide.
+  var s3 = seccion(3, 'persona', 'Persona que atiende');
+  campo(s3, 'Nombre', _gFicha(f, 'NOMBRE PERSONA ATIENDE', 7));
+  campo(s3, 'Identificación', _gFicha(f, 'ID PERSONA ATIENDE', 8));
+  campo(s3, 'Teléfono', _gFicha(f, 'TELEFONO PERSONA ATIENDE', 9));
+  campo(s3, 'Relación con el evento', _gFicha(f, 'RELACION CON EL EVENTO', 10));
+  campo(s3, 'Dirección notificación', _gFicha(f, 'DIR NOTIFICACION', 11));
+  campo(s3, 'Correo electrónico', _gFicha(f, 'CORREO ELECTRONICO', 12));
+
+  // 4. Características de la edificación
+  var s4 = seccion(4, 'edificacion', 'Características de la edificación');
+  campo(s4, 'Estado de la obra', _gFicha(f, 'ESTADO OBRA', 22));
+  campo(s4, 'Reparación locativa', _siNoFicha(_gFicha(f, 'REPARACION LOCATIVA', 26)));
+  campo(s4, 'Habitado', _siNoFicha(_gFicha(f, 'HABITADO', 27)));
+  campo(s4, 'Altura en pisos', _gFicha(f, 'ALTURA EN PISOS', 28));
+  campo(s4, 'Destinaciones actuales', _gFicha(f, 'N° DESTINACIONES ACTUALES', 'N DESTINACIONES ACTUALES', 29));
+  campo(s4, 'Usos actuales', _gFicha(f, 'USOS ACTUALES', 30));
+  campo(s4, 'Tipo cubierta actual', _gFicha(f, 'TIPO CUBIERTA ACTUAL', 31));
+
+  // 5. Verificación documental (licencia) — sin aporte, todo el detalle
+  // (N° licencia … Observaciones licencia) se omite.
+  var s5 = seccion(5, 'licencia', 'Verificación documental (licencia)');
+  var aportada = String(_gFicha(f, 'SE APORTO LICENCIA', 35)).toUpperCase().trim();
+  campo(s5, 'Se aportó licencia', _siNoFicha(aportada));
+  if (aportada === 'SI' || aportada === 'SÍ') {
+    campo(s5, 'N° licencia', _gFicha(f, 'N° LICENCIA', 'N LICENCIA', 34));
+    campo(s5, 'Fecha licencia', formatearFecha(_gFicha(f, 'FECHA LICENCIA', 36)));
+    campo(s5, 'Tipo y modalidad', _gFicha(f, 'TIPO Y MODALIDAD LICENCIA', 'TIPO Y MODALIDAD', 37));
+    campo(s5, 'Pisos aprobados', _gFicha(f, 'PISOS APROBADOS', 38));
+    campo(s5, 'Destinaciones', _gFicha(f, 'DESTINACIONES LICENCIA', 39));
+    campo(s5, 'Cubierta', _gFicha(f, 'CUBIERTA LICENCIA', 40));
+    campo(s5, 'Sistema estructural', _gFicha(f, 'SISTEMA ESTRUCTURAL', 'SISTEMA ESTRUCT', 41));
+    campo(s5, 'Observaciones licencia', _gFicha(f, 'OBS LICENCIA', 42), { ancho: true });
+  }
+
+  // 6. Descripción de la situación encontrada (texto largo, sin etiqueta
+  // visible en la vista; l vacía = párrafo).
+  var s6 = seccion(6, 'descripcion', 'Descripción de la situación encontrada');
+  campo(s6, 'Descripción', actuacion, { largo: true });
+
+  // 7. Conclusiones — el área solo con contravención; la fecha de citación
+  // solo con suspensión SI o si ya hay fecha.
+  var s7 = seccion(7, 'conclusiones', 'Conclusiones');
+  var infraccion = String(_gFicha(f, 'TIPO DE INFRACCION', 23)).trim();
+  campo(s7, 'Tipo de contravención', infraccion, { ancho: true });
+  if (infraccion) {
+    campo(s7, 'Área contravención (m²)', _gFicha(f, 'AREA CONTRAVENCION m2', 'AREA CONTRAVENCION M2', 24));
+  }
+  var suspRaw = String(_gFicha(f, 'SUSPENSION DE LA OBRA', 43)).toUpperCase().trim();
+  campo(s7, 'Suspensión de obra', _siNoFicha(suspRaw));
+  campo(s7, 'Cumple retiro quebrada', _siNoFicha(_gFicha(f, 'CUMPLE RETIRO QUEBRADA', 25)));
+  var fechaCit = String(_gFicha(f, 'FECHA CITACION', 45));
+  if (suspRaw === 'SI' || suspRaw === 'SÍ' || fechaCit !== '') {
+    campo(s7, 'Fecha citación', formatearFecha(fechaCit));
+  }
+
+  // 8. Funcionarios — visitador(es) va en la cabecera (inspector).
+  var s8 = seccion(8, 'funcionarios', 'Funcionarios');
+  campo(s8, 'Fecha asignación', formatearFecha(_gFicha(f, 'FECHA ASIGNACION VISITA', 14)));
+  campo(s8, 'Fecha devolución', formatearFecha(_gFicha(f, 'FECHA DEVOLUCION', 20)));
+
+  // 9. Norma POT — solo los campos con dato (los vacíos no son dato faltante
+  // del inspector: es que la consulta POT no se guardó). Si con visita hecha
+  // ninguno tiene dato, la sección entera no se menciona.
+  var s9 = seccion(9, 'pot', 'Norma POT');
+  var poligono = String(_gFicha(f, 'POLIGONO USO SUELO', 51)).trim();
+  var amenaza = _siNoFicha(String(_gFicha(f, 'AMENAZA', 52)).trim());
+  var proteccion = _siNoFicha(String(_gFicha(f, 'SUELO DE PROTECCION', 53)).trim());
+  if (poligono) campo(s9, 'Polígono uso suelo', poligono);
+  if (amenaza) campo(s9, 'Amenaza natural', amenaza);
+  if (proteccion) campo(s9, 'Suelo de protección', proteccion);
+
+  // 10. Observaciones y conclusiones — solo si hay texto tras el marcador.
+  if (obsConclusion) {
+    var s10 = seccion(10, 'observaciones', 'Observaciones y conclusiones');
+    campo(s10, 'Conclusiones', obsConclusion, { largo: true });
+  }
+
+  // «Sin visita»: secciones 3–7 y 9 reducidas a una línea, conservando
+  // número y título.
+  if (sinVisita) {
+    var REDUCIR = { 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 9: 1 };
+    secciones.forEach(function(s) {
+      if (REDUCIR[s.n]) {
+        s.campos = []; s.sinDato = []; s.resumen = 'Se llena en la visita.';
+      }
+    });
+  }
+
+  // POT sin ningún dato (y con visita hecha): nada que mostrar.
+  secciones = secciones.filter(function(s) {
+    return !(s.n === 9 && !s.resumen && !s.campos.length);
+  });
+
+  return secciones;
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   AGENDA_OFICINA: AGENDA_OFICINA,
@@ -1952,6 +2133,7 @@ var _cuUtilsExports = {
   ultimaActividad: ultimaActividad,
   categoriaLog: categoriaLog,
   validarPinNuevo: validarPinNuevo,
+  seccionesFicha: seccionesFicha,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
