@@ -119,7 +119,7 @@ function SemanaCard({ f, movil, onAbrir }) {
 }
 
 // ── Componente principal ───────────────────────────────────────
-function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector }) {
+function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector, onAbrirDia }) {
   const prefs0 = _svPrefs();
   const [offset, setOffset] = useStateSV(prefs0.offset || 0);
   // El filtro de inspector lo comparte Inicio con la lista de Alertas: si el
@@ -229,6 +229,13 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
           ))}
         </div>
         <div className="sv-lista">
+          {/* Solo con onAbrirDia (admin): la tira de días sigue seleccionando;
+              agendar tiene su botón propio para no robarle el toque al día. */}
+          {onAbrirDia && (
+            <button type="button" className="sv-agendar" onClick={() => onAbrirDia(dias[sel])}>
+              Agendar
+            </button>
+          )}
           {porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
           {porDia[sel].map((f, i) => (
             <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} />
@@ -246,10 +253,20 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
       <div className="sv-grid">
         {dias.map((d, i) => (
           <div key={i} className={'sv-col' + (i === hoyIdx ? ' hoy' : '')}>
-            <div className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}>
-              {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
-              {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
-            </div>
+            {/* Con onAbrirDia (admin) la cabecera abre la Agenda en ese día. */}
+            {onAbrirDia ? (
+              <button type="button" className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}
+                aria-label={'Abrir la agenda del ' + SV_ROTULOS[i] + ' ' + d.getDate()}
+                onClick={() => onAbrirDia(d)}>
+                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
+                {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
+              </button>
+            ) : (
+              <div className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}>
+                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
+                {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
+              </div>
+            )}
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
               <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} />

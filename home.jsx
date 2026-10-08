@@ -19,6 +19,29 @@ function _irBuscarConEstados(estados, onNavegar) {
   onNavegar('buscar');
 }
 
+// La Semana abre la Agenda en el día tocado (solo admin; el supervisor no
+// gestiona). La fecha viaja por sessionStorage porque la Agenda se monta
+// después de navegar: mismo patrón que cu_buscar_v1 y cu_agenda_abrir_reglas.
+function _abrirAgendaEnDia(fecha, onNavegar) {
+  const d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  if (!d) return;
+  try {
+    sessionStorage.setItem('cu_agenda_dia', d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+  } catch (e) {}
+  onNavegar('agenda');
+}
+
+// Rotulo corto de día para las Audiencias de la semana (lun=1 … vie=5).
+const _AUD_ROTULOS = ['lun', 'mar', 'mié', 'jue', 'vie'];
+// «DANIEL PEDRAZA» → «Daniel P.» (mismo recorte que _svNombreCorto de la Semana).
+function _audNombreCorto(f) {
+  const n = titleCaseNombre(primerVisitador(visitadoresBD(f)));
+  if (!n) return '';
+  const p = n.split(/\s+/);
+  return p.length > 1 ? p[0] + ' ' + p[1].charAt(0) + '.' : p[0];
+}
+
 function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
@@ -205,6 +228,11 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const filtroAl = alertas.conteo[filtroAlerta] ? filtroAlerta : '';
   const alertasVisibles = filtroAl ? alertas.lista.filter(a => a.cat === filtroAl) : alertas.lista;
 
+  // Audiencias de la semana (bloque de quien ve todo): calendario completo
+  // lunes-viernes de las citaciones de visitas iniciadas, sin filtro de
+  // inspector — las Alertas ya avisan las urgentes por persona.
+  const audiencias = useMemoH(() => (veTodo ? audienciasSemana(datos, new Date()) : []), [datos, veTodo]);
+
   // Inspectores activos para los chips de filtro de la semana. Misma fuente
   // que Buscar (USUARIOS vía listarInspectoresActivos, cacheado 60 s): sacar
   // los nombres de las filas mostraría gente que ya no trabaja aquí.
@@ -265,6 +293,27 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       )}
 
+      {/* ── Audiencias de la semana (admin/supervisor): una línea por
+          citación; clic abre la visita si puede diligenciarse ── */}
+      {!cargando && veTodo && audiencias.length > 0 && (
+        <div className="home-aud">
+          <div className="home-aud-t">Audiencias de la semana</div>
+          {audiencias.map((a, i) => (
+            <button key={a.f._idx != null ? a.f._idx : 'aud' + i} type="button" className="home-aud-fila"
+              onClick={() => puedeDiligenciar(a.f)
+                ? onContinuar(a.f._idx, a.f)
+                : (window.abrirVisitaDetail && window.abrirVisitaDetail(a.f))}>
+              <span className="home-aud-rot">{_AUD_ROTULOS[a.fecha.getDay() - 1]} {a.fecha.getDate()}</span>
+              <span className="home-aud-dir">{[
+                a.hora,
+                String(a.f['DIRECCION INFRACCION'] || a.f['DIRECCION'] || '').trim(),
+                _audNombreCorto(a.f),
+              ].filter(Boolean).join(' · ')}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && (
         <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
           {error} · <button onClick={() => cargar(true)} style={{ background: 'none', border: 'none', color: 'var(--brand-accent)', cursor: 'pointer', textDecoration: 'underline' }}>Reintentar</button>
@@ -289,6 +338,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
             onAbrir={onContinuar}
             inspector={inspector}
             onInspector={setInspector}
+            onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
           />
         )}
       </div>

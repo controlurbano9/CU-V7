@@ -2330,6 +2330,18 @@ body.is-offline .header {
   font-size: 11px; text-align: center; padding: 4px 0 6px; color: var(--ink-4);
 }
 .sv-col-head.hoy { color: var(--brand-accent); font-weight: 600; }
+/* Con onAbrirDia (admin) la cabecera es un botón que abre la Agenda ese día. */
+button.sv-col-head {
+  display: block; width: 100%; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 11px;
+}
+button.sv-col-head:hover { color: var(--ink-2); }
+/* Móvil: la tira sigue seleccionando el día; agendar tiene su botón propio. */
+.sv-agendar {
+  width: 100%; height: 36px; margin-bottom: 8px; border: 0.5px dashed var(--line-2);
+  border-radius: var(--r-sm); background: none; cursor: pointer;
+  font: 600 12px var(--font-sans); color: var(--brand-ink);
+}
 .sv-vacio {
   border: 0.5px dashed var(--line-2); border-radius: var(--r-sm);
   padding: 12px 5px; text-align: center; font-size: 11px; color: var(--ink-4);
@@ -2418,6 +2430,26 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   background: var(--red-bg); border-left: 3px solid var(--red); font-size: 13px;
 }
 .home-urg b { color: var(--red); }
+/* Audiencias de la semana (Inicio admin/supervisor): una línea por citación. */
+.home-aud {
+  margin-bottom: 14px; overflow: hidden;
+  background: var(--surface); border: 0.5px solid var(--line); border-radius: var(--r);
+}
+.home-aud-t {
+  padding: 10px 14px 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink-4);
+}
+.home-aud-fila {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+  padding: 4px 14px; border: 0; border-top: 0.5px solid var(--line); background: none;
+  cursor: pointer; font-family: inherit; font-size: 13px; color: var(--ink); text-align: left;
+}
+.home-aud-rot { font: 600 11px var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+.home-aud-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) {
+  .home-aud-fila:hover { background: var(--surface-2); }
+}
 /* Móvil: «Mes anterior / Mes actual» sobra (el rótulo ya nombra el mes) y,
    con tres fichas, «Asignadas e iniciadas» toma el renglón entero. */
 @media (max-width: 899px) {
@@ -2803,16 +2835,13 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 
 .adm-bloque { padding: 14px 20px 0; }
 .adm-bloque .mv-sub { margin-bottom: 8px; }
-.adm-demorada {
-  display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto auto;
-  gap: 4px 10px; align-items: baseline;
-  padding: 8px 0; border-bottom: 0.5px solid var(--line); font-size: 12px;
+/* Enlace a Buscar con el filtro de la persona (reemplazó a «Más demoradas»). */
+.adm-ver-visitas {
+  display: block; width: calc(100% - 40px); margin: 12px 20px 0;
+  border: 0; background: none; padding: 0; cursor: pointer; text-align: left;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  color: var(--brand-ink); text-decoration: underline;
 }
-.adm-demorada:last-child { border-bottom: 0; }
-.adm-dem-dir { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.adm-demorada b { font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
-.adm-demorada b.demora { color: var(--red); }
-.adm-dem-tipo { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4); }
 
 /* Filas de dato simple (agenda / PIN). */
 .adm-fila-dato {

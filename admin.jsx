@@ -48,7 +48,8 @@ function useAnchoPanelAdm() {
 // secciones nuevas no tienen «Recargar». Re-pinta con suscribirVisitas,
 // como hacía la vieja pestaña de Vigilancia.
 // onAbrirReglasAgenda (app.jsx): lleva a la Agenda con ⚙ Reglas abierto.
-function AdminScreen({ usuario, onAbrirReglasAgenda }) {
+// onNavegar (app.jsx): para abrir Buscar con el filtro de una persona.
+function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
   const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
   const [usuarios, setUsuarios] = useStateA([]);
   const [visitas, setVisitas]   = useStateA([]);
@@ -165,7 +166,7 @@ function AdminScreen({ usuario, onAbrirReglasAgenda }) {
             hallazgos: p.hallazgos.filter(h => h._filaHoja !== fh) }))} /> :
         tab === 'actividad'  ? <TabActividad log={log} total={logTotal} /> :
         <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} conPanel={conPanel}
-          yo={usuario.usuario} onAbrirReglas={onAbrirReglasAgenda}
+          yo={usuario.usuario} onAbrirReglas={onAbrirReglasAgenda} onNavegar={onNavegar}
           recargarUsuarios={recargarUsuarios} />
       )}
     </div>
@@ -435,7 +436,7 @@ function _actividadRelativa(d, hoy) {
   return { texto: 'hace ' + dias + ' días', dias: dias };
 }
 
-function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, recargarUsuarios }) {
+function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
   const [sel, setSel]           = useStateA(null); // nombre de la persona elegida
   const [verInactivos, setVerInactivos] = useStateA(false);
   const hoy = useMemoA(() => new Date(), []);
@@ -506,13 +507,13 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, reca
 
       {elegido && (conPanel ? (
         <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-          yo={yo} onAbrirReglas={onAbrirReglas} recargarUsuarios={recargarUsuarios} />
+          yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios} />
       ) : (
         <div className="adm-panel-movil">
           <button type="button" className="adm-volver" onClick={() => setSel(null)}
             aria-label="Volver a la lista de Equipo"><Icon.ArrowLeft size={16} /> Equipo</button>
           <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-            yo={yo} onAbrirReglas={onAbrirReglas} recargarUsuarios={recargarUsuarios} />
+            yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios} />
         </div>
       ))}
     </div>
@@ -559,7 +560,18 @@ function TarjetaPersona({ u, info, elegida, onElegir }) {
 
 const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 'Inspector' };
 
-function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, recargarUsuarios }) {
+// Abre Buscar con el filtro de visitador de esa persona. Mismo mecanismo que
+// _irBuscarConEstados de home.jsx: Buscar restaura sus filtros de
+// sessionStorage al montar, así que se le deja escrito lo que debe traer.
+function _irBuscarConVisitador(nombre, onNavegar) {
+  try {
+    sessionStorage.setItem('cu_buscar_v1',
+      JSON.stringify({ filtrosVisitador: [String(nombre || '').trim().toUpperCase()] }));
+  } catch (e) {}
+  onNavegar('buscar');
+}
+
+function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
   const cajaRef = useRefA(null);
   const [cfg, setCfg] = useStateA(undefined); // undefined cargando · null falló (la fila no aparece)
   const [busy, setBusy] = useStateA(false);
@@ -683,20 +695,11 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, recargarU
         <div className="adm-cifra"><b>{c.completadasMesAnterior}</b><span>Completadas en {mesAnterior}</span></div>
       </div>
 
-      {c.masDemoradas.length > 0 && (
-        <div className="adm-bloque">
-          <h3 className="mv-sub">Más demoradas</h3>
-          {c.masDemoradas.map(x => (
-            <div key={x.f._idx != null ? x.f._idx : x.f['RADICADO']} className="adm-demorada">
-              <span className="vc-rad">{x.f['RADICADO'] || '—'}</span>
-              <span className="adm-dem-dir">{x.f['DIRECCION INFRACCION'] || x.f['DIRECCION'] || '—'}</span>
-              <b className={x.dias != null && x.dias >= DIAS_DEMORA_ADMIN ? 'demora' : ''}>
-                {x.dias == null ? 's/f' : x.dias + (x.dias === 1 ? ' día' : ' días')}
-              </b>
-              <span className="adm-dem-tipo">{x.tipo === 'curso' ? 'Iniciada' : 'Asignada'}</span>
-            </div>
-          ))}
-        </div>
+      {/* La lista «Más demoradas» se quitó (E4a): repetía las Alertas de
+          Inicio filtradas por inspector. El detalle vivo está en Buscar. */}
+      {onNavegar && (
+        <button type="button" className="adm-ver-visitas"
+          onClick={() => _irBuscarConVisitador(u.nombre, onNavegar)}>Ver sus visitas en Buscar</button>
       )}
 
       {cfg && (

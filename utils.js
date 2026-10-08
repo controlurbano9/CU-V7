@@ -1680,6 +1680,48 @@ function audienciasProximas(filas, nombre, hoy) {
   return out;
 }
 
+// «9:00 a. m.» → minutos desde medianoche; null si el texto no trae hora.
+// Para ordenar las audiencias del mismo día: como texto, «10:30» saldría
+// antes que «9:00».
+function _minutosHoraTexto(t) {
+  var m = /(\d{1,2}):(\d{2})/.exec(t || '');
+  if (!m) return null;
+  var h = +m[1];
+  if (/\bp\.?\s*m/i.test(t)) h = h % 12 + 12;
+  else if (/\ba\.?\s*m/i.test(t) && h === 12) h = 0;
+  return h * 60 + (+m[2]);
+}
+
+// Audiencias (FECHA CITACION) de lunes a viernes de la semana de `ref`, para
+// el bloque de Inicio de quien ve todo. A diferencia de audienciasProximas no
+// filtra por inspector ni por cercanía: es el calendario de la semana entera.
+// `hora` es lo que sigue al « · » del texto de la celda («9:00 a. m.»), o ''.
+function audienciasSemana(filas, ref) {
+  var base = ref instanceof Date ? ref : (parsearFecha(ref) || new Date());
+  var dias = rangoSemana(base, 0).dias;
+  var out = [];
+  (filas || []).forEach(function (f) {
+    if (!f || _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') !== 'INICIADO') return;
+    var d = parsearFecha(f['FECHA CITACION'] || '');
+    if (!d) return;
+    var enSemana = dias.some(function (x) {
+      return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
+    });
+    if (!enSemana) return;
+    var t = String(f['FECHA CITACION'] || '');
+    var sep = t.indexOf(' · ');
+    out.push({ f: f, fecha: d, hora: sep === -1 ? '' : t.slice(sep + 3).trim() });
+  });
+  // Por fecha y por hora; sin hora (celda de solo-fecha) al principio del día.
+  out.sort(function (a, b) {
+    if (a.fecha.getTime() !== b.fecha.getTime()) return a.fecha - b.fecha;
+    var ma = _minutosHoraTexto(a.hora); if (ma == null) ma = -1;
+    var mb = _minutosHoraTexto(b.hora); if (mb == null) mb = -1;
+    return ma - mb;
+  });
+  return out;
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -1843,6 +1885,7 @@ var _cuUtilsExports = {
   recorridoVisita: recorridoVisita,
   completadasMesesVisita: completadasMesesVisita,
   audienciasProximas: audienciasProximas,
+  audienciasSemana: audienciasSemana,
   DIAS_ALERTA_AUDIENCIA: DIAS_ALERTA_AUDIENCIA,
   claveBarrio: claveBarrio,
   armarJornadaPorBarrio: armarJornadaPorBarrio,

@@ -19,6 +19,21 @@ const { useState: useStateG, useEffect: useEffectG, useRef: useRefG, useMemo: us
 const AGENDA_BORRADOR_KEY = 'cu_agenda_borrador_v2';
 // Marca que deja Administración › Equipo para abrir ⚙ Reglas al llegar.
 const AGENDA_ABRIR_REGLAS_KEY = 'cu_agenda_abrir_reglas';
+// Día (YYYY-MM-DD) que deja Inicio al tocar un día de la Semana: se consume
+// una sola vez, como la marca de ⚙ Reglas.
+const AGENDA_DIA_KEY = 'cu_agenda_dia';
+
+// Día inicial: el que dejó la Semana en sessionStorage si es hábil, y si no
+// el comportamiento de siempre (hoy o el siguiente hábil).
+function _diaInicial() {
+  try {
+    const s = sessionStorage.getItem(AGENDA_DIA_KEY);
+    if (s) sessionStorage.removeItem(AGENDA_DIA_KEY);
+    const d = parsearFecha(s);
+    if (d && d.getDay() !== 0 && d.getDay() !== 6) return d;
+  } catch (e) {}
+  return diaInicialAgenda(new Date());
+}
 
 function _ddmmaaaa(d) {
   return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
@@ -88,7 +103,7 @@ function AgendaScreen({ usuario }) {
   const [data, setData]               = useStateG(null);
   const [cargando, setCargando]       = useStateG(true);
   const [error, setError]             = useStateG('');
-  const [dia, setDia]                 = useStateG(() => diaInicialAgenda(new Date()));
+  const [dia, setDia]                 = useStateG(_diaInicial);
   const [cfg, setCfg]                 = useStateG(null);       // { visitasPorInspector, inspectoresAgenda }
   const [activos, setActivos]         = useStateG([]);         // usuarios activos (para ⚙ Reglas)
   const [filasBD, setFilasBD]         = useStateG([]);
