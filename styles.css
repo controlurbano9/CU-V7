@@ -2724,6 +2724,54 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .mv-pqr iframe { display: block; width: 100%; height: 100%; border: 0; }
 
+/* ── Ficha de la visita (ficha-visita.jsx, E2b): la misma en el panel de Mis
+   visitas y, más adelante, en «Ver datos» sin panel (E2c). Arriba, fija, lo
+   básico; debajo, un solo scroll. Sin pestañas ni índice (decisión del
+   usuario 2026-10-05: «tedioso»). ── */
+.fv { position: relative; }
+.fv-fija { position: sticky; top: 0; z-index: 4; background: var(--surface); padding: 14px 20px 12px; border-bottom: 1px solid var(--line); transition: box-shadow .15s; }
+.fv-bajo .fv-fija { box-shadow: 0 8px 16px -12px rgba(31,27,22,.45); }
+.fv-fija-fila { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+/* 200 px de piso: los dos botones caben al lado de la dirección incluso con el panel de 500 px. */
+.fv-fija-id { flex: 1 1 200px; min-width: 0; }
+.fv-estado { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; font-size: 11px; }
+.fv-estado-txt { font-weight: 600; color: var(--ink-3); }
+.fv-estado-txt.espera { color: var(--amber); }
+.fv-estado-txt.demora { color: var(--red); }
+.fv-dir { margin-top: 4px; font: 600 20px/1.2 var(--font-serif); letter-spacing: -.3px; color: var(--ink); }
+.fv-fija .vc-ident { margin-top: 4px; }
+.fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
+.fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: 20px; }
+.fv-linea { padding-top: 14px; }
+.fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 28px; padding: 4px 20px 28px; align-items: start; }
+@container (min-width: 900px) {
+  .fv-cuerpo.con-pqr { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  /* La PQR queda fija bajo la cabecera mientras se recorren los datos. */
+  .fv-col-pqr { position: sticky; top: var(--fv-fija-h, 120px); }
+  .fv-col-pqr .mv-pqr { height: calc(100vh - var(--fv-fija-h, 120px) - 230px); min-height: 420px; }
+}
+.fv-sec { padding-top: 18px; }
+/* Campos cortos: dos columnas también en el celular (las de Mis visitas parten de 170 px). */
+.fv-sec .mv-datos { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.fv-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: none; border-radius: 50%;
+  background: var(--surface-2); color: var(--ink-3); font: 600 11px var(--font-mono); margin-right: 8px; }
+.fv-vacios { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-4); }
+.fv-vacios b { font-weight: 600; color: var(--ink-3); }
+.fv-luego { padding-top: 18px; }
+.fv-luego .fv-vacios { font-size: 12px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: var(--r); }
+.fv-ico { display: inline-flex; width: 10px; justify-content: center; color: var(--ink-3); }
+.fv-crudo { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
+.fv-crudo summary { cursor: pointer; font: 600 13px var(--font-sans); color: var(--ink-3); min-height: 32px; display: flex; align-items: center; gap: 6px; }
+.fv-crudo summary small { font-weight: 400; color: var(--ink-4); }
+.fv-crudo dt { font-family: var(--font-mono); }
+/* Celular: los dos botones de la cabecera en su renglón, a 44 px. */
+@media (max-width: 699px) {
+  .fv-fija-acc { flex-basis: 100%; }
+  .fv-fija-acc .vc-btn { flex: 1 1 0; min-height: var(--tap); }
+  .fv-dir { font-size: 18px; }
+}
+
 /* ╔════════════════════════════════════════════════════════════╗
    ║ ADMINISTRACIÓN — Bandeja · Equipo · Actividad (admin.jsx,  ║
    ║ fase 1, 2026-10-03)                                        ║

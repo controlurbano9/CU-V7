@@ -36,6 +36,8 @@ const ARCHIVOS = [
   // (que la consume).
   'semana-visitas.jsx',
   'home.jsx',
+  // ficha-visita.jsx antes de mis-visitas.jsx (que la consume en el panel)
+  'ficha-visita.jsx',
   'mis-visitas.jsx',
   'buscar.jsx',
   'agenda.jsx',

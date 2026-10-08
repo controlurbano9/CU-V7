@@ -1937,7 +1937,8 @@ function seccionesFicha(f, rol) {
   campo(s1, 'Fecha radicado', formatearFecha(_gFicha(f, 'FECHA RADICADO', 2)));
   campo(s1, 'Denunciante', _gFicha(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6));
   campo(s1, 'N° visita', _gFicha(f, 'N° VISITA', 'N VISITA', 16));
-  campo(s1, 'N° orden policía', _gFicha(f, 'N° ORDEN DE POLICIA', 'N ORDEN DE POLICIA', 44));
+  // ordenPoliciaDe descarta el «N/A» de las filas migradas de V2: sin orden real, va a «Sin dato».
+  campo(s1, 'N° orden policía', ordenPoliciaDe(f));
 
   // 2. Ubicación del inmueble — dirección, barrio y comuna van en la
   // cabecera. Coordenadas con el mismo saneo que _coordsVD del modal.

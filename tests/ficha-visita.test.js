@@ -222,6 +222,14 @@ test('seccionesFicha — la sección 3 es igual para todos los roles (como el mo
   }
 });
 
+test("seccionesFicha — el «N/A» de V2 no cuenta como N° de orden", () => {
+  const s1 = seccionesFicha(Object.assign({}, FILA_COMPLETA, { 'N° ORDEN DE POLICIA': 'N/A' }), 'ADMIN').find(s => s.n === 1);
+  assert.ok(!etiquetas(s1).includes('N° orden policía'));
+  assert.ok(s1.sinDato.includes('N° orden policía'));
+  const real = seccionesFicha(Object.assign({}, FILA_COMPLETA, { 'N° ORDEN DE POLICIA': '2026-09-015' }), 'ADMIN').find(s => s.n === 1);
+  assert.ok(etiquetas(real).includes('N° orden policía'));
+});
+
 // ── Robustez ───────────────────────────────────────────────────
 
 test('seccionesFicha — sin fila devuelve vacío y no explota', () => {

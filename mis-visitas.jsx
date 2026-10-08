@@ -4,10 +4,10 @@
 // Lista de deuda, no archivador por estado (2026-10-02): lo que el inspector
 // debe va primero y ordenado por antigüedad — por hacer, en curso (con lo que
 // le falta a cada una) y, al final, las completadas por mes.
-//   - Desde 1200 px la lista ocupa un tercio y el resto es el panel de la
-//     visita elegida: recorrido del caso, mapa, entregables, lo diligenciado
-//     y la PQR legible ahí mismo. Por debajo, la lista sola y «Ver datos»
-//     abre el modal de siempre.
+//   - Desde 1200 px la lista ocupa un tercio y el resto es la ficha de la
+//     visita elegida (FichaVisita, ficha-visita.jsx): lo básico fijo arriba
+//     y un solo scroll con el caso entero, la PQR al lado y el mapa. Por
+//     debajo, la lista sola y «Ver datos» abre el modal de siempre.
 //   - La regla (quién ve qué, orden, faltantes, recorrido) vive en
 //     utils.js y se prueba en tests/mis-visitas.test.js; aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
@@ -247,7 +247,11 @@ function MisVisitasScreen({ usuario, onContinuar }) {
             )}
           </div>
 
-          {sel && <PanelVisitaMV f={sel} verPrioridad={verPrioridad} onContinuar={onContinuar} />}
+          {sel && (
+            <section className="mv-panel" aria-label={'Ficha de la visita ' + (sel['DIRECCION INFRACCION'] || sel['DIRECCION'] || '')}>
+              <FichaVisita f={sel} usuario={usuario} verPrioridad={verPrioridad} onContinuar={onContinuar} />
+            </section>
+          )}
         </div>
       )}
     </div>
@@ -359,13 +363,8 @@ function NotaFilaMV({ x, tipo, verPrioridad }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Panel de la visita elegida (solo ≥1200). Sustituye a «Ver datos» en
-// escritorio: en vez de las diez secciones del modal con sus «—», muestra
-// dónde está detenido el caso y solo los campos que tienen dato. El modal
-// completo sigue a un clic («Ver datos»), que es donde el admin gestiona los
-// reiterados.
-// No lleva `key` por visita a propósito: el mapa se reutiliza entre
-// selecciones (cada instancia nueva es una carga facturable de Maps).
+// Piezas del panel que FichaVisita (ficha-visita.jsx) reutiliza. El panel
+// en sí se fue con PanelVisitaMV: la ficha única lo sustituye desde E2b.
 // ═══════════════════════════════════════════════════════════════
 const _ESTADO_PANEL_MV = {
   PENDIENTE:  { cls: '',          label: 'Pendiente' },
@@ -373,175 +372,6 @@ const _ESTADO_PANEL_MV = {
   INICIADO:   { cls: ' mv-e-curso', label: 'Iniciada' },
   COMPLETADO: { cls: ' mv-e-hecha', label: 'Completada' },
 };
-
-function PanelVisitaMV({ f, verPrioridad, onContinuar }) {
-  const cajaRef = useRefMV(null);
-  // Otra visita: el panel vuelve arriba.
-  useEffectMV(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; }, [f._idx]);
-
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  const empezada = est === 'INICIADO' || est === 'COMPLETADO';
-  const completa = est === 'COMPLETADO';
-  const tono = _ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' };
-  const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
-  const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
-  const nVisita = Number(_g(f, 'N° VISITA', 'N VISITA', 16)) || 0;
-  const lugar = [barrio, f['COMUNA'] ? 'Comuna ' + f['COMUNA'] : '', nVisita > 1 ? 'Visita N°' + nVisita : '']
-    .filter(Boolean).join(' · ');
-  const pasos = recorridoVisita(f);
-
-  // Actuación y conclusiones van juntas en la BD (misma separación del modal).
-  const partes = String(_g(f, 'ACTUACION / OBSERVACIONES', 'ACTUACION', 46) || '').split('\n══CONCLUSIONES══\n');
-  const actuacion = (partes[0] || '').trim();
-  const conclusiones = (partes[1] || '').trim();
-
-  const principal = claveRadicado(String(f['RADICADO'] || '').trim());
-  const reiterados = radicadosReiterados(f).filter(r => r !== principal);
-
-  const conDato = (pares) => pares.filter(p => p && p[1] != null && String(p[1]).trim() !== '' && p[1] !== '—');
-  const caso = conDato([
-    ['Denunciante', _g(f, 'DENUNCIANTE/REMITENTE', 'DENUNCIANTE', 6)],
-    verPrioridad && ['Prioridad', f['PRIORIDAD']],
-    !completa && ['Días de la PQR', f['ATENCION PQR']],
-    ['N° orden de policía', ordenPoliciaDe(f)],
-    ['Fecha de citación', f['FECHA CITACION']],
-    ['Visitador(es)', visitadoresBD(f), true],
-    ['Radicados reiterados', reiterados.join(' · '), true],
-  ]);
-  const diligenciado = !empezada ? [] : conDato([
-    ['Persona que atiende', _g(f, 'NOMBRE PERSONA ATIENDE', 7)],
-    ['Teléfono', _g(f, 'TELEFONO PERSONA ATIENDE', 9)],
-    ['Relación con el evento', _g(f, 'RELACION CON EL EVENTO', 10)],
-    ['Estado de la obra', _g(f, 'ESTADO OBRA', 22)],
-    ['Habitado', _siNo(_g(f, 'HABITADO', 27))],
-    ['Altura en pisos', _g(f, 'ALTURA EN PISOS', 28)],
-    ['Usos actuales', _g(f, 'USOS ACTUALES', 30)],
-    ['Se aportó licencia', _siNo(_g(f, 'SE APORTO LICENCIA', 35))],
-    ['N° licencia', _g(f, 'N° LICENCIA', 'N LICENCIA', 34)],
-    ['Suspensión de obra', _siNo(_g(f, 'SUSPENSION DE LA OBRA', 43))],
-    ['Área contravención (m²)', _g(f, 'AREA CONTRAVENCION m2', 'AREA CONTRAVENCION M2', 24)],
-    ['Polígono uso de suelo', _g(f, 'POLIGONO USO SUELO', 51)],
-    ['Amenaza natural', _siNo(_g(f, 'AMENAZA', 52))],
-    ['Suelo de protección', _siNo(_g(f, 'SUELO DE PROTECCION', 53))],
-    ['Código catastral', _g(f, 'CODIGO CATASTRAL', 'CATASTRAL', 32)],
-    ['Tipo de contravención', _g(f, 'TIPO DE INFRACCION', 23), true],
-  ]);
-
-  const idPqr = idArchivoDrive(linkPdfRadicado(f));
-  // Segunda columna: lo que se lee (lo diligenciado, la PQR). Si no hay nada
-  // que poner ahí —visita de oficio sin iniciar— el cuerpo queda en una.
-  const hayLectura = diligenciado.length > 0 || !!actuacion || !!conclusiones || !!idPqr;
-
-  return (
-    <section className="mv-panel" ref={cajaRef} aria-label={'Detalle de la visita ' + dir}>
-      <div className="mv-p-cab">
-        <div className="mv-p-id">
-          <span className={'al-estado' + tono.cls}>{tono.label}</span>
-          <div className="mv-p-dir">{dir}</div>
-          <div className="vc-ident">
-            <span className="vc-rad">{f['RADICADO'] || '—'}</span>
-            <BotonPdfRadicado f={f} />
-            {lugar && <><span className="vc-sep">·</span><span>{lugar}</span></>}
-          </div>
-        </div>
-        <div className="mv-p-acc">
-          {!completa && onContinuar && (puedeDiligenciar(f)
-            ? <button type="button" className="vc-btn vc-btn-cta" onClick={() => onContinuar(f._idx, f)}>
-                <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
-              </button>
-            : <span className="vc-dilig">Diligencia {primerVisitador(visitadoresBD(f))}</span>)}
-          <BotonMapaVisita f={f} variante="vc" />
-          {f['LINK_DRIVE'] && (
-            <a className="vc-btn" href={f['LINK_DRIVE']} target="_blank" rel="noopener noreferrer">
-              <Icon.Folder size={14} /> Carpeta
-            </a>
-          )}
-          <button type="button" className="vc-btn"
-            onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}>Ver datos</button>
-        </div>
-      </div>
-
-      {/* Recorrido del caso: el anillo marca dónde está detenido. */}
-      <div className="mv-linea" role="list" aria-label="Recorrido del caso">
-        {pasos.map((p, i) => {
-          const sig = pasos[i + 1];
-          const cls = 'mv-paso'
-            + (p.hecho ? ' hecho' : '')
-            + (p.hecho && sig && sig.hecho ? ' tramo' : '')
-            + (p.espera ? ' espera' : '')
-            + (p.espera && _demoradaMV(p.dias) ? ' demora' : '')
-            + (!p.hecho && !p.espera ? ' futuro' : '');
-          return (
-            <div key={p.clave} className={cls} role="listitem">
-              <div className="mv-paso-rot">{p.rotulo}</div>
-              <div className="mv-paso-val">{p.valor || '—'}</div>
-              {p.espera && p.dias > 0 && <div className="mv-paso-sub">hace {_plural(p.dias, 'día', 'días')}</div>}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className={'mv-p-cuerpo' + (hayLectura ? ' mv-dos' : '')}>
-        <div>
-          {empezada && (
-            <div className="mv-bloque">
-              <h3 className="mv-sub">Entregables{!completa && <small>se generan dentro de la visita</small>}</h3>
-              {_entregablesMV(f).map(e => (
-                <div className="mv-ent" key={e.n}>
-                  <span className={'ent-dot' + (e.link ? ' ed-ok' : (completa ? '' : ' ed-pend'))} aria-hidden="true" />
-                  <span className="mv-ent-n">{e.n}</span>
-                  {e.link
-                    ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
-                    : <span className={'mv-ent-e' + (completa ? '' : ' falta')}>{completa ? 'No se generó' : 'Falta'}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <MapaPanelMV f={f} />
-
-          {caso.length > 0 && (
-            <div className="mv-bloque">
-              <h3 className="mv-sub">Datos del caso</h3>
-              <_DatosMV pares={caso} />
-            </div>
-          )}
-
-          {!empezada && (
-            <div className="mv-bloque">
-              <h3 className="mv-sub">Entregables</h3>
-              <div className="mv-ent-e">Se habilitan al iniciar la visita.</div>
-            </div>
-          )}
-        </div>
-
-        {hayLectura && (
-          <div>
-            {diligenciado.length > 0 && (
-              <div className="mv-bloque">
-                <h3 className="mv-sub">Lo diligenciado<small>solo los campos con dato</small></h3>
-                <_DatosMV pares={diligenciado} />
-              </div>
-            )}
-            {actuacion && (
-              <div className="mv-bloque">
-                <h3 className="mv-sub">Situación encontrada</h3>
-                <p className="mv-texto">{actuacion}</p>
-              </div>
-            )}
-            {conclusiones && (
-              <div className="mv-bloque">
-                <h3 className="mv-sub">Observaciones y conclusiones</h3>
-                <p className="mv-texto">{conclusiones}</p>
-              </div>
-            )}
-            {idPqr && <PqrPanelMV id={idPqr} link={linkPdfRadicado(f)} radicado={f['RADICADO']} />}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
 
 // Entregables de la visita para el panel. Orden y vigilancia solo si aplican:
 // la orden cuando hay N° real; la solicitud cuando ya existe (la genera el
