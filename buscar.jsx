@@ -1192,7 +1192,10 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
               : c.barrio
                 ? <><span className="vc-sep">·</span><span><MarcarBQ texto={c.barrio} q={q} /></span></>
                 : c.barrioTxt
-                  ? <><span className="vc-sep">·</span><span title="El nombre escrito no calza con ningún barrio del POT"><MarcarBQ texto={c.barrioTxt} q={q} /> <span className="bq-tag">sin POT</span></span></>
+                  ? <><span className="vc-sep">·</span>{c.pot
+                      ? <span title="El nombre escrito no calza con ningún barrio del POT"><MarcarBQ texto={c.barrioTxt} q={q} /> <span className="bq-tag">sin POT</span></span>
+                      /* Sin barrios-mapa.json (sin red ni caché) no se sabe: no marcar «sin POT». */
+                      : <span><MarcarBQ texto={c.barrioTxt} q={q} /></span>}</>
                   : null}
             {!c.rural && c.comuna && <><span className="vc-sep">·</span><span>C{c.comuna}</span></>}
             {c.nVisitasGrupo > 1 && <span className="bq-tag">{c.nVisitasGrupo} visitas</span>}

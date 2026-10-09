@@ -3357,8 +3357,11 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
     height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
   }
   .pantalla.buscar-pantalla > * { flex-shrink: 0; }
+  /* Con el selector de arriba: si no, su flex-shrink:0 (más específico) gana y el
+     cuerpo crece hasta su contenido, sin scroll propio en las columnas. */
+  .pantalla.buscar-pantalla > .bq-cuerpo { flex: 1 1 auto; }
   .bq-cuerpo {
-    flex: 1 1 auto; min-height: 0; display: grid; column-gap: 20px;
+    min-height: 0; display: grid; column-gap: 20px;
     grid-template-columns: clamp(400px, 42%, 560px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
   }

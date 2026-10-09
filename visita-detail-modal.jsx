@@ -154,7 +154,8 @@ function ReiteradosVD({ f }) {
   };
 
   return (
-    <_SeccionVD titulo={'Radicados reiterados' + (lista.length ? ' (' + lista.length + ')' : '')}>
+    <_SeccionVD titulo={'Radicados reiterados' + (lista.length ? ' (' + lista.length + ')' : '')}
+      abierta={lista.length > 0}>
       <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {!lista.length && (
           <div style={{ color: 'var(--texto-suave, #5C5142)' }}>Este caso no tiene radicados reiterados.</div>
@@ -224,9 +225,9 @@ function ReiteradosVD({ f }) {
 }
 
 // ── Subcomponentes ──────────────────────────────────────────────
-function _SeccionVD({ titulo, children }) {
+function _SeccionVD({ titulo, children, abierta = true }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_SeccionVD`, convención guion bajo del archivo
-  const [open, setOpen] = useStateVD(true);
+  const [open, setOpen] = useStateVD(abierta);
   return (
     <div style={{ marginBottom: 14, border: '1px solid var(--borde, rgba(31,27,22,0.08))', borderRadius: 10, overflow: 'hidden' }}>
       <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
@@ -255,9 +256,9 @@ function _SeccionVD({ titulo, children }) {
 // co-asignado (que no tiene botón de Continuar) para llegar al sitio, y
 // ahí las coordenadas sueltas no sirven de nada en un teléfono.
 // API global ─────────────────────────────────────────────────────
-window.abrirVisitaDetail = function(filaBD) {
+window.abrirVisitaDetail = function(filaBD, gestion) {
   if (_pushVisitaDetail) {
-    _pushVisitaDetail(filaBD);
+    _pushVisitaDetail(filaBD, gestion);
   } else {
     // Fallback: si el host no está montado, abrir Drive de la visita
     const link = filaBD && (filaBD['LINK_DRIVE'] || filaBD['LINK_PDF_ACTA']);

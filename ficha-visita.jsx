@@ -164,6 +164,11 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
 
           <MapaPanelMV f={f} />
 
+          {/* Radicados reiterados al final (decisión del usuario 2026-10-08: se usa
+              poco y en la sección 1 quedaba muy a la vista). ReiteradosVD decide
+              solo si hay o quién mira es admin. */}
+          <ReiteradosVD key={String(f._idx) + '|' + f['RADICADO']} f={f} />
+
           {crudoPares && crudoPares.length > 0 && (
             <details className="fv-crudo">
               <summary>Todos los campos de la BD <small>admin · diagnóstico</small></summary>
@@ -250,9 +255,6 @@ function _SecFV({ s, f }) {
               <p className="fv-vacios"><b>Sin dato:</b> {s.sinDato.join(', ')}</p>
             )}
           </>}
-      {/* Sección 1: los radicados reiterados del caso (ReiteradosVD decide
-          solo si hay o quién mira es admin). */}
-      {s.n === 1 && <ReiteradosVD key={String(f._idx) + '|' + f['RADICADO']} f={f} />}
     </section>
   );
 }
