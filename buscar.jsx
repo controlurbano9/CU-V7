@@ -1,162 +1,458 @@
 // ═══════════════════════════════════════════════════════════════
-// v6/buscar.jsx — Pantalla Buscar / Visitas (fusionadas como en V5)
-//   - Búsqueda libre (radicado / orden de policía / dirección / barrio)
-//   - Filtros estado (multi)
-//   - Filtros comuna (dinámicos)
-//   - Filtro visitador (solo ADMIN)
-//   - Filtro rural ("Vda.")
-//   - Lista agrupada por radicado
+// v6/buscar.jsx — Pantalla Buscar (E5c1, 2026-10-08)
+//
+// Un caso = una fila. La lógica (caso preparado, filtros facetados, orden
+// «Más urgente») vive en utils.js (E5b) y se prueba en tests/buscar-e5.test.js;
+// aquí solo se pinta y se maneja el estado de la pantalla.
+//   - Casilla que filtra en vivo y sugiere convertir el texto en filtro
+//     (barrio del POT, comuna, fecha, visitador o el caso mismo).
+//   - Lo vivo marcado por defecto; las completadas se piden con su chip
+//     (con aviso «también coinciden N completadas»). Un radicado completo
+//     sale siempre y sube con «Coincidencia exacta».
+//   - Vistas fijas + propias (localStorage) + enlace con los filtros (hash).
+//   - ≥1600: filtros · lista · ficha. 1200–1599: filtros en cajón.
+//     <1200: lista sola y la ficha abre como «Ver datos».
+//   - La gestión del admin (asignar / reasignar / desasignar / completar /
+//     seguimiento) vive en la ficha (prop `gestion` de FichaVisita), no en
+//     cada fila: la fila lleva un solo botón lleno.
+// Fuera de E5c1 (van en E5c2/E5d): mapa «Dónde», «Cuándo» con histograma,
+// resumen de lo filtrado y exportar.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateB, useEffect: useEffectB, useMemo: useMemoB, useCallback: useCallbackB, useRef: useRefB } = React;
 
-// Mapeo estado → tono de chip (clases de styles.css)
-const ESTADO_CLASE = {
-  PENDIENTE:  'activo-pendiente',
-  ASIGNADO:   'activo-iniciado',
-  INICIADO:   'activo-iniciado',
-  COMPLETADO: 'activo-completado',
-};
-
-const ESTADOS_BUSCAR = ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'];
-const ESTADO_LABEL = {
+// ── Constantes de presentación ────────────────────────────────
+const BQ_EST_L = {
   PENDIENTE: 'Pendientes', ASIGNADO: 'Asignadas',
   INICIADO: 'Iniciadas', COMPLETADO: 'Completadas',
 };
-
-// Antigüedad del radicado — es el criterio con el que se prioriza y hasta
-// ahora no se podía filtrar por él. Selección única: son rangos, no suman.
-const ANTIGUEDADES = [
-  { val: 'hoy', l: 'Hoy',     dias: 0 },
-  { val: '7',   l: '7 días',  dias: 7 },
-  { val: '30',  l: '30 días', dias: 30 },
-  { val: '90',  l: '3 meses', dias: 90 },
-  { val: '365', l: '>1 año',  dias: 365, mas: true },
+const BQ_EST_DOT = { PENDIENTE: 'pend', ASIGNADO: 'asig', INICIADO: 'curso', COMPLETADO: 'hecha' };
+const BQ_TIPO_L = { PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado (V2)' };
+const BQ_ORDENES = [
+  ['urg', 'Más urgente'], ['rec', 'Más reciente'], ['rad', 'Radicado'],
+  ['dir', 'Dirección'], ['mod', 'Última edición'],
 ];
+const BQ_FALTA_FILA = { acta: 'Acta', orden: 'Orden escaneada', rf: 'Registro fotográfico' };
 
-// Compara por día, no por milisegundo. Una fila sin FECHA RADICADO parseable
-// no pasa ningún filtro activo. Una fecha futura (error de captura en el
-// gestor documental) cuenta como 0 días en vez de desaparecer de la lista.
-function _pasaAntiguedad(f, val) {
-  if (!val) return true;
-  const op = ANTIGUEDADES.find(a => a.val === val);
-  if (!op) return true;
-  const d = parsearFecha(f['FECHA RADICADO'] || '');
-  if (!d) return false;
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const rad = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dias = Math.max(0, Math.round((hoy - rad) / 86400000));
-  return op.mas ? dias > op.dias : dias <= op.dias;
-}
-
-const ORDENES = [
-  { val: 'rad-desc', l: 'Radicado ↓' },
-  { val: 'rad-asc',  l: 'Radicado ↑' },
-  { val: 'edit',     l: 'Última edición' },
-  { val: 'dir',      l: 'Dirección' },
-];
-
-// Clave de grupo de una fila. Solo un radicado con número identifica un caso
-// (esRadicadoDeCaso, utils.js): las filas de V2 con «QUEJA VERBAL»,
-// «OPERATIVO»… se agrupaban entre sí («OPERATIVO · 20 visitas») y «+ Nueva
-// visita» clonaba una cualquiera. Sin radicado real, cada fila va sola, con
-// una clave propia que empieza por SIN_RADICADO (minúsculas: ningún radicado
-// real en mayúsculas la puede imitar).
-const SIN_RADICADO = 'sin-radicado:';
-function _claveGrupo(f) {
-  // En mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
-  const rad = (f['RADICADO'] || f[1] || '').toString().trim().toUpperCase();
-  return esRadicadoDeCaso(rad) ? rad : SIN_RADICADO + f._idx;
-}
-function _esSinRadicado(clave) {
-  return clave.startsWith(SIN_RADICADO) || !esRadicadoDeCaso(clave);
-}
-
-// El orden se aplica a los GRUPOS, no a las filas sueltas: la lista pagina
-// por grupo (limite). Para "edit" y "dir" manda la primera fila del grupo.
-// Lo que no tiene radicado real queda siempre al final, ordene como ordene.
-// Antes se comparaba contra 'Sin radicado' literal y la clave va en
-// mayúsculas: «SIN RADICADO» salía de primero.
-//
-// Por radicado se ordena por FECHA RADICADO y, a igual fecha, por el número.
-// Comparar solo el texto ponía «OFICIO-2026-…» antes que cualquier «2026…»
-// (las letras van después de los dígitos). Sin fecha legible, al final de
-// los que sí tienen radicado, en los dos sentidos.
-function _ordenarGrupos(entries, orden) {
-  const _dir  = ([, fs]) => (fs[0]['DIRECCION INFRACCION'] || fs[0]['DIRECCION'] || '').toString();
-  const _edit = ([, fs]) => {
-    const t = Date.parse(fs[0]['ULTIMA_MODIFICACION'] || '');
-    return isNaN(t) ? 0 : t;
-  };
-  const _fRad = ([, fs]) => {
-    const d = parsearFecha(fs[0]['FECHA RADICADO'] || '');
-    return d ? d.getTime() : null;
-  };
-  const _porRadicado = (a, b, sentido) => {
-    const fa = _fRad(a), fb = _fRad(b);
-    if (fa !== fb) {
-      if (fa == null) return 1;
-      if (fb == null) return -1;
-      return (fa - fb) * sentido;
-    }
-    return a[0].localeCompare(b[0], 'es', { numeric: true }) * sentido;
-  };
-  return entries.slice().sort((a, b) => {
-    const aSin = _esSinRadicado(a[0]), bSin = _esSinRadicado(b[0]);
-    if (aSin !== bSin) return aSin ? 1 : -1;
-    switch (orden) {
-      case 'rad-asc': return _porRadicado(a, b, 1);
-      case 'edit':    return _edit(b) - _edit(a);
-      case 'dir':     return _dir(a).localeCompare(_dir(b), 'es', { sensitivity: 'base' });
-      default:        return _porRadicado(a, b, -1);
-    }
-  });
-}
-
-// Los filtros sobreviven a abrir una visita: BuscarScreen se desmonta al
-// navegar al formulario (app.jsx, render condicional) y el admin volvía con
-// la búsqueda en blanco. sessionStorage lanza en modo privado — try/catch.
+// Vistas propias y preferencia de Inicio («Ver en Buscar» con estados).
+const BQ_VISTAS_KEY = 'cu_buscar_vistas_v1';
 const BUSCAR_PREFS_KEY = 'cu_buscar_v1';
-function _leerPrefsBuscar() {
-  try { return JSON.parse(sessionStorage.getItem(BUSCAR_PREFS_KEY)) || {}; }
-  catch (e) { return {}; }
+
+const BQ_LIMITE_INICIAL = 50;
+const BQ_LIMITE_PASO = 50;
+
+// El panel (ficha) existe desde este ancho: monta mapa y visor de PDF que en
+// un teléfono no deben ni cargarse. 1200–1599 lista+ficha; ≥1600 tres columnas.
+const BQ_ANCHO_PANEL = '(min-width: 1200px)';
+
+function _usarMinAnchoBQ(media) {
+  const hayMQ = typeof window.matchMedia === 'function';
+  const [ancho, setAncho] = useStateB(() => hayMQ && window.matchMedia(media).matches);
+  useEffectB(() => {
+    if (!hayMQ) return;
+    const mq = window.matchMedia(media);
+    const alCambiar = () => setAncho(mq.matches);
+    alCambiar();
+    if (mq.addEventListener) mq.addEventListener('change', alCambiar); else mq.addListener(alCambiar);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', alCambiar); else mq.removeListener(alCambiar);
+    };
+  }, []);
+  return ancho;
 }
 
+// ── Barrios del POT: índice compartido (E5a), cargado una vez ──
+var _idxBarriosBQPromesa = null;
+function _cargarIdxBarriosBQ() {
+  if (_idxBarriosBQPromesa) return _idxBarriosBQPromesa;
+  _idxBarriosBQPromesa = Promise.all([
+    fetch('barrios-mapa.json').then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch('comunas-mapa.json').then(r => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([barr, com]) => {
+    if (!barr || !barr.barrios || !com || !com.proj) return null;
+    registrarBarriosBuscar(barr.barrios);
+    return crearIndiceBarriosPot(barr.barrios, com.proj);
+  });
+  return _idxBarriosBQPromesa;
+}
+
+// ── Utilidades pequeñas de la pantalla ────────────────────────
+function _normBQ(s) {
+  let t = String(s == null ? '' : s).toUpperCase();
+  if (t.normalize) t = t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return t.replace(/\s+/g, ' ').trim();
+}
+const _n0BQ = n => Number(n || 0).toLocaleString('es-CO');
+const _pluralBQ = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
+const _isoBQ = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const _iniMesBQ = (y, m) => new Date(y, m, 1);
+const _finMesBQ = (y, m) => new Date(y, m + 1, 0);
+
+// «sep 2026» / «09/2026» / «20/09/2026» / «2026» / «sep» → rango y rótulo.
+function _interpretarFechaBQ(t, hoy) {
+  const s = _normBQ(t).replace(/\./g, '');
+  let m;
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) {
+    const d = new Date(+m[3], +m[2] - 1, +m[1]);
+    return { a: d, b: d, l: 'el ' + formatearFecha(d) };
+  }
+  if ((m = s.match(/^(\d{1,2})\/(\d{4})$/)) && +m[1] >= 1 && +m[1] <= 12) {
+    const y = +m[2], k = +m[1] - 1;
+    return { a: _iniMesBQ(y, k), b: _finMesBQ(y, k), l: 'en ' + _MESES_ES[k] + ' ' + y };
+  }
+  if ((m = s.match(/^([A-Z]{3,})\s*(?:DE\s*)?(\d{4})?$/))) {
+    const k = _MESES_ES.findIndex(x => _normBQ(x).startsWith(m[1]));
+    if (k >= 0) {
+      let y = m[2] ? +m[2] : hoy.getFullYear();
+      if (!m[2] && k > hoy.getMonth()) y--;
+      return { a: _iniMesBQ(y, k), b: _finMesBQ(y, k), l: 'en ' + _MESES_ES[k] + ' ' + y };
+    }
+  }
+  if ((m = s.match(/^(20[2-3]\d)$/)) && +m[1] >= 2024 && +m[1] <= hoy.getFullYear()) {
+    const y = +m[1];
+    return { a: new Date(y, 0, 1), b: new Date(y, 11, 31), l: 'en ' + y };
+  }
+  return null;
+}
+
+// Resalta la parte que coincidió. El índice se calcula sobre el texto
+// normalizado con un mapa de posiciones: los acentos no descuadran el corte.
+function MarcarBQ({ texto, q }) {
+  const t = String(texto || '');
+  const n = _normBQ(q);
+  if (!n || !t) return t;
+  let norm = '';
+  const map = [];
+  for (let i = 0; i < t.length; i++) {
+    const nn = _normBQ(t[i]);
+    for (let j = 0; j < nn.length; j++) { norm += nn[j]; map.push(i); }
+  }
+  const idx = norm.indexOf(n);
+  if (idx < 0) return t;
+  const ini = map[idx];
+  const fin = (map[idx + n.length - 1] != null ? map[idx + n.length - 1] : ini) + 1;
+  return <>{t.slice(0, ini)}<mark>{t.slice(ini, fin)}</mark>{t.slice(fin)}</>;
+}
+
+// ── Agrupación por caso ───────────────────────────────────────
+// Un radicado con número es un caso (esRadicadoDeCaso); las filas V2 sin
+// número van sueltas: cada una con clave propia (fase 0). La clave va en
+// mayúsculas: «Oficio-…» y «OFICIO-…» son el mismo radicado.
+function _claveGrupoBQ(c) {
+  return c.tipo === 'V2' ? 'v2:' + c.id : c.nRad;
+}
+// La fila que representa al grupo en la lista: la viva. Si hay varias vivas,
+// la iniciada; entre completadas, la más reciente.
+const _ORDEN_REP_BQ = { INICIADO: 0, ASIGNADO: 1, PENDIENTE: 2, COMPLETADO: 3 };
+function _repDeBQ(filas) {
+  let mejor = null;
+  for (let i = 0; i < filas.length; i++) {
+    const c = filas[i];
+    if (!mejor) { mejor = c; continue; }
+    const a = _ORDEN_REP_BQ[c.estado] != null ? _ORDEN_REP_BQ[c.estado] : 9;
+    const b = _ORDEN_REP_BQ[mejor.estado] != null ? _ORDEN_REP_BQ[mejor.estado] : 9;
+    const ta = (c.fCierre || c.fVis) ? (c.fCierre || c.fVis).getTime() : 0;
+    const tb = (mejor.fCierre || mejor.fVis) ? (mejor.fCierre || mejor.fVis).getTime() : 0;
+    if (a < b || (a === b && a === 3 && ta > tb)) mejor = c;
+  }
+  return mejor;
+}
+// Cuántos casos (grupos) cumplen el predicado: cuenta una vez por radicado.
+function _nGruposBQ(universo, pred) {
+  const visto = new Map();
+  let n = 0;
+  for (let i = 0; i < universo.length; i++) {
+    const c = universo[i];
+    if (visto.get(c.clave) === 1) continue;
+    if (pred(c)) { visto.set(c.clave, 1); n++; }
+    else if (!visto.has(c.clave)) visto.set(c.clave, 0);
+  }
+  return n;
+}
+
+// ── Vistas ────────────────────────────────────────────────────
+// Las fijas de uso diario, SIN «Suspensiones sin vigilancia» (se quita en
+// E5c1 por decisión del TASK). `soloTodo`: solo para quien ve todo.
+function _vistasBaseBQ(veTodo, hoy) {
+  const pm = _iniMesBQ(hoy.getFullYear(), hoy.getMonth() - 1);
+  const v = [
+    { id: 'vivo', n: 'Lo vivo', s: {} },
+    { id: 'asignar', n: 'Por asignar', s: { estados: ['PENDIENTE'] }, soloTodo: true },
+    { id: 'inf', n: 'Completadas sin informe', s: { estados: ['COMPLETADO'], falta: ['informe'] } },
+    { id: 'mes', n: 'Completadas en ' + _MESES_ES[pm.getMonth()], s: { estados: ['COMPLETADO'], campo: 'cierre', desde: _isoBQ(pm), hasta: _isoBQ(_finMesBQ(pm.getFullYear(), pm.getMonth())) } },
+    { id: 'mias', n: 'Mías en curso', s: { estados: ['ASIGNADO', 'INICIADO'], mias: true } },
+  ];
+  return v.filter(x => !x.soloTodo || veTodo);
+}
+function _leerVistasPropiasBQ() {
+  try { return JSON.parse(localStorage.getItem(BQ_VISTAS_KEY)) || []; } catch (e) { return []; }
+}
+function _guardarVistasPropiasBQ(lista) {
+  try { localStorage.setItem(BQ_VISTAS_KEY, JSON.stringify(lista)); } catch (e) { /* sin almacenamiento */ }
+}
+// Lo que cambia respecto de los filtros vacíos (sin `yo`, que es de sesión):
+// la firma de una vista y lo que viaja en el enlace.
+function _diffBQ(S) {
+  const d = filtrosBuscarVacios();
+  const o = {};
+  Object.keys(d).forEach(k => {
+    if (k === 'yo') return;
+    if (JSON.stringify(S[k]) !== JSON.stringify(d[k])) o[k] = S[k];
+  });
+  return o;
+}
+
+// ── Estado inicial ────────────────────────────────────────────
+// Orden: enlace (#f=) > preferencia de Inicio (cu_buscar_v1, solo estados).
+function _initSBQ(usuario) {
+  const S = filtrosBuscarVacios();
+  S.yo = String(usuario && usuario.usuario || '').toUpperCase().trim();
+  try {
+    const prefs = JSON.parse(sessionStorage.getItem(BUSCAR_PREFS_KEY));
+    if (prefs && Array.isArray(prefs.filtrosEstado)) {
+      S.estados = prefs.filtrosEstado.filter(e => BUSCAR_ESTADOS.indexOf(e) !== -1);
+    }
+  } catch (e) { /* modo privado */ }
+  const m = (location.hash || '').match(/(?:^|[#&])f=([^&]+)/);
+  if (m) {
+    try {
+      const diff = JSON.parse(decodeURIComponent(m[1]));
+      if (diff && typeof diff === 'object') {
+        Object.keys(filtrosBuscarVacios()).forEach(k => {
+          if (k !== 'yo' && diff[k] !== undefined) S[k] = diff[k];
+        });
+      }
+    } catch (e) { /* enlace roto: se ignora */ }
+  }
+  return S;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BuscarScreen
+// ═══════════════════════════════════════════════════════════════
 function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
-  const [datos, setDatos]     = useStateB([]);
+  const [datos, setDatos]       = useStateB([]);
   const [cargando, setCargando] = useStateB(true);
-  const [error, setError]     = useStateB('');
+  const [error, setError]       = useStateB('');
 
-  // Paginación incremental
-  const LIMITE_INICIAL = 50;
-  const LIMITE_PASO    = 50;
-
-  // Filtros restaurados de sessionStorage en el initializer perezoso, no en
-  // un useEffect: así no hay un primer render con la búsqueda en blanco.
-  const prefs0 = useStateB(_leerPrefsBuscar)[0];
-
-  // qInput = lo que el inspector tipea en cada keystroke (binding del input)
-  // q      = lo que efectivamente se aplica al filtro (debounce de 300ms)
-  // Separarlos evita re-renderizar la lista entera en cada tecla.
-  const [qInput, setQInput] = useStateB(prefs0.q || '');
-  const [q, setQ]           = useStateB(prefs0.q || '');
-  const [filtrosEstado, setFiltrosEstado] = useStateB(prefs0.filtrosEstado || []);
-  const [filtroComunas, setFiltroComunas] = useStateB(prefs0.filtroComunas || []);
-  const [filtrosVisitador, setFiltrosVisitador] = useStateB(prefs0.filtrosVisitador || []);
-  const [filtroRural, setFiltroRural] = useStateB(!!prefs0.filtroRural);
-  const [filtroAntiguedad, setFiltroAntiguedad] = useStateB(prefs0.filtroAntiguedad || '');
-  const [orden, setOrden] = useStateB(prefs0.orden || 'rad-desc');
-  // Lista de visitadores activos (chips de filtro admin). Se carga desde
-  // USUARIOS vía endpoint público — sin nombres hardcoded en el bundle.
-  const [visitadores, setVisitadores] = useStateB([]);
-  const [limite, setLimite] = useStateB(prefs0.limite || LIMITE_INICIAL);
-  const inputBuscarRef = useRefB(null);
-  // <1200 los filtros de comuna, visitador y antigüedad van plegados: abiertos
-  // ocupaban toda la pantalla del celular antes del primer resultado. No se
-  // persiste: cada entrada a Buscar arranca plegada. ≥1200 el CSS los muestra
-  // siempre en su columna y el botón no se ve.
+  const [S, setS]               = useStateB(() => _initSBQ(usuario));
+  const [qInput, setQInput]     = useStateB(S.q);
+  const [orden, setOrden]       = useStateB('urg');
+  const [selClave, setSelClave] = useStateB(null);
+  const [limite, setLimite]     = useStateB(BQ_LIMITE_INICIAL);
+  const [idxBarrios, setIdxBarrios] = useStateB(null);
+  const [vistasPropias, setVistasPropias] = useStateB(_leerVistasPropiasBQ);
+  const [guardandoVista, setGuardandoVista] = useStateB(false);
   const [filtrosAbiertos, setFiltrosAbiertos] = useStateB(false);
-  // Al abrir con la lista ya recorrida, el panel queda arriba, oculto tras el
-  // bloque fijo: se sube lo justo para que aparezca bajo la casilla.
+  const [toastBQ, setToastBQ]   = useStateB('');
+  const toastRef = useRefB(null);
+
+  // Sugerencias de la casilla: lista + índice activo.
+  const [sug, setSug] = useStateB([]);
+  const [sugAct, setSugAct] = useStateB(-1);
+
+  // ── Estado para acciones de gestión admin ──
+  const [inspectores, setInspectores] = useStateB([]);
+  const [busyFila, setBusyFila] = useStateB(null);           // _idx de fila en proceso
+  const [asignandoFila, setAsignandoFila] = useStateB(null); // _idx con panel de inspector abierto
+
+  const inputBuscarRef = useRefB(null);
+  const conPanel = _usarMinAnchoBQ(BQ_ANCHO_PANEL);
+  const esAdmin = usuario.rol === 'ADMIN';
+  const veTodo = veTodasLasVisitas(usuario.rol);
+  const hoy = useMemoB(() => new Date(), []);
+
+  const activos = activosBuscar(S);
+  const nActivos = activos.total;
+
+  // ── Carga de datos ──
+  useEffectB(() => { cargar(); }, []);
+  useEffectB(() => suscribirVisitas(() => cargar(false, true)), []);
+  useEffectB(() => {
+    _cargarIdxBarriosBQ().then(setIdxBarrios).catch(() => {});
+  }, []);
+
+  async function cargar(forzar, silencioso) {
+    if (!silencioso) { setCargando(true); setError(''); }
+    try {
+      const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
+      setDatos(all);
+    } catch (e) { if (!silencioso) setError(e.message); }
+    setCargando(false);
+  }
+
+  // Visitadores activos (filtro Quién y sugerencias) desde USUARIOS.
+  useEffectB(() => {
+    if (!veTodo) return;
+    listarInspectoresActivos().then(lista => setInspectores(lista || []))
+      .catch(() => {});
+  }, [veTodo]);
+
+  // Escucha del generador F-GGO-43 (pestaña hija): registra el link en BD.
+  useEffectB(() => {
+    function onMsg(ev) {
+      if (ev.origin !== window.location.origin) return;
+      var m = ev && ev.data;
+      if (m && m.tipo === 'informe-f43-subido' && m.link) {
+        setDatos(prev => prev.map(r =>
+          r._idx === parseInt(m.fila, 10)
+            ? { ...r, 'LINK_DOCX_INFORME': m.link }
+            : r
+        ));
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  // ── Casos y filtrado ──
+  // Un caso preparado por fila (E5b), con su clave de grupo. `hoy` fijo por
+  // sesión: los días no cambian a mitad de lista.
+  const casos = useMemoB(() => {
+    const l = datos.map(f => prepararCasoBuscar(f, idxBarrios, hoy));
+    l.forEach(c => { c.clave = _claveGrupoBQ(c); });
+    return l;
+  }, [datos, idxBarrios, hoy]);
+
+  // El inspector ve lo suyo, las pendientes y las completadas (regla de
+  // siempre); admin y supervisor, todo.
+  const universo = useMemoB(
+    () => universoBuscar(casos, usuario.rol, usuario.usuario),
+    [casos, usuario]);
+
+  // Filas que pasan → grupos → representante. La lista es de casos, no de
+  // visitas: un radicado con varias visitas ocupa una fila.
+  const lista = useMemoB(() => {
+    const pasan = filtrarBuscar(universo, S);
+    const g = new Map();
+    pasan.forEach(c => {
+      if (!g.has(c.clave)) g.set(c.clave, []);
+      g.get(c.clave).push(c);
+    });
+    const todas = new Map();
+    universo.forEach(c => {
+      if (!todas.has(c.clave)) todas.set(c.clave, []);
+      todas.get(c.clave).push(c);
+    });
+    const reps = [];
+    g.forEach((filas, clave) => {
+      const rep = _repDeBQ(filas);
+      rep.todas = todas.get(clave) || filas;
+      rep.nVisitasGrupo = rep.todas.filter(c => c.estado !== 'PENDIENTE').length;
+      reps.push(rep);
+    });
+    return ordenarCasosBuscar(reps, orden, S.q);
+  }, [universo, S, orden]);
+
+  // Conteos por estado SIN la selección de estado (facetas): cuentan casos,
+  // sobre los grupos del universo base.
+  const conteosEstado = useMemoB(() => {
+    const base = filtrarBuscar(universo, S, 'estado');
+    const contados = new Map();
+    const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0 };
+    base.forEach(x => {
+      if (contados.get(x.clave)) return;
+      contados.set(x.clave, true);
+      if (c[x.estado] != null) c[x.estado]++;
+    });
+    return c;
+  }, [universo, S]);
+  const totalGrupos = useMemoB(() => new Set(universo.map(c => c.clave)).size, [universo]);
+
+  // «También coinciden N completadas»: no se esconden en silencio. Cuenta los
+  // casos que ya no están en la lista (ni por estado ni por coincidencia exacta).
+  const completadasOcultas = useMemoB(() => {
+    if (!S.q || !S.estados.length || S.estados.indexOf('COMPLETADO') !== -1) return 0;
+    const visibles = new Set(lista.map(c => c.clave));
+    return _nGruposBQ(universo, c =>
+      c.estado === 'COMPLETADO' && !visibles.has(c.clave) && pasaBuscar(c, S, 'estado'));
+  }, [universo, S, lista]);
+
+  // ── Filtros del panel, con conteo facetado (cuentan casos) ──
+  const faceta = useCallbackB((pred) => _nGruposBQ(universo, pred), [universo]);
+  const conteoGrupo = useCallbackB((valor, grupo, coincideValor) =>
+    faceta(c => pasaBuscar(c, S, grupo) && coincideValor(c, valor)), [faceta, S]);
+
+  // Valores presentes para los grupos sin lista fija.
+  const valoresInfr = useMemoB(() => {
+    const m = new Map();
+    universo.forEach(c => c.infr.forEach(x => { if (x) m.set(x, (m.get(x) || 0) + 1); }));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  }, [universo]);
+  const valoresObra = useMemoB(() => {
+    const s = new Set();
+    universo.forEach(c => { if (c.obra) s.add(c.obra); });
+    return [...s];
+  }, [universo]);
+  const veredasU = useMemoB(() => {
+    const s = new Set();
+    universo.forEach(c => { if (c.vereda) s.add(c.vereda); });
+    return [...s].sort();
+  }, [universo]);
+  const barriosPot = idxBarrios ? idxBarrios.lista.map(b => b.n) : [];
+
+  // ── Selección (ficha) ──
+  const sel = conPanel ? (lista.find(c => c.clave === selClave) || lista[0] || null) : null;
+  const elegir = (c) => setSelClave(c.clave);
+
+  // ── Acciones sobre S ──
+  const parcharS = (parche) => setS(prev => Object.assign({}, prev, parche));
+  const toggleEnArr = (arr, v) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
+  function limpiarTodo() {
+    setQInput(''); setSug([]); setSugAct(-1);
+    setS(() => { const base = filtrosBuscarVacios(); base.yo = String(usuario.usuario || '').toUpperCase(); return base; });
+  }
+
+  // Debounce: cada tecla filtra la lista (barato) pero no reordena 2000 filas
+  // por golpe. Las sugerencias se recalculan en el mismo lapso.
+  useEffectB(() => {
+    const id = setTimeout(() => {
+      setS(prev => prev.q === qInput.trim() ? prev : Object.assign({}, prev, { q: qInput.trim() }));
+    }, 160);
+    return () => clearTimeout(id);
+  }, [qInput]);
+
+  // Cambió un filtro: la paginación vuelve al inicio.
+  useEffectB(() => { setLimite(BQ_LIMITE_INICIAL); }, [S, orden]);
+
+  // La preferencia de Inicio («Ver en Buscar» con estados) sigue viva: se
+  // escribe al cambiar la selección de estado para que volver de otra
+  // pantalla no la pise con la vieja.
+  useEffectB(() => {
+    try { sessionStorage.setItem(BUSCAR_PREFS_KEY, JSON.stringify({ filtrosEstado: S.estados })); } catch (e) {}
+  }, [S.estados]);
+
+  // "/" enfoca la casilla; Esc la limpia. ↑/↓ recorren la lista con panel.
+  useEffectB(() => {
+    function onKey(e) {
+      const t = e.target;
+      const escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (e.key === '/' && !escribiendo) {
+        e.preventDefault();
+        inputBuscarRef.current && inputBuscarRef.current.focus();
+      } else if (e.key === 'Escape' && filtrosAbiertos) {
+        setFiltrosAbiertos(false);
+      } else if (e.key === 'Escape' && t === inputBuscarRef.current && !sug.length) {
+        // Con sugerencias abiertas, el primer Escape solo las cierra
+        // (lo hace el onKeyDown del input).
+        setQInput(''); parcharS({ q: '' });
+      } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && conPanel && !escribiendo && lista.length) {
+        e.preventDefault();
+        const i = lista.findIndex(c => c.clave === (sel ? sel.clave : ''));
+        const j = Math.max(0, Math.min(lista.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+        if (lista[j] && j !== i) {
+          setSelClave(lista[j].clave);
+          const f = document.querySelector('.bq-fila.sel');
+          f && f.scrollIntoView({ block: 'nearest' });
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [filtrosAbiertos, conPanel, lista, sel, sug]);
+
+  // Al abrir el cajón de filtros con la lista recorrida, subirlo a la vista
+  // (queda oculto tras el bloque fijo). <900 scrollea el documento;
+  // 900–1599 scrollea #content-desktop.
   useEffectB(() => {
     if (!filtrosAbiertos) return;
     const panel = document.getElementById('buscar-filtros');
@@ -164,71 +460,18 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     if (!panel || !fijo) return;
     const delta = panel.getBoundingClientRect().top - fijo.getBoundingClientRect().bottom;
     if (delta >= 0) return;
-    // <900 scrollea el documento; 900–1199 scrollea #content-desktop.
     const cont = panel.closest('#content-desktop');
     if (cont && cont.scrollHeight > cont.clientHeight) cont.scrollBy(0, delta);
     else window.scrollBy(0, delta);
   }, [filtrosAbiertos]);
 
-  const esAdmin = usuario.rol === 'ADMIN';
-  // Supervisor: ve la lista completa y filtra por inspector, pero las acciones
-  // de gestión siguen atadas a esAdmin.
-  const veTodo = veTodasLasVisitas(usuario.rol);
+  function toast(msg) {
+    setToastBQ(msg);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToastBQ(''), 2600);
+  }
 
-  // ── Estado para acciones de gestión admin ──
-  const [inspectores, setInspectores] = useStateB([]);
-  const [busyFila, setBusyFila] = useStateB(null);       // _idx de fila en proceso
-  const [asignandoFila, setAsignandoFila] = useStateB(null); // _idx de fila con panel abierto
-
-  useEffectB(() => { cargar(); }, []);
-
-  // Cargar lista de visitadores activos (filtro admin) desde USUARIOS.
-  // listarInspectoresActivos() está cacheado en api.js (TTL 60s).
-  // Antes los chips se filtraban contra tres nombres escritos a mano
-  // (Alejandro, Mauricio, Daniel): un inspector nuevo dado de alta en
-  // USUARIOS nunca aparecía como filtro. Ahora se muestran todos los activos,
-  // que es la misma lista que alimenta el panel de asignación.
-  useEffectB(() => {
-    if (!veTodo) return;
-    listarInspectoresActivos().then(lista => {
-      const todos = lista || [];
-      setVisitadores(todos.map(u => ({ val: u.nombre, l: titleCaseNombre(u.nombre) })));
-      setInspectores(todos);
-    }).catch(() => {});
-  }, [veTodo]);
-
-  // forzar=true salta el caché (tras asignar/completar; el «Actualizar» global
-  // de app.jsx llama a leerVisitas directo). Al primer mount reusa caché.
-  // Declarada ANTES de las acciones admin de abajo: sus useCallback dependen
-  // de `cargar` en el array de deps, y siendo const, referenciarla antes de
-  // su propia declaración revienta con "Cannot access before initialization".
-  // conservar=true deja la lista a la vista mientras llega la red.
-  const cargar = useCallbackB(async (forzar, silencioso, conservar) => {
-    if (!silencioso) { if (!conservar) setCargando(true); setError(''); }
-    try {
-      const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
-      const mios = veTodo ? all : all.filter(f => {
-        const vis = visitadoresBD(f).toUpperCase();
-        const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-        return vis.includes(usuario.usuario.toUpperCase()) || est === 'PENDIENTE' || est === 'COMPLETADO';
-      });
-      setDatos(mios);
-    } catch (e) { if (!silencioso) setError(e.message); }
-    setCargando(false);
-  }, [veTodo, usuario]);
-
-  // Re-pinta sin spinner cuando la actualización en segundo plano trae cambios.
-  useEffectB(() => suscribirVisitas(() => cargar(false, true)), [cargar]);
-
-  // Tras asignar/completar se espera con spinner (cargar(true)): una fila vieja
-  // a la vista invitaría a repetir la acción.
-
-  // ── Acciones admin: asignar, desasignar, completar ──
-  // useCallback: GrupoRadicado/FilaVisita están memoizados con React.memo
-  // más abajo — sin esto, cada re-render de BuscarScreen (ej. un keystroke
-  // en otro filtro) les pasaba callbacks con identidad nueva y anulaba el memo.
-  // Para sacar el radicado de una fila dentro de callbacks memoizados sin
-  // meter `datos` en sus dependencias (viaja como radicadoConocido).
+  // ── Acciones admin: asignar, desasignar, completar, nueva visita ──
   const datosRef = useRefB(datos);
   datosRef.current = datos;
   const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion) => {
@@ -262,9 +505,6 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     setBusyFila(null);
   }, [cargar]);
 
-  // Crea una fila nueva en BD clonando los datos fijos del radicado y
-  // dejándola ASIGNADA al inspector elegido. Útil para asignar una segunda
-  // visita a un radicado ya COMPLETADO.
   const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector, fechaAsignacion) => {
     setBusyFila(filaOrigen);
     try {
@@ -394,574 +634,722 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     setBusyFila(null);
   }, [cargar, datos]);
 
-  // Debounce 300ms: sincroniza qInput → q sin gatillar refiltros por keystroke.
-  useEffectB(() => {
-    const id = setTimeout(() => setQ(qInput), 300);
-    return () => clearTimeout(id);
-  }, [qInput]);
-
-  // Resetea la paginación cuando cambia el texto efectivo o cualquier filtro.
-  useEffectB(() => { setLimite(LIMITE_INICIAL); },
-    [q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad]);
-
-  // Persiste filtros + orden + paginación para el regreso desde el formulario.
-  useEffectB(() => {
-    try {
-      sessionStorage.setItem(BUSCAR_PREFS_KEY, JSON.stringify({
-        q, filtrosEstado, filtroComunas, filtrosVisitador,
-        filtroRural, filtroAntiguedad, orden, limite,
+  // ── Sugerencias de la casilla ──
+  function calcularSugerencias(texto) {
+    const n = _normBQ(texto);
+    if (n.length < 2) return [];
+    const out = [];
+    const enLugar = c => pasaBuscar(c, S, ['lugar', 'q']);
+    const f = _interpretarFechaBQ(texto, hoy);
+    if (f) [['rad', 'Radicados', 'fRad'], ['vis', 'Visitados', 'fVis'], ['cierre', 'Cerrados', 'fCierre']].forEach(par => {
+      const campo = par[2];
+      const k = _nGruposBQ(universo, c => {
+        const d = c[campo];
+        return d && d >= f.a && d <= f.b && pasaBuscar(c, S, ['fecha', 'q']);
+      });
+      out.push({ g: 'Fecha', titulo: par[1] + ' ' + f.l, n: k, aplicar: () => parcharS({ campo: par[0], desde: _isoBQ(f.a), hasta: _isoBQ(f.b) }) });
+    });
+    const mc = n.match(/^(?:COMUNA|C)\s*(\d{1,2})$/);
+    if (mc) {
+      const k = String(+mc[1]);
+      const existe = universo.some(c => !c.rural && c.comuna === k);
+      if (existe) out.push({ g: 'Comuna', titulo: 'Comuna ' + k, n: _nGruposBQ(universo, c => c.comuna === k && enLugar(c)), aplicar: () => parcharS({ comunas: S.comunas.indexOf(k) === -1 ? S.comunas.concat([k]) : S.comunas }) });
+    }
+    barriosPot.filter(b => _normBQ(b).indexOf(n) !== -1).slice(0, 5).forEach(b =>
+      out.push({ g: 'Barrio del POT', titulo: b, sub: 'Comuna ' + _comunaDeBarrioBuscar(b), n: _nGruposBQ(universo, c => c.barrio === b && enLugar(c)), aplicar: () => parcharS({ barrios: S.barrios.indexOf(b) === -1 ? S.barrios.concat([b]) : S.barrios }) }));
+    veredasU.filter(v => _normBQ(v).indexOf(n) !== -1).slice(0, 3).forEach(v =>
+      out.push({ g: 'Vereda', titulo: 'Vda. ' + v, n: _nGruposBQ(universo, c => c.vereda === v && enLugar(c)), aplicar: () => parcharS({ veredas: S.veredas.indexOf(v) === -1 ? S.veredas.concat([v]) : S.veredas }) }));
+    if (veTodo) inspectores.map(u => String(u.nombre || '').toUpperCase())
+      .filter(v => _normBQ(v).split(' ').some(p => p.startsWith(n)))
+      .forEach(v => out.push({
+        g: 'Visitador', titulo: titleCaseNombre(v),
+        n: _nGruposBQ(universo, c => c.vis.indexOf(v) !== -1 && pasaBuscar(c, S, ['visitador', 'q'])),
+        aplicar: () => parcharS({ visitador: S.visitador.indexOf(v) === -1 ? S.visitador.concat([v]) : S.visitador }),
       }));
-    } catch (e) { /* modo privado: la búsqueda simplemente no sobrevive */ }
-  }, [q, filtrosEstado, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad, orden, limite]);
-
-  // "/" enfoca el buscador, Esc lo limpia. Se ignora mientras se escribe en
-  // cualquier otro campo (el "/" es carácter válido en una dirección).
-  useEffectB(() => {
-    function onKey(e) {
-      const t = e.target;
-      const escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-      if (e.key === '/' && !escribiendo) {
-        e.preventDefault();
-        inputBuscarRef.current && inputBuscarRef.current.focus();
-      } else if (e.key === 'Escape' && t === inputBuscarRef.current) {
-        setQInput(''); setQ('');
+    if (/\d{4,}/.test(n)) {
+      const vistos = new Set();
+      for (const c of universo) {
+        if (vistos.has(c.clave)) continue;
+        if (c.nRad.startsWith(n) || c.nReit.some(r => r.startsWith(n))) {
+          vistos.add(c.clave);
+          out.push({
+            g: 'Caso', titulo: c.rad, sub: c.dir + ' · ' + (BQ_EST_L[c.estado] || c.estado || '').toLowerCase().replace(/s$/, ''), n: null,
+            aplicar: () => { setQInput(c.rad); parcharS({ q: c.rad }); setSelClave(c.clave); },
+          });
+          if (vistos.size >= 4) break;
+        }
       }
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    return out;
+  }
 
-  // ── Escucha cuando el generador F-GGO-43 (pestaña hija) sube
-  //    el informe a Drive y registra el link en BD. Refresca lista.
-  useEffectB(() => {
-    function onMsg(ev) {
-      if (ev.origin !== window.location.origin) return; // el iframe/pestaña hija es same-origin (informe/index.html)
-      var m = ev && ev.data;
-      if (m && m.tipo === 'informe-f43-subido' && m.link) {
-        setDatos(prev => prev.map(r =>
-          r._idx === parseInt(m.fila, 10)
-            ? { ...r, 'LINK_DOCX_INFORME': m.link }
-            : r
-        ));
-      }
+  const onChangeQ = (v) => {
+    setQInput(v);
+    setSugAct(-1);
+    setSug(calcularSugerencias(v));
+  };
+  const aplicarSug = (i) => {
+    const s = sug[i];
+    if (!s) return;
+    if (s.g !== 'Caso') { setQInput(''); parcharS({ q: '' }); }
+    s.aplicar();
+    setSug([]); setSugAct(-1);
+  };
+  const onKeyQ = (e) => {
+    if (e.key === 'ArrowDown' && sug.length) { e.preventDefault(); setSugAct((sugAct + 1) % sug.length); }
+    else if (e.key === 'ArrowUp' && sug.length) { e.preventDefault(); setSugAct((sugAct - 1 + sug.length) % sug.length); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (sugAct >= 0) aplicarSug(sugAct);
+      else { setSug([]); }
+    } else if (e.key === 'Escape' && sug.length) { setSug([]); setSugAct(-1); }
+  };
+
+  // ── Vistas ──
+  const firmaVista = v => JSON.stringify(_diffBQ(Object.assign(filtrosBuscarVacios(), v.s)));
+  const firmaActual = JSON.stringify(_diffBQ(S));
+  const vistasTodas = _vistasBaseBQ(veTodo, hoy).concat(vistasPropias.map(v => Object.assign({ propia: true }, v)));
+  const contarVista = (v) => _nGruposBQ(universo, c => pasaBuscar(c, Object.assign(filtrosBuscarVacios(), v.s)));
+  function aplicarVista(v) {
+    setQInput(v.s.q || '');
+    setS(prev => Object.assign(filtrosBuscarVacios(), { yo: prev.yo }, v.s));
+  }
+  function guardarVista(nombre) {
+    nombre = (nombre || '').trim();
+    if (!nombre) return false;
+    const nuevas = vistasPropias.concat([{ id: 'p' + Date.now(), n: nombre, s: _diffBQ(S) }]);
+    setVistasPropias(nuevas);
+    _guardarVistasPropiasBQ(nuevas);
+    toast('Vista «' + nombre + '» guardada en este equipo');
+    return true;
+  }
+  function quitarVistaPropia(id) {
+    const nuevas = vistasPropias.filter(v => v.id !== id);
+    setVistasPropias(nuevas);
+    _guardarVistasPropiasBQ(nuevas);
+  }
+  function copiarEnlace() {
+    const diff = _diffBQ(S);
+    let ok = false;
+    try {
+      history.replaceState(null, '', '#f=' + encodeURIComponent(JSON.stringify(diff)));
+      navigator.clipboard.writeText(location.href);
+      ok = true;
+    } catch (e) { /* sin portapapeles */ }
+    toast(ok ? 'Enlace copiado: abre Buscar con estos mismos filtros'
+             : 'No se pudo copiar; la dirección quedó en la barra');
+  }
+
+  // ── Ver datos (<1200) con la gestión del admin dentro ──
+  const gestionDe = (rep) => !esAdmin ? null : (
+    <GestionBQ f={rep.f} todas={rep.todas.map(c => c.f)}
+      inspectores={inspectores} busyFila={busyFila} asignandoFila={asignandoFila}
+      setAsignandoFila={setAsignandoFila} onNuevaVisita={onNuevaVisita}
+      onAsignar={adminAsignar} onAsignarNuevaVisita={adminAsignarNuevaVisita}
+      onDesasignar={adminDesasignar} onCompletar={adminCompletar} />
+  );
+  const verDatos = (rep) => window.abrirVisitaDetail && window.abrirVisitaDetail(rep.f, gestionDe(rep));
+  // «Asignar» en la fila: elige el caso y deja el panel de inspectores abierto.
+  const asignarDesdeFila = (rep) => {
+    setAsignandoFila(rep.f._idx);
+    if (conPanel) elegir(rep);
+    else verDatos(rep);
+  };
+
+  // ── Chips activos de la cabecera de resultados ──
+  const chipsActivos = useMemoB(() => {
+    const ch = [];
+    if (S.q) ch.push({ k: 'q', l: '«' + S.q + '»', quitar: () => { setQInput(''); parcharS({ q: '' }); } });
+    S.comunas.forEach(k => ch.push({ k: 'com' + k, l: 'Comuna ' + k, quitar: () => parcharS({ comunas: S.comunas.filter(x => x !== k), barrios: S.barrios.filter(b => _comunaDeBarrioBuscar(b) !== k) }) }));
+    S.barrios.forEach(b => ch.push({ k: 'bar' + b, l: b, quitar: () => parcharS({ barrios: S.barrios.filter(x => x !== b) }) }));
+    if (S.rural) ch.push({ k: 'rural', l: 'Rural', quitar: () => parcharS({ rural: false, veredas: [] }) });
+    S.veredas.forEach(v => ch.push({ k: 'ver' + v, l: 'Vda. ' + v, quitar: () => parcharS({ veredas: S.veredas.filter(x => x !== v) }) }));
+    if (S.sinPot) ch.push({ k: 'sinpot', l: 'Sin barrio POT', quitar: () => parcharS({ sinPot: false }) });
+    if (S.desde || S.hasta) {
+      const campos = { rad: 'Radicado', asig: 'Asignación', vis: 'Visita', cierre: 'Cierre', cit: 'Citación' };
+      const fmt = iso => iso ? formatearFecha(new Date(iso.split('-')[0], iso.split('-')[1] - 1, iso.split('-')[2])) : '';
+      ch.push({ k: 'fecha', l: (campos[S.campo] || 'Radicado') + ': ' + (S.desde ? fmt(S.desde) : '…') + ' – ' + (S.hasta ? fmt(S.hasta) : 'hoy'), quitar: () => parcharS({ desde: '', hasta: '' }) });
     }
-    window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
-  }, []);
-
-  // Comunas únicas presentes en los datos cargados
-  const comunas = useMemoB(() => {
-    const s = new Set();
-    datos.forEach(f => {
-      const c = (f['COMUNA'] || f[5] || '').toString().trim();
-      if (c && !isNaN(c)) s.add(c);
+    S.visitador.forEach(v => ch.push({ k: 'opv' + v, l: titleCaseNombre(v), quitar: () => parcharS({ visitador: S.visitador.filter(x => x !== v) }) }));
+    if (S.mias) ch.push({ k: 'mias', l: 'Mías', quitar: () => parcharS({ mias: false }) });
+    S.tipo.forEach(v => ch.push({ k: 'tipo' + v, l: BQ_TIPO_L[v] || v, quitar: () => parcharS({ tipo: S.tipo.filter(x => x !== v) }) }));
+    S.nvis.forEach(v => ch.push({ k: 'nvis' + v, l: v === 'seg' ? 'Seguimiento' : 'Primera visita', quitar: () => parcharS({ nvis: S.nvis.filter(x => x !== v) }) }));
+    if (S.reit) ch.push({ k: 'reit', l: 'Con reiterados', quitar: () => parcharS({ reit: false }) });
+    S.prio.forEach(v => ch.push({ k: 'prio' + v, l: 'Prioridad ' + v.toLowerCase(), quitar: () => parcharS({ prio: S.prio.filter(x => x !== v) }) }));
+    S.infr.forEach(v => ch.push({ k: 'infr' + v, l: (v.split(':')[0] || v).trim(), quitar: () => parcharS({ infr: S.infr.filter(x => x !== v) }) }));
+    if (S.susp) ch.push({ k: 'susp', l: 'Con suspensión', quitar: () => parcharS({ susp: false }) });
+    if (S.orden) ch.push({ k: 'orden', l: 'Con orden', quitar: () => parcharS({ orden: false }) });
+    S.lic.forEach(v => ch.push({ k: 'lic' + v, l: 'Licencia ' + (v === 'SI' ? 'sí' : 'no'), quitar: () => parcharS({ lic: S.lic.filter(x => x !== v) }) }));
+    S.obra.forEach(v => ch.push({ k: 'obra' + v, l: v === 'Terminada' ? 'Obra terminada' : 'Obra en proceso', quitar: () => parcharS({ obra: S.obra.filter(x => x !== v) }) }));
+    S.falta.forEach(v => {
+      const f = BUSCAR_FALTAS.find(x => x[0] === v);
+      ch.push({ k: 'falta' + v, l: f ? f[1] : v, quitar: () => parcharS({ falta: S.falta.filter(x => x !== v) }) });
     });
-    return [...s].sort((a, b) => Number(a) - Number(b));
-  }, [datos]);
+    return ch;
+  }, [S]);
 
-  // Filtros combinados, en DOS pasos a propósito.
-  //
-  // filtradosSinEstado aplica todo menos el estado; sobre él se cuentan los
-  // cuatro chips. Así el conteo de cada estado respeta texto, comuna,
-  // visitador, rural y antigüedad, pero IGNORA la selección de estado — que es
-  // su propia dimensión. Consecuencia buscada: activar "Pendientes" no deja
-  // los otros tres chips en 0, sigue diciendo cuántas verías si los tocas
-  // (convención de facetas de GitHub/Linear). Filtrar por C3 sí mueve los cuatro.
-  const filtradosSinEstado = useMemoB(() => {
-    const lq = q.trim().toUpperCase();
-    // La orden se compara además sin ceros a la izquierda en cada tramo
-    // numérico: en BD va "2026-09-015" y el inspector suele teclear
-    // "2026-9-15" o "15", tal como la escribió en el papel.
-    const _sinCeros = s => s.replace(/\d+/g, n => String(parseInt(n, 10)));
-    const lqOrden = _sinCeros(lq);
-    // La dirección se compara además sin separadores: `CL 50 # 32 10` o
-    // `3210` encuentran `CALLE 50 # 32-10` (claveBusquedaDireccion, utils.js).
-    const lqDir = claveBusquedaDireccion(lq);
-    return datos.filter(f => {
-      if (lq) {
-        const orden = ordenPoliciaDe(f).toUpperCase();
-        const hay = ['RADICADO', 'DIRECCION INFRACCION', 'DIRECCION', 'BARRIO/VEREDA', 'BARRIO', 'NOMBRE PERSONA ATIENDE']
-          .some(k => (f[k] || '').toString().toUpperCase().includes(lq))
-          || (!!lqDir && ['DIRECCION INFRACCION', 'DIRECCION']
-            .some(k => !!f[k] && claveBusquedaDireccion(f[k]).includes(lqDir)))
-          || (!!orden && (orden.includes(lq) || _sinCeros(orden).includes(lqOrden)))
-          // Radicado reiterado: anotado en la fila del caso principal.
-          || coincideReiterado(f, lq);
-        if (!hay) return false;
-      }
-      if (filtroComunas.length) {
-        const c = (f['COMUNA'] || f[5] || '').toString().trim();
-        if (!filtroComunas.includes(c)) return false;
-      }
-      if (filtrosVisitador.length) {
-        const v = visitadoresBD(f).toUpperCase();
-        if (!filtrosVisitador.some(x => v.includes(x))) return false;
-      }
-      if (filtroRural) {
-        const b = (f['BARRIO/VEREDA'] || f[4] || '').toString().trim();
-        if (!b.startsWith('Vda.')) return false;
-      }
-      if (!_pasaAntiguedad(f, filtroAntiguedad)) return false;
-      return true;
-    });
-  }, [datos, q, filtroComunas, filtrosVisitador, filtroRural, filtroAntiguedad]);
+  const listo = !cargando && !error;
+  const visibles = lista.slice(0, limite);
+  const ocultos = Math.max(0, lista.length - limite);
 
-  // Conteo por estado sobre el universo SIN la selección de estado (ver arriba).
-  const conteosEstado = useMemoB(() => {
-    const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0 };
-    filtradosSinEstado.forEach(f => {
-      const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-      if (c[e] != null) c[e]++;
-    });
-    return c;
-  }, [filtradosSinEstado]);
+  // Divider «Completadas» en orden urg: las completadas van al final.
+  let enCompletadas = false;
 
-  const filtrados = useMemoB(() => {
-    if (!filtrosEstado.length) return filtradosSinEstado;
-    return filtradosSinEstado.filter(f =>
-      filtrosEstado.includes(normalizarEstado(f['ESTADO VISITA'] || f[13] || '')));
-  }, [filtradosSinEstado, filtrosEstado]);
-
-  // Agrupar por radicado (solo los reales: ver _claveGrupo)
-  const grupos = useMemoB(() => {
-    const g = {};
-    filtrados.forEach(f => {
-      const k = _claveGrupo(f);
-      (g[k] = g[k] || []).push(f);
-    });
-    return g;
-  }, [filtrados]);
-
-  function toggleEnArr(arr, v) {
-    return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
-  }
-
-  function limpiar() {
-    setQInput(''); setQ(''); setFiltrosEstado([]); setFiltroComunas([]);
-    setFiltrosVisitador([]); setFiltroRural(false); setFiltroAntiguedad('');
-  }
-
-  // Filtros del panel plegable (sin texto ni estado, que siempre están a la vista).
-  const nFiltrosPanel = filtroComunas.length + filtrosVisitador.length
-    + (filtroRural ? 1 : 0) + (filtroAntiguedad ? 1 : 0);
-
-  const hayFiltros = !!q || filtrosEstado.length || filtroComunas.length
-    || filtrosVisitador.length || filtroRural || !!filtroAntiguedad;
-
-  // Filtros activos como chips quitables en la cabecera de resultados: sin
-  // esto el contador dice "412 de 2.014" y no hay forma de saber de qué 412
-  // se habla sin volver a mirar la columna de la izquierda.
-  const chipsActivos = [];
-  if (q) chipsActivos.push({ k: 'q', l: '"' + q + '"', quitar: () => { setQInput(''); setQ(''); } });
-  filtrosEstado.forEach(e => chipsActivos.push({
-    k: 'e' + e, l: ESTADO_LABEL[e] || e,
-    quitar: () => setFiltrosEstado(filtrosEstado.filter(x => x !== e)),
-  }));
-  filtroComunas.forEach(c => chipsActivos.push({
-    k: 'c' + c, l: 'C' + c,
-    quitar: () => setFiltroComunas(filtroComunas.filter(x => x !== c)),
-  }));
-  filtrosVisitador.forEach(v => chipsActivos.push({
-    k: 'v' + v, l: titleCaseNombre(v),
-    quitar: () => setFiltrosVisitador(filtrosVisitador.filter(x => x !== v)),
-  }));
-  if (filtroRural) chipsActivos.push({ k: 'rural', l: 'Rural', quitar: () => setFiltroRural(false) });
-  if (filtroAntiguedad) {
-    const op = ANTIGUEDADES.find(a => a.val === filtroAntiguedad);
-    chipsActivos.push({ k: 'ant', l: op ? op.l : filtroAntiguedad, quitar: () => setFiltroAntiguedad('') });
-  }
-
+  // ── Render ──
   return (
     <div className="pantalla activa pad-bottom buscar-pantalla">
-      {/* Mismo nombre que la pestaña del nav: antes la pestaña decía "Buscar"
-          y el título de la pantalla "Visitas". */}
-      {/* Título + barra de búsqueda en un solo bloque fijo (.titulo-fijo): en
+      {/* Título + casilla + estados en un bloque fijo (.titulo-fijo): en
           móvil la casilla queda a mano mientras se recorre la lista. */}
-      <div className="titulo-fijo buscar-fijo">
-      <div className="page-title" style={{ marginBottom: 12 }}>Buscar</div>
-
-      {/* Barra de búsqueda a todo el ancho, FUERA de .buscar-2col: es el
-          control principal de la pantalla, no un campo más de la tarjeta de
-          filtros. Fuera del grid porque un sticky dentro se ancla al scroller
-          de la columna, no a la pantalla. */}
-      <div className="buscar-barra">
-        <div className="buscar-barra-input">
-          <span className="buscar-barra-lupa" aria-hidden="true"><Icon.Search size={16} /></span>
-          <input type="text" className="input-campo" ref={inputBuscarRef}
-            aria-label="Buscar radicado, orden de policía, dirección, barrio o persona que atiende"
-            placeholder="Radicado, orden de policía, dirección, barrio, persona que atiende...   /"
-            value={qInput} onChange={e => setQInput(e.target.value)} />
-          {qInput && (
-            <button type="button" className="buscar-barra-x" aria-label="Limpiar búsqueda"
-              onClick={() => { setQInput(''); setQ(''); }}>
-              <Icon.Close size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* Estado chips — "visita" es femenino en toda la app: Asignadas,
-            no "Asignados" como decía antes. El número es el conteo facetado
-            (respeta los demás filtros, ignora la selección de estado). */}
-        <div className="filtros-estado" style={{ marginBottom: 0 }}>
-          {ESTADOS_BUSCAR.map(est => {
-            const activo = filtrosEstado.includes(est);
-            return (
-              <button key={est} aria-pressed={activo}
-                className={'btn-filtro' + (activo ? ' ' + ESTADO_CLASE[est] : '')}
-                onClick={() => setFiltrosEstado(toggleEnArr(filtrosEstado, est))}>
-                {ESTADO_LABEL[est]}
-                <span className="btn-filtro-num">{conteosEstado[est].toLocaleString('es-CO')}</span>
-              </button>
-            );
-          })}
-          {/* Solo <1200: abre/cierra comuna, visitador y antigüedad. El número
-              dice cuántos hay activos aunque el panel esté plegado. */}
-          <button type="button" className="btn-filtro buscar-filtros-toggle"
-            aria-expanded={filtrosAbiertos} aria-controls="buscar-filtros"
-            onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}>
-            Filtros{nFiltrosPanel > 0 && <span className="btn-filtro-num">· {nFiltrosPanel}</span>}
-            {filtrosAbiertos ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
-          </button>
-        </div>
-      </div>
-      </div>{/* .buscar-fijo */}
-
-      {/* ≥1200: filtros fijos a la izquierda (.buscar-col-izq), resultados
-          con scroll a la derecha (.buscar-col-der); por debajo de 1200 los
-          wrappers son divs inertes y todo va apilado como siempre. */}
-      <div className="buscar-2col">
-      <div className="buscar-col-izq">
-      <div id="buscar-filtros"
-        className={'card buscar-filtros' + (filtrosAbiertos ? '' : ' plegado')}
-        style={{ marginBottom: 12 }}>
-        {/* Sin acordeones: a 280px los chips caben abiertos y plegarlos
-            escondía el estado del filtro tras un clic. Solo Antigüedad
-            conserva pliegue, por ser el último grupo. */}
-        {comunas.length > 0 && (
-          <div className="filtro-grupo">
-            <div className="filtro-grupo-titulo">
-              Comuna {filtroComunas.length > 0 && (
-                <span style={{ color: 'var(--brand-accent)' }}>· {filtroComunas.length}</span>
-              )}
-            </div>
-            <div className="filtros-comunas">
-              {comunas.map(c => (
-                <button key={c} aria-pressed={filtroComunas.includes(c)}
-                  className={'btn-filtro' + (filtroComunas.includes(c) ? ' activo-comuna' : '')}
-                  onClick={() => setFiltroComunas(toggleEnArr(filtroComunas, c))}>
-                  C{c}
-                </button>
-              ))}
-              <button aria-pressed={filtroRural}
-                className={'btn-filtro' + (filtroRural ? ' activo-pendiente' : '')}
-                onClick={() => setFiltroRural(!filtroRural)}>Rural</button>
-            </div>
-          </div>
-        )}
-
-        {/* Visitador — admin y supervisor */}
-        {veTodo && visitadores.length > 0 && (
-          <div className="filtro-grupo">
-            <div className="filtro-grupo-titulo">
-              Visitador {filtrosVisitador.length > 0 && (
-                <span style={{ color: 'var(--brand-accent)' }}>· {filtrosVisitador.length}</span>
-              )}
-            </div>
-            <div className="filtros-estado" style={{ marginBottom: 0 }}>
-              {visitadores.map(v => (
-                <button key={v.val} aria-pressed={filtrosVisitador.includes(v.val)}
-                  className={'btn-filtro' + (filtrosVisitador.includes(v.val) ? ' activo-iniciado' : '')}
-                  onClick={() => setFiltrosVisitador(toggleEnArr(filtrosVisitador, v.val))}>
-                  {v.l}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Antigüedad del radicado — selección única: son rangos, no suman. */}
-        <div className="filtro-grupo">
-          <div className="filtro-grupo-titulo">Antigüedad del radicado</div>
-          <div className="filtros-comunas" style={{ marginBottom: 0 }}>
-            {ANTIGUEDADES.map(a => (
-              <button key={a.val} aria-pressed={filtroAntiguedad === a.val}
-                className={'btn-filtro' + (filtroAntiguedad === a.val ? ' activo-comuna' : '')}
-                onClick={() => setFiltroAntiguedad(filtroAntiguedad === a.val ? '' : a.val)}>
-                {a.l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {hayFiltros && (
-          <button className="btn-limpiar visible" style={{ marginTop: 12 }}
-            onClick={limpiar}>Limpiar filtros</button>
-        )}
-      </div>
-      </div>{/* .buscar-col-izq */}
-
-      <div className="buscar-col-der">
-      {/* Cabecera de resultados: cuántas son sobre cuántas, con qué filtros,
-          en qué orden. El «Actualizar» vive en la barra superior (app.jsx). */}
-      {!cargando && !error && (
-        <div className="buscar-resultados-head">
-          <span className="buscar-conteo">
-            {hayFiltros
-              ? `${filtrados.length.toLocaleString('es-CO')} de ${datos.length.toLocaleString('es-CO')} visitas`
-              : `${datos.length.toLocaleString('es-CO')} visitas`}
-          </span>
-
-          {chipsActivos.map(c => (
-            <button key={c.k} type="button" className="chip-filtro-activo"
-              onClick={c.quitar} title={'Quitar filtro ' + c.l}
-              aria-label={'Quitar filtro ' + c.l}>
-              {c.l}<Icon.Close size={12} />
-            </button>
-          ))}
-
-          <label className="buscar-orden">
-            <span className="buscar-orden-lbl">Ordenar</span>
-            <select value={orden} onChange={e => setOrden(e.target.value)}
-              aria-label="Ordenar resultados">
-              {ORDENES.map(o => <option key={o.val} value={o.val}>{o.l}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
-
-      {/* Lista */}
-      {cargando && (
-        <div className="cargando"><div className="spinner"></div>Cargando registros...</div>
-      )}
-      {error && (
-        <div className="card" style={{ color: 'var(--rojo)' }}>Error: {error}</div>
-      )}
-      {!cargando && !error && filtrados.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 24, fontSize: 13 }}>
-          No hay registros
-        </div>
-      )}
-      {!cargando && !error && filtrados.length > 0 && (() => {
-        const entries = _ordenarGrupos(Object.entries(grupos), orden);
-        const totalGrupos = entries.length;
-        const visibles    = entries.slice(0, limite);
-        const ocultos     = Math.max(0, totalGrupos - limite);
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {visibles.map(([rad, filas]) => (
-              <GrupoRadicado key={rad} radicado={rad} filas={filas} usuario={usuario} onContinuar={onContinuar}
-                q={q} onNuevaVisita={onNuevaVisita}
-                esAdmin={esAdmin} inspectores={inspectores} busyFila={busyFila}
-                asignandoFila={asignandoFila} setAsignandoFila={setAsignandoFila}
-                onAsignar={adminAsignar} onDesasignar={adminDesasignar} onCompletar={adminCompletar}
-                onAsignarNuevaVisita={adminAsignarNuevaVisita} />
-            ))}
-            {ocultos > 0 && (
-              <button
-                onClick={() => setLimite(l => l + LIMITE_PASO)}
-                style={{
-                  background: 'var(--gris-bg)', border: '1px solid var(--borde)',
-                  borderRadius: 10, padding: '10px 14px', fontFamily: 'inherit',
-                  fontSize: 12, fontWeight: 600, color: 'var(--texto-2)',
-                  cursor: 'pointer', marginTop: 4,
-                }}
-                title={`${ocultos} grupos más sin mostrar`}>
-                Mostrar {Math.min(LIMITE_PASO, ocultos)} más
-                <span style={{ color: 'var(--texto-suave)', fontWeight: 400, marginLeft: 6 }}>
-                  ({limite} de {totalGrupos})
-                </span>
+      <div className="titulo-fijo buscar-fijo bq-cab-fija">
+        <div className="bq-cab">
+          <div className="page-title">Buscar</div>
+          <div className="bq-omni">
+            <span className="bq-lupa" aria-hidden="true"><Icon.Search size={16} /></span>
+            <input type="text" ref={inputBuscarRef} value={qInput}
+              aria-label="Buscar radicado, orden de policía, dirección, barrio, fecha o visitador"
+              placeholder="Radicado, dirección, barrio, «sep 2026», «c4», nombre…"
+              onChange={e => onChangeQ(e.target.value)}
+              onKeyDown={onKeyQ}
+              onBlur={() => setTimeout(() => { setSug([]); setSugAct(-1); }, 150)} />
+            <span className="bq-kbd" aria-hidden="true">/</span>
+            {qInput && (
+              <button type="button" className="bq-q-x" aria-label="Limpiar búsqueda"
+                onClick={() => { setQInput(''); parcharS({ q: '' }); setSug([]); inputBuscarRef.current && inputBuscarRef.current.focus(); }}>
+                <Icon.Close size={14} />
               </button>
             )}
+            {sug.length > 0 && (
+              <div className="bq-sug" role="listbox" aria-label="Sugerencias"
+                onMouseDown={e => e.preventDefault()}>
+                <div className="bq-sug-ayuda">La lista ya se filtra por el texto. Para convertirlo en filtro: <kbd>↑</kbd><kbd>↓</kbd> y <kbd>Enter</kbd></div>
+                {sug.map((s, i) => (
+                  <React.Fragment key={i}>
+                    {(i === 0 || sug[i - 1].g !== s.g) && <div className="bq-sug-g">{s.g}</div>}
+                    <button type="button" role="option" aria-selected={i === sugAct}
+                      className={'bq-sug-i' + (i === sugAct ? ' act' : '')}
+                      onClick={() => aplicarSug(i)}>
+                      <span><MarcarBQ texto={s.titulo} q={s.g === 'Caso' || s.g === 'Fecha' ? '' : qInput} />{s.sub && <span className="bq-sug-sub"> · {s.sub}</span>}</span>
+                      {s.n != null && <small>{_n0BQ(s.n)}</small>}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
-        );
-      })()}
-      </div>{/* .buscar-col-der */}
-      </div>{/* .buscar-2col */}
+        </div>
+
+        {/* Estados: lo vivo marcado; las completadas se piden. El conteo es
+            facetado (respeta los demás filtros, ignora la selección). */}
+        <div className="bq-estados">
+          {BUSCAR_ESTADOS.map(est => (
+            <React.Fragment key={est}>
+              <button type="button" className={'bq-est' + (S.estados.includes(est) ? ' on' : '')}
+                aria-pressed={S.estados.includes(est)}
+                onClick={() => parcharS({ estados: toggleEnArr(S.estados, est) })}>
+                <span className={'bq-dot ' + BQ_EST_DOT[est]} aria-hidden="true" />
+                {BQ_EST_L[est]} <i>{_n0BQ(conteosEstado[est])}</i>
+              </button>
+              {est === 'INICIADO' && <span className="bq-sep-v" aria-hidden="true" />}
+            </React.Fragment>
+          ))}
+          {/* Solo <1600: abre el cajón de filtros. El número dice cuántos hay
+              activos aunque esté cerrado. */}
+          <button type="button" className="bq-est bq-btn-filtros"
+            aria-expanded={filtrosAbiertos} aria-controls="buscar-filtros"
+            onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}>
+            Filtros{nActivos > 0 && <i> · {nActivos}</i>}
+          </button>
+        </div>
+      </div>{/* .bq-cab-fija */}
+
+      <div className="bq-cuerpo">
+        {/* ── Columna / cajón de filtros ── */}
+        <aside id="buscar-filtros" className={'bq-filtros' + (filtrosAbiertos ? ' abierto' : '')} aria-label="Filtros">
+          <div className="bq-filtros-cab">
+            <span>Filtros</span>
+            <button type="button" className="vc-btn bq-filtros-x" aria-label="Cerrar filtros"
+              onClick={() => setFiltrosAbiertos(false)}><Icon.Close size={16} /></button>
+          </div>
+
+          {/* Vistas: las de uso diario + las propias de este equipo. */}
+          <div className="bq-sec">
+            <div className="bq-sec-tit">Vistas</div>
+            <div className="bq-vistas">
+              {vistasTodas.map(v => (
+                <div key={v.id} className="bq-vista-fila">
+                  <button type="button" className={'bq-vista' + (firmaVista(v) === firmaActual ? ' on' : '')}
+                    onClick={() => aplicarVista(v)}>
+                    {v.n}{v.propia && <span className="bq-mia"> · tuya</span>}
+                    <i>{_n0BQ(contarVista(v))}</i>
+                  </button>
+                  {v.propia && (
+                    <button type="button" className="bq-vista-x" aria-label={'Quitar vista ' + v.n}
+                      title={'Quitar vista ' + v.n} onClick={() => quitarVistaPropia(v.id)}>×</button>
+                  )}
+                </div>
+              ))}
+              {guardandoVista ? (
+                <VistaNuevaBQ onGuardar={guardarVista} onCancelar={() => setGuardandoVista(false)} />
+              ) : (
+                <button type="button" className="bq-vista bq-vista-nueva"
+                  onClick={() => setGuardandoVista(true)}>＋ Guardar esta vista</button>
+              )}
+            </div>
+          </div>
+
+          {/* Hueco deliberado: «Dónde» (mapa de comunas/barrios del POT) va en
+              E5c2 y «Cuándo» (fecha + histograma por mes) en E5d. Mientras
+              tanto, los barrios y comunas que sugiere la casilla se quitan
+              como chips en la cabecera de resultados. */}
+
+          <BQSeccion titulo="Quién" n={activos.quien}>
+            {veTodo && (
+              <>
+                <div className="bq-lbl">Visitador</div>
+                <div className="bq-opts">
+                  {inspectores.map(u => {
+                    const v = String(u.nombre || '').toUpperCase();
+                    const n = conteoGrupo(v, 'visitador', (c, x) => c.vis.indexOf(x) !== -1);
+                    return (
+                      <button key={v} type="button" className={'bq-op' + (S.visitador.includes(v) ? ' on' : '') + (n === 0 && !S.visitador.includes(v) ? ' cero' : '')}
+                        aria-pressed={S.visitador.includes(v)}
+                        onClick={() => parcharS({ visitador: toggleEnArr(S.visitador, v) })}>
+                        <span>{titleCaseNombre(v)}</span><i>{_n0BQ(n)}</i>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            {!!S.yo && (
+              <>
+                <div className="bq-lbl">Mías</div>
+                <div className="bq-opts">
+                  <button type="button" className={'bq-op' + (S.mias ? ' on' : '')} aria-pressed={S.mias}
+                    onClick={() => parcharS({ mias: !S.mias })}>
+                    <span>Visitas que me llevan</span><i>{_n0BQ(faceta(c => pasaBuscar(c, S, 'mias') && c.vis.indexOf(S.yo) !== -1))}</i>
+                  </button>
+                </div>
+              </>
+            )}
+            <div className="bq-lbl">Tipo de caso</div>
+            <div className="bq-opts">
+              {['PQR', 'OFICIO', 'V2'].map(v => (
+                <button key={v} type="button" className={'bq-op' + (S.tipo.includes(v) ? ' on' : '')} aria-pressed={S.tipo.includes(v)}
+                  onClick={() => parcharS({ tipo: toggleEnArr(S.tipo, v) })}>
+                  <span>{BQ_TIPO_L[v]}</span><i>{_n0BQ(conteoGrupo(v, 'tipo', (c, x) => c.tipo === x))}</i>
+                </button>
+              ))}
+            </div>
+            <div className="bq-lbl">Visita</div>
+            <div className="bq-opts">
+              {[['pri', 'Primera visita'], ['seg', 'Seguimiento']].map(par => (
+                <button key={par[0]} type="button" className={'bq-op' + (S.nvis.includes(par[0]) ? ' on' : '')} aria-pressed={S.nvis.includes(par[0])}
+                  onClick={() => parcharS({ nvis: toggleEnArr(S.nvis, par[0]) })}>
+                  <span>{par[1]}</span><i>{_n0BQ(conteoGrupo(par[0], 'nvis', (c, x) => (c.nvis > 1 ? 'seg' : 'pri') === x))}</i>
+                </button>
+              ))}
+              <button type="button" className={'bq-op' + (S.reit ? ' on' : '')} aria-pressed={S.reit}
+                onClick={() => parcharS({ reit: !S.reit })}>
+                <span>Con reiterados</span><i>{_n0BQ(faceta(c => pasaBuscar(c, S, 'reit') && c.reit.length > 0))}</i>
+              </button>
+            </div>
+            {veTodo && (
+              <>
+                <div className="bq-lbl">Prioridad de la PQR</div>
+                <div className="bq-opts">
+                  {['Crítica', 'Alta', 'Media', 'Baja', 'Sin análisis'].map(v => (
+                    <button key={v} type="button" className={'bq-op' + (S.prio.includes(v) ? ' on' : '')} aria-pressed={S.prio.includes(v)}
+                      onClick={() => parcharS({ prio: toggleEnArr(S.prio, v) })}>
+                      <span>{v}</span><i>{_n0BQ(conteoGrupo(v, 'prio', (c, x) => c.prio === x))}</i>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </BQSeccion>
+
+          <BQSeccion titulo="Qué se encontró" n={activos.que}>
+            {valoresInfr.length > 0 && (
+              <>
+                <div className="bq-lbl">Infracción</div>
+                <div className="bq-opts">
+                  {valoresInfr.map(v => (
+                    <button key={v} type="button" title={v}
+                      className={'bq-op' + (S.infr.includes(v) ? ' on' : '')} aria-pressed={S.infr.includes(v)}
+                      onClick={() => parcharS({ infr: toggleEnArr(S.infr, v) })}>
+                      <span>{(v.split(':')[0] || v).trim()}</span><i>{_n0BQ(conteoGrupo(v, 'infr', (c, x) => c.infr.indexOf(x) !== -1))}</i>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="bq-lbl">Obra</div>
+            <div className="bq-opts">
+              <button type="button" className={'bq-op' + (S.susp ? ' on' : '')} aria-pressed={S.susp}
+                onClick={() => parcharS({ susp: !S.susp })}>
+                <span>Con suspensión</span><i>{_n0BQ(faceta(c => pasaBuscar(c, S, 'susp') && c.susp))}</i>
+              </button>
+              <button type="button" className={'bq-op' + (S.orden ? ' on' : '')} aria-pressed={S.orden}
+                onClick={() => parcharS({ orden: !S.orden })}>
+                <span>Con orden de policía</span><i>{_n0BQ(faceta(c => pasaBuscar(c, S, 'orden') && !!c.orden))}</i>
+              </button>
+              {['SI', 'NO'].map(v => (
+                <button key={v} type="button" className={'bq-op' + (S.lic.includes(v) ? ' on' : '')} aria-pressed={S.lic.includes(v)}
+                  onClick={() => parcharS({ lic: toggleEnArr(S.lic, v) })}>
+                  <span>Licencia {v === 'SI' ? 'sí' : 'no'}</span><i>{_n0BQ(conteoGrupo(v, 'lic', (c, x) => c.lic === x))}</i>
+                </button>
+              ))}
+              {valoresObra.map(v => (
+                <button key={v} type="button" className={'bq-op' + (S.obra.includes(v) ? ' on' : '')} aria-pressed={S.obra.includes(v)}
+                  onClick={() => parcharS({ obra: toggleEnArr(S.obra, v) })}>
+                  <span>{v === 'Terminada' ? 'Obra terminada' : 'Obra en proceso'}</span><i>{_n0BQ(conteoGrupo(v, 'obra', (c, x) => c.obra === x))}</i>
+                </button>
+              ))}
+            </div>
+          </BQSeccion>
+
+          <BQSeccion titulo="Qué falta" n={activos.falta}>
+            <div className="bq-opts">
+              {BUSCAR_FALTAS.map(par => (
+                <button key={par[0]} type="button" className={'bq-op' + (S.falta.includes(par[0]) ? ' on' : '')} aria-pressed={S.falta.includes(par[0])}
+                  onClick={() => parcharS({ falta: toggleEnArr(S.falta, par[0]) })}>
+                  <span>{par[1]}</span><i>{_n0BQ(conteoGrupo(par[0], 'falta', (c, x) => c.faltas.indexOf(x) !== -1))}</i>
+                </button>
+              ))}
+            </div>
+            <p className="bq-nota">Solo visitas de <b>{BUSCAR_FALTAS_DESDE_ANIO}</b> en adelante: antes la app no generaba entregables.</p>
+          </BQSeccion>
+        </aside>
+
+        {filtrosAbiertos && <div className="bq-velo" onClick={() => setFiltrosAbiertos(false)} aria-hidden="true" />}
+
+        {/* ── Lista ── */}
+        <div className="bq-lista">
+          {listo && (
+            <div className="bq-res-cab">
+              <span className="bq-conteo">
+                <b>{_n0BQ(lista.length)}</b> {lista.length === 1 ? 'caso' : 'casos'} de {_n0BQ(totalGrupos)}
+              </span>
+              <div className="bq-res-acc">
+                <label className="bq-orden">Ordenar
+                  <select value={orden} onChange={e => setOrden(e.target.value)} aria-label="Ordenar resultados">
+                    {BQ_ORDENES.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
+                  </select>
+                </label>
+                <button type="button" className="vc-btn bq-ico" onClick={copiarEnlace}
+                  title="Copiar enlace con estos filtros" aria-label="Copiar enlace con estos filtros">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+                    <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+                  </svg>
+                </button>
+              </div>
+              {chipsActivos.length > 0 && (
+                <div className="bq-activos">
+                  {chipsActivos.map(c => (
+                    <button key={c.k} type="button" className="chip-filtro-activo"
+                      onClick={c.quitar} title={'Quitar filtro ' + c.l} aria-label={'Quitar filtro ' + c.l}>
+                      {c.l}<Icon.Close size={12} />
+                    </button>
+                  ))}
+                  {chipsActivos.length > 1 && (
+                    <button type="button" className="bq-limpiar-todo" onClick={limpiarTodo}>Limpiar todo</button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {cargando && (
+            <div className="cargando"><div className="spinner"></div>Cargando registros...</div>
+          )}
+          {error && (
+            <div className="card" style={{ color: 'var(--rojo)' }}>Error: {error}</div>
+          )}
+          {listo && lista.length === 0 && (
+            <div className="bq-vacio">
+              <b>Ningún caso con estos filtros</b>
+              Quita alguno de los chips de arriba o <button type="button" className="bq-volver" onClick={limpiarTodo}>limpia todo</button>.
+            </div>
+          )}
+          {listo && completadasOcultas > 0 && (
+            <div className="bq-tambien">
+              También coinciden <b>{_n0BQ(completadasOcultas)}</b> completadas
+              <button type="button" className="vc-btn"
+                onClick={() => parcharS({ estados: S.estados.concat(['COMPLETADO']) })}>Ver</button>
+            </div>
+          )}
+          {listo && lista.length > 0 && visibles.map((c, i) => {
+            const esExacta = i === 0 && S.q && esExactaBuscar(c, S.q);
+            const divisor = orden === 'urg' && c.estado === 'COMPLETADO' && !enCompletadas && i > 0;
+            if (divisor) enCompletadas = true;
+            return (
+              <React.Fragment key={c.clave}>
+                {divisor && <div className="bq-div">Completadas <span>la más reciente primero</span></div>}
+                <FilaBQ key={c.clave} c={c} q={S.q} exacta={esExacta}
+                  sel={sel && sel.clave === c.clave} conPanel={conPanel}
+                  esAdmin={esAdmin} yo={S.yo} veTodo={veTodo}
+                  onElegir={elegir} onContinuar={onContinuar} onVerDatos={verDatos}
+                  onAsignarFila={asignarDesdeFila} />
+              </React.Fragment>
+            );
+          })}
+          {listo && ocultos > 0 && (
+            <button type="button" className="vc-btn mv-mas" onClick={() => setLimite(l => l + BQ_LIMITE_PASO)}>
+              Mostrar {Math.min(BQ_LIMITE_PASO, ocultos)} más <span>({limite} de {_n0BQ(lista.length)})</span>
+            </button>
+          )}
+        </div>
+
+        {/* ── Ficha del caso elegido (≥1200) ──
+            Sin key por visita: cada mapa nuevo se factura (misma regla del
+            panel de Mis visitas). La gestión del admin va dentro. */}
+        {conPanel && sel && (
+          <section className="mv-panel bq-caso" aria-label={'Ficha de ' + (sel.dir || 'la visita')}>
+            <FichaVisita f={sel.f} usuario={usuario} verPrioridad={veTodo}
+              onContinuar={onContinuar} gestion={gestionDe(sel)} />
+          </section>
+        )}
+      </div>{/* .bq-cuerpo */}
+
+      <div className="bq-toast" role="status" hidden={!toastBQ}>{toastBQ}</div>
     </div>
   );
 }
 
-// extraerIdCarpetaDrive() vive en utils.js (compartida con informe-modal.jsx).
+// ── Sección plegable del panel de filtros ─────────────────────
+function BQSeccion({ titulo, n, children }) {
+  const [plegada, setPlegada] = useStateB(true);
+  return (
+    <div className={'bq-sec' + (plegada ? ' bq-plegada' : '')}>
+      <button type="button" className="bq-sec-tit" aria-expanded={!plegada}
+        onClick={() => setPlegada(!plegada)}>
+        {titulo}{n > 0 && <span className="bq-sec-n">· {n}</span>}
+        <span className="bq-chev" aria-hidden="true">▾</span>
+      </button>
+      <div className="bq-sec-cuerpo">{children}</div>
+    </div>
+  );
+}
 
-// React.memo más abajo. Cada GrupoRadicado se re-renderiza solo si cambian
-// sus props (radicado, filas, usuario); un keystroke en el buscador que
-// reduce filtros ya no rerenderea todas las tarjetas visibles.
-function GrupoRadicadoBase({ radicado, filas, usuario, onContinuar, q, onNuevaVisita,
-  esAdmin, inspectores, busyFila, asignandoFila, setAsignandoFila,
-  onAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
-  const [open, setOpen] = useStateB(filas.length === 1);
+// ── Formulario de vista nueva ─────────────────────────────────
+function VistaNuevaBQ({ onGuardar, onCancelar }) {
+  const [nombre, setNombre] = useStateB('');
+  const ref = useRefB(null);
+  useEffectB(() => { ref.current && ref.current.focus(); }, []);
+  return (
+    <div className="bq-vista-form">
+      <input ref={ref} value={nombre} placeholder="Nombre de la vista" maxLength={40}
+        onChange={e => setNombre(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (onGuardar(nombre)) onCancelar(); } }} />
+      <button type="button" className="vc-btn vc-btn-cta"
+        onClick={() => { if (onGuardar(nombre)) onCancelar(); }}>Guardar</button>
+    </div>
+  );
+}
 
-  // Orden y numeración de visitas del radicado (numerarVisitasRadicado
-  // en utils.js): respeta el N° VISITA explícito de BD, asigna el primer
-  // número libre a las filas migradas de V2 sin número, y deja fuera de
-  // la numeración (n = null) las filas PENDIENTE — una PQR sin asignar
-  // no es una visita.
-  const ordenadas = useMemoB(() => numerarVisitasRadicado(filas), [filas]);
-  // Solo cuentan como visitas reales las numeradas (ASIGNADO/INICIADO/COMPLETADO).
-  const totalVisitas = ordenadas.filter(x => x.n != null).length;
+// ═══════════════════════════════════════════════════════════════
+// Fila de la lista: un caso por fila, con el código de Mis visitas
+// (barra de estado, un solo botón lleno, demora en rojo).
+// ═══════════════════════════════════════════════════════════════
+function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, onContinuar, onVerDatos, onAsignarFila }) {
+  const f = c.f;
+  const estCls = { PENDIENTE: 'bq-pend', ASIGNADO: '', INICIADO: 'mv-curso', COMPLETADO: 'mv-hecha' }[c.estado] || '';
+  const m = q ? coincideBuscar(c, q) : '';
 
-  // Una visita en curso (ASIGNADO o INICIADO) bloquea crear otra sobre el
-  // mismo radicado: dos visitas vivas a la vez duplican el trabajo y dejan
-  // sin definir cuál manda. Se libera al completar la que está en curso.
-  // Una PENDIENTE no es visita en curso y no muestra el rótulo — pero
-  // tampoco habilita "+ Nueva visita": sobre una PQR sin asignar la acción
-  // correcta es Asignar, y ese botón ya vive en la fila.
-  const abierta = ordenadas.find(x => {
-    const e = normalizarEstado(x.f['ESTADO VISITA'] || '');
+  // CTA único por estado: Asignar (admin, pendiente), Iniciar o Continuar.
+  let cta = null;
+  if (c.estado === 'PENDIENTE') {
+    cta = esAdmin ? { t: 'Asignar', fn: () => onAsignarFila(c) } : { t: 'Iniciar', fn: () => onContinuar(f._idx, f) };
+  } else if ((c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && puedeDiligenciar(f)) {
+    cta = { t: c.estado === 'INICIADO' ? 'Continuar' : 'Iniciar', fn: () => onContinuar(f._idx, f) };
+  }
+  const sinPropagar = fn => e => { e.stopPropagation(); fn(); };
+
+  return (
+    <React.Fragment>
+      {exacta && <div className="bq-exacta">Coincidencia exacta</div>}
+      <div className={'mv-fila bq-fila ' + estCls + (sel ? ' sel' : '')}
+        aria-current={sel || undefined}
+        onClick={conPanel ? () => onElegir(c) : undefined}>
+        {c.estado === 'COMPLETADO' && (
+          <span className="mv-fecha">{c.fCierre ? c.fCierre.getDate() + ' ' + _MESES_ES[c.fCierre.getMonth()].slice(0, 3) : '—'}</span>
+        )}
+        <div className="mv-txt">
+          <button type="button" className="mv-dir" title={c.dir}
+            aria-pressed={conPanel ? sel : undefined}
+            onClick={sinPropagar(conPanel ? () => onElegir(c) : () => onVerDatos(c))}>
+            <MarcarBQ texto={c.dir} q={q} />
+          </button>
+          <div className="vc-ident">
+            {c.tipo === 'V2'
+              ? <span className="bq-v2" title="Fila migrada de V2 sin número de radicado"><span className="bq-tag">V2</span> <MarcarBQ texto={c.rad} q={q} /></span>
+              : <span className="vc-rad"><MarcarBQ texto={c.rad} q={q} /></span>}
+            {!conPanel && <BotonPdfRadicado f={f} />}
+            {c.rural
+              ? <><span className="vc-sep">·</span><span>Vda. <MarcarBQ texto={c.vereda} q={q} /></span></>
+              : c.barrio
+                ? <><span className="vc-sep">·</span><span><MarcarBQ texto={c.barrio} q={q} /></span></>
+                : c.barrioTxt
+                  ? <><span className="vc-sep">·</span><span title="El nombre escrito no calza con ningún barrio del POT"><MarcarBQ texto={c.barrioTxt} q={q} /> <span className="bq-tag">sin POT</span></span></>
+                  : null}
+            {!c.rural && c.comuna && <><span className="vc-sep">·</span><span>C{c.comuna}</span></>}
+            {c.nVisitasGrupo > 1 && <span className="bq-tag">{c.nVisitasGrupo} visitas</span>}
+          </div>
+          <NotaFilaBQ c={c} q={q} yo={yo} veTodo={veTodo} donde={m} />
+        </div>
+        <div className="mv-acc">
+          {cta
+            ? <button type="button" className="vc-btn vc-btn-cta" onClick={sinPropagar(cta.fn)}>
+                {cta.t !== 'Asignar' && <Icon.Play size={14} />}{cta.t}
+              </button>
+            : (c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && !conPanel && (
+              <span className="vc-dilig">Diligencia {titleCaseNombre(c.vis[0] || '')}</span>)}
+          {!conPanel && c.estado !== 'COMPLETADO' && <BotonMapaVisita f={f} variante="vc" />}
+          {!conPanel && (
+            <button type="button" className="vc-btn" onClick={sinPropagar(() => onVerDatos(c))}>Ver datos</button>
+          )}
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
+// Tercer renglón de la fila: por qué está en la lista y qué le falta.
+function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
+  const partes = [];
+  const dias = n => n === 0 ? 'hoy' : 'hace ' + _pluralBQ(n, 'día', 'días');
+  if (c.estado === 'PENDIENTE') {
+    if (veTodo) {
+      const vencida = c.exceso != null && c.exceso > 0 && c.tier >= 2;
+      partes.push(
+        <b key="p" className={vencida ? 'demora' : ''}>
+          {c.prio}{c.exceso != null && c.tier >= 1 ? ' · ' + (vencida ? 'vencida hace ' + c.exceso + ' días' : 'a ' + (-c.exceso) + ' días del plazo') : ''}
+        </b>);
+      partes.push(<span key="s">sin asignar</span>);
+    } else {
+      partes.push(<span key="r">Radicada hace {_pluralBQ(c.dCal, 'día', 'días')} · sin asignar</span>);
+    }
+  } else if (c.estado === 'ASIGNADO') {
+    const d = diasSinIniciar(c.f);
+    partes.push(<span key="q">Asignada a {titleCaseNombre(c.vis[0] || '')}</span>);
+    partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>{dias(d || 0)}</b>);
+  } else if (c.estado === 'INICIADO') {
+    const d = diasSinCompletar(c.f);
+    const faltan = ['acta', 'orden', 'rf'].filter(k => c.faltas.indexOf(k) !== -1).map(k => BQ_FALTA_FILA[k]);
+    partes.push(<span key="q">Iniciada por {titleCaseNombre(c.vis[0] || '')}</span>);
+    partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>visitada {dias(d || 0)}</b>);
+    partes.push(faltan.length
+      ? <b key="f" className="falta">Falta: {faltan.join(' · ')}</b>
+      : <b key="f" className="ok">Entregables completos</b>);
+  } else {
+    partes.push(<span key="q">{titleCaseNombre(c.vis[0] || '')}{c.vis.length > 1 ? ' +1' : ''}</span>);
+    if (c.faltas.indexOf('informe') !== -1) partes.push(<b key="i" className="falta">Sin informe</b>);
+    if (c.susp) partes.push(<span key="s">suspensión</span>);
+  }
+  // En qué campo no evidente calzó el texto (orden, persona que atiende, reiterado).
+  if (donde === 'orden') partes.push(<span key="o">coincide en orden de policía: <MarcarBQ texto={c.orden} q={q} /></span>);
+  if (donde === 'atiende') partes.push(<span key="a">coincide en persona que atiende: <MarcarBQ texto={c.atiende} q={q} /></span>);
+  if (donde === 'reit') {
+    const r = c.reit.find(x => _normBQ(x).indexOf(_normBQ(q)) !== -1) || c.reit[0];
+    partes.push(<span key="r">reitera <MarcarBQ texto={r} q={q} /></span>);
+  }
+  return (
+    <div className="mv-nota">
+      {partes.map((p, i) => <React.Fragment key={i}>{i > 0 && ' · '}{p}</React.Fragment>)}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Gestión del admin: se inyecta en la ficha (prop `gestion` de
+// FichaVisita), en el panel de Buscar y en «Ver datos» sin panel.
+// Reasignar conserva el estado de una INICIADA (con confirmación);
+// completar ofrece el oficio de vigilancia; el seguimiento («+ Nueva
+// visita») se apoya en la última visita del caso.
+// ═══════════════════════════════════════════════════════════════
+function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignandoFila,
+  onNuevaVisita, onAsignar, onAsignarNuevaVisita, onDesasignar, onCompletar }) {
+  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  const busy = busyFila === f._idx;
+  const abierto = asignandoFila === f._idx;
+
+  // El caso completo (todas las visitas del radicado) decide si puede abrir
+  // un seguimiento: una visita en curso bloquea crear otra sobre el mismo
+  // radicado, y una PENDIENTE no lo habilita (sobre ella va «Asignar»).
+  const abierta = todas.find(x => {
+    const e = normalizarEstado(x['ESTADO VISITA'] || '');
     return e === 'ASIGNADO' || e === 'INICIADO';
   });
-  const pendiente = ordenadas.find(x =>
-    normalizarEstado(x.f['ESTADO VISITA'] || '') === 'PENDIENTE');
+  const pendiente = todas.find(x => normalizarEstado(x['ESTADO VISITA'] || '') === 'PENDIENTE');
+  const ordenadas = useMemoB(() => numerarVisitasRadicado(todas), [todas]);
   const filaBase = ordenadas.length ? ordenadas[ordenadas.length - 1].f : null;
-  // Sin radicado real no hay caso que seguir: la visita nueva clonaría una
-  // fila suelta de V2 bajo un «radicado» que comparten casos distintos.
-  const puedeNueva = esAdmin && onAsignarNuevaVisita && filaBase && !_esSinRadicado(radicado);
-  const panelNuevaAbierto = !!filaBase && asignandoFila === filaBase._idx;
+  const radicadoReal = esRadicadoDeCaso(String(f['RADICADO'] || '').trim().toUpperCase());
+  const totalVisitas = ordenadas.filter(x => x.n != null).length;
+  const puedeNueva = !!filaBase && radicadoReal;
+  const panelNuevaAbierto = !!filaBase && asignandoFila === ('nueva:' + filaBase._idx);
+
+  const abrirPanel = (id) => setAsignandoFila(asignandoFila === id ? null : id);
 
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      {(filas.length > 1 || puedeNueva) && (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, paddingRight: 10,
-        borderBottom: (open || panelNuevaAbierto) ? '1px solid var(--borde)' : 'none',
-      }}>
-        {/* Con una sola visita el chevron y el radicado sobran: la tarjeta de
-            abajo ya dice el radicado, y repetirlo era la línea más cara de la
-            lista. Queda solo "+ Nueva visita", que es acción del radicado. */}
-        {filas.length > 1 && (
-        <button type="button" className="btn-cabecera grupo-cab" onClick={() => setOpen(!open)}
-          aria-expanded={open}>
-          <span className="grupo-cab-chev">
-            {open ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
-          </span>
-          <span className="grupo-cab-rad">{radicado}</span>
-          {/* Solo cuentan las visitas reales (ASIGNADO/INICIADO/COMPLETADO):
-              un radicado con única fila PENDIENTE no es visita y no muestra
-              nada (2026-09-09, antes decía "1 visita"). */}
-          {totalVisitas > 0 && (
-            <span className="grupo-cab-n">
-              {totalVisitas} {totalVisitas === 1 ? 'visita' : 'visitas'}
-            </span>
-          )}
-        </button>
+    <section className="fv-sec bq-gestion">
+      <h3 className="mv-sub">Gestión</h3>
+      <div className="bq-seg">
+        {est === 'PENDIENTE' && (
+          <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
+            {abierto ? 'Cancelar' : 'Asignar'}
+          </button>
         )}
-        {filas.length === 1 && <span style={{ flex: 1 }} />}
-
-        {/* "+ Nueva visita" es del radicado, no de una fila: vive en la
-            cabecera del grupo. Se apoya en la última visita para clonar los
-            datos fijos (dirección, barrio, GPS...). */}
-        {/* Dos botones, un trabajo cada uno. Antes "+ Nueva visita" solo
-            abría la lista de inspectores y al tocar un nombre creaba la fila
-            ya ASIGNADA: el rótulo prometía crear y la acción era crear y
-            asignar. Ahora "+ Nueva visita" abre el formulario (la hago yo,
-            ahora) y "Asignar" abre el panel sin cambiar de pantalla. */}
-        {puedeNueva && (abierta ? (
-          <span style={{ fontSize: 11, color: 'var(--texto-suave)', textAlign: 'right' }}
-            title="Completa la visita en curso antes de abrir otra">
-            Visita {abierta.n} en curso
-          </span>
-        ) : !pendiente && (
+        {(est === 'ASIGNADO' || est === 'INICIADO') && (
           <>
-            <button type="button" className="vc-btn"
-              style={{ borderStyle: 'dashed', borderColor: 'var(--brand-accent)' }}
-              disabled={busyFila === filaBase._idx}
-              onClick={() => onNuevaVisita && onNuevaVisita(filaBase, totalVisitas + 1)}>
-              + Nueva visita
+            <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
+              {abierto ? 'Cancelar' : 'Reasignar'}
             </button>
-            <button type="button" className="vc-btn"
-              disabled={busyFila === filaBase._idx}
-              onClick={() => setAsignandoFila(panelNuevaAbierto ? null : filaBase._idx)}>
-              {panelNuevaAbierto ? 'Cancelar' : 'Asignar'}
+            <button type="button" className="vc-btn" disabled={busy}
+              onClick={() => onDesasignar(f._idx, f['RADICADO'])}>
+              <Icon.Undo size={14} /> Desasignar
             </button>
           </>
-        ))}
+        )}
+        {est === 'INICIADO' && (
+          <button type="button" className="vc-btn vc-btn-cta" disabled={busy}
+            onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])}>
+            <Icon.Check size={14} /> Completar
+          </button>
+        )}
+        {puedeNueva && (abierta
+          ? <span className="vc-dilig" title="Completa la visita en curso antes de abrir otra">Visita {abierta.n} en curso</span>
+          : !pendiente && est === 'COMPLETADO' && (
+            <>
+              {/* Dos botones, un trabajo cada uno: «+ Nueva visita» abre el
+                  formulario; «Asignar» crea la fila ya asignada. */}
+              <button type="button" className="vc-btn" style={{ borderStyle: 'dashed', borderColor: 'var(--brand-accent)' }}
+                disabled={busyFila === filaBase._idx}
+                onClick={() => onNuevaVisita && onNuevaVisita(filaBase, totalVisitas + 1)}>
+                + Nueva visita
+              </button>
+              <button type="button" className="vc-btn" disabled={busyFila === filaBase._idx}
+                onClick={() => abrirPanel('nueva:' + filaBase._idx)}>
+                {panelNuevaAbierto ? 'Cancelar' : 'Asignar'}
+              </button>
+            </>
+          ))}
       </div>
-      )}
-
-      {/* Panel de inspectores para la nueva visita (filaBase está COMPLETADO,
-          así que PanelSeleccionInspector llama a onAsignarNuevaVisita). */}
-      {puedeNueva && !abierta && !pendiente && (
-        <div style={{ padding: panelNuevaAbierto ? '0 14px 12px' : 0 }}>
-          <PanelSeleccionInspector
-            f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
-            inspectores={inspectores} accion="nueva" conFecha
-            onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
-        </div>
-      )}
-
-      {open && (
-        <div>
-          {ordenadas.map(({ f, n }, i) => <FilaVisita key={f._idx || i} f={f} nVisita={n}
-            totalVisitas={totalVisitas}
-            usuario={usuario} onContinuar={onContinuar} q={q}
-            esAdmin={esAdmin} inspectores={inspectores}
-            busy={busyFila === f._idx}
-            abierto={asignandoFila === f._idx}
-            onAbrirAsignar={() => setAsignandoFila(asignandoFila === f._idx ? null : f._idx)}
-            onAsignar={onAsignar} onDesasignar={onDesasignar} onCompletar={onCompletar} />)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// "Atiende" solo se muestra cuando la consulta coincidió con ese campo: es
-// para lo que se agregó a la búsqueda, y fuera de ese caso no ayuda a decidir
-// qué hacer con la visita (a diferencia de inspector, fecha y orden).
-function coincideAtiende(f, q) {
-  const lq = (q || '').trim().toUpperCase();
-  if (!lq) return false;
-  return (f['NOMBRE PERSONA ATIENDE'] || '').toString().toUpperCase().includes(lq);
-}
-
-function FilaVisitaBase({ f, nVisita, totalVisitas, usuario, onContinuar, q,
-  esAdmin, inspectores, busy, abierto, onAbrirAsignar, onAsignar, onDesasignar, onCompletar }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || '');
-
-  // En Buscar el badge se renderizaba con el estado raw mayúsculas (PENDIENTE,
-  // ASIGNADO, INICIADO, COMPLETADO). Preservamos ese comportamiento pasando
-  // el override a VisitaCard.
-  return (
-    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--borde)' }}>
-      {/* Qué visita del radicado es esta — sin esto dos filas idénticas del
-          mismo radicado solo se distinguían por la fecha. Una PENDIENTE
-          (nVisita = null) no es visita y nunca lleva el rótulo; este solo
-          tiene sentido con más de una visita real. */}
-      {nVisita != null && totalVisitas > 1 && (
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--texto-suave)', marginBottom: 6 }}>
-          Visita {nVisita} de {totalVisitas}
-        </div>
-      )}
-      <VisitaCard f={f}
-        mostrarFecha mostrarInspector mostrarAsignado mostrarOrden
-        mostrarPersonaAtiende={coincideAtiende(f, q)}
-        mostrarReiterados={coincideReiterado(f, q)}
-        labelBadge={est || '—'}
-        accionesMt={10}>
-        <AccionesFilaVisita
-          f={f} esAdmin={esAdmin} busy={busy} abierto={abierto}
-          onContinuar={onContinuar}
-          onAbrirAsignar={onAbrirAsignar}
-          onDesasignar={onDesasignar}
-          onCompletar={onCompletar}
-        />
-      </VisitaCard>
-
-      {/* Panel de selección de inspector (fuera del flex de botones, va debajo) */}
-      {esAdmin && (
+      {/* Panel de inspectores: debajo de los botones, como en la fila vieja. */}
+      {est !== 'COMPLETADO' && (
         <PanelSeleccionInspector
-          f={f} busy={busy} abierto={abierto && est !== 'COMPLETADO'}
-          inspectores={inspectores} accion="asignar" conFecha onAsignar={onAsignar}
-        />
+          f={f} busy={busy} abierto={abierto} inspectores={inspectores}
+          accion="asignar" conFecha onAsignar={onAsignar} />
       )}
-    </div>
+      {puedeNueva && !abierta && !pendiente && est === 'COMPLETADO' && (
+        <PanelSeleccionInspector
+          f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
+          inspectores={inspectores} accion="nueva" conFecha
+          onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
+      )}
+    </section>
   );
 }
-
-// Memoizados: React.memo evita re-render si las props no cambian (shallow eq).
-// GrupoRadicado.filas es estable porque viene de un useMemo en BuscarScreen;
-// FilaVisita.f sale de la misma referencia del array de datos.
-const GrupoRadicado = React.memo(GrupoRadicadoBase);
-const FilaVisita    = React.memo(FilaVisitaBase);
 
 window.BuscarScreen = BuscarScreen;

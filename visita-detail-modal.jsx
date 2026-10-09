@@ -6,10 +6,13 @@
 // para cerrar, y ReiteradosVD (que la ficha monta en su sección 1).
 //
 // API global:
-//   window.abrirVisitaDetail(filaBD)
+//   window.abrirVisitaDetail(filaBD, gestion?)
 //
 // Recibe el objeto crudo de BD VISITAS (mismo shape que devuelve
 // listarVisitas): las claves son los nombres de columna del Sheet.
+// `gestion` (opcional) es un elemento React que FichaVisita inyecta en su
+// bloque de gestión — lo usa Buscar para que el admin tenga sus acciones
+// (asignar, completar, seguimiento) también en «Ver datos» sin panel.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateVD, useEffect: useEffectVD, useRef: useRefVD } = React;
 
@@ -19,9 +22,10 @@ let _pushVisitaDetail = null;
 // para que el velo no quede tapando la pantalla nueva.
 function VisitaDetailModalHost({ onContinuar }) {
   const [fila, setFila] = useStateVD(null);
+  const [gestion, setGestion] = useStateVD(null);
 
   useEffectVD(() => {
-    _pushVisitaDetail = function(f) { setFila(f); };
+    _pushVisitaDetail = function(f, g) { setFila(f); setGestion(g != null ? g : null); };
     return function() { _pushVisitaDetail = null; };
   }, []);
 
@@ -33,7 +37,7 @@ function VisitaDetailModalHost({ onContinuar }) {
   }, [fila]);
 
   if (!fila) return null;
-  return <VisitaDetailUI f={fila} onCerrar={() => setFila(null)}
+  return <VisitaDetailUI f={fila} onCerrar={() => setFila(null)} gestion={gestion}
     onContinuar={onContinuar ? (idx, f) => { setFila(null); onContinuar(idx, f); } : null} />;
 }
 
@@ -45,7 +49,7 @@ function _g(f, ...keys) {
   return '';
 }
 
-function VisitaDetailUI({ f, onCerrar, onContinuar }) {
+function VisitaDetailUI({ f, onCerrar, onContinuar, gestion }) {
   const hojaRef = useRefVD(null);
   // La sesión da el rol (regla de quién ve qué y el panel de campos crudos).
   const usuario = (typeof SESSION_V6 !== 'undefined' && SESSION_V6.leer()) || {};
@@ -60,7 +64,7 @@ function VisitaDetailUI({ f, onCerrar, onContinuar }) {
       <div className="fv-hoja" ref={hojaRef} tabIndex={-1} role="dialog" aria-modal="true"
         aria-label={'Datos de la visita ' + dir}>
         <FichaVisita f={f} usuario={usuario} verPrioridad={verPrioridad}
-          onContinuar={onContinuar} onCerrar={onCerrar} />
+          onContinuar={onContinuar} onCerrar={onCerrar} gestion={gestion} />
       </div>
     </div>
   );
