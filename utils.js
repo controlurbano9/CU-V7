@@ -1722,6 +1722,133 @@ function audienciasSemana(filas, ref) {
   return out;
 }
 
+// ── Barrio oficial del POT de cada visita (E5 «Buscar» y E7 «Tablero», 2026-10-08) ──
+// Base compartida; salió de herramientas/barrio-pot (ver su INFORME.md: regla, cifras y
+// casos a revisar). Lógica pura. Regla:
+//   1. Con coordenadas dentro de un barrio del POT → ese barrio (fuente 'punto'). El punto manda.
+//   2. Sin punto (o punto fuera de toda capa) → por el nombre escrito, con clave canónica + alias
+//      (fuente 'nombre'). Si el nombre existe en dos comunas (Guasimalito 9 y 10), decide la
+//      comuna de la fila.
+//   3. Con punto y un nombre escrito que es otro barrio del POT, se informa `conflictoM` (metros
+//      del punto al barrio escrito); `revisar` si pasa de UMBRAL_REVISAR_BARRIO_M.
+// Datos: barrios-mapa.json (arreglo `barrios`) + `proj` de comunas-mapa.json. claveBarrioPot NO
+// es claveBarrio (arriba): esta quita «Vda.» y «Nº» y junta los espacios para comparar con el POT.
+
+var UMBRAL_REVISAR_BARRIO_M = 1000;
+
+// Misma clave que `_canonBarrio` de nueva-visita.jsx: sin tildes, sin «Vda.», sin «Nº», sin signos ni espacios.
+// Así 'Zona Industrial #1' ≡ 'Zona Industrial Nº1' y 'Hatoviejo' ≡ 'Hato Viejo' sin alias.
+function claveBarrioPot(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+    .replace(/^VDA\.?\s*/, '')
+    .replace(/N[º°]/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+}
+
+// Lo que la clave no salva: artículos, plurales, abreviaturas y nombres de uso común.
+// Clave canónica de lo escrito (BD o lista del formulario) → nombre exacto en el POT.
+// Cada alias está respaldado por dónde caen los puntos de esas filas (INFORME.md).
+var ALIAS_BARRIO_POT = {
+  ELCONGOLO: 'Congolo',
+  LANAVARRA: 'Navarra',
+  GRANAVENIDA: 'La Gran Avenida',
+  NIQUIABIFAMILIARES: 'Niquia Bifamiliar',
+  NAZARET: 'Nazareth',
+  RINCONSANTOS: 'Rincon Santo',
+  JOSEANTONIOGALAN: 'Jose A. Galan',
+  VILLASDEOCCIDENTE: 'Villa de Occidente',
+  ROSALESDETERRANOVA: 'Terranova',
+};
+// Nombres que no se pueden resolver sin punto: abarcan varios barrios del POT.
+var NOMBRES_BARRIO_AMBIGUOS = new Set(['NIQUIA']);
+
+function _bpAnillos(d) {
+  return String(d).split('M').filter(Boolean)
+    .map(seg => seg.replace(/Z/gi, '').split('L').map(p => p.trim().split(/[ ,]+/).map(Number)));
+}
+function _bpDentro(x, y, rings) {
+  let ok = false;
+  for (const r of rings) {
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ok = !ok;
+    }
+  }
+  return ok;
+}
+function _bpDistSegmento(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+// barrios: arreglo de barrios-mapa.json (`n`, `c`, `d`, `b`); proj: `proj` de comunas-mapa.json.
+function crearIndiceBarriosPot(barrios, proj) {
+  const lista = barrios.map((b, i) => ({
+    i, n: b.n, c: String(b.c), clave: claveBarrioPot(b.n), bb: b.b, rings: _bpAnillos(b.d),
+  }));
+  const porClave = new Map();
+  lista.forEach(b => {
+    if (!porClave.has(b.clave)) porClave.set(b.clave, []);
+    porClave.get(b.clave).push(b);
+  });
+  // 1° de latitud ≈ 110,57 km; la proyección usa la misma escala en x (lon·cos lat), así que vale para ambos ejes.
+  return { lista, porClave, proj, metrosPorUnidad: 110574 / proj.s };
+}
+
+function _bpProyectar(idx, lat, lon) {
+  const p = idx.proj;
+  return [(lon * p.k - p.minX) * p.s, (p.maxY - lat) * p.s];
+}
+
+function _bpCoordValida(lat, lon) {
+  return Number.isFinite(lat) && Number.isFinite(lon) && lat > 6.2 && lat < 6.45 && lon > -75.65 && lon < -75.45;
+}
+
+function barrioPotPorPunto(idx, lat, lon) {
+  if (!_bpCoordValida(lat, lon)) return null;
+  const [x, y] = _bpProyectar(idx, lat, lon);
+  return idx.lista.find(b => x >= b.bb[0] && x <= b.bb[2] && y >= b.bb[1] && y <= b.bb[3] && _bpDentro(x, y, b.rings)) || null;
+}
+
+// comuna: la de la fila, para desempatar nombres repetidos en el POT.
+function barrioPotPorNombre(idx, nombre, comuna) {
+  let k = claveBarrioPot(nombre);
+  if (!k || NOMBRES_BARRIO_AMBIGUOS.has(k)) return null;
+  if (ALIAS_BARRIO_POT[k]) k = claveBarrioPot(ALIAS_BARRIO_POT[k]);
+  const cands = idx.porClave.get(k);
+  if (!cands) return null;
+  if (cands.length === 1) return cands[0];
+  return cands.find(b => b.c === String(comuna || '')) || cands[0];
+}
+
+// Metros desde el punto hasta el borde del barrio (0 si cae _bpDentro).
+function distanciaABarrioPotM(idx, lat, lon, barrio) {
+  const [x, y] = _bpProyectar(idx, lat, lon);
+  if (_bpDentro(x, y, barrio.rings)) return 0;
+  let m = Infinity;
+  for (const r of barrio.rings) {
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) m = Math.min(m, _bpDistSegmento(x, y, r[j][0], r[j][1], r[i][0], r[i][1]));
+  }
+  return Math.round(m * idx.metrosPorUnidad);
+}
+
+// fila: { lat, lon, barrio, comuna } (números o textos con coma decimal).
+// Devuelve { barrio, comuna, fuente: 'punto'|'nombre'|null, conflictoM: número|null, revisar: bool }.
+function barrioPotDe(idx, fila) {
+  const lat = typeof fila.lat === 'string' ? parseFloat(fila.lat.replace(',', '.')) : fila.lat;
+  const lon = typeof fila.lon === 'string' ? parseFloat(fila.lon.replace(',', '.')) : fila.lon;
+  const porNombre = barrioPotPorNombre(idx, fila.barrio, fila.comuna);
+  const porPunto = barrioPotPorPunto(idx, lat, lon);
+  if (porPunto) {
+    let conflictoM = null;
+    if (porNombre && porNombre.clave !== porPunto.clave) conflictoM = distanciaABarrioPotM(idx, lat, lon, porNombre);
+    return { barrio: porPunto.n, comuna: porPunto.c, fuente: 'punto', conflictoM, revisar: conflictoM != null && conflictoM >= UMBRAL_REVISAR_BARRIO_M };
+  }
+  if (porNombre) return { barrio: porNombre.n, comuna: porNombre.c, fuente: 'nombre', conflictoM: null, revisar: false };
+  return { barrio: '', comuna: '', fuente: null, conflictoM: null, revisar: false };
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -2070,6 +2197,15 @@ var _cuUtilsExports = {
   audienciasSemana: audienciasSemana,
   DIAS_ALERTA_AUDIENCIA: DIAS_ALERTA_AUDIENCIA,
   claveBarrio: claveBarrio,
+  UMBRAL_REVISAR_BARRIO_M: UMBRAL_REVISAR_BARRIO_M,
+  ALIAS_BARRIO_POT: ALIAS_BARRIO_POT,
+  NOMBRES_BARRIO_AMBIGUOS: NOMBRES_BARRIO_AMBIGUOS,
+  claveBarrioPot: claveBarrioPot,
+  crearIndiceBarriosPot: crearIndiceBarriosPot,
+  barrioPotPorPunto: barrioPotPorPunto,
+  barrioPotPorNombre: barrioPotPorNombre,
+  distanciaABarrioPotM: distanciaABarrioPotM,
+  barrioPotDe: barrioPotDe,
   armarJornadaPorBarrio: armarJornadaPorBarrio,
   normalizarDireccion: normalizarDireccion,
   direccionRequiereConfirmar: direccionRequiereConfirmar,
