@@ -3396,3 +3396,53 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .bq-res-acc { margin-left: 0; flex-basis: 100%; }
   .bq-orden { flex: 1; } .bq-orden select { flex: 1; }
 }
+
+/* ── Buscar E5c2: Dónde (mapa de comunas → barrios del POT) · Cuándo · Resumen ── */
+.bq-barrio-caja { position: relative; margin-top: 8px; }
+.bq-barrio-caja input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 10px; border: 1px solid var(--line-2);
+  border-radius: var(--r-sm); background: var(--surface); font: 13px var(--font-sans); color: var(--ink); }
+.bq-barrio-caja input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow); }
+.bq-sug-barrio { top: calc(100% + 4px); }
+.bq-sug-vacio { padding: 8px 10px; font-size: 12px; color: var(--ink-3); }
+.bq-mapa { position: relative; margin-top: 10px; }
+/* overflow hidden: acercado, el resto de Bello quedaría pintado fuera del recuadro. */
+.bq-mapa svg { display: block; width: 100%; height: auto; aspect-ratio: 600 / 496; overflow: hidden; border-radius: var(--r-sm); }
+.bq-com { stroke: var(--surface); stroke-width: 1.2; cursor: pointer; vector-effect: non-scaling-stroke; transition: fill .15s, opacity .15s; }
+.bq-com:hover, .bq-com:focus-visible { stroke: var(--ink-2); outline: none; }
+.bq-com.on { stroke: var(--brand-ink); stroke-width: 2.5; }
+.bq-mapa.zoom .bq-com { fill: var(--surface-2) !important; opacity: .55; }
+.bq-mapa.zoom .bq-com.on { fill: none !important; opacity: 1; stroke: var(--ink-3); stroke-width: 1.6; pointer-events: none; }
+.bq-barr { stroke: var(--surface); stroke-width: 1; cursor: pointer; vector-effect: non-scaling-stroke; }
+.bq-barr:hover, .bq-barr:focus-visible { stroke: var(--ink-2); stroke-width: 1.6; outline: none; }
+.bq-barr.on { stroke: var(--brand-ink); stroke-width: 2.5; }
+.bq-lbl-c { font-family: var(--font-mono); text-anchor: middle; pointer-events: none; paint-order: stroke; }
+.bq-mapa-pie { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 6px; font-size: 12px; color: var(--ink-4); }
+.bq-escala { display: inline-flex; gap: 2px; }
+.bq-escala span { width: 14px; height: 8px; border-radius: 2px; }
+.bq-campo { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+/* Cinco fechas no caben en 283 px: envuelven en dos renglones. */
+.bq-campo .adm-tab { flex: 1 1 auto; padding: 0 8px; font-size: 12px; min-height: 32px; }
+.bq-hist { margin-top: 10px; user-select: none; }
+.bq-hist svg { display: block; width: 100%; height: 68px; cursor: crosshair; touch-action: none; }
+.bq-hb { fill: #CDBFAE; }
+.bq-hist.rango .bq-hb { fill: #E6DCCF; }
+.bq-hist.rango .bq-hb.in { fill: var(--brand); }
+.bq-hist-ejes { position: relative; height: 14px; font: 10.5px var(--font-mono); color: var(--ink-4); }
+.bq-hist-ejes span { position: absolute; top: 2px; }
+.bq-hist-ejes span::before { content: ''; position: absolute; left: 0; top: -4px; height: 4px; border-left: 1px solid var(--line-2); }
+.bq-rango-in { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.bq-rango-in label { font: 600 12px var(--font-sans); color: var(--ink-3); }
+.bq-rango-in input { display: block; width: 100%; box-sizing: border-box; height: 36px; margin-top: 3px; padding: 0 8px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); font: 13px var(--font-sans); color: var(--ink); }
+.bq-resumen { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; }
+.bq-resumen-tit { font: 600 12px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.bq-barra { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); margin: 8px 0; }
+.bq-barra span { display: block; height: 100%; }
+.bq-cifras { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--ink-3); }
+.bq-cifras > span { display: inline-flex; align-items: center; gap: 5px; }
+.bq-cifras b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.bq-cifras .bq-insp { flex-basis: 100%; display: block; }
+.bq-res-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+@media (max-width: 1199px) {
+  .bq-campo .adm-tab, .bq-rango-in input { min-height: var(--tap-min); }
+}

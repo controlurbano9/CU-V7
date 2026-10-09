@@ -70,7 +70,10 @@ function _cargarIdxBarriosBQ() {
   ]).then(([barr, com]) => {
     if (!barr || !barr.barrios || !com || !com.proj) return null;
     registrarBarriosBuscar(barr.barrios);
-    return crearIndiceBarriosPot(barr.barrios, com.proj);
+    const idx = crearIndiceBarriosPot(barr.barrios, com.proj);
+    // Los trazos de comunas y barrios para el mapa «Dónde» (E5c2).
+    idx.mapas = { w: com.w, h: com.h, comunas: com.comunas, barrios: barr.barrios };
+    return idx;
   });
   return _idxBarriosBQPromesa;
 }
@@ -356,6 +359,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     });
     return c;
   }, [universo, S]);
+  // Bases de «Dónde» y «Cuándo»: todo menos su propio filtro (E5c2).
+  const baseLugar = useMemoB(() => filtrarBuscar(universo, S, 'lugar'), [universo, S]);
+  const baseFecha = useMemoB(() => filtrarBuscar(universo, S, 'fecha'), [universo, S]);
   const totalGrupos = useMemoB(() => new Set(universo.map(c => c.clave)).size, [universo]);
 
   // «También coinciden N completadas»: no se esconden en silencio. Cuenta los
@@ -897,10 +903,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             </div>
           </div>
 
-          {/* Hueco deliberado: «Dónde» (mapa de comunas/barrios del POT) va en
-              E5c2 y «Cuándo» (fecha + histograma por mes) en E5d. Mientras
-              tanto, los barrios y comunas que sugiere la casilla se quitan
-              como chips en la cabecera de resultados. */}
+          <BQSeccion titulo="Dónde" n={activos.donde}>
+            <DondeBQ S={S} parcharS={parcharS} base={baseLugar} veredas={veredasU}
+              mapas={idxBarrios && idxBarrios.mapas} />
+          </BQSeccion>
+          <BQSeccion titulo="Cuándo" n={activos.cuando}>
+            <CuandoBQ S={S} parcharS={parcharS} base={baseFecha} hoy={hoy} />
+          </BQSeccion>
 
           <BQSeccion titulo="Quién" n={activos.quien}>
             {veTodo && (
@@ -1072,6 +1081,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
               <b>Ningún caso con estos filtros</b>
               Quita alguno de los chips de arriba o <button type="button" className="bq-volver" onClick={limpiarTodo}>limpia todo</button>.
             </div>
+          )}
+          {listo && lista.length > 0 && (chipsActivos.length > 0 || !!S.q) && (
+            <ResumenBQ casos={lista} veTodo={veTodo} />
           )}
           {listo && completadasOcultas > 0 && (
             <div className="bq-tambien">
@@ -1352,6 +1364,324 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
           onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
       )}
     </section>
+  );
+}
+
+// ── Dónde · Cuándo · Resumen (E5c2) ──────────────────────────
+// Cuentan casos (grupos por radicado) sobre la base que pasa todos los filtros
+// menos el del propio bloque: el mapa no se vacía al tocar una comuna.
+function _contarPorBQ(base, clavesDe) {
+  const visto = new Set(), m = new Map();
+  base.forEach(c => clavesDe(c).forEach(k => {
+    const id = k + '|' + c.clave;
+    if (visto.has(id)) return;
+    visto.add(id); m.set(k, (m.get(k) || 0) + 1);
+  }));
+  return m;
+}
+const BQ_ESCALA = ['#F1EADF', '#EBD3C2', '#DDAE93', '#C9805F', '#AC5031'];
+const _tonoBQ = (n, max) => !n ? 0 : Math.min(4, 1 + Math.floor(Math.sqrt(n / Math.max(1, max)) * 3.999));
+const _normLugarBQ = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+
+function DondeBQ({ S, parcharS, base, mapas, veredas }) {
+  const [buscaBarrio, setBuscaBarrio] = useStateB('');
+  const [anchoSvg, setAnchoSvg] = useStateB(268);
+  const svgRef = useRefB(null);
+  useEffectB(() => {
+    const el = svgRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setAnchoSvg(el.getBoundingClientRect().width || 268));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [mapas]);
+  const porCom = useMemoB(() => _contarPorBQ(base, c => [c.rural ? 'R' : String(c.comuna || '')]), [base]);
+  const porBar = useMemoB(() => _contarPorBQ(base, c => [c.rural ? 'V:' + _normLugarBQ(c.vereda) : (c.barrio || 'SIN')]), [base]);
+  const sinPotCom = useMemoB(() => _contarPorBQ(base, c => (!c.rural && !c.barrio) ? [String(c.comuna || '')] : []), [base]);
+  if (!mapas) return <p className="bq-nota">El mapa de barrios no está disponible sin conexión.</p>;
+
+  const n = (m, k) => m.get(k) || 0;
+  const comBarrio = {};
+  mapas.barrios.forEach(b => { comBarrio[b.n] = b.c; });
+  // Acercar a las comunas elegidas y a las de los barrios elegidos.
+  const comZoom = [...new Set(S.comunas.concat(S.barrios.map(b => comBarrio[b]).filter(Boolean)))];
+  const zoom = comZoom.length > 0;
+  const visibles = mapas.barrios.filter(b => comZoom.includes(b.c));
+  let vb = [0, 0, mapas.w, mapas.h];
+  if (zoom && visibles.length) {
+    const bb = visibles.reduce((a, b) => [Math.min(a[0], b.b[0]), Math.min(a[1], b.b[1]), Math.max(a[2], b.b[2]), Math.max(a[3], b.b[3])], [1e9, 1e9, -1e9, -1e9]);
+    let w = bb[2] - bb[0], h = bb[3] - bb[1];
+    const pad = Math.max(w, h) * .08; let x = bb[0] - pad, y = bb[1] - pad; w += 2 * pad; h += 2 * pad;
+    const r = mapas.w / mapas.h;   // conservar la proporción del recuadro
+    if (w / h > r) { const nh = w / r; y -= (nh - h) / 2; h = nh; } else { const nw = h * r; x -= (nw - w) / 2; w = nw; }
+    vb = [x, y, w, h];
+  }
+  const u = vb[2] / anchoSvg;   // unidades del mapa por píxel: las etiquetas no crecen al acercar
+  const maxC = Math.max(1, ...mapas.comunas.map(k => n(porCom, k.c)));
+  const maxB = Math.max(1, ...visibles.map(b => n(porBar, b.n)));
+  const toggle = (arr, v) => arr.includes(v) ? arr.filter(x => x !== v) : arr.concat([v]);
+  const tocarComuna = k => parcharS(S.comunas.includes(k)
+    ? { comunas: S.comunas.filter(x => x !== k), barrios: S.barrios.filter(b => comBarrio[b] !== k) }
+    : { comunas: S.comunas.concat([k]) });
+  const teclado = fn => e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
+
+  const etiquetas = zoom
+    ? [...new Map(visibles.map(b => [b.n, b])).values()].map(b => ({ k: b.n, x: b.cx, y: b.cy, n: n(porBar, b.n), t: _tonoBQ(n(porBar, b.n), maxB) })).filter(e => e.n)
+    : mapas.comunas.map(k => ({ k: k.c, x: k.cx, y: k.cy, top: 'C' + k.c, n: n(porCom, k.c), t: _tonoBQ(n(porCom, k.c), maxC) }));
+
+  const q = _normLugarBQ(buscaBarrio);
+  const sugBarrios = q.length < 2 ? [] : [...new Set(mapas.barrios.map(b => b.n))]
+    .filter(b => _normLugarBQ(b).includes(q)).map(b => ['bar', b, b + ' · Comuna ' + comBarrio[b], n(porBar, b)])
+    .concat(veredas.filter(v => _normLugarBQ(v).includes(q)).map(v => ['ver', v, 'Vda. ' + v, n(porBar, 'V:' + _normLugarBQ(v))]))
+    .slice(0, 8);
+  const elegirSug = ([tipo, v]) => {
+    setBuscaBarrio('');
+    if (tipo === 'bar' && !S.barrios.includes(v)) parcharS({ barrios: S.barrios.concat([v]) });
+    if (tipo === 'ver' && !S.veredas.includes(v)) parcharS({ veredas: S.veredas.concat([v]), rural: true });
+  };
+
+  const barriosZoom = zoom
+    ? [...new Set(visibles.map(b => b.n))].map(b => [b, n(porBar, b)]).filter(x => x[1] || S.barrios.includes(x[0])).sort((a, b) => b[1] - a[1])
+    : [];
+  const sinPotZ = comZoom.reduce((a, k) => a + n(sinPotCom, k), 0);
+  const nRural = n(porCom, 'R'), nSin = n(porBar, 'SIN');
+  const opcion = (clave, on, texto, cuenta, onClick, title) => (
+    <button key={clave} type="button" className={'bq-op' + (on ? ' on' : '')} aria-pressed={on} onClick={onClick} title={title}>
+      <span>{texto}</span> <i>{_n0BQ(cuenta)}</i>
+    </button>
+  );
+
+  return (
+    <>
+      <div className="bq-barrio-caja">
+        <input type="search" value={buscaBarrio} onChange={e => setBuscaBarrio(e.target.value)}
+          placeholder="Buscar barrio o vereda" aria-label="Buscar barrio o vereda del POT"
+          onKeyDown={e => { if (e.key === 'Enter' && sugBarrios[0]) { e.preventDefault(); elegirSug(sugBarrios[0]); } }} />
+        {q.length >= 2 && (
+          <div className="bq-sug bq-sug-barrio" role="listbox">
+            {sugBarrios.length ? sugBarrios.map(x => (
+              <button key={x[0] + x[1]} type="button" className="bq-sug-i" role="option"
+                onMouseDown={e => e.preventDefault()} onClick={() => elegirSug(x)}>
+                <span>{x[2]}</span><small>{_n0BQ(x[3])}</small>
+              </button>
+            )) : <div className="bq-sug-vacio">Ningún barrio ni vereda del POT con «{buscaBarrio}».</div>}
+          </div>
+        )}
+      </div>
+
+      <div className={'bq-mapa' + (zoom ? ' zoom' : '')}>
+        <svg ref={svgRef} viewBox={vb.join(' ')} role="group" aria-label="Mapa de comunas de Bello">
+          <g>
+            {mapas.comunas.map(k => {
+              const cn = n(porCom, k.c), on = S.comunas.includes(k.c);
+              return (
+                <path key={k.c} className={'bq-com' + (on ? ' on' : '')} d={k.d} tabIndex={0} role="button"
+                  aria-pressed={on} aria-label={'Comuna ' + k.c + ', ' + cn + ' casos'}
+                  style={{ fill: BQ_ESCALA[_tonoBQ(cn, maxC)] }}
+                  onClick={() => tocarComuna(k.c)} onKeyDown={teclado(() => tocarComuna(k.c))}>
+                  <title>{'Comuna ' + k.c + ' · ' + cn + ' casos'}</title>
+                </path>
+              );
+            })}
+          </g>
+          {zoom && (
+            <g>
+              {visibles.map((b, i) => {
+                const bn = n(porBar, b.n), on = S.barrios.includes(b.n);
+                return (
+                  <path key={b.n + i} className={'bq-barr vis' + (on ? ' on' : '')} d={b.d} tabIndex={0} role="button"
+                    aria-pressed={on} aria-label={b.n + ', ' + bn + ' casos'} style={{ fill: BQ_ESCALA[_tonoBQ(bn, maxB)] }}
+                    onClick={() => parcharS({ barrios: toggle(S.barrios, b.n) })}
+                    onKeyDown={teclado(() => parcharS({ barrios: toggle(S.barrios, b.n) }))}>
+                    <title>{b.n + ' · ' + bn + ' casos'}</title>
+                  </path>
+                );
+              })}
+            </g>
+          )}
+          <g aria-hidden="true">
+            {etiquetas.map(e => (
+              <text key={e.k} className="bq-lbl-c" x={e.x} y={e.y} fill={e.t >= 3 ? '#fff' : 'var(--ink)'}>
+                {e.top && <tspan x={e.x} dy={-2 * u} fontSize={9 * u} opacity=".75">{e.top}</tspan>}
+                <tspan x={e.x} dy={(e.top ? 11 : 4) * u} fontSize={11 * u} fontWeight="600">{e.n}</tspan>
+              </text>
+            ))}
+          </g>
+        </svg>
+      </div>
+
+      {zoom ? (
+        <>
+          <div className="bq-mapa-pie">
+            <button type="button" className="bq-volver" onClick={() => parcharS({ comunas: [], barrios: [] })}>← Todas las comunas</button>
+            <span>Toca un barrio para acotar</span>
+          </div>
+          <div className="bq-opts">
+            {barriosZoom.map(([b, cn]) => opcion('b' + b, S.barrios.includes(b), b, cn, () => parcharS({ barrios: toggle(S.barrios, b) })))}
+            {sinPotZ > 0 && opcion('sinpot', S.sinPot, 'Sin barrio POT', sinPotZ, () => parcharS({ sinPot: !S.sinPot }), 'Filas cuyo barrio escrito no calza con el POT')}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="bq-mapa-pie">
+            <span>Menos</span>
+            <span className="bq-escala" aria-hidden="true">{BQ_ESCALA.map(c => <span key={c} style={{ background: c }} />)}</span>
+            <span>más casos, con los demás filtros</span>
+          </div>
+          <div className="bq-opts">
+            {opcion('rural', S.rural, 'Rural · veredas', nRural, () => parcharS(S.rural ? { rural: false, veredas: [] } : { rural: true }))}
+            {nSin > 0 && opcion('sinpot', S.sinPot, 'Sin barrio POT', nSin, () => parcharS({ sinPot: !S.sinPot }), 'Filas cuyo barrio escrito no calza con el POT')}
+          </div>
+          {S.rural && (
+            <>
+              <div className="bq-lbl">Veredas</div>
+              <div className="bq-opts">
+                {veredas.map(v => [v, n(porBar, 'V:' + _normLugarBQ(v))]).filter(x => x[1]).sort((a, b) => b[1] - a[1])
+                  .map(([v, cn]) => opcion('v' + v, S.veredas.includes(v), v, cn, () => parcharS({ veredas: toggle(S.veredas, v) })))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+const BQ_CAMPOS = [['rad', 'Radicado', 'de radicado'], ['asig', 'Asignación', 'de asignación'],
+  ['vis', 'Visita', 'de visita'], ['cierre', 'Cierre', 'de cierre'], ['cit', 'Citación', 'de citación']];
+const BQ_CAMPO_FECHA = { rad: 'fRad', asig: 'fAsig', vis: 'fVis', cierre: 'fCierre', cit: 'fCit' };
+const BQ_MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const BQ_ANIO0 = 2024;
+
+function CuandoBQ({ S, parcharS, base, hoy }) {
+  const [arrastre, setArrastre] = useStateB(null);   // { a, b } índices de mes
+  const nMes = (hoy.getFullYear() - BQ_ANIO0) * 12 + hoy.getMonth() + 1;
+  const idxMes = d => (d.getFullYear() - BQ_ANIO0) * 12 + d.getMonth();
+  const deISO = t => { const p = t.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+  const campo = BQ_CAMPO_FECHA[S.campo] ? S.campo : 'rad';
+  const hist = useMemoB(() => {
+    const b = new Array(nMes).fill(0), visto = new Set(); let sinF = 0;
+    base.forEach(c => {
+      if (visto.has(c.clave)) return; visto.add(c.clave);
+      const d = c[BQ_CAMPO_FECHA[campo]];
+      if (!d) { sinF++; return; }
+      const i = idxMes(d); if (i >= 0 && i < nMes) b[i]++;
+    });
+    return { barras: b, sin: sinF };
+  }, [base, campo, nMes]);
+  const barras = hist.barras, sin = hist.sin;
+  const max = Math.max(1, ...barras);
+  const y = hoy.getFullYear(), m = hoy.getMonth();
+  const presets = [
+    ['Este mes', _iniMesBQ(y, m), hoy],
+    [BQ_MES_L[(m + 11) % 12].replace(/^./, x => x.toUpperCase()), _iniMesBQ(y, m - 1), _finMesBQ(y, m - 1)],
+    ['Últimos 30 días', new Date(y, m, hoy.getDate() - 30), hoy],
+    ['Este año', new Date(y, 0, 1), hoy],
+    [String(y - 1), new Date(y - 1, 0, 1), new Date(y - 1, 11, 31)],
+  ];
+  const rango = !!(S.desde || S.hasta);
+  const enArrastre = arrastre ? [Math.min(arrastre.a, arrastre.b), Math.max(arrastre.a, arrastre.b)] : null;
+  const ia = enArrastre ? enArrastre[0] : (S.desde ? idxMes(deISO(S.desde)) : -1);
+  const ib = enArrastre ? enArrastre[1] : (S.hasta ? idxMes(deISO(S.hasta)) : nMes);
+  const marcado = !!enArrastre || rango;
+  const idxDe = e => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(nMes - 1, Math.floor((e.clientX - r.left) / r.width * nMes)));
+  };
+  const soltar = () => {
+    if (!arrastre) return;
+    const i = Math.min(arrastre.a, arrastre.b), j = Math.max(arrastre.a, arrastre.b);
+    setArrastre(null);
+    const fin = _finMesBQ(BQ_ANIO0 + Math.floor(j / 12), j % 12);
+    parcharS({ desde: _isoBQ(new Date(BQ_ANIO0 + Math.floor(i / 12), i % 12, 1)), hasta: _isoBQ(fin > hoy ? hoy : fin) });
+  };
+  const campoL = (BQ_CAMPOS.find(x => x[0] === campo) || BQ_CAMPOS[0])[2];
+  const ejes = [];
+  for (let a = BQ_ANIO0; a <= y; a++) ejes.push(<span key={a} style={{ left: ((a - BQ_ANIO0) * 12 / nMes * 100) + '%' }}>{a}</span>);
+
+  return (
+    <>
+      <div className="adm-tabs bq-campo" role="group" aria-label="Qué fecha">
+        {BQ_CAMPOS.map(([k, l]) => (
+          <button key={k} type="button" className={'adm-tab' + (campo === k ? ' activo' : '')} aria-pressed={campo === k}
+            onClick={() => parcharS({ campo: k })}>{l}</button>
+        ))}
+      </div>
+      <div className="bq-opts" style={{ marginTop: 8 }}>
+        {presets.map(([l, a, b]) => {
+          const on = S.desde === _isoBQ(a) && S.hasta === _isoBQ(b);
+          return (
+            <button key={l} type="button" className={'bq-op' + (on ? ' on' : '')} aria-pressed={on}
+              onClick={() => parcharS(on ? { desde: '', hasta: '' } : { desde: _isoBQ(a), hasta: _isoBQ(b) })}><span>{l}</span></button>
+          );
+        })}
+      </div>
+      <div className={'bq-hist' + (marcado ? ' rango' : '')}>
+        <svg viewBox={'0 0 ' + nMes + ' 100'} preserveAspectRatio="none" aria-label={'Casos por mes, fecha ' + campoL}
+          onPointerDown={e => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) { /* puntero ya liberado */ } const i = idxDe(e); setArrastre({ a: i, b: i }); }}
+          onPointerMove={e => { if (arrastre) { const i = idxDe(e); if (i !== arrastre.b) setArrastre({ a: arrastre.a, b: i }); } }}
+          onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}>
+          {barras.map((cn, i) => {
+            const h = cn ? Math.max(3, cn / max * 96) : 0;
+            const d = new Date(BQ_ANIO0, i, 1);
+            return (
+              <g key={i}>
+                <rect className={'bq-hb' + (marcado && i >= ia && i <= ib ? ' in' : '')} x={i + .12} y={100 - h} width=".76" height={h} pointerEvents="none" />
+                <rect x={i} y="0" width="1" height="100" fill="transparent">
+                  <title>{BQ_MES_L[d.getMonth()] + ' ' + d.getFullYear() + ' · ' + cn + ' casos'}</title>
+                </rect>
+              </g>
+            );
+          })}
+        </svg>
+        <div className="bq-hist-ejes">{ejes}</div>
+      </div>
+      <div className="bq-rango-in">
+        <label>Desde<input type="date" value={S.desde} max={_isoBQ(hoy)} onChange={e => parcharS({ desde: e.target.value })} /></label>
+        <label>Hasta<input type="date" value={S.hasta} max={_isoBQ(hoy)} onChange={e => parcharS({ hasta: e.target.value })} /></label>
+      </div>
+      <p className="bq-nota">
+        {rango
+          ? <>{sin > 0 && <><b>{_n0BQ(sin)}</b> casos sin fecha {campoL} quedan fuera. </>}
+              <button type="button" className="bq-volver" onClick={() => parcharS({ desde: '', hasta: '' })}>Quitar el periodo</button></>
+          : 'Arrastra sobre las barras para elegir un periodo, o usa un atajo.'}
+      </p>
+    </>
+  );
+}
+
+const BQ_EST_RES = [['PENDIENTE', 'Pendientes', 'var(--brand)'], ['ASIGNADO', 'Asignadas', 'var(--amarillo)'],
+  ['INICIADO', 'Iniciadas', 'var(--azul)'], ['COMPLETADO', 'Completadas', 'var(--verde)']];
+
+// Lo filtrado se lee como informe (nota 8): estados, suspensiones, mediana
+// radicado → visita (solo PQR con visita) y reparto por inspector (quien ve todo).
+function ResumenBQ({ casos, veTodo }) {
+  if (!casos.length) return null;
+  const porE = {}; casos.forEach(c => { porE[c.estado] = (porE[c.estado] || 0) + 1; });
+  const susp = casos.filter(c => c.susp).length;
+  const lapsos = casos.filter(c => c.fVis && c.fRad && c.tipo === 'PQR')
+    .map(c => Math.round((c.fVis - c.fRad) / 86400000)).filter(d => d >= 0).sort((a, b) => a - b);
+  const med = lapsos.length ? lapsos[Math.floor(lapsos.length / 2)] : null;
+  const porI = {}; casos.forEach(c => { if (c.vis[0]) porI[c.vis[0]] = (porI[c.vis[0]] || 0) + 1; });
+  const insp = Object.entries(porI).sort((a, b) => b[1] - a[1]);
+  const est = BQ_EST_RES.filter(e => porE[e[0]]);
+  const nombre = k => { const p = k.split(' ')[0]; return p.charAt(0) + p.slice(1).toLowerCase(); };
+  return (
+    <div className="bq-resumen">
+      <div className="bq-resumen-tit">Lo filtrado</div>
+      <div className="bq-barra" aria-hidden="true">
+        {est.map(e => <span key={e[0]} style={{ width: (porE[e[0]] / casos.length * 100) + '%', background: e[2] }} />)}
+      </div>
+      <div className="bq-cifras">
+        {est.map(e => <span key={e[0]}><span className="bq-res-dot" style={{ background: e[2] }} />{e[1]} <b>{_n0BQ(porE[e[0]])}</b></span>)}
+        {susp > 0 && <span>Con suspensión <b>{_n0BQ(susp)}</b></span>}
+        {med !== null && <span>Radicado → visita <b>{med} días</b> (mediana)</span>}
+        {veTodo && insp.length > 0 && (
+          <span className="bq-insp">Por inspector: {insp.slice(0, 4).map(([k, cn], i) => (
+            <React.Fragment key={k}>{i > 0 && ' · '}{nombre(k)} <b>{_n0BQ(cn)}</b></React.Fragment>
+          ))}{insp.length > 4 && ' · +' + (insp.length - 4)}</span>
+        )}
+      </div>
+    </div>
   );
 }
 
