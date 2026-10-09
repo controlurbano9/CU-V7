@@ -1849,6 +1849,293 @@ function barrioPotDe(idx, fila) {
   return { barrio: '', comuna: '', fuente: null, conflictoM: null, revisar: false };
 }
 
+// ── Buscar (E5): caso preparado, filtros con facetas y orden «Más urgente» (2026-10-08) ──
+// Lógica pura: la pantalla solo pinta. Sale de la maqueta aprobada (propuesta-buscar.html),
+// que trabajaba con datos inventados; aquí cada «caso» se arma desde una fila real de
+// BD VISITAS (por nombre de columna, nunca por índice).
+//   prepararCasoBuscar(f, idxBarrios, hoy)   → caso con todo lo derivado, una sola vez por fila
+//   filtrosBuscarVacios()                    → estado inicial (lo vivo: pendiente + asignada + iniciada)
+//   filtrarBuscar(casos, S, excepto)         → casos que pasan; `excepto` deja fuera un grupo
+//                                              (así cada faceta cuenta sus alternativas, no «0»)
+//   conteoFacetaBuscar(casos, S, grupo, fn)  → Map(valor → cuántos verías si lo eliges)
+//   ordenarCasosBuscar(lista, orden, q)      → 'urg' | 'rec' | 'rad' | 'dir' | 'mod'
+var BUSCAR_ESTADOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'];
+var BUSCAR_ESTADOS_VIVOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO'];
+// Qué le falta a una visita ya hecha. Solo se exigen en visitas desde este año:
+// antes la app no generaba entregables y todas las viejas saldrían «sin acta».
+// ponytail: año fijo; sacarlo de la hoja de reglas si cambia la fecha de arranque.
+var BUSCAR_FALTAS_DESDE_ANIO = 2026;
+var BUSCAR_FALTAS = [
+  ['acta', 'Sin acta'], ['informe', 'Sin informe'], ['rf', 'Sin registro fotográfico'],
+  ['orden', 'Orden sin escanear'], ['vig', 'Vigilancia pendiente'], ['ubic', 'Ubicación sin confirmar'],
+];
+
+function _normBuscar(s) {
+  var t = String(s == null ? '' : s).toUpperCase();
+  if (t.normalize) t = t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return t.replace(/\s+/g, ' ').trim();
+}
+function _sinCerosBuscar(s) { return String(s).replace(/\d+/g, function (n) { return String(parseInt(n, 10)); }); }
+function _colBuscar(f, nombre) { return String((f && f[nombre]) == null ? '' : f[nombre]).trim(); }
+
+// Nivel de la prioridad de la PQR → texto de filtro. Mismos cortes de nivelPrioridad.
+function prioridadClaveBuscar(prioN) {
+  if (!isFinite(prioN)) return 'Sin análisis';
+  var p = nivelPrioridad(prioN);
+  return p ? (p.nivel === 'Mínima' ? 'Baja' : p.nivel) : 'Sin análisis';
+}
+
+function prepararCasoBuscar(f, idxBarrios, hoy) {
+  var ref = hoy instanceof Date ? hoy : new Date();
+  var refDia = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  var c = { id: f._idx, f: f };
+  var est = _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '');
+  c.estado = est === 'PROGRAMADA' ? 'PENDIENTE' : est;
+
+  // Radicado y tipo de caso
+  c.rad = _colBuscar(f, 'RADICADO');
+  c.nRad = _normBuscar(c.rad);
+  c.tipo = !esRadicadoDeCaso(c.rad) ? 'V2' : (/^OFICIO-/i.test(c.rad) ? 'OFICIO' : 'PQR');
+  var principal = claveRadicado(c.rad);
+  c.reit = radicadosReiterados(f).filter(function (r) { return r !== principal; });
+  c.nReit = c.reit;   // ya vienen como claves comparables (mayúsculas)
+  c.nvis = parseInt(f['N° VISITA'] || f['N VISITA'] || 1, 10) || 1;
+  var prioN = parseInt(_colBuscar(f, 'PRIORIDAD'), 10);
+  c.prioN = prioN;
+  c.prio = prioridadClaveBuscar(prioN);
+
+  // Lugar: el punto manda; sin punto, el nombre escrito (barrioPotDe, E5a)
+  c.dir = _colBuscar(f, 'DIRECCION INFRACCION') || _colBuscar(f, 'DIRECCION');
+  c.nDir = _normBuscar(c.dir);
+  c.kDir = claveBusquedaDireccion(c.dir);
+  c.barrioTxt = _colBuscar(f, 'BARRIO/VEREDA') || _colBuscar(f, 'BARRIO');
+  c.nBarrio = _normBuscar(c.barrioTxt);
+  c.rural = /^VDA\.?/i.test(c.barrioTxt);
+  c.vereda = c.rural ? c.barrioTxt.replace(/^VDA\.?\s*/i, '').trim() : '';
+  c.lat = normalizarCoord(f['LATITUD'], 'lat');
+  c.lon = normalizarCoord(f['LONGITUD'], 'lon');
+  c.pot = null; c.barrio = ''; c.comuna = c.rural ? '' : _colBuscar(f, 'COMUNA');
+  if (idxBarrios && !c.rural) {
+    c.pot = barrioPotDe(idxBarrios, { lat: c.lat, lon: c.lon, barrio: c.barrioTxt, comuna: c.comuna });
+    c.barrio = c.pot.barrio;
+    if (c.pot.fuente === 'punto' && c.pot.comuna) c.comuna = c.pot.comuna;   // decisión 2026-10-07
+  }
+
+  // Quién
+  c.vis = String(visitadoresBD(f) || '').toUpperCase().split(/\s*[\/,]\s*/)
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+
+  // Cuándo
+  c.fRad = parsearFecha(f['FECHA RADICADO'] || '');
+  c.fAsig = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
+  c.fVis = parsearFecha(f['FECHA DE VISITA'] || '');
+  c.fCierre = parsearFecha(f['FECHA DEVOLUCION'] || '');
+  c.fCit = parsearFecha(f['FECHA CITACION'] || '');
+  var t = Date.parse(f['ULTIMA_MODIFICACION'] || '');
+  c.mod = isNaN(t) ? 0 : t;
+  c.dCal = c.fRad ? Math.max(0, Math.round((refDia - new Date(c.fRad.getFullYear(), c.fRad.getMonth(), c.fRad.getDate())) / 86400000)) : 0;
+
+  // Lo encontrado en la visita
+  c.infr = _colBuscar(f, 'TIPO DE INFRACCION').split(/[·,;|\n]+/)
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+  c.susp = _normBuscar(f['SUSPENSION DE LA OBRA']) === 'SI';
+  c.orden = ordenPoliciaDe(f);
+  c.nOrden = _normBuscar(c.orden);
+  c.lic = _normBuscar(f['SE APORTO LICENCIA']);
+  c.obra = _colBuscar(f, 'ESTADO OBRA');
+  c.atiende = _colBuscar(f, 'NOMBRE PERSONA ATIENDE');
+  c.nAtiende = _normBuscar(c.atiende);
+
+  // Qué falta (solo visitas iniciadas o completadas, desde BUSCAR_FALTAS_DESDE_ANIO)
+  c.faltas = [];
+  if ((c.estado === 'INICIADO' || c.estado === 'COMPLETADO') && c.fVis && c.fVis.getFullYear() >= BUSCAR_FALTAS_DESDE_ANIO) {
+    if (!(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'])) c.faltas.push('acta');
+    if (!(f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'])) c.faltas.push('informe');
+    if (!f['LINK_REGISTRO_FOTOS']) c.faltas.push('rf');
+    if (c.orden && !f['LINK_ORDEN_POLICIA']) c.faltas.push('orden');
+    if (c.susp && c.orden && !f['LINK_SOLICITUD_VIGILANCIA']) c.faltas.push('vig');
+    if (!_colBuscar(f, 'UBICACION_CONFIRMADA')) c.faltas.push('ubic');
+  }
+
+  // «Más urgente»: nivel y días pasados de su propio plazo.
+  //   3 = PQR crítica/alta vencida, o visita asignada/iniciada con 5+ días hábiles
+  //   2 = PQR media vencida, o visita asignada/iniciada dentro del umbral
+  //   1 = PQR con plazo aún vigente · 0 = PQR sin plazo · -1 = completada
+  // Misma regla de la Agenda: antes de 2025 el radicado no compite.
+  c.tier = -1; c.exceso = null;
+  if (c.estado === 'PENDIENTE') {
+    var plazo = (c.fRad && c.fRad.getFullYear() < 2025) ? 0 : (c.prioN >= 9 ? 5 : c.prioN >= 7 ? 20 : c.prioN >= 5 ? 30 : 0);
+    if (plazo) { c.exceso = c.dCal - plazo; c.tier = c.exceso > 0 ? (c.prioN >= 7 ? 3 : 2) : 1; }
+    else { c.exceso = c.dCal; c.tier = 0; }
+  } else if (c.estado === 'ASIGNADO' || c.estado === 'INICIADO') {
+    var d = c.estado === 'ASIGNADO' ? diasSinIniciar(f, ref) : diasSinCompletar(f, ref);
+    d = d == null ? 0 : d;
+    c.exceso = (d - 5) * 1.4;           // ×1,4 ≈ hábiles a calendario
+    c.tier = d >= 5 ? 3 : 2;
+  }
+  return c;
+}
+
+// Estado inicial: lo vivo. Las completadas se piden a mano (o salen si el texto es un radicado completo).
+function filtrosBuscarVacios() {
+  return {
+    q: '', estados: BUSCAR_ESTADOS_VIVOS.slice(),
+    comunas: [], barrios: [], veredas: [], rural: false, sinPot: false,
+    campo: 'rad', desde: '', hasta: '',            // campo: rad | asig | vis | cierre | cit
+    visitador: [], mias: false, yo: '', tipo: [], nvis: [], reit: false, prio: [],
+    infr: [], susp: false, orden: false, lic: [], obra: [], falta: [],
+  };
+}
+
+// ¿Qué parte de la fila coincide con el texto? '' si ninguna. Un radicado completo
+// o un reiterado exacto sale siempre, sea cual sea su estado (ver esExactaBuscar).
+function coincideBuscar(c, q) {
+  var n = _normBuscar(q); if (!n) return '';
+  if (c.nRad.indexOf(n) !== -1) return 'rad';
+  if (c.nDir.indexOf(n) !== -1) return 'dir';
+  var k = claveBusquedaDireccion(n);
+  if (k && k.length >= 3 && c.kDir.indexOf(k) !== -1) return 'dirk';
+  if (c.nBarrio.indexOf(n) !== -1) return 'barrio';
+  if (c.nOrden && (c.nOrden.indexOf(n) !== -1 || _sinCerosBuscar(c.nOrden).indexOf(_sinCerosBuscar(n)) !== -1)) return 'orden';
+  if (c.nAtiende.indexOf(n) !== -1) return 'atiende';
+  if (coincideReiterado(c.f, n)) return 'reit';
+  return '';
+}
+function esExactaBuscar(c, q) {
+  var n = _normBuscar(q); if (!n) return false;
+  return c.nRad === n || c.nReit.indexOf(claveRadicado(n)) !== -1;
+}
+
+function _lugarBuscar(c, S) {
+  if (!(S.comunas.length || S.barrios.length || S.veredas.length || S.rural || S.sinPot)) return true;
+  if (c.rural) return S.rural || S.veredas.indexOf(_normBuscar(c.vereda)) !== -1;
+  if (c.barrio && S.barrios.indexOf(c.barrio) !== -1) return true;
+  if (!c.barrio && S.sinPot && (!S.comunas.length || S.comunas.indexOf(c.comuna) !== -1)) return true;
+  // Comuna elegida: vale entera, salvo que se haya elegido algún barrio suyo (entonces acota).
+  if (S.comunas.indexOf(c.comuna) !== -1) {
+    return !S.barrios.some(function (b) { return _comunaDeBarrioBuscar(b) === c.comuna; });
+  }
+  return false;
+}
+// Comuna de un barrio del POT: se llena con registrarBarriosBuscar(barrios) al cargar barrios-mapa.json.
+var _COMUNA_BARRIO_BUSCAR = {};
+function registrarBarriosBuscar(barrios) {
+  _COMUNA_BARRIO_BUSCAR = {};
+  (barrios || []).forEach(function (b) { if (!_COMUNA_BARRIO_BUSCAR[b.n]) _COMUNA_BARRIO_BUSCAR[b.n] = String(b.c); });
+}
+function _comunaDeBarrioBuscar(n) { return _COMUNA_BARRIO_BUSCAR[n] || ''; }
+
+var _CAMPO_FECHA_BUSCAR = { rad: 'fRad', asig: 'fAsig', vis: 'fVis', cierre: 'fCierre', cit: 'fCit' };
+function _fechaISOaDate(s) {
+  if (!s) return null;
+  var p = String(s).split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2]);
+}
+
+// Un predicado por grupo de filtro. El orden de las claves es el de BUSCAR_GRUPOS.
+var BUSCAR_PREDICADOS = {
+  estado: function (c, S) { return !S.estados.length || S.estados.indexOf(c.estado) !== -1 || esExactaBuscar(c, S.q); },
+  q: function (c, S) { return !S.q || !!coincideBuscar(c, S.q); },
+  lugar: _lugarBuscar,
+  fecha: function (c, S) {
+    if (!S.desde && !S.hasta) return true;
+    var d = c[_CAMPO_FECHA_BUSCAR[S.campo] || 'fRad']; if (!d) return false;
+    var dia = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (S.desde && dia < _fechaISOaDate(S.desde)) return false;
+    if (S.hasta && dia > _fechaISOaDate(S.hasta)) return false;
+    return true;
+  },
+  visitador: function (c, S) { return !S.visitador.length || S.visitador.some(function (v) { return c.vis.indexOf(v) !== -1; }); },
+  mias: function (c, S) { return !S.mias || !S.yo || c.vis.indexOf(S.yo) !== -1; },
+  tipo: function (c, S) { return !S.tipo.length || S.tipo.indexOf(c.tipo) !== -1; },
+  nvis: function (c, S) { return !S.nvis.length || S.nvis.indexOf(c.nvis > 1 ? 'seg' : 'pri') !== -1; },
+  reit: function (c, S) { return !S.reit || c.reit.length > 0; },
+  prio: function (c, S) { return !S.prio.length || S.prio.indexOf(c.prio) !== -1; },
+  infr: function (c, S) { return !S.infr.length || S.infr.some(function (x) { return c.infr.indexOf(x) !== -1; }); },
+  susp: function (c, S) { return !S.susp || c.susp; },
+  orden: function (c, S) { return !S.orden || !!c.orden; },
+  lic: function (c, S) { return !S.lic.length || S.lic.indexOf(c.lic) !== -1; },
+  obra: function (c, S) { return !S.obra.length || S.obra.indexOf(c.obra) !== -1; },
+  falta: function (c, S) { return !S.falta.length || S.falta.some(function (x) { return c.faltas.indexOf(x) !== -1; }); },
+};
+var BUSCAR_GRUPOS = Object.keys(BUSCAR_PREDICADOS);
+
+// `excepto`: un grupo (texto) o varios (arreglo) que se dejan fuera del cálculo.
+function pasaBuscar(c, S, excepto) {
+  var ex = excepto == null ? [] : (Array.isArray(excepto) ? excepto : [excepto]);
+  for (var i = 0; i < BUSCAR_GRUPOS.length; i++) {
+    var g = BUSCAR_GRUPOS[i];
+    if (ex.indexOf(g) === -1 && !BUSCAR_PREDICADOS[g](c, S)) return false;
+  }
+  return true;
+}
+function filtrarBuscar(casos, S, excepto) {
+  return (casos || []).filter(function (c) { return pasaBuscar(c, S, excepto); });
+}
+// Cuántos casos verías si eliges cada valor de una faceta, con todos los demás filtros puestos
+// pero SIN el de esa faceta (convención de GitHub/Linear). `valoresDe(c)` → arreglo de valores.
+function conteoFacetaBuscar(casos, S, grupo, valoresDe) {
+  var m = new Map();
+  filtrarBuscar(casos, S, grupo).forEach(function (c) {
+    valoresDe(c).forEach(function (v) { m.set(v, (m.get(v) || 0) + 1); });
+  });
+  return m;
+}
+// Filtros puestos en cada bloque del panel (sin texto ni estado, que siempre están a la vista).
+function activosBuscar(S) {
+  var o = {
+    donde: S.comunas.length + S.barrios.length + S.veredas.length + (S.rural ? 1 : 0) + (S.sinPot ? 1 : 0),
+    cuando: (S.desde || S.hasta) ? 1 : 0,
+    quien: S.visitador.length + (S.mias ? 1 : 0) + S.tipo.length + S.nvis.length + (S.reit ? 1 : 0) + S.prio.length,
+    que: S.infr.length + (S.susp ? 1 : 0) + (S.orden ? 1 : 0) + S.lic.length + S.obra.length,
+    falta: S.falta.length,
+  };
+  o.total = o.donde + o.cuando + o.quien + o.que + o.falta;
+  return o;
+}
+// El inspector ve lo suyo, las pendientes y las completadas (la regla actual de Buscar).
+function universoBuscar(casos, rol, nombre) {
+  if (veTodasLasVisitas(rol)) return casos || [];
+  var yo = String(nombre || '').toUpperCase().trim();
+  return (casos || []).filter(function (c) {
+    return c.estado === 'PENDIENTE' || c.estado === 'COMPLETADO' || (!!yo && c.vis.indexOf(yo) !== -1);
+  });
+}
+
+function _fechaDeEstadoBuscar(c) {
+  var d = c.estado === 'COMPLETADO' ? (c.fCierre || c.fVis) : c.estado === 'INICIADO' ? c.fVis
+    : c.estado === 'ASIGNADO' ? c.fAsig : c.fRad;
+  return d ? d.getTime() : 0;
+}
+// «Más urgente» es la regla de la Agenda (tier/exceso, ver prepararCasoBuscar): una sola forma de decir
+// qué se atiende primero. Las completadas, al final y por cierre. Un radicado escrito completo, arriba.
+function ordenarCasosBuscar(lista, orden, q) {
+  var l = (lista || []).slice();
+  var v2 = function (c) { return c.tipo === 'V2' ? 1 : 0; };
+  var ts = function (d) { return d ? d.getTime() : 0; };
+  switch (orden) {
+    case 'rec': l.sort(function (a, b) { return _fechaDeEstadoBuscar(b) - _fechaDeEstadoBuscar(a); }); break;
+    // Por fecha de radicado, no por el texto: «OFICIO-…» no queda antes que «2026…»; los V2 sin número, al final.
+    case 'rad': l.sort(function (a, b) {
+      return (v2(a) - v2(b)) || (ts(b.fRad) - ts(a.fRad)) || b.rad.localeCompare(a.rad, 'es', { numeric: true });
+    }); break;
+    case 'dir': l.sort(function (a, b) { return a.dir.localeCompare(b.dir, 'es', { numeric: true }); }); break;
+    case 'mod': l.sort(function (a, b) { return b.mod - a.mod; }); break;
+    default: l.sort(function (a, b) {
+      var ha = a.estado === 'COMPLETADO', hb = b.estado === 'COMPLETADO';
+      if (ha !== hb) return ha ? 1 : -1;
+      if (ha) return ts(b.fCierre || b.fVis) - ts(a.fCierre || a.fVis);
+      return (b.tier - a.tier) || ((b.exceso || 0) - (a.exceso || 0));
+    });
+  }
+  if (q) {
+    var i = -1;
+    for (var k = 0; k < l.length; k++) { if (esExactaBuscar(l[k], q)) { i = k; break; } }
+    if (i > 0) l.unshift(l.splice(i, 1)[0]);
+  }
+  return l;
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -2206,6 +2493,24 @@ var _cuUtilsExports = {
   barrioPotPorNombre: barrioPotPorNombre,
   distanciaABarrioPotM: distanciaABarrioPotM,
   barrioPotDe: barrioPotDe,
+  // Buscar E5: lógica pura del rediseño
+  BUSCAR_ESTADOS: BUSCAR_ESTADOS,
+  BUSCAR_ESTADOS_VIVOS: BUSCAR_ESTADOS_VIVOS,
+  BUSCAR_FALTAS: BUSCAR_FALTAS,
+  BUSCAR_FALTAS_DESDE_ANIO: BUSCAR_FALTAS_DESDE_ANIO,
+  BUSCAR_GRUPOS: BUSCAR_GRUPOS,
+  prioridadClaveBuscar: prioridadClaveBuscar,
+  prepararCasoBuscar: prepararCasoBuscar,
+  filtrosBuscarVacios: filtrosBuscarVacios,
+  coincideBuscar: coincideBuscar,
+  esExactaBuscar: esExactaBuscar,
+  registrarBarriosBuscar: registrarBarriosBuscar,
+  pasaBuscar: pasaBuscar,
+  filtrarBuscar: filtrarBuscar,
+  conteoFacetaBuscar: conteoFacetaBuscar,
+  activosBuscar: activosBuscar,
+  universoBuscar: universoBuscar,
+  ordenarCasosBuscar: ordenarCasosBuscar,
   armarJornadaPorBarrio: armarJornadaPorBarrio,
   normalizarDireccion: normalizarDireccion,
   direccionRequiereConfirmar: direccionRequiereConfirmar,
