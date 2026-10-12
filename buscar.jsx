@@ -247,6 +247,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [guardandoVista, setGuardandoVista] = useStateB(false);
   const [filtrosAbiertos, setFiltrosAbiertos] = useStateB(false);
   const [toastBQ, setToastBQ]   = useStateB('');
+  const [exportando, setExportando] = useStateB(false);
   const toastRef = useRefB(null);
 
   // Sugerencias de la casilla: lista + índice activo.
@@ -1033,6 +1034,11 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
 
         {filtrosAbiertos && <div className="bq-velo" onClick={() => setFiltrosAbiertos(false)} aria-hidden="true" />}
 
+        {exportando && veTodo && (
+          <ExportarBQ casos={lista} toast={toast} onCerrar={() => setExportando(false)}
+            resumenFiltros={[S.estados.join('+')].concat(chipsActivos.map(c => c.l), S.q ? ['texto: ' + S.q] : []).join(' · ')} />
+        )}
+
         {/* ── Lista ── */}
         <div className="bq-lista">
           {listo && (
@@ -1046,6 +1052,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                     {BQ_ORDENES.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
                   </select>
                 </label>
+                {veTodo && (
+                  <button type="button" className="vc-btn" onClick={() => setExportando(true)}
+                    disabled={!lista.length} title="Exportar lo filtrado a Excel">Exportar</button>
+                )}
                 <button type="button" className="vc-btn bq-ico" onClick={copiarEnlace}
                   title="Copiar enlace con estos filtros" aria-label="Copiar enlace con estos filtros">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -1680,6 +1690,152 @@ function ResumenBQ({ casos, veTodo }) {
             <React.Fragment key={k}>{i > 0 && ' · '}{nombre(k)} <b>{_n0BQ(cn)}</b></React.Fragment>
           ))}{insp.length > 4 && ' · +' + (insp.length - 4)}</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Exportar (E5d) ────────────────────────────────────────────
+// Solo admin y supervisor. Exporta los casos de la lista (lo filtrado) a Excel
+// con las columnas elegidas. Antes de armar el archivo, el backend deja la
+// exportación en LOG_AUDITORIA; si eso falla, no se descarga nada.
+const _fmtFechaBQ = d => d instanceof Date && !isNaN(d) ? String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() : '';
+const _colF = (c, ...nombres) => { for (const n of nombres) { const v = c.f && c.f[n]; if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; };
+const BQ_EXP_COLS = [
+  ['Caso', 'rad', 'Radicado', c => c.rad],
+  ['Caso', 'frad', 'Fecha de radicado', c => _fmtFechaBQ(c.fRad)],
+  ['Caso', 'tipo', 'Tipo de caso', c => ({ PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado (V2)' })[c.tipo] || c.tipo],
+  ['Caso', 'estado', 'Estado', c => (BQ_EST_RES.find(e => e[0] === c.estado) || [, c.estado])[1].replace(/s$/, '')],
+  ['Caso', 'prio', 'Prioridad', c => c.prio],
+  ['Caso', 'reit', 'Radicados reiterados', c => (c.reit || []).join(' / ')],
+  ['Caso', 'nvis', 'N° de visita', c => c.nvis || ''],
+  ['Ubicación', 'dir', 'Dirección', c => c.dir],
+  ['Ubicación', 'barrio', 'Barrio (POT)', c => c.rural ? 'Vda. ' + c.vereda : (c.barrio || c.barrioTxt)],
+  ['Ubicación', 'comuna', 'Comuna', c => c.rural ? 'Rural' : c.comuna],
+  ['Ubicación', 'latlon', 'Latitud y longitud', c => (c.lat && c.lon) ? c.lat + ', ' + c.lon : ''],
+  ['Ubicación', 'cat', 'Código catastral', c => _colF(c, 'CODIGO CATASTRAL', 'CATASTRAL')],
+  ['Visita', 'vis', 'Visitador(es)', c => (c.vis || []).join(' / ')],
+  ['Visita', 'fasig', 'Fecha de asignación', c => _fmtFechaBQ(c.fAsig)],
+  ['Visita', 'fvis', 'Fecha de visita', c => _fmtFechaBQ(c.fVis)],
+  ['Visita', 'fcierre', 'Fecha de cierre', c => _fmtFechaBQ(c.fCierre)],
+  ['Visita', 'fcit', 'Fecha de citación', c => _colF(c, 'FECHA CITACION')],
+  ['Hallazgos', 'infr', 'Tipo de infracción', c => (c.infr || []).join(' | ')],
+  ['Hallazgos', 'obra', 'Estado de la obra', c => c.obra],
+  ['Hallazgos', 'susp', 'Suspensión de obra', c => _colF(c, 'SUSPENSION DE LA OBRA')],
+  ['Hallazgos', 'orden', 'N° orden de policía', c => c.orden],
+  ['Hallazgos', 'lic', 'Licencia aportada', c => c.lic],
+  ['POT', 'poli', 'Polígono uso del suelo', c => _colF(c, 'POLIGONO USO SUELO')],
+  ['POT', 'sp', 'Suelo de protección', c => _colF(c, 'SUELO DE PROTECCION')],
+  ['POT', 'amen', 'Amenaza', c => _colF(c, 'AMENAZA')],
+  ['POT', 'ret', 'Cumple retiro de quebrada', c => _colF(c, 'CUMPLE RETIRO QUEBRADA')],
+  ['Entregables', 'l_carpeta', 'Carpeta de Drive', c => _colF(c, 'LINK_DRIVE')],
+  ['Entregables', 'l_acta', 'Acta', c => _colF(c, 'LINK_PDF_ACTA', 'LINK_XLSX_ACTA')],
+  ['Entregables', 'l_inf', 'Informe', c => _colF(c, 'LINK_DOCX_INFORME', 'LINK_INFORME_F43')],
+  ['Entregables', 'l_rf', 'Registro fotográfico', c => _colF(c, 'LINK_REGISTRO_FOTOS')],
+  ['Entregables', 'obs', 'Actuación / observaciones', c => _colF(c, 'ACTUACION / OBSERVACIONES', 'ACTUACION')],
+  ['Datos personales', 'denun', 'Denunciante', c => _colF(c, 'DENUNCIANTE', 'DENUNCIANTE/REMITENTE'), 1],
+  ['Datos personales', 'atiende', 'Persona que atiende', c => _colF(c, 'NOMBRE PERSONA ATIENDE'), 1],
+  ['Datos personales', 'cc', 'Cédula de quien atiende', c => _colF(c, 'ID PERSONA ATIENDE'), 1],
+  ['Datos personales', 'tel', 'Teléfono', c => _colF(c, 'TELEFONO PERSONA ATIENDE'), 1],
+  ['Datos personales', 'mail', 'Correo', c => _colF(c, 'CORREO ELECTRONICO'), 1],
+  ['Datos personales', 'notif', 'Dirección de notificación', c => _colF(c, 'DIR NOTIFICACION'), 1],
+];
+const BQ_EXP_PRESETS = [
+  ['Informe mensual', ['rad', 'frad', 'estado', 'dir', 'barrio', 'comuna', 'vis', 'fvis', 'fcierre', 'infr', 'susp']],
+  ['Para jurídica', ['rad', 'dir', 'barrio', 'vis', 'fvis', 'infr', 'susp', 'orden', 'lic', 'l_acta', 'l_inf', 'atiende']],
+  ['Ubicación y POT', ['rad', 'dir', 'barrio', 'comuna', 'latlon', 'cat', 'poli', 'sp', 'amen', 'ret']],
+];
+const BQ_EXP_KEY = 'cu_buscar_export_cols_v1';
+
+function ExportarBQ({ casos, resumenFiltros, onCerrar, toast }) {
+  const [sel, setSel] = useStateB(() => {
+    try { const g = JSON.parse(localStorage.getItem(BQ_EXP_KEY)); if (Array.isArray(g) && g.length) return new Set(g); } catch (e) { /* sin almacenamiento */ }
+    return new Set(BQ_EXP_PRESETS[0][1]);
+  });
+  const [ocupado, setOcupado] = useStateB(false);
+  const [error, setError] = useStateB('');
+  useEffectB(() => {
+    const onKey = e => { if (e.key === 'Escape' && !ocupado) onCerrar(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ocupado, onCerrar]);
+
+  const grupos = [...new Set(BQ_EXP_COLS.map(c => c[0]))];
+  const personales = BQ_EXP_COLS.filter(c => c[4] && sel.has(c[1]));
+  const nPers = personales.length ? casos.filter(c => personales.some(k => k[3](c))).length : 0;
+  const actual = [...sel].sort().join();
+  const cambiar = (k, on) => setSel(prev => { const s = new Set(prev); on ? s.add(k) : s.delete(k); return s; });
+  const toggleGrupo = g => {
+    const cs = BQ_EXP_COLS.filter(c => c[0] === g), todas = cs.every(c => sel.has(c[1]));
+    setSel(prev => { const s = new Set(prev); cs.forEach(c => todas ? s.delete(c[1]) : s.add(c[1])); return s; });
+  };
+
+  async function descargar() {
+    const cols = BQ_EXP_COLS.filter(c => sel.has(c[1]));
+    if (!cols.length || ocupado) return;
+    setOcupado(true); setError('');
+    try {
+      // Primero el registro: sin él no hay archivo (decisión del usuario 2026-10-05).
+      await registrarExportacion(casos.length, cols.map(c => c[2]), personales.map(c => c[2]), resumenFiltros);
+      const XLSX = await cargarXLSX();
+      const filas = [cols.map(c => c[2])].concat(casos.map(c => cols.map(k => { const v = k[3](c); return v == null ? '' : v; })));
+      const hoja = XLSX.utils.aoa_to_sheet(filas);
+      hoja['!cols'] = cols.map(c => ({ wch: Math.min(48, Math.max(10, c[2].length + 2)) }));
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Casos');
+      const hoy = new Date();
+      XLSX.writeFile(libro, 'buscar_' + _isoBQ(hoy) + '_' + casos.length + '-casos.xlsx');
+      try { localStorage.setItem(BQ_EXP_KEY, JSON.stringify([...sel])); } catch (e) { /* sin almacenamiento */ }
+      toast('Excel descargado · quedó registrado en la auditoría');
+      onCerrar();
+    } catch (e) {
+      setError((e && e.message) || 'No se pudo exportar.');
+    }
+    setOcupado(false);
+  }
+
+  return (
+    <div className="bq-export-velo" onClick={e => { if (e.target === e.currentTarget && !ocupado) onCerrar(); }}>
+      <div className="bq-export" role="dialog" aria-modal="true" aria-labelledby="bq-export-tit">
+        <div className="bq-export-cab">
+          <h2 id="bq-export-tit">Exportar {_n0BQ(casos.length)} {casos.length === 1 ? 'caso' : 'casos'}</h2>
+          <button type="button" className="vc-btn bq-ico" onClick={onCerrar} disabled={ocupado} aria-label="Cerrar">×</button>
+        </div>
+        <div className="bq-opts bq-export-presets">
+          <span>Atajos:</span>
+          {BQ_EXP_PRESETS.map(([l, ks]) => {
+            const on = ks.slice().sort().join() === actual;
+            return <button key={l} type="button" className={'bq-op' + (on ? ' on' : '')} aria-pressed={on} onClick={() => setSel(new Set(ks))}><span>{l}</span></button>;
+          })}
+        </div>
+        <div className="bq-export-cols">
+          {grupos.map(g => {
+            const cs = BQ_EXP_COLS.filter(c => c[0] === g), todas = cs.every(c => sel.has(c[1]));
+            return (
+              <div key={g} className={'bq-colg' + (g === 'Datos personales' ? ' personal' : '')}>
+                <h3>{g}<button type="button" onClick={() => toggleGrupo(g)}>{todas ? 'Ninguna' : 'Todas'}</button></h3>
+                <div className="bq-colg-items">
+                  {cs.map(c => (
+                    <label key={c[1]}><input type="checkbox" checked={sel.has(c[1])} onChange={e => cambiar(c[1], e.target.checked)} />{c[2]}</label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {personales.length > 0 && (
+          <div className="bq-aviso">
+            Incluye datos personales de <b>{_n0BQ(nPers)}</b> ciudadanos ({personales.map(c => c[2].toLowerCase()).join(', ')}).
+            Úsalo solo para el trámite del caso; el archivo no se comparte por fuera de la Inspección.
+          </div>
+        )}
+        {error && <div className="bq-aviso bq-aviso-error" role="alert">{error}</div>}
+        <div className="bq-export-pie">
+          <span>La exportación queda registrada en la auditoría.</span>
+          <button type="button" className="vc-btn vc-btn-cta" onClick={descargar} disabled={!sel.size || ocupado || !casos.length}>
+            {ocupado ? 'Preparando…' : 'Descargar ' + _n0BQ(casos.length) + ' filas · ' + sel.size + ' columnas'}
+          </button>
+        </div>
       </div>
     </div>
   );

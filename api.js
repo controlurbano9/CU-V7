@@ -38,6 +38,8 @@ const CFG = {
 const TURF_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js';
 const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
 const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+// SheetJS (~900 KB): solo al exportar desde Buscar (E5d), nunca en la precarga.
+const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 // Promesa por URL: varias llamadas concurrentes comparten una sola descarga
 // y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
@@ -803,6 +805,18 @@ async function cambiarRol(fila, nombreConocido, rol) {
 async function leerPendientesAdmin() {
   const d = await gasPost({ accion: 'leerPendientesAdmin' });
   return { hallazgos: d.hallazgos || [], informesRechazados: d.informesRechazados || [] };
+}
+
+// Exportar desde Buscar (E5d): el backend deja la exportación en LOG_AUDITORIA
+// (solo admin y supervisor). Si falla, el cliente no arma el archivo.
+async function registrarExportacion(filas, columnas, personales, filtros) {
+  return gasPost({ accion: 'registrarExportacion', filas, columnas, personales, filtros });
+}
+async function cargarXLSX() {
+  if (window.XLSX && window.XLSX.utils) return window.XLSX;
+  await cargarScript(XLSX_URL);
+  if (!(window.XLSX && window.XLSX.utils)) throw new Error('No se pudo cargar el generador de Excel');
+  return window.XLSX;
 }
 
 async function marcarHallazgoRevisado(filaHoja, radicado, estado) {
@@ -1857,6 +1871,7 @@ Object.assign(window, {
   login, listarInspectoresActivos, listarUsuariosAdmin,
   toggleActivo, registrarLog, leerLogAuditoria,
   generarPinTemporal, cambiarMiPin, cambiarRol, leerPendientesAdmin, marcarHallazgoRevisado,
+  registrarExportacion, cargarXLSX,
   leerConfigAgenda, guardarConfigAgenda,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,

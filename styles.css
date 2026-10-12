@@ -3446,3 +3446,31 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 @media (max-width: 1199px) {
   .bq-campo .adm-tab, .bq-rango-in input { min-height: var(--tap-min); }
 }
+
+/* ── Buscar E5d: exportar a Excel (admin y supervisor) ── */
+.bq-export-velo { position: fixed; inset: 0; z-index: 120; background: rgba(31, 27, 22, .42); display: flex;
+  align-items: center; justify-content: center; padding: 16px; }
+.bq-export { background: var(--surface); border-radius: var(--r); box-shadow: var(--shadow-md); width: min(760px, 100%);
+  max-height: min(92vh, 900px); display: flex; flex-direction: column; overflow: hidden; }
+.bq-export-cab { display: flex; align-items: center; gap: 10px; padding: 14px 18px 8px; }
+.bq-export-cab h2 { margin: 0; flex: 1; font: 600 19px var(--font-serif); color: var(--ink); }
+.bq-export-presets { padding: 0 18px 10px; align-items: center; }
+.bq-export-presets > span { font-size: 12px; color: var(--ink-3); margin-right: 4px; }
+.bq-export-cols { overflow-y: auto; padding: 4px 18px 12px; display: grid; gap: 14px 22px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.bq-colg h3 { margin: 0 0 4px; display: flex; align-items: center; gap: 6px; font: 600 12px var(--font-sans);
+  letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.bq-colg h3 button { margin-left: auto; border: 0; background: none; padding: 0 4px; min-height: 28px; font: 600 12px var(--font-sans);
+  color: var(--brand-ink); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.bq-colg label { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.bq-colg input { width: 16px; height: 16px; accent-color: var(--brand); margin: 0; }
+.bq-colg.personal { grid-column: 1 / -1; background: var(--red-bg); border-radius: var(--r); padding: 10px 14px 8px; }
+.bq-colg.personal .bq-colg-items { display: flex; flex-wrap: wrap; gap: 0 22px; }
+.bq-colg.personal h3 { color: var(--red); }
+.bq-aviso { margin: 0 18px 10px; padding: 10px 14px; border-left: 3px solid var(--red); background: var(--surface-2);
+  font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.bq-aviso-error { color: var(--red); }
+.bq-export-pie { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--line); }
+.bq-export-pie > span { flex: 1 1 220px; font-size: 12px; color: var(--ink-3); }
+.bq-export-pie .vc-btn { min-height: 44px; padding: 0 16px; font-size: 13px; }
+@media (max-width: 1199px) { .bq-colg label { min-height: var(--tap-min); } }
