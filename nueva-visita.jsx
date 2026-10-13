@@ -1278,7 +1278,6 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
         <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
-              {r.municipal && <span style={{ color: 'var(--rojo)', marginRight: 4 }}>🏛</span>}
               Ficha <span style={{ fontFamily: 'var(--font-mono)' }}>{r.ficha}</span>
               <span style={{ fontWeight: 400, color: 'var(--texto-suave)', marginLeft: 8, fontSize: 11 }}>
                 · {r.destinacion || 'Sin destinación'}
@@ -1675,24 +1674,25 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
     minHeight: '60vh', display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center', padding: '40px 20px',
   };
+  // Sistema visual: panel radio 12 sin borde; opciones en neutro, sin borde.
   const estiloCard = {
-    background: 'var(--superficie)', borderRadius: 'var(--r-lg)',
-    border: '1px solid var(--borde)', boxShadow: 'var(--sombra-md)',
+    background: 'var(--superficie)', borderRadius: 'var(--r-panel)',
+    boxShadow: 'var(--sombra-md)',
     padding: 28, maxWidth: 440, width: '100%',
   };
   // Íconos de la app (icons.jsx, trazo fino) en un cuadro de color, no emojis.
   const cajaIcono = (tono) => ({
     flex: '0 0 auto', width: 40, height: 40, borderRadius: 'var(--r-md)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: tono === 'brand' ? 'var(--brand-bg)' : 'var(--gris-bg)',
+    background: tono === 'brand' ? 'var(--brand-bg)' : 'var(--superficie)',
     color: tono === 'brand' ? 'var(--brand-ink)' : 'var(--texto)',
   });
   const estiloOpcion = {
     display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64,
-    padding: '14px 16px', border: '1.5px solid var(--borde-med)',
-    borderRadius: 'var(--r-md)', background: 'var(--superficie)',
+    padding: '14px 16px', border: 0,
+    borderRadius: 'var(--r-card)', background: 'var(--surface-2)',
     cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600,
-    color: 'var(--texto)', textAlign: 'left', transition: 'border-color 0.15s',
+    color: 'var(--texto)', textAlign: 'left',
   };
   const textoAyuda = { fontSize: 12, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2, lineHeight: 1.35 };
   const QUE_SE_BUSCO = { orden: 'esa orden de policía', oficio: 'ese radicado de oficio', direccion: 'esa dirección' };
@@ -1870,13 +1870,12 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                     background: 'var(--gris-bg)', borderRadius: 'var(--r-md)',
                     padding: 14, marginBottom: 16, fontSize: 13,
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <span style={{ fontWeight: 600 }}>Visita N°{nVis}</span>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                        background: esCompletada ? 'var(--verde-bg)' : esIniciada ? 'var(--amarillo-bg)' : 'var(--azul-bg)',
-                        color: esCompletada ? 'var(--verde-dark)' : esIniciada ? 'var(--cafe)' : 'var(--azul)',
-                      }}>{est}</span>
+                      {/* Mismo código de estado que la Semana y la ficha (ocre / azul / verde). */}
+                      <span className={'al-estado' + ((_ESTADO_PANEL_MV[est] || {}).cls || '')}>
+                        {(_ESTADO_PANEL_MV[est] || {}).label || est}
+                      </span>
                     </div>
                     {dir && <div style={{ color: 'var(--texto-suave)' }}>{dir}</div>}
                     {fecha && <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>Fecha: {fecha}</div>}

@@ -330,7 +330,7 @@ body {
 }
 .btn-login:active { transform: scale(0.97); }
 .login-nota {
-  color: rgba(245,241,235,0.32);
+  color: rgba(245,241,235,0.55);
   font-size: 11px; text-align: left;
   margin-top: 24px;
 }
@@ -1092,7 +1092,18 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .cn-cand:last-child { border-bottom: none; }
 .cn-cand:hover { background: var(--gris-bg); }
 .cn-cand:focus-visible { outline-offset: -2px; }
-.cn-cand[aria-pressed="true"] { background: var(--azul-bg); border-left-color: var(--azul); }
+.cn-cand[aria-pressed="true"] { background: var(--surface-2); border-left-color: var(--ink); }
+/* Estado vacío de «Norma POT»: ejemplos que buscan al tocarlos (paso 9). */
+.cn-vacio { color: var(--texto-suave); font-size: 13px; text-align: center; padding: 20px 0; }
+.cn-ejemplos { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.cn-ejemplo {
+  display: inline-flex; align-items: center; gap: 8px; min-height: var(--tap-min);
+  padding: 0 12px; border: 0; border-radius: var(--r-ctl);
+  background: var(--surface-2); color: var(--ink); font-size: 13px; cursor: pointer;
+}
+.cn-ejemplo-tipo { font-size: 11px; color: var(--ink-3); }
+@media (hover: hover) and (pointer: fine) { .cn-ejemplo:hover { background: var(--surface-3); } }
+.btn-neutro.cn-limpiar { min-height: 36px; padding: 0 14px; font-size: 13px; }
 .cn-cand-txt { flex: 1; min-width: 0; }
 .cn-cand-dir {
   display: block; font-size: 13px; font-weight: 600;
@@ -2931,6 +2942,8 @@ button.sv-col-head {
 .mv-paso-sub { font-size: 11px; color: var(--ink-3); }
 .mv-paso.demora .mv-paso-val, .mv-paso.demora .mv-paso-sub { color: var(--red); }
 .mv-paso.futuro .mv-paso-val { color: var(--ink-4); font-weight: 400; }
+/* A 390 px cuatro fechas de 13 px se tocaban: letra y aire más chicos. */
+@media (max-width: 480px) { .mv-paso { padding-right: 6px; } .mv-paso-val { font-size: 11.5px; } }
 
 /* Cuerpo: una columna, o dos cuando el panel da el ancho (se mide el panel,
    no la ventana: a 1366 mide ~560 px y va en una). */
@@ -3003,6 +3016,8 @@ button.sv-col-head {
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
 .fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: 20px; }
+/* La × no pisa «Cómo llegar»: la cabecera le reserva su esquina. */
+.fv-fija.con-cerrar { padding-right: 60px; }
 /* «Visitas del caso» (casos con seguimiento): segmentos con la barra de estado
    de la Semana (3 px, sin radio en ese lado) + estado en texto. La elegida,
    con borde de tinta y fondo de superficie; las demás, apagadas. */

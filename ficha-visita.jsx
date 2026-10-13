@@ -107,7 +107,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   return (
     <div className="fv" ref={raizRef}>
       {/* ── Cabecera fija: lo básico, máximo dos botones ── */}
-      <div className="fv-fija" ref={fijaRef}>
+      <div className={'fv-fija' + (onCerrar ? ' con-cerrar' : '')} ref={fijaRef}>
         {onCerrar && (
           <button type="button" className="vc-btn fv-cerrar" onClick={onCerrar} aria-label="Cerrar">×</button>
         )}
@@ -120,7 +120,8 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
               <span className={'al-estado' + tono.cls}>{tono.label}</span>
               {estadoTxt && <span className={'fv-estado-txt' + estadoCls}>{estadoTxt}</span>}
             </div>
-            <div className="fv-dir">{dir}</div>
+            {/* Una dirección que es una coordenada se dice «Punto GPS», como en Buscar. */}
+            <div className="fv-dir" title={dir}>{puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</div>
             <div className="vc-ident">
               <span className="vc-rad">{f['RADICADO'] || '—'}</span>
               <BotonPdfRadicado f={f} onAbrir={alternarPqr}

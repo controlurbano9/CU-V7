@@ -15,6 +15,11 @@ const { useState: useStateCN, useEffect: useEffectCN, useRef: useRefCN } = React
 
 const BELLO_BBOX = { latMin: 6.18, latMax: 6.55, lonMin: -75.75, lonMax: -75.40 };
 const BELLO_CENTRO = { lat: 6.337, lng: -75.557 };
+// Ejemplos tocables del estado vacío: la Alcaldía, por dirección y por punto.
+const CN_EJEMPLOS = [
+  { tipo: 'Dirección', valor: 'CR 50 # 51-00' },
+  { tipo: 'Coordenadas', valor: '6.335529, -75.558507' },
+];
 
 function dentroDeBello(lat, lon) {
   return lat >= BELLO_BBOX.latMin && lat <= BELLO_BBOX.latMax &&
@@ -290,10 +295,11 @@ function ConsultaNormaScreen() {
   }
 
   // Búsqueda unificada: detecta automáticamente si es coordenada o dirección
-  async function buscar() {
+  // `texto` llega de los ejemplos del estado vacío; desde el botón llega el evento.
+  async function buscar(texto) {
     setError(''); setAviso(''); setResultado(null);
     setCandidatos(null); setHallado(null);
-    var txt = consulta.trim();
+    var txt = (typeof texto === 'string' ? texto : consulta).trim();
     if (!txt) { setError('Ingresa una dirección, coordenadas o un dato catastral.'); return; }
 
     // Dato catastral antes que coordenadas: un código escrito con espacios
@@ -515,14 +521,8 @@ function ConsultaNormaScreen() {
         <div id="cn-busqueda-ayuda" style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
           Catastro: ficha, matrícula (con o sin 01N-) o código de 30 dígitos. Coordenadas: decimales, DMS, DMM o link de Google Maps.
         </div>
-        <button onClick={capturarGPS} disabled={busyGPS} style={{
-          marginTop: 8, width: '100%', padding: '10px 14px', borderRadius: 8,
-          border: '1.5px solid var(--brand-accent)', background: 'var(--superficie)',
-          color: 'var(--brand-accent)', fontSize: 13, fontWeight: 600,
-          fontFamily: 'inherit', cursor: busyGPS ? 'wait' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          opacity: busyGPS ? 0.7 : 1,
-        }}>
+        <button type="button" onClick={capturarGPS} disabled={busyGPS} className="btn-accion"
+          style={{ marginTop: 8, width: '100%', cursor: busyGPS ? 'wait' : 'pointer' }}>
           {busyGPS
             ? <><Icon.Clock size={16} /> Capturando ubicación…</>
             : <><Icon.Pin size={16} /> Capturar mis coordenadas</>}
@@ -635,7 +635,7 @@ function ConsultaNormaScreen() {
               {catastro && catastro.length > 0 && (
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                  background: 'var(--azul-bg)', color: 'var(--azul)',
+                  background: 'var(--surface-2)', color: 'var(--ink-2)',
                 }}>{catastro.length} {catastro.length === 1 ? 'ficha' : 'fichas'}</span>
               )}
             </span>
@@ -692,11 +692,19 @@ function ConsultaNormaScreen() {
       <div className="card">
         <div className="card-titulo" style={{ marginBottom: 12 }}>Norma POT</div>
         {!resultado && !busyPOT && (
-          <div style={{ color: 'var(--texto-suave)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
-            {catastro && catastro.length > 0 && !punto
-              ? 'Sin punto en el mapa — toca el mapa sobre el predio para ver su norma.'
-              : 'Sin consulta — busca un predio o toca el mapa.'}
-          </div>
+          catastro && catastro.length > 0 && !punto
+            ? <div className="cn-vacio">Sin punto en el mapa — toca el mapa sobre el predio para ver su norma.</div>
+            : <div className="cn-vacio">
+                Busca un predio, toca el mapa o prueba un ejemplo:
+                <div className="cn-ejemplos">
+                  {CN_EJEMPLOS.map(ej => (
+                    <button key={ej.valor} type="button" className="cn-ejemplo"
+                      onClick={() => { setConsulta(ej.valor); buscar(ej.valor); }}>
+                      <span className="cn-ejemplo-tipo">{ej.tipo}</span>{ej.valor}
+                    </button>
+                  ))}
+                </div>
+              </div>
         )}
         {busyPOT && (
           <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--texto-suave)', fontSize: 13 }}>
@@ -750,13 +758,11 @@ function ConsultaNormaScreen() {
           );
         })()}
 
-        <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={limpiar} style={{
-            background: 'var(--gris-bg)', border: '1px solid var(--borde)',
-            borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}>Limpiar</button>
-        </div>
+        {(consulta || punto || resultado || catastro) && (
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={limpiar} className="btn-neutro cn-limpiar">Limpiar</button>
+          </div>
+        )}
       </div>
       </div>{/* .cn-col-der */}
     </div>
