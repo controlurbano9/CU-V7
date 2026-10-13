@@ -164,12 +164,16 @@ const HORAS_CITACION = [
 ];
 
 // ── Barrios agrupados por comuna ──────────────────────────────
+// Comunas según la capa Barrios del POT (barrios-mapa.json). 2026-10-12: Zona
+// Industrial #1 y #3 pasaron a la comuna 3 y La Meseta a la 5 (antes 2, 4 y 4).
+// Guasimalito está en la 9 y la 10: aquí va en la 9, y con punto manda la
+// comuna del POT (ejecutarPOT).
 const BARRIOS_POR_COMUNA = [
   { comuna: '1', label: 'Comuna 1', barrios: ['El Cafetal','Jose Antonio Galan','La Esmeralda','La Maruchenga','La Pradera','Los Sauces','Paris','Salvador Allende'] },
-  { comuna: '2', label: 'Comuna 2', barrios: ['Barrio Nuevo','Gran Avenida','La Cabana','La Cabanita','La Florida','La Madera','San Jose Obrero','Zona Industrial #1'] },
-  { comuna: '3', label: 'Comuna 3', barrios: ['Amazonia','Hospital Mental','Los Bucaros','Molinares','Salento','San Simon','Santa Ana','Serramonte','Villas de Occidente','Zona Industrial #2'] },
-  { comuna: '4', label: 'Comuna 4', barrios: ['Andalucia','Central','Centro','El Cairo','El Congolo','El Rosario','Espiritu Santo','La Estacion','La Meseta','La Milagrosa','Las Granjas','Lopez de Mesa','Manchester','Nazaret','Perez','Prado','Puerto Bello','Rincon Santos','Suarez','Zona Industrial #3'] },
-  { comuna: '5', label: 'Comuna 5', barrios: ['Altavista','Aralias','Briceno','Buenos Aires','El Carmelo','El Paraiso','El Porvenir','El Trapiche','Hato Viejo','La Cumbre','La Primavera','Riachuelos','Urapanes','Valadares','Villa Maria','Villas de Comfenalco'] },
+  { comuna: '2', label: 'Comuna 2', barrios: ['Barrio Nuevo','Gran Avenida','La Cabana','La Cabanita','La Florida','La Madera','San Jose Obrero'] },
+  { comuna: '3', label: 'Comuna 3', barrios: ['Amazonia','Hospital Mental','Los Bucaros','Molinares','Salento','San Simon','Santa Ana','Serramonte','Villas de Occidente','Zona Industrial #1','Zona Industrial #2','Zona Industrial #3'] },
+  { comuna: '4', label: 'Comuna 4', barrios: ['Andalucia','Central','Centro','El Cairo','El Congolo','El Rosario','Espiritu Santo','La Estacion','La Milagrosa','Las Granjas','Lopez de Mesa','Manchester','Nazaret','Perez','Prado','Puerto Bello','Rincon Santos','Suarez'] },
+  { comuna: '5', label: 'Comuna 5', barrios: ['Altavista','Aralias','Briceno','Buenos Aires','El Carmelo','El Paraiso','El Porvenir','El Trapiche','Hato Viejo','La Cumbre','La Meseta','La Primavera','Riachuelos','Urapanes','Valadares','Villa Maria','Villas de Comfenalco'] },
   { comuna: '6', label: 'Comuna 6', barrios: ['Bellavista','El Ducado','Girasoles','La Aldea','Los Alpes','Pachelly','Playa Rica','San Gabriel','San Martin','Tierradentro','Villa Linda','Villas del Sol'] },
   { comuna: '7', label: 'Comuna 7', barrios: ['Altos de Niquia','Altos de Quitasol','El Mirador','La Selva','Niquia Bifamiliares'] },
   { comuna: '8', label: 'Comuna 8', barrios: ['Ciudad Niquia','Ciudadela del Norte','Hermosa Provincia','Panamericano','Terranova','Zona Industrial #4'] },
@@ -3237,7 +3241,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (r.barrioSugerido) {
         const match = _barrioDeLista(r.barrioSugerido, r.ambito === 'Rural');
         setCampo('barrio', match || r.barrioSugerido.trim());
-        const com = match && _BARRIO_A_COMUNA[match.toUpperCase()];
+        // La comuna del punto (capa Comunas) antes que la de la lista: un
+        // barrio partido entre dos comunas (Guasimalito) no tiene una sola.
+        const com = r.comuna || (match && _BARRIO_A_COMUNA[match.toUpperCase()]);
         if (com) setCampo('comuna', com);
       }
     } catch (e) {
