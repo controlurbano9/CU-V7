@@ -81,12 +81,13 @@ test('prepararCasoBuscar: faltas solo en INICIADO/COMPLETADO desde 2026', () => 
   }), null, HOY);
   assert.deepEqual(vieja.faltas, []);
 
-  // Iniciada de 2026 sin acta, informe y registro: los tres faltan
-  // (ubicación confirmada y sin orden real, para que el renglón sea limpio).
+  // Iniciada de 2026 sin acta ni registro: faltan los dos. El informe no
+  // cuenta como faltante (decisión 2026-10-13: la mayoría no lo lleva).
   const iniciada = U.prepararCasoBuscar(fila({
     'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '05/03/2026', UBICACION_CONFIRMADA: 'GPS',
   }), null, HOY);
-  assert.deepEqual(iniciada.faltas, ['acta', 'informe', 'rf']);
+  assert.deepEqual(iniciada.faltas, ['acta', 'rf']);
+  assert.equal(iniciada.lista, false);
 
   // La orden solo falta con N° real, no con N/A.
   const sinOrden = U.prepararCasoBuscar(fila({
@@ -99,6 +100,38 @@ test('prepararCasoBuscar: faltas solo en INICIADO/COMPLETADO desde 2026', () => 
     'N° ORDEN DE POLICIA': '2026-09-015',
   }), null, HOY);
   assert.equal(conOrden.faltas.includes('orden'), true);
+});
+
+test('prepararCasoBuscar: «lista para cerrar» = acta + registro + orden si hay, sin informe', () => {
+  const base = { 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '05/03/2026',
+    LINK_XLSX_ACTA: 'https://drive/acta', LINK_REGISTRO_FOTOS: 'https://drive/rf' };
+  const lista = U.prepararCasoBuscar(fila(base), null, HOY);
+  assert.equal(lista.lista, true);
+  assert.deepEqual(lista.faltanCierre, []);
+  // Con orden real, falta escanearla.
+  const conOrden = U.prepararCasoBuscar(fila(Object.assign({}, base, { 'N° ORDEN DE POLICIA': '2026-09-015' })), null, HOY);
+  assert.equal(conOrden.lista, false);
+  assert.deepEqual(conOrden.faltanCierre, ['Orden escaneada']);
+  // Completada: nunca «lista para cerrar».
+  const hecha = U.prepararCasoBuscar(fila(Object.assign({}, base, { 'ESTADO VISITA': 'COMPLETADO' })), null, HOY);
+  assert.equal(hecha.lista, false);
+  // El filtro de la vista.
+  const S = Object.assign(U.filtrosBuscarVacios(), { estados: ['INICIADO'], listas: true });
+  assert.deepEqual(U.filtrarBuscar([lista, conOrden], S), [lista]);
+});
+
+test('seccionesFicha: «Persona que atiende» sin atención va en una sola línea', () => {
+  const t = 'No Se Atiende / No Suministra Datos';
+  const s3 = U.seccionesFicha({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '05/03/2026',
+    'NOMBRE PERSONA ATIENDE': t, 'ID PERSONA ATIENDE': 'no se atiende / no suministra datos',
+    'TELEFONO PERSONA ATIENDE': t }).find(s => s.clave === 'persona');
+  assert.equal(s3.campos.length, 1);
+  assert.equal(s3.campos[0].v, 'No se atendió ni suministró datos.');
+  assert.deepEqual(s3.sinDato, []);
+  // Con un dato real, se muestran todos tal cual.
+  const s3b = U.seccionesFicha({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '05/03/2026',
+    'NOMBRE PERSONA ATIENDE': 'Ana Pérez', 'ID PERSONA ATIENDE': t }).find(s => s.clave === 'persona');
+  assert.equal(s3b.campos.length, 2);
 });
 
 test('prepararCasoBuscar: tier de urgencia', () => {

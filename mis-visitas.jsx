@@ -346,7 +346,7 @@ function NotaFilaMV({ x, tipo, verPrioridad }) {
   } else if (tipo === 'curso') {
     partes.push(x.faltan.length
       ? <b key="f" className="falta">Falta: {x.faltan.join(' · ')}</b>
-      : <span key="f"><b className="ok">Entregables completos</b>, pendiente de cierre</span>);
+      : <b key="f" className="bq-lista-cerrar">✓ Lista para cerrar</b>);
     const fVis = formatearFecha(f['FECHA DE VISITA'] || '');
     if (x.dias > 0) {
       partes.push(<b key="d" className={_demoradaMV(x.dias) ? 'demora' : ''}>visitada hace {_plural(x.dias, 'día', 'días')}</b>);
@@ -355,7 +355,6 @@ function NotaFilaMV({ x, tipo, verPrioridad }) {
     }
   } else {
     if (!(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'])) partes.push(<span key="a">Sin acta</span>);
-    if (!(f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'])) partes.push(<span key="i">Sin informe</span>);
   }
   if (!partes.length) return null;
   return (
@@ -381,11 +380,14 @@ const _ESTADO_PANEL_MV = {
 // gestor al completar, no es algo que el inspector deba).
 function _entregablesMV(f) {
   const orden = ordenPoliciaDe(f);
+  // El informe solo si existe (decisión del usuario 2026-10-13): la mayoría
+  // de las visitas no lo lleva y salía siempre como «Falta».
+  const informe = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
   const items = [
     { n: 'Acta de Inspección Ocular', link: f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'] },
-    { n: 'Informe de inspección', link: f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'] },
     { n: 'Registro fotográfico', link: f['LINK_REGISTRO_FOTOS'] },
   ];
+  if (informe) items.splice(1, 0, { n: 'Informe de inspección', link: informe });
   if (orden) items.push({ n: 'Orden de policía ' + orden, link: f['LINK_ORDEN_POLICIA'] });
   if (f['LINK_SOLICITUD_VIGILANCIA']) items.push({ n: 'Solicitud de vigilancia', link: f['LINK_SOLICITUD_VIGILANCIA'] });
   return items;

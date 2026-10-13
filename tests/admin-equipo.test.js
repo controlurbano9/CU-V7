@@ -15,7 +15,7 @@ process.env.TZ = 'America/Bogota';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  parsearFechaHora, cargaUsuario, ultimaActividad, categoriaLog,
+  parsearFechaHora, cargaUsuario, ultimaActividad, categoriaLog, describirLog,
   DIAS_DEMORA_ADMIN, formatearFechaHora, validarPinNuevo,
 } = require('../utils.js');
 
@@ -170,4 +170,27 @@ test('validarPinNuevo — una regla por rama, en el orden en que se muestran', (
   assert.equal(validarPinNuevo('0000', '0000', '4826'), 'Ese PIN es muy fácil de adivinar. Elige otro.');
   assert.equal(validarPinNuevo('4826', '4826', '7391'), '');
   assert.equal(validarPinNuevo('4826', '4826'), '');
+});
+
+// ── describirLog ───────────────────────────────────────────────
+
+test('describirLog — frases internas del log como hechos, sin inventar el radicado', () => {
+  assert.deepEqual(describirLog('Login V6'), { texto: 'Inició sesión', detalle: '' });
+  assert.deepEqual(describirLog('Logout V6'), { texto: 'Cerró sesión', detalle: '' });
+  // Registro viejo: solo la fila, que NO se traduce a radicado (la fila pudo correrse).
+  assert.deepEqual(describirLog('Visita fila 1614: ESTADO ASIGNADO → INICIADO'),
+    { texto: 'Inició una visita', detalle: 'Fila 1614 de la hoja · asignada → iniciada' });
+  assert.deepEqual(describirLog('Visita fila 12 (radicado 20261094702): ESTADO INICIADO → COMPLETADO'),
+    { texto: 'Completó una visita', detalle: 'Radicado 20261094702 · iniciada → completada' });
+  assert.deepEqual(describirLog('Visita fila 12: ESTADO → COMPLETADO'),
+    { texto: 'Completó una visita', detalle: 'Fila 12 de la hoja' });
+  assert.deepEqual(describirLog('Visita fila 12: ESTADO (vacío) → INICIADO'),
+    { texto: 'Inició una visita', detalle: 'Fila 12 de la hoja' });
+  assert.deepEqual(describirLog('Visita fila 40 (radicado 20261000001): REASIGNADA de NELSON CUERVO → MAURICIO HERRERA (estado INICIADO → INICIADO)'),
+    { texto: 'Reasignó una visita de Nelson Cuervo a Mauricio Herrera', detalle: 'Radicado 20261000001' });
+  assert.deepEqual(describirLog('Visita fila 40: ASIGNADA → MAURICIO HERRERA (estado PENDIENTE → ASIGNADO)'),
+    { texto: 'Asignó una visita a Mauricio Herrera', detalle: 'Fila 40 de la hoja' });
+  assert.deepEqual(describirLog('Visita creada — fila 1700 (radicado 20261099999)'),
+    { texto: 'Creó una visita', detalle: 'Radicado 20261099999' });
+  assert.deepEqual(describirLog('Cambió su PIN'), { texto: 'Cambió su PIN', detalle: '' });
 });

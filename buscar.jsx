@@ -31,7 +31,6 @@ const BQ_ORDENES = [
   ['urg', 'Más urgente'], ['rec', 'Más reciente'], ['rad', 'Radicado'],
   ['dir', 'Dirección'], ['mod', 'Última edición'],
 ];
-const BQ_FALTA_FILA = { acta: 'Acta', orden: 'Orden escaneada', rf: 'Registro fotográfico' };
 
 // Vistas propias y preferencia de Inicio («Ver en Buscar» con estados).
 const BQ_VISTAS_KEY = 'cu_buscar_vistas_v1';
@@ -180,7 +179,9 @@ function _vistasBaseBQ(veTodo, hoy) {
   const v = [
     { id: 'vivo', n: 'Lo vivo', s: {} },
     { id: 'asignar', n: 'Por asignar', s: { estados: ['PENDIENTE'] }, soloTodo: true },
-    { id: 'inf', n: 'Completadas sin informe', s: { estados: ['COMPLETADO'], falta: ['informe'] } },
+    // Ocupa el lugar de «Completadas sin informe» (2026-10-13): el informe ya
+    // no es un faltante. Iniciadas con acta, registro y orden escaneada.
+    { id: 'cerrar', n: 'Listas para cerrar', s: { estados: ['INICIADO'], listas: true } },
     { id: 'mes', n: 'Completadas en ' + _MESES_ES[pm.getMonth()], s: { estados: ['COMPLETADO'], campo: 'cierre', desde: _isoBQ(pm), hasta: _isoBQ(_finMesBQ(pm.getFullYear(), pm.getMonth())) } },
     { id: 'mias', n: 'Mías en curso', s: { estados: ['ASIGNADO', 'INICIADO'], mias: true } },
   ];
@@ -643,8 +644,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       if (abrir) window.open(oficioGenerado.linkDoc, '_blank', 'noopener,noreferrer');
     }
 
-    const ok = await appConfirm('¿Marcar como COMPLETADO?', {
-      tono: 'info', titulo: 'Completar visita', btnOk: 'Completar',
+    // Si no está lista para cerrar, se dice qué falta antes de confirmar.
+    const faltan = entregablesFaltantes(f);
+    const ok = await appConfirm(faltan.length
+      ? 'A esta visita le falta: ' + faltan.join(' · ') + '.\n\n¿Marcarla como COMPLETADO de todas formas?'
+      : '¿Marcar como COMPLETADO?', {
+      tono: faltan.length ? 'aviso' : 'info', titulo: 'Completar visita',
+      btnOk: faltan.length ? 'Completar igual' : 'Completar',
     });
     if (!ok) return;
     setBusyFila(fila);
@@ -848,6 +854,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       const f = BUSCAR_FALTAS.find(x => x[0] === v);
       ch.push({ k: 'falta' + v, l: f ? f[1] : v, quitar: () => parcharS({ falta: S.falta.filter(x => x !== v) }) });
     });
+    if (S.listas) ch.push({ k: 'listas', l: 'Listas para cerrar', quitar: () => parcharS({ listas: false }) });
     return ch;
   }, [S]);
 
@@ -1101,6 +1108,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             <div className="bq-res-cab">
               <span className="bq-conteo">
                 <b>{_n0BQ(lista.length)}</b> {lista.length === 1 ? 'caso' : 'casos'} de {_n0BQ(totalGrupos)}
+                {/* Qué estados se están viendo, en palabras: con dos chips
+                    marcados había que sumar para saber qué era la lista. */}
+                <span className="bq-conteo-est">
+                  {' · '}{S.estados.length && S.estados.length < BUSCAR_ESTADOS.length
+                    ? BUSCAR_ESTADOS.filter(e => S.estados.includes(e)).map(e => BQ_EST_L[e]).join(' + ')
+                    : 'Todos los estados'}
+                </span>
               </span>
               <div className="bq-res-acc">
                 <label className="bq-orden">Ordenar
@@ -1239,12 +1253,15 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
   const m = q ? coincideBuscar(c, q) : '';
 
   // CTA único por estado: Asignar (admin, pendiente), Iniciar o Continuar.
+  // Con panel, Iniciar/Continuar viven solo en la ficha (decisión del usuario
+  // 2026-10-13: salía dos veces); «Asignar» se queda como atajo del admin.
   let cta = null;
   if (c.estado === 'PENDIENTE') {
     cta = esAdmin ? { t: 'Asignar', fn: () => onAsignarFila(c) } : { t: 'Iniciar', fn: () => onContinuar(f._idx, f) };
   } else if ((c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && puedeDiligenciar(f)) {
     cta = { t: c.estado === 'INICIADO' ? 'Continuar' : 'Iniciar', fn: () => onContinuar(f._idx, f) };
   }
+  if (conPanel && cta && cta.t !== 'Asignar') cta = null;
   const sinPropagar = fn => e => { e.stopPropagation(); fn(); };
 
   return (
@@ -1319,16 +1336,16 @@ function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
     partes.push(<span key="q">Asignada a {titleCaseNombre(c.vis[0] || '')}</span>);
     partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>{dias(d || 0)}</b>);
   } else if (c.estado === 'INICIADO') {
+    // Primero la siguiente acción: «Lista para cerrar» (pastilla con ✓, no
+    // solo color) o lo que falta. Misma cuenta de Mis visitas.
     const d = diasSinCompletar(c.f);
-    const faltan = ['acta', 'orden', 'rf'].filter(k => c.faltas.indexOf(k) !== -1).map(k => BQ_FALTA_FILA[k]);
+    partes.push(c.lista
+      ? <b key="f" className="bq-lista-cerrar">✓ Lista para cerrar</b>
+      : <b key="f" className="falta">Falta: {c.faltanCierre.join(' · ')}</b>);
     partes.push(<span key="q">Iniciada por {titleCaseNombre(c.vis[0] || '')}</span>);
     partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>visitada {dias(d || 0)}</b>);
-    partes.push(faltan.length
-      ? <b key="f" className="falta">Falta: {faltan.join(' · ')}</b>
-      : <b key="f" className="ok">Entregables completos</b>);
   } else {
     partes.push(<span key="q">{titleCaseNombre(c.vis[0] || '')}{c.vis.length > 1 ? ' +1' : ''}</span>);
-    if (c.faltas.indexOf('informe') !== -1) partes.push(<b key="i" className="falta">Sin informe</b>);
     if (c.susp) partes.push(<span key="s">suspensión</span>);
   }
   // En qué campo no evidente calzó el texto (orden, persona que atiende, reiterado).
@@ -1398,8 +1415,11 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
             </button>
           </>
         )}
+        {/* Lleno solo con la visita lista para cerrar; si falta algo es un
+            botón normal y el aviso dice qué (adminCompletar). Así no compite
+            con «Continuar visita» de la cabecera. */}
         {est === 'INICIADO' && (
-          <button type="button" className="vc-btn vc-btn-cta" disabled={busy}
+          <button type="button" className={'vc-btn' + (entregablesFaltantes(f).length ? '' : ' vc-btn-cta')} disabled={busy}
             onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])}>
             <Icon.Check size={14} /> Completar
           </button>

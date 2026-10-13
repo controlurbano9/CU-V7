@@ -1865,8 +1865,10 @@ var BUSCAR_ESTADOS_VIVOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO'];
 // antes la app no generaba entregables y todas las viejas saldrían «sin acta».
 // ponytail: año fijo; sacarlo de la hoja de reglas si cambia la fecha de arranque.
 var BUSCAR_FALTAS_DESDE_ANIO = 2026;
+// Sin «informe»: la mayoría de las visitas no lo lleva (decisión del usuario
+// 2026-10-13); se muestra solo cuando existe, nunca como faltante.
 var BUSCAR_FALTAS = [
-  ['acta', 'Sin acta'], ['informe', 'Sin informe'], ['rf', 'Sin registro fotográfico'],
+  ['acta', 'Sin acta'], ['rf', 'Sin registro fotográfico'],
   ['orden', 'Orden sin escanear'], ['vig', 'Vigilancia pendiente'], ['ubic', 'Ubicación sin confirmar'],
 ];
 
@@ -1950,12 +1952,16 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   c.faltas = [];
   if ((c.estado === 'INICIADO' || c.estado === 'COMPLETADO') && c.fVis && c.fVis.getFullYear() >= BUSCAR_FALTAS_DESDE_ANIO) {
     if (!(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'])) c.faltas.push('acta');
-    if (!(f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'])) c.faltas.push('informe');
     if (!f['LINK_REGISTRO_FOTOS']) c.faltas.push('rf');
     if (c.orden && !f['LINK_ORDEN_POLICIA']) c.faltas.push('orden');
     if (c.susp && c.orden && !f['LINK_SOLICITUD_VIGILANCIA']) c.faltas.push('vig');
     if (!_colBuscar(f, 'UBICACION_CONFIRMADA')) c.faltas.push('ubic');
   }
+  // «Lista para cerrar»: iniciada con acta, registro fotográfico y orden
+  // escaneada (si hay orden). Misma cuenta de la cabecera del formulario y de
+  // Mis visitas (entregablesFaltantes), sin el corte por año de c.faltas.
+  c.faltanCierre = entregablesFaltantes(f);
+  c.lista = c.estado === 'INICIADO' && c.faltanCierre.length === 0;
 
   // «Más urgente»: nivel y días pasados de su propio plazo.
   //   3 = PQR crítica/alta vencida, o visita asignada/iniciada con 5+ días hábiles
@@ -1983,7 +1989,7 @@ function filtrosBuscarVacios() {
     comunas: [], barrios: [], veredas: [], rural: false, sinPot: false,
     campo: 'rad', desde: '', hasta: '',            // campo: rad | asig | vis | cierre | cit
     visitador: [], mias: false, yo: '', tipo: [], nvis: [], reit: false, prio: [],
-    infr: [], susp: false, orden: false, lic: [], obra: [], falta: [],
+    infr: [], susp: false, orden: false, lic: [], obra: [], falta: [], listas: false,
   };
 }
 
@@ -2057,6 +2063,7 @@ var BUSCAR_PREDICADOS = {
   lic: function (c, S) { return !S.lic.length || S.lic.indexOf(c.lic) !== -1; },
   obra: function (c, S) { return !S.obra.length || S.obra.indexOf(c.obra) !== -1; },
   falta: function (c, S) { return !S.falta.length || S.falta.some(function (x) { return c.faltas.indexOf(x) !== -1; }); },
+  listas: function (c, S) { return !S.listas || c.lista; },
 };
 var BUSCAR_GRUPOS = Object.keys(BUSCAR_PREDICADOS);
 
@@ -2088,7 +2095,7 @@ function activosBuscar(S) {
     cuando: (S.desde || S.hasta) ? 1 : 0,
     quien: S.visitador.length + (S.mias ? 1 : 0) + S.tipo.length + S.nvis.length + (S.reit ? 1 : 0) + S.prio.length,
     que: S.infr.length + (S.susp ? 1 : 0) + (S.orden ? 1 : 0) + S.lic.length + S.obra.length,
-    falta: S.falta.length,
+    falta: S.falta.length + (S.listas ? 1 : 0),
   };
   o.total = o.donde + o.cuando + o.quien + o.que + o.falta;
   return o;
@@ -2264,6 +2271,50 @@ function categoriaLog(usuario, accion) {
   return 'otros';
 }
 
+// Texto del log para la pantalla: { texto, detalle }. El log guarda frases
+// internas («Login V6», «Visita fila 1614: ESTADO ASIGNADO → INICIADO»); aquí
+// se dicen como hechos. El número de fila NO identifica la visita (borrar una
+// fila corre las de abajo), así que nunca se traduce a un radicado: si el
+// registro trae el radicado (backend @136 en adelante) se muestra ese; si no,
+// la fila queda como dato de la época. Lo que no se reconoce va tal cual.
+var _ESTADO_LOG = { PENDIENTE: 'pendiente', PENDIENTES: 'pendiente', ASIGNADO: 'asignada',
+  INICIADO: 'iniciada', COMPLETADO: 'completada', COMPLETADA: 'completada', REITERADO: 'reiterado' };
+function describirLog(accion) {
+  var a = String(accion || '').trim();
+  if (/^login v\d+$/i.test(a)) return { texto: 'Inició sesión', detalle: '' };
+  if (/^logout v\d+$/i.test(a)) return { texto: 'Cerró sesión', detalle: '' };
+  var est = function (e) {
+    var k = String(e || '').trim().toUpperCase();
+    return _ESTADO_LOG[k] || String(e || '').trim().toLowerCase();
+  };
+  var cual = function (fila, rad) { return rad ? 'Radicado ' + rad : 'Fila ' + fila + ' de la hoja'; };
+  var m = a.match(/^Visita fila (\d+)(?: \(radicado ([^)]+)\))?: (.*)$/);
+  if (m) {
+    var resto = m[3];
+    var e = resto.match(/^ESTADO (?:(.+?) )?→ (.+)$/);
+    if (e) {
+      var nuevo = String(e[2]).trim().toUpperCase();
+      var texto = nuevo === 'INICIADO' ? 'Inició una visita'
+        : (nuevo === 'COMPLETADO' || nuevo === 'COMPLETADA') ? 'Completó una visita'
+        : 'Visita pasó a ' + est(nuevo);
+      var paso = e[1] && e[1] !== '(vacío)' ? ' · ' + est(e[1]) + ' → ' + est(nuevo) : '';
+      return { texto: texto, detalle: cual(m[1], m[2]) + paso };
+    }
+    var r = resto.match(/^(?:REASIGNADA de (.+?)|ASIGNADA) → (.+?)(?: \(estado .*\))?$/);
+    if (r) {
+      return {
+        texto: r[1] ? 'Reasignó una visita de ' + titleCaseNombre(r[1]) + ' a ' + titleCaseNombre(r[2])
+                    : 'Asignó una visita a ' + titleCaseNombre(r[2]),
+        detalle: cual(m[1], m[2]),
+      };
+    }
+    return { texto: 'Visita: ' + resto, detalle: cual(m[1], m[2]) };
+  }
+  var c = a.match(/^Visita creada — fila (\d+)(?: \(radicado ([^)]+)\))?$/);
+  if (c) return { texto: 'Creó una visita', detalle: cual(c[1], c[2]) };
+  return { texto: a, detalle: '' };
+}
+
 // PINes que se rechazan al elegir el propio: los mismos que PINES_DEBILES del
 // backend (cambiarMiPin), que vuelve a validar. Esto solo ahorra el viaje.
 var PINES_DEBILES = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777',
@@ -2373,6 +2424,13 @@ function seccionesFicha(f, rol) {
   campo(s3, 'Relación con el evento', _gFicha(f, 'RELACION CON EL EVENTO', 10));
   campo(s3, 'Dirección notificación', _gFicha(f, 'DIR NOTIFICACION', 11));
   campo(s3, 'Correo electrónico', _gFicha(f, 'CORREO ELECTRONICO', 12));
+  // «No se atiende / No suministra datos» copiado en cada casilla: una sola
+  // línea en vez de seis repeticiones. Solo pantalla; la BD queda igual.
+  var _sinAtencion = /^\s*no\s+se\s+atiende|no\s+suministr/i;
+  if (s3.campos.length && s3.campos.every(function (c) { return _sinAtencion.test(c.v); })) {
+    s3.campos = [{ l: '', v: 'No se atendió ni suministró datos.', largo: true }];
+    s3.sinDato = [];
+  }
 
   // 4. Características de la edificación
   var s4 = seccion(4, 'edificacion', 'Características de la edificación');
@@ -2574,6 +2632,7 @@ var _cuUtilsExports = {
   cargaUsuario: cargaUsuario,
   ultimaActividad: ultimaActividad,
   categoriaLog: categoriaLog,
+  describirLog: describirLog,
   validarPinNuevo: validarPinNuevo,
   seccionesFicha: seccionesFicha,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)

@@ -868,9 +868,11 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   display: flex; align-items: center; gap: 1px 5px; flex-wrap: wrap;
   font-size: 11px; color: var(--ink-3); margin-top: 3px; line-height: 1.3;
 }
+/* Radicado en tinta, no terracota (2026-10-13): el terracota queda para la
+   acción y la selección, y el rojo para la demora. */
 .vc-rad {
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
-  color: var(--brand-accent);
+  color: var(--ink-2);
 }
 .vc-sep { opacity: 0.45; }
 .vc-admin {
@@ -2524,11 +2526,20 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   font-family: var(--font-serif); font-size: 15px; font-weight: 600; line-height: 1.3;
 }
 .mv-hecha .mv-dir { font-size: 14px; }
-.mv-nota { font-size: 11px; line-height: 1.4; color: var(--ink-3); margin-top: 2px; }
+/* Escala de las listas (Buscar y Mis visitas, 2026-10-13): dirección 15,
+   identidad 12, nota 12 — antes 11, se leía con esfuerzo. */
+.mv-fila .vc-ident { font-size: 12px; }
+.mv-nota { font-size: 12px; line-height: 1.45; color: var(--ink-3); margin-top: 3px; }
 .mv-nota b { font-weight: 600; }
 .mv-nota .demora { color: var(--red); }
 .mv-nota .falta { color: var(--amber); }
 .mv-nota .ok { color: var(--green-ink); }
+/* «Lista para cerrar»: pastilla con ✓, no solo color — el olivo y el ocre
+   de «Falta» se confundían a simple vista. */
+.bq-lista-cerrar {
+  display: inline-block; padding: 0 6px; border-radius: 3px;
+  background: var(--green-bg); color: var(--green-ink); box-shadow: inset 0 0 0 1px rgba(86,94,46,.35);
+}
 .mv-acc { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .mv-acc .vc-btn-cta { min-width: 92px; }   /* mismo ancho de .ent-btn */
 .mv-fecha { flex: none; width: 46px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
@@ -2642,19 +2653,20 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   overflow: hidden; background: var(--surface-2);
 }
 .mv-mapa-pie { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+/* Ficha: datos a 14 y rótulos a 11 (antes 13/10). */
 .mv-ent {
   display: flex; align-items: center; gap: 10px; min-height: 44px;
-  border-bottom: 0.5px solid var(--line); font-size: 13px;
+  border-bottom: 0.5px solid var(--line); font-size: 14px;
 }
 .mv-ent:last-child { border-bottom: 0; }
 .mv-ent-n { flex: 1; min-width: 0; }
-.mv-ent-e { font-size: 11px; color: var(--ink-3); }
+.mv-ent-e { font-size: 12px; color: var(--ink-3); }
 .mv-ent-e.falta { color: var(--amber); font-weight: 600; }
-.mv-datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 16px; margin: 0; }
-.mv-datos dt { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4); }
-.mv-datos dd { margin: 2px 0 0; font-size: 13px; color: var(--ink); word-break: break-word; }
+.mv-datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 16px; margin: 0; }
+.mv-datos dt { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.mv-datos dd { margin: 2px 0 0; font-size: 14px; color: var(--ink); word-break: break-word; }
 .mv-datos .ancho { grid-column: 1 / -1; }
-.mv-texto { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
+.mv-texto { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
 .mv-pqr {
   height: clamp(420px, 66vh, 860px); border: 1px solid var(--line); border-radius: var(--r);
   overflow: hidden; background: var(--surface-2);
@@ -2812,17 +2824,21 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .adm-t-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .adm-t-nombre { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
-.adm-t-act { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); white-space: nowrap; }
+.adm-t-act { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .adm-t-act.aviso { color: var(--amber); font-weight: 600; }
-.adm-t-barra {
-  display: flex; gap: 2px; height: 6px; margin-top: 7px;
+/* Pista = la carga de quien más tiene en el equipo; la barra, la de esta
+   persona (ancho inline en TarjetaPersona). */
+.adm-t-pista {
+  height: 6px; margin-top: 7px; background: var(--surface-2);
   border-radius: 2px; overflow: hidden;
 }
+.adm-t-barra { display: flex; gap: 2px; height: 100%; }
 .adm-t-seg { flex-basis: 0; }
 .adm-t-seg.amarillo { background: var(--amber); }
 .adm-t-seg.azul     { background: var(--info); }
 .adm-t-seg.rojo     { background: var(--red); }
-.adm-t-txt { font-size: 11px; color: var(--ink-3); margin-top: 5px; }
+.adm-t-txt { font-size: 12px; color: var(--ink-3); margin-top: 5px; }
+.adm-t-demora { font-weight: 600; color: var(--red); }
 .adm-tarjeta.sel { border-color: var(--brand-accent); box-shadow: inset 0 0 0 1px var(--brand-accent); }
 @media (hover: hover) and (pointer: fine) {
   .adm-tarjeta:not(.sel):hover { background: var(--surface-2); }
@@ -2838,7 +2854,6 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .adm-grupo-btn::before { content: '▸'; font-size: 12px; color: var(--ink-3); }
 .adm-grupo-btn span { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-4); }
-.adm-cifras-demora { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--red); }
 .adm-grupo-btn[aria-expanded="true"]::before { content: '▾'; }
 
 /* Panel de la persona. */
@@ -2858,46 +2873,50 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   font-size: 11px; font-weight: 600;
 }
 .adm-p-estado { display: inline-flex; align-items: center; gap: 6px; }
-.adm-cifras {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px; padding: 0 20px 16px; border-bottom: 1px solid var(--line);
+/* Cuerpo del panel: una columna; con ancho, trabajo | acceso y permisos.
+   Se mide el panel (@container), no la ventana, como en Mis visitas. */
+.adm-panel { container-type: inline-size; }
+.adm-p-cuerpo { display: grid; gap: 20px; padding: 0 20px 20px; }
+.adm-p-trabajo, .adm-p-ajustes { min-width: 0; }
+@container (min-width: 760px) {
+  .adm-p-cuerpo { grid-template-columns: minmax(0, 1fr) clamp(300px, 34%, 380px); align-items: start; }
 }
-.adm-cifra { padding: 10px 12px; background: var(--surface-2); border-radius: var(--r); }
-.adm-cifra b { display: block; font-family: var(--font-mono); font-size: 20px; color: var(--ink); }
-.adm-cifra span { display: block; font-size: 11px; color: var(--ink-3); margin-top: 2px; }
-.adm-cifra small { display: block; font-size: 10px; font-weight: 600; color: var(--red); margin-top: 2px; }
 
-.adm-bloque { padding: 14px 20px 0; }
+.adm-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.adm-cifra { padding: 10px 12px; background: var(--surface-2); border-radius: var(--r); }
+.adm-cifra b { display: block; font-family: var(--font-mono); font-size: 22px; color: var(--ink); }
+.adm-cifra span { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.adm-cifra em { display: block; font-style: normal; font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+/* Atrasadas: la cifra que pide acción. Color + rótulo, nunca solo color. */
+.adm-cifra.demora { background: var(--red-bg); }
+.adm-cifra.demora b, .adm-cifra.demora span { color: var(--red); }
+.adm-cifra.demora span { font-weight: 600; }
+
+.adm-bloque { padding: 18px 0 0; }
 .adm-bloque .mv-sub { margin-bottom: 8px; }
-/* Enlace a Buscar con el filtro de la persona (reemplazó a «Más demoradas»). */
-.adm-ver-visitas {
-  display: block; width: calc(100% - 40px); margin: 12px 20px 0;
-  border: 0; background: none; padding: 0; cursor: pointer; text-align: left;
+/* A Buscar con el filtro de la persona (reemplazó a «Más demoradas»). */
+.adm-ver-visitas { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
+
+/* Acceso y permisos: rótulo arriba, control debajo, separados por línea. */
+.adm-p-ajustes { border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px 16px; }
+.adm-p-ajustes .mv-sub { margin-bottom: 4px; }
+.adm-ajuste { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.adm-ajuste-rot { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
+.adm-ajuste-val { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; }
+.adm-ajuste-val > b { font-weight: 600; }
+.adm-ajuste-val > b.aviso  { color: var(--amber); }
+.adm-ajuste-val > b.demora { color: var(--red); }
+.adm-ajuste .adm-nota { margin-bottom: 0; }
+.adm-enlace {
+  border: 0; background: none; padding: 0; cursor: pointer;
   font-family: inherit; font-size: 12px; font-weight: 600;
   color: var(--brand-ink); text-decoration: underline;
 }
+.adm-p-ajustes .adm-pin-tmp { margin: 12px 0 0; }
 
-/* Filas de dato simple (agenda / PIN). */
-.adm-fila-dato {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
-  font-size: 13px;
-}
-.adm-fila-dato > span:first-child { color: var(--ink-3); }
-.adm-fila-dato > b { font-weight: 600; }
-.adm-enlace {
-  margin-left: auto; border: 0; background: none; padding: 0; cursor: pointer;
-  font-family: inherit; font-size: 11px; font-weight: 600;
-  color: var(--brand-ink); text-decoration: underline;
-}
-
-.adm-peligro { border-top: 1px solid var(--line); margin-top: 16px; padding: 14px 20px 18px; }
-.adm-btn-texto {
-  border: 0; background: none; padding: 0; cursor: pointer;
-  font-family: inherit; font-size: 13px; font-weight: 600; text-decoration: underline;
-}
-.adm-btn-texto.rojo  { color: var(--red); }
-.adm-btn-texto.verde { color: var(--green-ink); }
-.adm-btn-texto:disabled { opacity: 0.5; cursor: wait; }
+.adm-peligro { padding-top: 14px; }
+.adm-btn-estado.rojo  { color: var(--red); border-color: var(--red); }
+.adm-btn-estado.verde { color: var(--green-ink); }
 
 /* Panel a pantalla completa (<1200). */
 .adm-panel-movil { margin-top: 12px; }
@@ -2937,7 +2956,11 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .adm-log-fila.seg { border-left-color: var(--red); border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .adm-log-acc { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.adm-log-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.adm-log-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+/* En el panel de la persona: hecho a la izquierda, hora a la derecha. */
+.adm-log-compacta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.adm-log-txt { min-width: 0; }
+.adm-log-hora { flex: none; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .adm-mas { display: flex; margin: 12px auto 0; }
 .adm-mas span { font-weight: 400; color: var(--ink-3); }
 
@@ -2956,8 +2979,6 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 /* Conteo o rango al lado del título de sección («Hallazgos por revisar 3»). */
 .adm-seccion .card-titulo small { margin-left: 8px; font-family: var(--font-sans); font-size: 12px; font-weight: 400; color: var(--ink-3); }
 .adm-nota { font-size: 12px; color: var(--ink-3); margin: 4px 0 10px; }
-.adm-fila-dato > b.aviso  { color: var(--amber); }
-.adm-fila-dato > b.demora { color: var(--red); }
 
 /* Rol: control segmentado (role=radiogroup) */
 .adm-rol { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--r); }
@@ -3292,8 +3313,10 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   color: var(--ink-3); font: 600 12px var(--font-sans); cursor: pointer; white-space: nowrap;
 }
 .bq-est i { font: normal 400 11px var(--font-mono); color: var(--ink-4); font-style: normal; }
-.bq-est.on { background: var(--surface); border-color: var(--ink-3); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-3); }
-.bq-est.on i { color: var(--ink-3); }
+/* Marcado = relleno, como .bq-op.on (antes solo cambiaba el borde y no se
+   distinguía del apagado). */
+.bq-est.on { background: var(--brand-bg); border-color: var(--brand); color: var(--brand-ink); box-shadow: inset 0 0 0 1px var(--brand); }
+.bq-est.on i { color: var(--brand-ink); }
 .bq-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-4); display: inline-block; }
 .bq-dot.pend { background: var(--brand); } .bq-dot.asig { background: var(--amber); }
 .bq-dot.curso { background: var(--info); } .bq-dot.hecha { background: var(--green); }
@@ -3353,6 +3376,7 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .bq-res-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding-bottom: 8px; }
 .bq-conteo { font-size: 13px; color: var(--ink-3); margin-right: 4px; }
 .bq-conteo b { font: 600 18px var(--font-serif); color: var(--ink); }
+.bq-conteo-est { color: var(--ink-2); font-weight: 600; }
 .bq-res-acc { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .bq-orden { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); }
 .bq-orden select { height: 32px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); font: 600 12px var(--font-sans); color: var(--ink-2); padding: 0 6px; }
@@ -3551,7 +3575,8 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .bq-orden select { height: var(--tap); }
   .bq-gestion .vc-btn { min-height: var(--tap); }
   .header .btn-logout { min-height: var(--tap-min); }
-  .adm-tab, .adm-enlace, .adm-btn-texto { min-height: var(--tap-min); height: auto; }
+  .adm-tab, .adm-enlace { min-height: var(--tap-min); height: auto; }
+  .adm-btn-estado, .adm-ver-visitas { min-height: var(--tap); }
   /* Letra mínima de 12 px en lo que es información. */
   .input-label, .mv-nota { font-size: 12px; }
 }

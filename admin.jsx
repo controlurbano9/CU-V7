@@ -480,6 +480,12 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNa
   ].filter(g => g.lista.length);
   const inactivos = (usuarios || []).filter(u => !u.activo).sort(porDemora);
   const plana = grupos.reduce((a, g) => a.concat(g.lista), []);
+  // La barra de cada tarjeta se mide contra quien más visitas abiertas tiene:
+  // antes cada una llenaba su ancho y 1 visita se veía igual que 34.
+  const maxAbiertas = (usuarios || []).reduce((mx, u) => {
+    const c = (cargas[u.nombre] || {}).carga || {};
+    return Math.max(mx, (c.hacer || 0) + (c.curso || 0));
+  }, 0);
 
   // Con panel, siempre hay alguien elegido (la primera tarjeta); sin panel,
   // solo después de tocar una («‹ Equipo» vuelve a la lista).
@@ -488,7 +494,8 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNa
     : ((sel && (usuarios || []).find(u => u.nombre === sel)) || null);
 
   const tarjeta = (u) => (
-    <TarjetaPersona key={u.fila} u={u} info={cargas[u.nombre]} elegida={elegido === u} onElegir={() => setSel(u.nombre)} />
+    <TarjetaPersona key={u.fila} u={u} info={cargas[u.nombre]} maxAbiertas={maxAbiertas}
+      elegida={elegido === u} onElegir={() => setSel(u.nombre)} />
   );
 
   return (
@@ -530,23 +537,22 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNa
   );
 }
 
-function TarjetaPersona({ u, info, elegida, onElegir }) {
+function TarjetaPersona({ u, info, maxAbiertas, elegida, onElegir }) {
   const c = (info && info.carga) || { hacer: 0, curso: 0, demoradas: 0, demoradasHacer: 0, demoradasCurso: 0 };
   const act = (info && info.act) || { texto: 'sin actividad', dias: null };
   const abiertas = c.hacer + c.curso;
-  // Barra: por hacer sin demora / en curso sin demora / demoradas. El texto
-  // de abajo dice lo mismo con los totales — el color solo no basta.
+  // Barra: por hacer sin demora / en curso sin demora / demoradas. Su largo
+  // es la carga frente a quien más tiene en el equipo (la pista gris es el
+  // máximo). El texto de abajo dice lo mismo con los totales — el color solo
+  // no basta.
   const segs = abiertas > 0 ? [
     ['amarillo', Math.max(0, c.hacer - c.demoradasHacer)],
     ['azul',     Math.max(0, c.curso - c.demoradasCurso)],
     ['rojo',     c.demoradas],
   ].filter(s => s[1] > 0) : [];
-  const txt = abiertas > 0
-    ? [c.hacer > 0 && c.hacer + ' por hacer',
-       c.curso > 0 && c.curso + ' en curso',
-       c.demoradas > 0 && c.demoradas + ' con +' + DIAS_DEMORA_ADMIN + ' días',
-      ].filter(Boolean).join(' · ')
-    : 'Sin visitas abiertas';
+  // Mínimo visible para que 1 visita no desaparezca frente a 34.
+  const largo = abiertas > 0 && maxAbiertas > 0 ? Math.max(4, Math.round(abiertas / maxAbiertas * 100)) : 0;
+  const partes = [c.hacer > 0 && c.hacer + ' por hacer', c.curso > 0 && c.curso + ' en curso'].filter(Boolean);
   // Aviso de inactividad: persona activa, inspectora y más de 7 días.
   const aviso = u.activo && u.rol === 'INSPECTOR' && act.dias != null && act.dias > 7;
 
@@ -559,11 +565,20 @@ function TarjetaPersona({ u, info, elegida, onElegir }) {
         <span className={'adm-t-act' + (aviso ? ' aviso' : '')}>{act.texto}</span>
       </div>
       {segs.length > 0 && (
-        <div className="adm-t-barra" aria-hidden="true">
-          {segs.map(s => <span key={s[0]} className={'adm-t-seg ' + s[0]} style={{ flexGrow: s[1] }} />)}
+        <div className="adm-t-pista" aria-hidden="true">
+          <div className="adm-t-barra" style={{ width: largo + '%' }}>
+            {segs.map(s => <span key={s[0]} className={'adm-t-seg ' + s[0]} style={{ flexGrow: s[1] }} />)}
+          </div>
         </div>
       )}
-      <div className="adm-t-txt">{txt}</div>
+      <div className="adm-t-txt">
+        {abiertas > 0 ? (
+          <>
+            {partes.join(' · ')}
+            {c.demoradas > 0 && <>{partes.length ? ' · ' : ''}<b className="adm-t-demora">{c.demoradas} con +{DIAS_DEMORA_ADMIN} días</b></>}
+          </>
+        ) : 'Sin visitas abiertas'}
+      </div>
     </div>
   );
 }
@@ -685,84 +700,113 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
         </div>
       </div>
 
-      {/* Rol: el backend no deja cambiar el propio (así siempre queda un admin). */}
-      <div className="adm-bloque">
-        <div className="adm-rol" role="radiogroup" aria-label={'Rol de ' + titleCaseNombre(u.nombre)}>
-          {['ADMIN', 'SUPERVISOR', 'INSPECTOR'].map(r => (
-            <button key={r} type="button" role="radio" aria-checked={u.rol === r}
-              className={'adm-rol-op' + (u.rol === r ? ' activo' : '')}
-              disabled={esYo || busyRol} onClick={() => elegirRol(r)}>{_ROL_ADM[r]}</button>
-          ))}
-        </div>
-        {esYo && <div className="adm-nota">No puedes cambiar tu propio rol.</div>}
-      </div>
-
-      <div className="adm-cifras">
-        {/* Mismos términos que la tarjeta de la lista («por hacer», «en curso»).
-            La demora va aparte: cuenta las dos, no solo las en curso. */}
-        <div className="adm-cifra"><b>{c.hacer}</b><span>Por hacer</span></div>
-        <div className="adm-cifra"><b>{c.curso}</b><span>En curso</span></div>
-        <div className="adm-cifra"><b>{c.completadasMes}</b><span>Completadas en {mesActual}</span></div>
-        <div className="adm-cifra"><b>{c.completadasMesAnterior}</b><span>Completadas en {mesAnterior}</span></div>
-      </div>
-      {c.demoradas > 0 && <div className="adm-cifras-demora">{c.demoradas} con +{DIAS_DEMORA_ADMIN} días sin avanzar</div>}
-
-      {/* La lista «Más demoradas» se quitó (E4a): repetía las Alertas de
-          Inicio filtradas por inspector. El detalle vivo está en Buscar. */}
-      {onNavegar && (
-        <button type="button" className="adm-ver-visitas"
-          onClick={() => _irBuscarConVisitador(u.nombre, onNavegar)}>Ver sus visitas en Buscar</button>
-      )}
-
-      {cfg && (
-        <div className="adm-bloque adm-fila-dato">
-          <span>Recibe visitas de la agenda</span>
-          <b>{recibeAgenda ? 'Sí' : 'No'}</b>
-          <button type="button" className="adm-enlace" onClick={onAbrirReglas}>Cambiar en reglas de agenda</button>
-        </div>
-      )}
-
-      <div className="adm-bloque adm-fila-dato">
-        <span>PIN de acceso</span>
-        <b className={estadoPin.tono}>{estadoPin.texto}</b>
-        {u.activo && !esYo && (
-          <button type="button" className="vc-btn" disabled={busyPin} onClick={generarPin}>
-            {busyPin ? 'Generando…' : 'Generar PIN temporal'}
-          </button>
-        )}
-      </div>
-      {pinNuevo && (
-        <div className="adm-pin-tmp" role="status">
-          <div className="adm-pin-dig" aria-label={'PIN temporal ' + pinNuevo.pin.split('').join(' ')}>
-            {pinNuevo.pin.split('').map((d, i) => <span key={i} aria-hidden="true">{d}</span>)}
-          </div>
-          <p>Díctaselo a {titleCaseNombre(u.nombre)}. No se vuelve a mostrar.</p>
-          <p className="adm-nota">Vence {pinNuevo.vence}. Al entrar tendrá que elegir el suyo.</p>
-          <button type="button" className="vc-btn" onClick={() => setPinNuevo(null)}>Listo</button>
-        </div>
-      )}
-
-      {suLog.length > 0 && (
-        <div className="adm-bloque">
-          <h3 className="mv-sub">Actividad reciente</h3>
-          {suLog.map((f, i) => (
-            <div key={i} className="adm-log-fila">
-              <div className="adm-log-acc">{f[2]}</div>
-              <div className="adm-log-meta">{formatearFechaHora(f[0])}</div>
+      {/* Dos columnas cuando el panel tiene ancho (@container en styles.css):
+          a la izquierda el trabajo de la persona, a la derecha su acceso. */}
+      <div className="adm-p-cuerpo">
+        <div className="adm-p-trabajo">
+          <div className="adm-cifras">
+            {/* Mismos términos que la tarjeta de la lista («por hacer», «en curso»).
+                Atrasadas cuenta las dos, no solo las en curso. Los dos meses van
+                en una sola cifra: el anterior es la referencia, no un indicador. */}
+            <div className="adm-cifra"><b>{c.hacer}</b><span>Por hacer</span></div>
+            <div className="adm-cifra"><b>{c.curso}</b><span>En curso</span></div>
+            <div className={'adm-cifra' + (c.demoradas > 0 ? ' demora' : '')}>
+              <b>{c.demoradas}</b><span>Atrasadas · +{DIAS_DEMORA_ADMIN} días</span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="adm-cifra">
+              <b>{c.completadasMes}</b><span>Completadas en {mesActual}</span>
+              <em>{c.completadasMesAnterior} en {mesAnterior}</em>
+            </div>
+          </div>
 
-      {/* Uno mismo no se desactiva: el backend lo rechaza (quedaría sin admin). */}
-      {!esYo && (
-        <div className="adm-bloque adm-peligro">
-          <button type="button" className={'adm-btn-texto ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
-            onClick={togglear}>
-            {busy ? '…' : (u.activo ? 'Desactivar…' : 'Activar')}
-          </button>
+          {/* La lista «Más demoradas» se quitó (E4a): repetía las Alertas de
+              Inicio filtradas por inspector. El detalle vivo está en Buscar. */}
+          {onNavegar && (
+            <button type="button" className="vc-btn adm-ver-visitas"
+              onClick={() => _irBuscarConVisitador(u.nombre, onNavegar)}>
+              <Icon.Search size={14} /> Ver sus visitas en Buscar
+            </button>
+          )}
+
+          <div className="adm-bloque">
+            <h3 className="mv-sub">Actividad reciente</h3>
+            {suLog.length === 0 && <div className="adm-nota">Sin registros recientes.</div>}
+            {suLog.map((f, i) => {
+              const dsc = describirLog(f[2]);
+              return (
+                <div key={i} className="adm-log-fila adm-log-compacta">
+                  <div className="adm-log-txt">
+                    <div className="adm-log-acc">{dsc.texto || '—'}</div>
+                    {dsc.detalle && <div className="adm-log-meta">{dsc.detalle}</div>}
+                  </div>
+                  <div className="adm-log-hora">{formatearFechaHora(f[0])}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        <div className="adm-p-ajustes">
+          <h3 className="mv-sub">Acceso y permisos</h3>
+
+          {/* Rol: el backend no deja cambiar el propio (así siempre queda un admin).
+              Cambiarlo pide confirmación (elegirRol). */}
+          <div className="adm-ajuste">
+            <div className="adm-ajuste-rot" id={'adm-rol-' + u.fila}>Rol</div>
+            <div className="adm-rol" role="radiogroup" aria-labelledby={'adm-rol-' + u.fila}>
+              {['ADMIN', 'SUPERVISOR', 'INSPECTOR'].map(r => (
+                <button key={r} type="button" role="radio" aria-checked={u.rol === r}
+                  className={'adm-rol-op' + (u.rol === r ? ' activo' : '')}
+                  disabled={esYo || busyRol} onClick={() => elegirRol(r)}>{_ROL_ADM[r]}</button>
+              ))}
+            </div>
+            {esYo && <div className="adm-nota">No puedes cambiar tu propio rol.</div>}
+          </div>
+
+          {cfg && (
+            <div className="adm-ajuste">
+              <div className="adm-ajuste-rot">Visitas de la agenda</div>
+              <div className="adm-ajuste-val">
+                <b>{recibeAgenda ? 'Las recibe' : 'No las recibe'}</b>
+                <button type="button" className="adm-enlace" onClick={onAbrirReglas}>Cambiar en reglas de agenda</button>
+              </div>
+            </div>
+          )}
+
+          <div className="adm-ajuste">
+            <div className="adm-ajuste-rot">PIN de acceso</div>
+            <div className="adm-ajuste-val">
+              <b className={estadoPin.tono}>{estadoPin.texto}</b>
+              {u.activo && !esYo && (
+                <button type="button" className="vc-btn" disabled={busyPin} onClick={generarPin}>
+                  {busyPin ? 'Generando…' : 'Generar PIN temporal'}
+                </button>
+              )}
+            </div>
+          </div>
+          {pinNuevo && (
+            <div className="adm-pin-tmp" role="status">
+              <div className="adm-pin-dig" aria-label={'PIN temporal ' + pinNuevo.pin.split('').join(' ')}>
+                {pinNuevo.pin.split('').map((d, i) => <span key={i} aria-hidden="true">{d}</span>)}
+              </div>
+              <p>Díctaselo a {titleCaseNombre(u.nombre)}. No se vuelve a mostrar.</p>
+              <p className="adm-nota">Vence {pinNuevo.vence}. Al entrar tendrá que elegir el suyo.</p>
+              <button type="button" className="vc-btn" onClick={() => setPinNuevo(null)}>Listo</button>
+            </div>
+          )}
+
+          {/* Uno mismo no se desactiva: el backend lo rechaza (quedaría sin admin).
+              Desactivar pide confirmación y avisa las visitas abiertas (togglear). */}
+          {!esYo && (
+            <div className="adm-peligro">
+              <button type="button" className={'vc-btn adm-btn-estado ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
+                onClick={togglear}>
+                {busy ? '…' : (u.activo ? 'Desactivar usuario…' : 'Activar usuario')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -788,7 +832,8 @@ function TabActividad({ log, total }) {
 
   const filtradas = filas.filter(f =>
     (!filtro || cat(f) === filtro) &&
-    (!qn || _norm(f[2]).indexOf(qn) !== -1 || _norm(f[1]).indexOf(qn) !== -1));
+    (!qn || _norm(f[2]).indexOf(qn) !== -1 || _norm(f[1]).indexOf(qn) !== -1 ||
+      _norm(describirLog(f[2]).texto).indexOf(qn) !== -1));
   const visibles = filtradas.slice(0, limite);
 
   // Rótulo de día: «Hoy», «Ayer» o dd/mm/aaaa.
@@ -830,12 +875,17 @@ function TabActividad({ log, total }) {
       {dias.map(g => (
         <React.Fragment key={g.k}>
           <div className="mv-grupo">{g.rotulo}<span>{g.items.length}</span></div>
-          {g.items.map(({ f, d }, i) => (
-            <div key={i} className={'adm-log-fila' + (cat(f) === 'seguridad' ? ' seg' : '')}>
-              <div className="adm-log-acc">{f[2] || '—'}</div>
-              <div className="adm-log-meta">{titleCaseNombre(f[1]) || 'Sistema'}{d ? ' · ' + hhmm(d) : ''}</div>
-            </div>
-          ))}
+          {g.items.map(({ f, d }, i) => {
+            const dsc = describirLog(f[2]);
+            return (
+              <div key={i} className={'adm-log-fila' + (cat(f) === 'seguridad' ? ' seg' : '')}>
+                <div className="adm-log-acc">{dsc.texto || '—'}</div>
+                <div className="adm-log-meta">
+                  {titleCaseNombre(f[1]) || 'Sistema'}{d ? ' · ' + hhmm(d) : ''}{dsc.detalle ? ' · ' + dsc.detalle : ''}
+                </div>
+              </div>
+            );
+          })}
         </React.Fragment>
       ))}
 
