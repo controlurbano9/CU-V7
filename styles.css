@@ -59,6 +59,14 @@
   --r:      10px;
   --r-lg:   16px;
   --r-full: 999px;
+  /* Escala del sistema visual (auditoría 2026-10-13): control · tarjeta ·
+     panel. Las pantallas migran a estos tres; --r/--r-lg quedan mientras. */
+  --r-ctl:   6px;
+  --r-card:  8px;
+  --r-panel: 12px;
+  /* Carril (fondo de una lista o de un día). Opaco, no rgba: las cabeceras
+     fijas lo repiten y, transparentes, dejarían ver las tarjetas al pasar. */
+  --carril:  #EDE8E0;
 
   /* ── Elevación (2 sombras) ───────────────────────────────── */
   --shadow-sm: 0 1px 2px rgba(31,27,22,0.05), 0 1px 1px rgba(31,27,22,0.03);
@@ -2333,16 +2341,18 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 .ind-rot { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .ind-sub { font-size: 11px; color: var(--ink-3); margin-top: 6px; min-height: 15px; }
+/* Urgentes y audiencias: misma superficie que la franja de indicadores
+   (radio de panel, sin borde). */
 .home-urg {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-bottom: 14px; padding: 8px 12px;
-  background: var(--red-bg); border-left: 3px solid var(--red); font-size: 13px;
+  margin-bottom: 14px; padding: 8px 8px 8px 16px;
+  background: var(--red-bg); border-radius: var(--r-panel); font-size: 13px;
 }
 .home-urg b { color: var(--red); }
 /* Audiencias de la semana (Inicio admin/supervisor): una línea por citación. */
 .home-aud {
   margin-bottom: 14px; overflow: hidden;
-  background: var(--surface); border: 0.5px solid var(--line); border-radius: var(--r);
+  background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-sm);
 }
 .home-aud-t {
   padding: 10px 14px 6px;
@@ -2354,7 +2364,7 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   padding: 4px 14px; border: 0; border-top: 0.5px solid var(--line); background: none;
   cursor: pointer; font-family: inherit; font-size: 13px; color: var(--ink); text-align: left;
 }
-.home-aud-rot { font: 600 11px var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+.home-aud-rot { font: 600 12px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
 .home-aud-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (hover: hover) and (pointer: fine) {
   .home-aud-fila:hover { background: var(--surface-2); }
@@ -2449,27 +2459,23 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .sv-dia-rot { font-size: 11px; color: var(--ink-4); }
 .sv-dia-num { font-size: 13px; font-weight: 600; color: var(--texto-suave); }
 .sv-dia-num.vacio { color: var(--surface-3); }
-.sv-lista .sv-card { padding: 9px 10px; margin-bottom: 6px; }
 .sv-lista .sv-dir { font-size: 13px; }
 .sv-lista .sv-pie { margin-top: 8px; }
 .sv-lista .sv-btn { height: 44px; padding: 0 14px; font-size: 13px; }
 .sv-lista .sv-icono { width: 44px; height: 44px; }
 
 /* ═════════════════════════════════════════════════════════════
-   Inicio v2 (2026-10-13) — maqueta propuesta-inicio-v2.html
-   Una sola pieza: indicadores en una franja sin barras de color, una barra
-   común (semana + filtro de inspector) y debajo carriles del mismo alto —
-   cinco días y Alertas — con UNA tarjeta de visita para los dos. Todo va
-   bajo .home-pantalla: Mis visitas y otras pantallas comparten .sv-chip,
-   .sv-icono y .al-estado con otro aspecto.
-   Café = acción (Iniciar/Continuar, chip activo, Nueva visita); ocre, azul
-   y verde = estado; rojo = urgente.
+   Inicio v2 (2026-10-13) + piezas comunes del sistema visual
+   Nació en Inicio (maqueta propuesta-inicio-v2.html) y desde el paso 1 de la
+   auditoría de pantallas (docs/AUDITORIA_UI_2026-10-13_pantallas.md) las
+   piezas son de toda la app: chip (.sv-chip), carril de día (.sv-col),
+   tarjeta de visita (.sv-card / .al-card), botón de fila (.sv-btn / .al-btn),
+   botón-icono (.sv-icono / .al-icono) y etiqueta de estado (.al-estado). Lo
+   que sigue con prefijo .home-pantalla es la maqueta propia de Inicio:
+   indicadores, barra común y el reparto Semana | Alertas.
+   Café = acción (Iniciar/Continuar, Nueva visita); ocre, azul y verde =
+   estado; rojo = urgente. Radios: --r-ctl 6 · --r-card 8 · --r-panel 12.
    ════════════════════════════════════════════════════════════ */
-.home-pantalla {
-  /* Carril opaco (no rgba): las cabeceras fijas de Alertas lo repiten y,
-     transparentes, dejarían ver las tarjetas al desplazar. */
-  --hm-carril: #EDE8E0;
-}
 
 /* Indicadores: una franja, divisores finos, número en Inter */
 .home-pantalla .ind-fila {
@@ -2504,63 +2510,63 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 12px;
 }
 .home-barra .home-insp { margin-left: auto; }
-.home-pantalla .sv-nav { gap: 4px; }
-.home-pantalla .sv-nav-btn {
+.sv-nav { gap: 4px; }
+.sv-nav-btn {
   width: 28px; height: 28px; border: 0; border-radius: 6px;
   background: transparent; color: var(--ink-3); font-size: 18px;
 }
-.home-pantalla .sv-rango {
+.sv-rango {
   font-family: var(--font-sans); font-size: 14px; font-weight: 600;
   min-width: 112px; text-align: center;
 }
-.home-pantalla .sv-hoy {
+.sv-hoy {
   height: 28px; padding: 0 11px; margin-left: 2px; border: 0; border-radius: var(--r-full);
   background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 600;
 }
-.home-pantalla .sv-chips { gap: 4px; }
-.home-pantalla .sv-chip {
+.sv-chips { gap: 4px; }
+.sv-chip {
   height: 28px; padding: 0 11px; border: 0; border-radius: var(--r-full);
   background: transparent; color: var(--ink-3); font-size: 12px; font-weight: 500;
 }
-.home-pantalla .sv-chip.activo { background: var(--ink-2); color: var(--surface); }
+.sv-chip.activo { background: var(--ink-2); color: var(--surface); }
 .sv-chip-n { opacity: .7; margin-left: 1px; }
 @media (hover: hover) and (pointer: fine) {
-  .home-pantalla .sv-nav-btn:hover,
-  .home-pantalla .sv-chip:not(.activo):hover { background: rgba(31,27,22,0.06); color: var(--ink); }
+  .sv-nav-btn:hover,
+  .sv-chip:not(.activo):hover { background: rgba(31,27,22,0.06); color: var(--ink); }
 }
 
 /* Carriles: cada día y Alertas */
 .home-pantalla .home-sem { margin-bottom: 12px; }
-.home-pantalla .sv-grid { gap: 10px; }
-.home-pantalla .sv-col,
-.home-pantalla .sv-col.hoy {
+.sv-grid { gap: 10px; }
+.sv-col,
+.sv-col.hoy {
   display: flex; flex-direction: column; gap: 6px;
-  background: var(--hm-carril); border-radius: 12px; padding: 0 8px 8px;
+  background: var(--carril); border-radius: 12px; padding: 0 8px 8px;
 }
-.home-pantalla .sv-col.hoy {
+.sv-col.hoy {
   background: var(--brand-bg); box-shadow: inset 0 0 0 1px rgba(172,80,49,0.25);
 }
-.home-pantalla .sv-col-head,
-.home-pantalla button.sv-col-head {
+.sv-col-head,
+button.sv-col-head {
   display: flex; align-items: center; gap: 6px; width: 100%;
   padding: 10px 4px 2px; text-align: left;
   font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: capitalize;
 }
-.home-pantalla .sv-col-head.hoy { color: var(--brand-ink); }
+.sv-col-head.hoy { color: var(--brand-ink); }
 .sv-pill-hoy {
   background: var(--brand); color: var(--surface); border-radius: var(--r-full);
   padding: 1px 7px; font-size: 11px; font-weight: 600; text-transform: none;
 }
-.home-pantalla .sv-col-n {
+.sv-col-n {
   margin-left: auto; padding: 0; background: none;
   font-family: inherit; font-size: 12px; font-weight: 500; color: var(--ink-4);
 }
-.home-pantalla .sv-vacio { border: 0; padding: 6px 4px; text-align: left; font-size: 12px; }
+.sv-vacio { border: 0; padding: 6px 4px; text-align: left; font-size: 12px; }
 
 .home-pantalla .home-al {
-  background: var(--hm-carril); border-radius: 12px; padding: 0 8px 8px;
+  background: var(--carril); border-radius: 12px; padding: 0 8px 8px;
 }
-.home-pantalla .al-head { background: var(--hm-carril); padding: 10px 4px 8px; }
+.home-pantalla .al-head { background: var(--carril); padding: 10px 4px 8px; }
 .home-al-tit {
   display: flex; align-items: center; gap: 6px; margin: 0 0 8px;
   font: 600 14px var(--font-sans); color: var(--ink);
@@ -2577,67 +2583,67 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
    va separada del borde y con los extremos redondeados: así la tarjeta puede
    tener esquinas redondeadas sin que se vea «rota» (el motivo por el que la
    versión anterior no las tenía). */
-.home-pantalla .sv-card,
-.home-pantalla .al-card {
+.sv-card,
+.al-card {
   position: relative; margin: 0; border: 0; border-radius: 8px;
   background: var(--surface); box-shadow: var(--shadow-sm);
   padding: 9px 10px 9px 15px;
   transition: box-shadow .15s, transform .15s;
 }
-.home-pantalla .al-card + .al-card { margin-top: 6px; }
-.home-pantalla .sv-card::before,
-.home-pantalla .al-card::before {
+.al-card + .al-card { margin-top: 6px; }
+.sv-card::before,
+.al-card::before {
   content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 3px;
   border-radius: 2px; background: var(--amber);
 }
-.home-pantalla .sv-card.sv-iniciada::before,
-.home-pantalla .al-card.al-iniciada::before { background: var(--info); }
-.home-pantalla .sv-card.sv-completada::before { background: var(--green); }
+.sv-card.sv-iniciada::before,
+.al-card.al-iniciada::before { background: var(--info); }
+.sv-card.sv-completada::before { background: var(--green); }
 @media (hover: hover) and (pointer: fine) {
-  .home-pantalla .sv-card:hover,
-  .home-pantalla .al-card:hover {
+  .sv-card:hover,
+  .al-card:hover {
     box-shadow: 0 4px 12px -4px rgba(31,27,22,0.16), 0 1px 2px rgba(31,27,22,0.05);
     transform: translateY(-1px);
   }
 }
-.home-pantalla .sv-dir,
-.home-pantalla .al-dir {
+.sv-dir,
+.al-dir {
   font-family: var(--font-sans); font-size: 13px; font-weight: 600; line-height: 1.3;
   color: var(--ink); overflow-wrap: anywhere;
 }
-.home-pantalla .sv-meta,
-.home-pantalla .al-meta { margin-top: 2px; font-size: 11.5px; line-height: 1.35; color: var(--ink-4); }
-.home-pantalla .sv-rad { font-family: inherit; font-variant-numeric: tabular-nums; }
-.home-pantalla .sv-pie { margin-top: 6px; gap: 4px; }
-.home-pantalla .sv-insp { font-size: 11.5px; color: var(--ink-3); }
-.home-pantalla .al-motivo { font-size: 11.5px; margin-bottom: 2px; }
-.home-pantalla .al-estado {
+.sv-meta,
+.al-meta { margin-top: 2px; font-size: 11.5px; line-height: 1.35; color: var(--ink-4); }
+.sv-rad { font-family: inherit; font-variant-numeric: tabular-nums; }
+.sv-pie { margin-top: 6px; gap: 4px; }
+.sv-insp { font-size: 11.5px; color: var(--ink-3); }
+.al-motivo { font-size: 11.5px; margin-bottom: 2px; }
+.al-estado {
   padding: 1px 6px; border-radius: 4px;
   font-family: inherit; font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none;
 }
-.home-pantalla .al-msg { font-weight: 500; color: var(--ink-3); }
-.home-pantalla .al-urgente .al-msg { color: var(--red); font-weight: 600; }
-.home-pantalla .al-acc { gap: 4px; }
+.al-msg { font-weight: 500; color: var(--ink-3); }
+.al-urgente .al-msg { color: var(--red); font-weight: 600; }
+.al-acc { gap: 4px; }
 
-.home-pantalla .sv-btn,
-.home-pantalla .al-btn {
+.sv-btn,
+.al-btn {
   height: 28px; min-width: 0; padding: 0 10px; border: 0; border-radius: 6px;
   background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 600;
 }
-.home-pantalla .sv-btn.sv-btn-acc,
-.home-pantalla .al-btn.al-btn-acc { background: var(--brand-bg); color: var(--brand-ink); }
-.home-pantalla .sv-icono,
-.home-pantalla .al-icono {
+.sv-btn.sv-btn-acc,
+.al-btn.al-btn-acc { background: var(--brand-bg); color: var(--brand-ink); }
+.sv-icono,
+.al-icono {
   width: 28px; height: 28px; border: 0; border-radius: 6px;
   background: transparent; color: var(--ink-3);
 }
 @media (hover: hover) and (pointer: fine) {
-  .home-pantalla .sv-btn:hover,
-  .home-pantalla .al-btn:hover { background: var(--surface-3); }
-  .home-pantalla .sv-btn.sv-btn-acc:hover,
-  .home-pantalla .al-btn.al-btn-acc:hover { background: #F6D8C9; }
-  .home-pantalla .sv-icono:hover,
-  .home-pantalla .al-icono:hover { background: rgba(31,27,22,0.06); color: var(--ink); }
+  .sv-btn:hover,
+  .al-btn:hover { background: var(--surface-3); }
+  .sv-btn.sv-btn-acc:hover,
+  .al-btn.al-btn-acc:hover { background: #F6D8C9; }
+  .sv-icono:hover,
+  .al-icono:hover { background: rgba(31,27,22,0.06); color: var(--ink); }
 }
 
 /* 900–1599: Alertas va debajo de la semana, a todo el ancho, en rejilla y
@@ -2690,9 +2696,9 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .home-barra .home-insp {
     margin-left: 0; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   }
-  .home-pantalla .sv-nav-btn { width: var(--tap); height: var(--tap); }
-  .home-pantalla .sv-chip,
-  .home-pantalla .sv-hoy { height: var(--tap-min); flex: none; }
+  .sv-nav-btn { width: var(--tap); height: var(--tap); }
+  .sv-chip,
+  .sv-hoy { height: var(--tap-min); flex: none; }
   .home-pantalla .ind { padding: 12px 14px; }
   .home-pantalla .ind-num { font-size: 24px; }
   /* 2×2: sin divisor al inicio de cada renglón, línea entre renglones */
@@ -2700,23 +2706,23 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .home-pantalla .ind-fila:not(.ind-3) .ind:nth-child(n+3) { border-top: 1px solid var(--line); }
   .home-pantalla .ind-fila.ind-3 .ind:nth-child(2)::before { content: none; }
   .home-pantalla .ind-fila.ind-3 .ind:nth-child(n+2) { border-top: 1px solid var(--line); }
-  .home-pantalla .sv-tira { gap: 4px; }
-  .home-pantalla .sv-dia {
-    height: 52px; border: 0; border-radius: 10px; background: var(--hm-carril);
+  .sv-tira { gap: 4px; }
+  .sv-dia {
+    height: 52px; border: 0; border-radius: 10px; background: var(--carril);
   }
-  .home-pantalla .sv-dia.activo { border: 0; background: var(--ink-2); }
-  .home-pantalla .sv-dia.activo .sv-dia-rot,
-  .home-pantalla .sv-dia.activo .sv-dia-num { color: var(--surface); }
-  .home-pantalla .sv-dia.hoy:not(.activo) .sv-dia-rot { color: var(--brand-ink); }
-  .home-pantalla .sv-lista { display: flex; flex-direction: column; gap: 6px; }
-  .home-pantalla .sv-agendar { margin-bottom: 0; }
+  .sv-dia.activo { border: 0; background: var(--ink-2); }
+  .sv-dia.activo .sv-dia-rot,
+  .sv-dia.activo .sv-dia-num { color: var(--surface); }
+  .sv-dia.hoy:not(.activo) .sv-dia-rot { color: var(--brand-ink); }
+  .sv-lista { display: flex; flex-direction: column; gap: 6px; }
+  .sv-agendar { margin-bottom: 0; }
 }
 @media (max-width: 899px), (pointer: coarse) {
-  .home-pantalla .sv-lista .sv-btn,
-  .home-pantalla .al-btn { height: var(--tap); padding: 0 14px; font-size: 13px; }
-  .home-pantalla .sv-lista .sv-icono,
-  .home-pantalla .al-icono { width: var(--tap); height: var(--tap); }
-  .home-pantalla .al-chips .sv-chip { height: var(--tap-min); padding: 0 12px; }
+  .sv-lista .sv-btn,
+  .al-btn { height: var(--tap); padding: 0 14px; font-size: 13px; }
+  .sv-lista .sv-icono,
+  .al-icono { width: var(--tap); height: var(--tap); }
+  .al-chips .sv-chip { height: var(--tap-min); padding: 0 12px; }
 }
 
 /* ╔════════════════════════════════════════════════════════════╗
