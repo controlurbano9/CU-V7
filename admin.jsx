@@ -15,6 +15,13 @@ const { useState: useStateA, useEffect: useEffectA, useMemo: useMemoA, useRef: u
 // La config de agenda guarda palabras clave («MAURICIO» casa con «Mauricio
 // Pérez»). La usa Equipo para saber si una
 // persona recibe visitas de la agenda — sin tocar la lógica.
+// Vencimiento ya pasado: el backend marca pinTemporalVencido al leer, pero si
+// la hoja no lo refleja la pantalla decía «pendiente» con fecha vieja.
+function _pinVencidoAdm(vence) {
+  const d = parsearFechaHora(vence);
+  return !!d && d < new Date();
+}
+
 function _casa(nombre, palabra) {
   const n = String(nombre || '').trim().toUpperCase();
   const k = String(palabra || '').trim().toUpperCase();
@@ -125,7 +132,10 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
   }, [visitas]);
 
   const nPorGenerar = vig.porGenerar.length;
-  const nBandeja = nPorGenerar + (pend ? pend.hallazgos.length : 0);
+  // Lo que espera una acción: por generar, falta la orden y hallazgos. «Listos
+  // para enviar» no cuenta (ya está hecho). Antes faltaba «falta la orden» y el
+  // número no cuadraba con las filas de la Bandeja (revisión 2026-10-13).
+  const nBandeja = nPorGenerar + vig.faltaOrden.length + (pend ? pend.hallazgos.length : 0);
 
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
@@ -334,7 +344,7 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
                 <>
                   <button type="button" className="adm-grupo-btn" aria-expanded={listosAbierto}
                     onClick={() => setListosAbierto(v => !v)}>
-                    Listos para enviar ({vig.listos.length})
+                    Listos para enviar<span>{vig.listos.length}</span>
                   </button>
                   {listosAbierto && vig.listos.map(f => item(f,
                     <a className="vc-btn vc-btn-cta" href={f['LINK_SOLICITUD_PDF']} target="_blank" rel="noopener noreferrer">PDF para enviar</a>,
@@ -495,7 +505,7 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNa
         {inactivos.length > 0 && (
           <>
             <button type="button" className="adm-grupo-btn" aria-expanded={verInactivos}
-              onClick={() => setVerInactivos(v => !v)}>Inactivos ({inactivos.length})</button>
+              onClick={() => setVerInactivos(v => !v)}>Inactivos<span>{inactivos.length}</span></button>
             {verInactivos && inactivos.map(tarjeta)}
           </>
         )}
@@ -619,7 +629,7 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
   // aquí (para su PIN está «Cambiar mi PIN» de la cabecera).
   const esYo = String(u.nombre || '').trim().toUpperCase() === String(yo || '').trim().toUpperCase();
   const estadoPin = !u.conPin ? { texto: 'Sin PIN: no entra a la app', tono: '' }
-    : u.pinTemporalVencido ? { texto: 'PIN temporal vencido', tono: 'demora' }
+    : (u.pinTemporalVencido || _pinVencidoAdm(u.pinTemporalVence)) ? { texto: 'PIN temporal vencido', tono: 'demora' }
     : u.pinTemporalVence ? { texto: 'PIN temporal pendiente · vence ' + u.pinTemporalVence, tono: 'aviso' }
     : { texto: 'PIN propio', tono: '' };
 
@@ -688,12 +698,14 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
       </div>
 
       <div className="adm-cifras">
-        <div className="adm-cifra"><b>{c.hacer}</b><span>Asignadas</span></div>
-        <div className="adm-cifra"><b>{c.curso}</b><span>Iniciadas</span>
-          {c.demoradas > 0 && <small>{c.demoradas} con +{DIAS_DEMORA_ADMIN} días</small>}</div>
+        {/* Mismos términos que la tarjeta de la lista («por hacer», «en curso»).
+            La demora va aparte: cuenta las dos, no solo las en curso. */}
+        <div className="adm-cifra"><b>{c.hacer}</b><span>Por hacer</span></div>
+        <div className="adm-cifra"><b>{c.curso}</b><span>En curso</span></div>
         <div className="adm-cifra"><b>{c.completadasMes}</b><span>Completadas en {mesActual}</span></div>
         <div className="adm-cifra"><b>{c.completadasMesAnterior}</b><span>Completadas en {mesAnterior}</span></div>
       </div>
+      {c.demoradas > 0 && <div className="adm-cifras-demora">{c.demoradas} con +{DIAS_DEMORA_ADMIN} días sin avanzar</div>}
 
       {/* La lista «Más demoradas» se quitó (E4a): repetía las Alertas de
           Inicio filtradas por inspector. El detalle vivo está en Buscar. */}
