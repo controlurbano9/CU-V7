@@ -182,6 +182,8 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           mensaje: 'Sin completar · ' + sinCompletar + ' días',
           detalle: 'visita ' + formatearFecha(f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || ''),
           dias: sinCompletar,
+          // Iniciada: la Semana la pone en su fecha de visita.
+          irSemana: f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || '',
         });
       }
     });
@@ -240,7 +242,8 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   useEffectH(() => {
     if (!veTodo) return;
     listarInspectoresActivos()
-      .then(l => setInspectores((l || []).map(u => u.nombre)))
+      // Sin nombre (fila de USUARIOS incompleta) no hay chip: salía en blanco.
+      .then(l => setInspectores((l || []).map(u => u.nombre).filter(n => String(n || '').trim())))
       .catch(() => {});
   }, [veTodo]);
 

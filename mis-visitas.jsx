@@ -186,10 +186,13 @@ function MisVisitasScreen({ usuario, onContinuar }) {
           solo grupo no hay nada que filtrar. */}
       {listo && (
         <div className="mv-barra">
-          <div className="sv-chips mv-vista" role="group" aria-label="Vista">
+          {/* Cambio de vista = control segmentado (el de Administración), no
+              chips: con el mismo estilo que los filtros de estado se leían
+              como un solo grupo (revisión GLM 2026-10-13). */}
+          <div className="adm-tabs mv-vista" role="group" aria-label="Vista">
             {[['lista', 'Lista'], ['semana', 'Semana']].map(v => (
               <button key={v[0]} type="button" aria-pressed={vista === v[0]}
-                className={'sv-chip' + (vista === v[0] ? ' activo' : '')}
+                className={'adm-tab' + (vista === v[0] ? ' activo' : '')}
                 onClick={() => cambiarVista(v[0])}>{v[1]}</button>
             ))}
           </div>
@@ -303,7 +306,7 @@ function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinua
                 <Icon.Play size={14} /> {tipo === 'curso' ? 'Continuar' : 'Iniciar'}
               </button>
             // Regla del diligenciador: al co-asignado se le dice quién la lleva.
-            : <span className="vc-dilig">Diligencia {primerVisitador(visitadoresBD(f))}</span>)}
+            : <span className="vc-dilig">La lleva {primerVisitador(visitadoresBD(f))}</span>)}
           {!conPanel && (
             <>
               {tipo !== 'hecha' && <BotonMapaVisita f={f} variante="vc" />}

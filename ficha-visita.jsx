@@ -133,7 +133,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
                   <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
                 </button>
               // Regla del diligenciador: al co-asignado se le dice quién la lleva.
-              : <span className="vc-dilig">Diligencia {quienes[0]}</span>)}
+              : <span className="vc-dilig">La lleva {quienes[0]}</span>)}
             <BotonMapaVisita f={f} variante="vc" />
           </div>
         </div>
@@ -222,7 +222,7 @@ function _RecorridoFV({ f }) {
           <div key={p.clave} className={cls} role="listitem">
             <div className="mv-paso-rot">{p.rotulo}</div>
             <div className="mv-paso-val">{p.valor || '—'}</div>
-            {p.espera && p.dias > 0 && <div className="mv-paso-sub">hace {_plural(p.dias, 'día', 'días')}</div>}
+            {/* Sin «hace N días» aquí: la cabecera fija ya lo dice (salía dos veces). */}
           </div>
         );
       })}

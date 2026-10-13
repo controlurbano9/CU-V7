@@ -57,14 +57,7 @@ function BotonPdfRadicado({ f, titulo, onAbrir }) {
     <a href={link} target="_blank" rel="noopener noreferrer"
       onClick={(e) => { e.stopPropagation(); if (onAbrir) onAbrir(e); }}
       title={titulo || 'Abrir el PDF de la PQR radicada (pestaña nueva)'}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '1px 7px', borderRadius: 8,
-        background: 'var(--brand-bg)', color: 'var(--brand-ink)',
-        border: '1px solid var(--brand-accent)',
-        fontFamily: 'inherit', fontSize: 10, fontWeight: 700,
-        textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
-      }}>
+      className="pqr-chip">
       <Icon.File size={11} /> PQR
     </a>
   );

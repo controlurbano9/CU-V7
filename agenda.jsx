@@ -310,7 +310,7 @@ function AgendaScreen({ usuario }) {
             </div>
           </div>
           <div className="ag-dia-nota">
-            Asignas para este día.{aviso ? ' ' + aviso : ''}
+            Asigna para este día.{aviso ? ' ' + aviso : ''}
             {!esHoy && <> <button type="button" onClick={() => setDia(hoy)}>Ir a hoy</button></>}
           </div>
         </div>
@@ -356,6 +356,14 @@ function AgendaScreen({ usuario }) {
                 <h2 id="ag-sug-t">Sugeridas</h2>
                 <span>de la más urgente a la menos</span>
               </div>
+              {/* Sin inspectores las filas no tienen botones: el aviso va también
+                  aquí, no solo en la columna del plan (revisión 2026-10-13). */}
+              {!inspectores.length && (
+                <div className="ag-vacio">
+                  Para asignar, marca quién recibe visitas en{' '}
+                  <button type="button" className="ag-link" onClick={() => setReglasAbiertas(true)}>⚙ Reglas</button>.
+                </div>
+              )}
               <div className="ag-filtros" role="group" aria-label="Comuna">
                 <button type="button" className={'sv-chip' + (comunaFiltro == null ? ' activo' : '')}
                   aria-pressed={comunaFiltro == null}
@@ -395,7 +403,7 @@ function AgendaScreen({ usuario }) {
               {inspectores.map((n, i) => (
                 <DiaInspector key={n} nombre={n} indice={i} meta={meta}
                   nuevas={borrador[n] || []} ya={ya[n] || []} puntos={puntos}
-                  onQuitar={quitar} />
+                  sinPendientes={!data.totalPendientes} onQuitar={quitar} />
               ))}
               {ediciones[diaKey] && (
                 <button type="button" className="ag-link ag-restablecer" onClick={volverASugerencia}>
@@ -489,7 +497,7 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
   );
 }
 
-function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, onQuitar }) {
+function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes, onQuitar }) {
   const paradas = ordenarRuta(
     ya.map(f => ({ ya: true, fila: f._idx, radicado: f['RADICADO'] || '', fechaRad: f['FECHA RADICADO'] || '', direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntos[direccionVisita(f)] || null }))
       .concat(nuevas.map(v => Object.assign({ punto: puntos[v.direccion] || null }, v))),
@@ -530,7 +538,7 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, onQuitar }) {
             </li>
           ))}
         </ol>
-      ) : <div className="ag-vacio">Sin visitas para este día. Agrégalas desde las sugeridas.</div>}
+      ) : <div className="ag-vacio">{sinPendientes ? 'Nada pendiente por agendar.' : 'Sin visitas para este día. Agrégalas desde las sugeridas.'}</div>}
       {total > 0 && <div className="ag-vuelve"><i aria-hidden="true">⌂</i> vuelve hacia la Alcaldía</div>}
     </section>
   );

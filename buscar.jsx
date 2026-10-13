@@ -848,7 +848,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             <span className="bq-lupa" aria-hidden="true"><Icon.Search size={16} /></span>
             <input type="text" ref={inputBuscarRef} value={qInput}
               aria-label="Buscar radicado, orden de policía, dirección, barrio, fecha o visitador"
-              placeholder="Radicado, dirección, barrio, «sep 2026», «c4», nombre…"
+              placeholder={conPanel ? 'Radicado, dirección, barrio, «sep 2026», «c4», nombre…' : 'Radicado, dirección, barrio…'}
               onChange={e => onChangeQ(e.target.value)}
               onKeyDown={onKeyQ}
               onBlur={() => setTimeout(() => { setSug([]); setSugAct(-1); }, 150)} />

@@ -5336,7 +5336,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             >
               {/* Informe hecho por fuera de la app: icono, no tercer botón de
                   texto. No exige lo diligenciado ni el guardado al día — el
-                  documento ya viene escrito —, solo la carpeta de Drive. */}
+                  documento ya viene escrito —, solo la carpeta de Drive.
+                  Va en la misma celda que Generar/Abrir (.ent-par): la grilla
+                  de .ent-acciones tiene 2 columnas y con 3 hijos metía el
+                  botón principal en la de 44 px y bajaba ↻ a otro renglón. */}
+              <span className="ent-par">
               <button type="button" onClick={() => inputInformeRef.current && inputInformeRef.current.click()}
                 disabled={docOcupado || sinCarpetaVisita}
                 className="btn-icono" aria-label="Subir un informe hecho por fuera de la app (Word .docx)"
@@ -5348,8 +5352,17 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               <input ref={inputInformeRef} type="file"
                 accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={subirInformeExterno} style={{ display: 'none' }} />
-              {d.linkDocxInforme ? (<>
-                <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+              {d.linkDocxInforme
+                ? <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
+                : (
+                <button onClick={generarInforme} disabled={generacionBloqueada} aria-busy={abriendoInforme}
+                  className="btn-accion ent-btn">
+                  {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
+                  Generar
+                </button>
+              )}
+              </span>
+              {d.linkDocxInforme && (<>
                 {/* Mismo patrón de regeneración del acta: el informe ya
                     generado no vuelve a ofrecer un CTA de texto completo. */}
                 <button type="button" onClick={generarInforme} disabled={generacionBloqueada}
@@ -5359,13 +5372,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                     ? <span className="spinner-btn" aria-hidden="true" />
                     : <Icon.Refresh size={18} />}
                 </button>
-              </>) : (
-                <button onClick={generarInforme} disabled={generacionBloqueada} aria-busy={abriendoInforme}
-                  className="btn-accion ent-btn">
-                  {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
-                  Generar
-                </button>
-              )}
+              </>)}
             </FilaEntregable>
           )}
 
