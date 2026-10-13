@@ -710,9 +710,20 @@ function _Input({ value, onChange, placeholder, type, mono, ...rest }) {
   );
 }
 
-function _TextArea({ value, onChange, placeholder, rows, ...rest }) {
+// `autoAlto`: el cuadro crece con el texto en vez de mostrar barra de
+// desplazamiento — en «Situación encontrada» el inspector debe ver todo lo que
+// irá al acta (2026-10-12). Nunca baja de `rows`; el usuario aún puede estirarlo.
+function _TextArea({ value, onChange, placeholder, rows, autoAlto, ...rest }) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!autoAlto || !el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + 'px';
+  }, [value, autoAlto]);
   return (
     <textarea
+      ref={ref}
       className="input-campo"
       rows={rows || 4}
       value={value || ''}
@@ -4951,7 +4962,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo="Descripción de la situación encontrada"
         estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         <_Campo label="Actuación / Observaciones" fullWidth
-          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} />
+          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
         </_Campo>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap' }}>
           <_BtnAccion busy={busyMejora} onClick={ejecutarMejora}>
