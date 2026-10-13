@@ -241,6 +241,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [qInput, setQInput]     = useStateB(S.q);
   const [orden, setOrden]       = useStateB('urg');
   const [selClave, setSelClave] = useStateB(null);
+  // Visita del caso que muestra la ficha ({ clave, idx }); null = la que
+  // representa al caso en la lista (la viva).
+  const [visitaSel, setVisitaSel] = useStateB(null);
   const [limite, setLimite]     = useStateB(BQ_LIMITE_INICIAL);
   const [idxBarrios, setIdxBarrios] = useStateB(null);
   const [vistasPropias, setVistasPropias] = useStateB(_leerVistasPropiasBQ);
@@ -355,10 +358,16 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     const base = filtrarBuscar(universo, S, 'estado');
     const contados = new Map();
     const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0 };
+    // El caso cuenta en el estado de la fila que lo representa en la lista
+    // (_repDeBQ): antes contaba la primera que aparecía, y un caso con la
+    // visita 1 completada y la 2 iniciada salía como «Completadas 1».
     base.forEach(x => {
-      if (contados.get(x.clave)) return;
-      contados.set(x.clave, true);
-      if (c[x.estado] != null) c[x.estado]++;
+      if (!contados.has(x.clave)) contados.set(x.clave, []);
+      contados.get(x.clave).push(x);
+    });
+    contados.forEach(filas => {
+      const rep = _repDeBQ(filas);
+      if (rep && c[rep.estado] != null) c[rep.estado]++;
     });
     return c;
   }, [universo, S]);
@@ -401,7 +410,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
 
   // ── Selección (ficha) ──
   const sel = conPanel ? (lista.find(c => c.clave === selClave) || lista[0] || null) : null;
-  const elegir = (c) => setSelClave(c.clave);
+  const elegir = (c) => { setSelClave(c.clave); setVisitaSel(null); };
+  // La visita del caso en la ficha: la elegida en «Visitas del caso» o, si no
+  // hay (o ya no está en el caso), la representante.
+  const selVisita = sel
+    ? ((visitaSel && visitaSel.clave === sel.clave && sel.todas.find(c => c.f._idx === visitaSel.idx)) || sel)
+    : null;
 
   // ── Acciones sobre S ──
   const parcharS = (parche) => setS(prev => Object.assign({}, prev, parche));
@@ -777,10 +791,17 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       onAsignar={adminAsignar} onAsignarNuevaVisita={adminAsignarNuevaVisita}
       onDesasignar={adminDesasignar} onCompletar={adminCompletar} />
   );
-  const verDatos = (rep) => {
-    setModalIdx(rep.f._idx);
-    window.abrirVisitaDetail && window.abrirVisitaDetail(rep.f, gestionDe(rep));
+  // Con varias visitas en el caso, la hoja trae «Visitas del caso» para
+  // pasar de una a otra (mismo selector que el panel).
+  const extraVD = (todas) => todas.length < 2 ? null : {
+    visitas: todas.map(c => c.f),
+    onElegirVisita: fv => verDatosFila(fv, todas),
   };
+  const verDatosFila = (f, todas) => {
+    setModalIdx(f._idx);
+    window.abrirVisitaDetail && window.abrirVisitaDetail(f, gestionDe({ f, todas }), extraVD(todas));
+  };
+  const verDatos = (rep) => verDatosFila(rep.f, rep.todas);
   // «Ver datos» guarda una copia de la fila y de la gestión: sin esto, tras
   // completar o asignar desde ahí seguía mostrando el estado de antes, y el
   // panel de inspectores no abría (sus props quedaban congeladas).
@@ -788,7 +809,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     if (modalIdx == null || !window.refrescarVisitaDetail) return;
     const c = universo.find(x => x.f._idx === modalIdx);
     if (!c) return;
-    window.refrescarVisitaDetail(c.f, gestionDe({ f: c.f, todas: universo.filter(x => x.clave === c.clave) }));
+    const todas = universo.filter(x => x.clave === c.clave);
+    window.refrescarVisitaDetail(c.f, gestionDe({ f: c.f, todas }), extraVD(todas));
   }, [universo, modalIdx, busyFila, asignandoFila, inspectores]);
   // «Asignar» en la fila: elige el caso y deja el panel de inspectores abierto.
   const asignarDesdeFila = (rep) => {
@@ -1163,8 +1185,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             panel de Mis visitas). La gestión del admin va dentro. */}
         {conPanel && sel && (
           <section className="mv-panel bq-caso" aria-label={'Ficha de ' + (sel.dir || 'la visita')}>
-            <FichaVisita f={sel.f} usuario={usuario} verPrioridad={veTodo}
-              onContinuar={onContinuar} gestion={gestionDe(sel)} />
+            <FichaVisita f={selVisita.f} usuario={usuario} verPrioridad={veTodo}
+              onContinuar={onContinuar} gestion={gestionDe({ f: selVisita.f, todas: sel.todas })}
+              visitas={sel.todas.map(c => c.f)}
+              onElegirVisita={fv => setVisitaSel({ clave: sel.clave, idx: fv._idx })} />
           </section>
         )}
       </div>{/* .bq-cuerpo */}
@@ -1381,7 +1405,10 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
           </button>
         )}
         {puedeNueva && (abierta
-          ? <span className="vc-dilig" title="Completa la visita en curso antes de abrir otra">Visita {abierta.n} en curso</span>
+          // `abierta` es la fila cruda: el número sale de la numeración del caso.
+          ? <span className="vc-dilig" title="Completa la visita en curso antes de abrir otra">
+              Visita {(ordenadas.find(x => x.f === abierta) || {}).n || ''} en curso
+            </span>
           : !pendiente && est === 'COMPLETADO' && (
             <>
               {/* Dos botones, un trabajo cada uno: «+ Nueva visita» abre el

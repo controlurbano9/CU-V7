@@ -6,7 +6,9 @@
 // para cerrar, y ReiteradosVD (que la ficha monta en su sección 1).
 //
 // API global:
-//   window.abrirVisitaDetail(filaBD, gestion?)
+//   window.abrirVisitaDetail(filaBD, gestion?, extra?)
+//   `extra` = { visitas, onElegirVisita }: las filas del caso para el
+//   selector «Visitas del caso» de la ficha (Buscar, casos con 2+ visitas).
 //
 // Recibe el objeto crudo de BD VISITAS (mismo shape que devuelve
 // listarVisitas): las claves son los nombres de columna del Sheet.
@@ -24,19 +26,20 @@ let _refrescarVisitaDetail = null;
 function VisitaDetailModalHost({ onContinuar }) {
   const [fila, setFila] = useStateVD(null);
   const [gestion, setGestion] = useStateVD(null);
+  const [extra, setExtra] = useStateVD(null);        // { visitas, onElegirVisita } del caso
   const abiertaRef = useRefVD(null);   // _idx de la visita abierta (null = cerrado)
   const cerrar = () => { abiertaRef.current = null; setFila(null); };
 
   useEffectVD(() => {
-    _pushVisitaDetail = function(f, g) {
+    _pushVisitaDetail = function(f, g, x) {
       abiertaRef.current = f ? f._idx : null;
-      setFila(f); setGestion(g != null ? g : null);
+      setFila(f); setGestion(g != null ? g : null); setExtra(x || null);
     };
     // Datos nuevos de la misma visita (tras completar, asignar…): solo si
     // sigue abierta; nunca la reabre.
-    _refrescarVisitaDetail = function(f, g) {
+    _refrescarVisitaDetail = function(f, g, x) {
       if (!f || abiertaRef.current !== f._idx) return;
-      setFila(f); setGestion(g != null ? g : null);
+      setFila(f); setGestion(g != null ? g : null); setExtra(x || null);
     };
     return function() { _pushVisitaDetail = null; _refrescarVisitaDetail = null; };
   }, []);
@@ -50,6 +53,7 @@ function VisitaDetailModalHost({ onContinuar }) {
 
   if (!fila) return null;
   return <VisitaDetailUI f={fila} onCerrar={cerrar} gestion={gestion}
+    visitas={extra && extra.visitas} onElegirVisita={extra && extra.onElegirVisita}
     onContinuar={onContinuar ? (idx, f) => { cerrar(); onContinuar(idx, f); } : null} />;
 }
 
@@ -61,7 +65,7 @@ function _g(f, ...keys) {
   return '';
 }
 
-function VisitaDetailUI({ f, onCerrar, onContinuar, gestion }) {
+function VisitaDetailUI({ f, onCerrar, onContinuar, gestion, visitas, onElegirVisita }) {
   const hojaRef = useRefVD(null);
   // La sesión da el rol (regla de quién ve qué y el panel de campos crudos).
   const usuario = (typeof SESSION_V6 !== 'undefined' && SESSION_V6.leer()) || {};
@@ -76,7 +80,8 @@ function VisitaDetailUI({ f, onCerrar, onContinuar, gestion }) {
       <div className="fv-hoja" ref={hojaRef} tabIndex={-1} role="dialog" aria-modal="true"
         aria-label={'Datos de la visita ' + dir}>
         <FichaVisita f={f} usuario={usuario} verPrioridad={verPrioridad}
-          onContinuar={onContinuar} onCerrar={onCerrar} gestion={gestion} />
+          onContinuar={onContinuar} onCerrar={onCerrar} gestion={gestion}
+          visitas={visitas} onElegirVisita={onElegirVisita} />
       </div>
     </div>
   );
@@ -268,9 +273,9 @@ function _SeccionVD({ titulo, children, abierta = true }) {
 // co-asignado (que no tiene botón de Continuar) para llegar al sitio, y
 // ahí las coordenadas sueltas no sirven de nada en un teléfono.
 // API global ─────────────────────────────────────────────────────
-window.abrirVisitaDetail = function(filaBD, gestion) {
+window.abrirVisitaDetail = function(filaBD, gestion, extra) {
   if (_pushVisitaDetail) {
-    _pushVisitaDetail(filaBD, gestion);
+    _pushVisitaDetail(filaBD, gestion, extra);
   } else {
     // Fallback: si el host no está montado, abrir Drive de la visita
     const link = filaBD && (filaBD['LINK_DRIVE'] || filaBD['LINK_PDF_ACTA']);
@@ -278,8 +283,8 @@ window.abrirVisitaDetail = function(filaBD, gestion) {
   }
 };
 
-window.refrescarVisitaDetail = function(filaBD, gestion) {
-  if (_refrescarVisitaDetail) _refrescarVisitaDetail(filaBD, gestion);
+window.refrescarVisitaDetail = function(filaBD, gestion, extra) {
+  if (_refrescarVisitaDetail) _refrescarVisitaDetail(filaBD, gestion, extra);
 };
 
 window.VisitaDetailModalHost = VisitaDetailModalHost;

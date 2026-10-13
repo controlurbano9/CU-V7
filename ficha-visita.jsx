@@ -19,7 +19,7 @@ function _scrollerFV(el) {
   return el && el.closest ? el.closest('.mv-panel, .fv-hoja') : null;
 }
 
-function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion }) {
+function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion, visitas, onElegirVisita }) {
   const raizRef = useRefFV(null);
   const fijaRef = useRefFV(null);
   // La PQR se abre a demanda (decisión del usuario 2026-10-12): antes ocupaba
@@ -111,6 +111,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
         {onCerrar && (
           <button type="button" className="vc-btn fv-cerrar" onClick={onCerrar} aria-label="Cerrar">×</button>
         )}
+        {visitas && visitas.length > 1 && onElegirVisita && (
+          <_VisitasCasoFV visitas={visitas} actual={f} onElegir={onElegirVisita} />
+        )}
         <div className="fv-fija-fila">
           <div className="fv-fija-id">
             <div className="fv-estado">
@@ -200,6 +203,42 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
           (decisión del usuario 2026-10-12; antes iba entre los entregables y
           la sección 1). */}
       {gestion && <div className="fv-gestion-pie">{gestion}</div>}
+    </div>
+  );
+}
+
+// «Visitas del caso»: un radicado con seguimiento tiene varias filas y la
+// lista de Buscar muestra una sola (la viva). Este selector, primero en la
+// cabecera porque decide de qué visita es todo lo que sigue, pasa de una a
+// otra. Cada opción: número, estado en texto + barra de color (código de la
+// Semana: el color solo no basta) y la fecha que importa.
+const _EST_VC_FV = {
+  PENDIENTE:  { cls: ' vcs-pend',  label: 'Pendiente' },
+  ASIGNADO:   { cls: ' vcs-asig',  label: 'Asignada' },
+  INICIADO:   { cls: ' vcs-curso', label: 'Iniciada' },
+  COMPLETADO: { cls: ' vcs-hecha', label: 'Completada' },
+};
+function _VisitasCasoFV({ visitas, actual, onElegir }) {
+  const ord = numerarVisitasRadicado(visitas);
+  return (
+    <div className="fv-vcaso" role="group" aria-label="Visitas del caso">
+      <span className="fv-vcaso-tit">Visitas del caso</span>
+      <div className="fv-vcaso-ops">
+        {ord.map(({ f: v, n }) => {
+          const est = normalizarEstado(v['ESTADO VISITA'] || '');
+          const t = _EST_VC_FV[est] || { cls: '', label: est || '—' };
+          const fecha = (est === 'INICIADO' || est === 'COMPLETADO')
+            ? formatearFecha(v['FECHA DE VISITA'] || '') : '';
+          const on = v._idx === actual._idx;
+          return (
+            <button key={v._idx} type="button" className={'fv-vcaso-op' + t.cls + (on ? ' on' : '')}
+              aria-pressed={on} onClick={() => { if (!on) onElegir(v); }}>
+              <b>{n != null ? 'Visita ' + n : 'Por hacer'}</b>
+              <span>{t.label}{fecha && <i>{fecha}</i>}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

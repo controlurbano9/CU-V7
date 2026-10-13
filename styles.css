@@ -2680,6 +2680,38 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
 .fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: 20px; }
+/* «Visitas del caso» (casos con seguimiento): segmentos con la barra de estado
+   de la Semana (3 px, sin radio en ese lado) + estado en texto. La elegida,
+   con borde de tinta y fondo de superficie; las demás, apagadas. */
+.fv-vcaso { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin: -2px 0 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); }
+.fv-vcaso-tit { font: 700 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.fv-vcaso-ops { display: flex; gap: 6px; flex-wrap: wrap; }
+.fv-vcaso-op { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
+  min-height: 40px; padding: 4px 12px 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-2);
+  border-radius: 0 6px 6px 0; background: var(--surface-2); color: var(--ink-3); font: inherit; text-align: left; cursor: pointer; }
+.fv-vcaso-op b { font-size: 12.5px; font-weight: 700; color: var(--ink-2, var(--ink)); }
+.fv-vcaso-op span { font-size: 11px; white-space: nowrap; }
+.fv-vcaso-op i { font-style: normal; }
+.fv-vcaso-op i::before { content: ' · '; }
+.fv-vcaso-op:hover { border-color: var(--line-2); background: var(--surface); }
+.fv-vcaso-op.on { background: var(--surface); border-color: var(--ink); color: var(--ink); cursor: default; box-shadow: 0 1px 2px rgba(31,27,22,.08); }
+.fv-vcaso-op.on b { color: var(--ink); }
+.fv-vcaso-op:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.fv-vcaso-op.vcs-asig  { border-left-color: var(--amarillo); }
+.fv-vcaso-op.vcs-curso { border-left-color: var(--azul); }
+.fv-vcaso-op.vcs-hecha { border-left-color: var(--verde); }
+.fv-vcaso-op.vcs-pend  { border-left-color: var(--brand); }
+.fv-hoja .fv-vcaso { padding-right: 48px; }
+/* Angosto (hoja en el teléfono): las visitas lado a lado y repartidas, no
+   apiladas — apiladas se comían ~100 px de la cabecera fija. */
+@container (max-width: 440px) {
+  .fv-vcaso-ops { flex: 1 1 100%; flex-wrap: nowrap; }
+  .fv-vcaso-op { flex: 1 1 0; min-width: 0; }
+  .fv-vcaso-op span { white-space: normal; }
+  .fv-vcaso-op i { display: block; }
+  .fv-vcaso-op i::before { content: none; }
+}
+@media (pointer: coarse) { .fv-vcaso-op { min-height: 44px; } }
 /* Modal «Ver datos» (visita-detail-modal.jsx): el velo y la hoja que alojan la
    ficha. En celular la hoja sube desde abajo y ocupa casi todo el alto; desde
    700 px queda centrada. z-index como el del modal anterior: sobre la barra. */
