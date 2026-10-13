@@ -3095,10 +3095,12 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .ag-estado { padding: 48px; text-align: center; font-size: 14px; color: var(--ink-3); }
 .ag-vacio { padding: 14px 0; font-size: 13px; color: var(--ink-3); }
 
-/* Una columna (<1200): primero el día de cada inspector, luego sugeridas y
-   el mapa. Dos (≥1200): mapa y sugeridas a la izquierda, los días a la
-   derecha. Tres (≥1900, monitores de la oficina): mapa | sugeridas | días. */
-.ag-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "plan" "sug" "mapa"; }
+/* Rediseño 2026-10-13 (maqueta propuesta-agenda-v3.html): el día de cada
+   inspector, que es lo que se aprueba, deja de ser la columna más angosta.
+   Una columna (<1100): días, comunas, sugeridas. Dos (1100–1599): comunas y
+   sugeridas | días. Tres (≥1600): comunas (con mapa) | sugeridas | días, estas
+   dos del mismo ancho. */
+.ag-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "plan" "mapa" "sug"; }
 .ag-mapa { grid-area: mapa; }
 .ag-sug  { grid-area: sug; }
 .ag-plan { grid-area: plan; display: grid; gap: 12px; align-content: start; }
@@ -3133,21 +3135,24 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .ag-ofi { pointer-events: none; }
 .ag-ofi rect { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
 .ag-ofi text { font: 600 10.5px var(--font-sans); fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
-.ag-mapa-pie { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; font-size: 12px; color: var(--ink-3); }
-.ag-rural { height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--paper);
-  font: 600 12px var(--font-sans); color: var(--ink-2); cursor: pointer; }
-.ag-rural.activo { border-color: var(--ink); color: var(--ink); }
-.ag-rural span { margin-left: 6px; font: 400 11px var(--font-mono); color: var(--ink-3); }
+/* Cuadrícula de comunas: el selector (rediseño 2026-10-13). Todas visibles,
+   de la que más tiene a la que menos; «Todas» primero. */
+.ag-coms { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 10px; }
+.ag-com-b { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 34px; padding: 0 10px;
+  border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); cursor: pointer;
+  font: 600 12px var(--font-sans); color: var(--ink-2); }
+.ag-com-b span { font: 400 11px var(--font-mono); color: var(--ink-3); }
+.ag-com-b.activo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); }
+.ag-com-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* El mapa y su leyenda solo con ancho de sobra (ver .ag-grid ≥1600). */
+.ag-mapa .ag-ley, .ag-mapa .ag-svg { display: none; }
 @media (hover: hover) and (pointer: fine) {
   .ag-flecha:hover { background: var(--surface-2); }
   .ag-com:hover path { fill: #BBA27F; }
 }
 
 /* Sugeridas: el puntaje ordena, la línea de abajo explica el porqué. */
-.ag-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
-.ag-filtros .sv-chip { height: 28px; padding: 0 11px; font-size: 12px; }
-.ag-filtros .sv-chip span { margin-left: 5px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); }
-.ag-filtros .sv-chip.activo span { color: var(--brand-ink); }
+.ag-rad-inline { font-family: var(--font-mono); font-size: 11px; }
 .ag-barrio { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 2px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 .ag-barrio span { font: 400 11px var(--font-mono); color: var(--ink-4); }
 .ag-sugs { list-style: none; margin: 0; padding: 0; }
@@ -3192,7 +3197,13 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .ag-parada + .ag-parada::before { content: ''; position: absolute; top: 0; left: 36px; right: 0; height: 1px; background: var(--line); }
 .ag-num { position: relative; z-index: 1; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; background: var(--c); color: var(--surface);
   font: 700 11px/24px var(--font-mono); text-align: center; box-shadow: 0 0 0 3px var(--surface); }
-.ag-ya { font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
+/* Lo ya asignado atenuado; lo nuevo con el color del inspector y «Nueva». */
+.ag-insp-cab small .ag-nuevas { font-weight: 600; color: var(--c); }
+.ag-parada.ya .ag-num { background: var(--surface-2); color: var(--ink-3); }
+.ag-parada.ya .ag-dir { font-size: 14px; color: var(--ink-2); }
+.ag-parada.nueva { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 8%, transparent), transparent 75%); border-radius: var(--r); }
+.ag-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); background: var(--c); color: var(--surface);
+  font: 600 10px var(--font-sans); letter-spacing: .02em; vertical-align: 2px; }
 .ag-quitar { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); font-size: 18px; line-height: 1; cursor: pointer; }
 .ag-vuelve { display: flex; align-items: center; gap: 12px; padding: 6px 0 0; font-size: 12px; color: var(--ink-3); }
 .ag-vuelve i { width: 24px; height: 24px; flex: none; display: grid; place-items: center; font-style: normal; font-size: 12px;
@@ -3253,19 +3264,18 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   .ag-bar::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 64px; background: var(--paper); pointer-events: none; }
   .ag-bar-btn { width: auto; }
 }
-@media (min-width: 1200px) {
-  /* Sugeridas antes que el mapa: a 1366 quedaban enteras bajo el pliegue
-     y son con lo que se arma el día (revisión 2026-10-13). */
-  .ag-grid { gap: 20px; align-items: start; grid-template-columns: minmax(0, 1fr) 400px; grid-template-areas: "sug plan" "mapa plan"; }
+@media (min-width: 1100px) {
+  .ag-grid { gap: 18px; align-items: start; grid-template-columns: 420px minmax(0, 1fr);
+    grid-template-rows: auto 1fr; grid-template-areas: "mapa plan" "sug plan"; }
   .ag-plan { position: sticky; top: 0; }
-  .ag-svg { max-height: 360px; }
 }
-/* Monitores de la oficina: el día entero en tres columnas, como Inicio. */
-@media (min-width: 1900px) {
+/* Con ancho de sobra vuelve el mapa, como selector angosto. */
+@media (min-width: 1600px) {
   .pantalla.ag-pantalla { max-width: 1800px; }
-  .ag-grid { grid-template-columns: minmax(0, 1fr) 430px 400px; grid-template-areas: "mapa sug plan"; }
+  .ag-grid { grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "mapa sug plan"; }
   .ag-mapa { position: sticky; top: 0; }
-  .ag-svg { max-height: calc(100vh - 320px); }
+  .ag-mapa .ag-ley { display: flex; margin-bottom: 4px; }
+  .ag-mapa .ag-svg { display: block; max-height: 260px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3577,7 +3587,8 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 @media (max-width: 899px) {
   /* Táctil: 44 px los botones sueltos, 36 (--tap-min) los chips en fila. */
   .sv-nav-btn, .ag-flecha { width: var(--tap); height: var(--tap); }
-  .sv-hoy, .sv-chip, .ag-rural, .pqr-chip { min-height: var(--tap-min); height: auto; }
+  .sv-hoy, .sv-chip, .pqr-chip { min-height: var(--tap-min); height: auto; }
+  .ag-com-b { height: var(--tap); }
   .ag-dia-nota button { min-height: var(--tap-min); }
   .bq-orden select { height: var(--tap); }
   .bq-gestion .vc-btn { min-height: var(--tap); }

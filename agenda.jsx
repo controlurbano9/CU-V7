@@ -100,10 +100,10 @@ function RadicadoAG({ radicado, fecha }) {
 // Dirección para pintar: las rurales escritas como coordenadas
 // («6°25'33.0"N 75°35'25.0"W») se dicen «Punto GPS»; el texto original
 // queda en el title.
-function DireccionAG({ dir }) {
-  if (!dir) return <div className="ag-dir">Sin dirección</div>;
-  if (puntoDesdeTextoCoord(dir)) return <div className="ag-dir" title={dir}>Punto GPS</div>;
-  return <div className="ag-dir">{dir}</div>;
+function DireccionAG({ dir, children }) {
+  if (!dir) return <div className="ag-dir">Sin dirección{children}</div>;
+  if (puntoDesdeTextoCoord(dir)) return <div className="ag-dir" title={dir}>Punto GPS{children}</div>;
+  return <div className="ag-dir">{dir}{children}</div>;
 }
 
 // Punto de una parada: coordenadas guardadas en la fila → coordenadas
@@ -137,7 +137,6 @@ function AgendaScreen({ usuario }) {
   const [filasBD, setFilasBD]         = useStateG([]);
   const [ediciones, setEdiciones]     = useStateG(leerEdicionesAgenda);
   const [filtro, setFiltro]           = useStateG(undefined);  // comuna; undefined = la del borrador; null = todas
-  const [verTodasComunas, setVerTodasComunas] = useStateG(false);
   const [verMas, setVerMas]           = useStateG(false);
   const [puntos, setPuntos]           = useStateG({});         // dirección → { lat, lon } | null
   const [mapa, setMapa]               = useStateG(null);
@@ -375,13 +374,19 @@ function AgendaScreen({ usuario }) {
         <>
           <div className="ag-grid">
             <MapaAgenda mapa={mapa} comunas={comunas} comunaFiltro={comunaFiltro}
+              totalPendientes={data.totalPendientes}
               onComuna={c => { setFiltro(c); setVerMas(false); }}
               inspectores={inspectores} borrador={borrador} ya={ya} puntos={puntos} />
 
             <section className="ag-caja ag-sug" aria-labelledby="ag-sug-t">
+              {/* El selector de comuna vive en «Pendientes por comuna» (MapaAgenda);
+                  aquí solo el título de lo elegido (rediseño 2026-10-13). */}
               <div className="ag-caja-cab">
-                <h2 id="ag-sug-t">Sugeridas</h2>
-                <span>de la más urgente a la menos</span>
+                <h2 id="ag-sug-t">
+                  {grupoFiltro ? etiquetaComuna(grupoFiltro.comuna) + ' · ' + grupoFiltro.total
+                    : 'Todas · ' + data.totalPendientes} por agendar
+                </h2>
+                <span>urgentes primero, luego las más antiguas</span>
               </div>
               {/* Sin inspectores las filas no tienen botones: el aviso va también
                   aquí, no solo en la columna del plan (revisión 2026-10-13). */}
@@ -391,27 +396,6 @@ function AgendaScreen({ usuario }) {
                   <button type="button" className="ag-link" onClick={() => setReglasAbiertas(true)}>⚙ Reglas</button>.
                 </div>
               )}
-              <div className="ag-filtros" role="group" aria-label="Comuna">
-                <button type="button" className={'sv-chip' + (comunaFiltro == null ? ' activo' : '')}
-                  aria-pressed={comunaFiltro == null}
-                  onClick={() => { setFiltro(null); setVerMas(false); }}>
-                  Todas<span>{data.totalPendientes}</span>
-                </button>
-                {(verTodasComunas ? comunas : comunas.slice(0, 5)).map(g => {
-                  const activo = String(g.comuna) === String(comunaFiltro);
-                  return (
-                    <button key={g.comuna} type="button" className={'sv-chip' + (activo ? ' activo' : '')}
-                      aria-pressed={activo} onClick={() => { setFiltro(g.comuna); setVerMas(false); }}>
-                      {etiquetaComuna(g.comuna)}<span>{g.total}</span>
-                    </button>
-                  );
-                })}
-                {!verTodasComunas && comunas.length > 5 && (
-                  <button type="button" className="sv-chip" onClick={() => setVerTodasComunas(true)}>
-                    +{comunas.length - 5}
-                  </button>
-                )}
-              </div>
               <ListaSugeridas
                 visitas={grupoFiltro ? grupoFiltro.visitas
                   : [].concat(...comunas.map(g => g.visitas)).sort((a, b) => b.score - a.score)}
@@ -441,12 +425,12 @@ function AgendaScreen({ usuario }) {
           </div>
 
           <div className="ag-bar">
+            {/* Sin la fecha: ya es el título de la pantalla. */}
             <div className="ag-bar-res">
-              <b>{fechaLargaAgenda(dia)}</b>
               {inspectores.map((n, i) => (
-                <span key={n}>
+                <span key={n} aria-label={nombrePila(n) + ': ' + (borrador[n] || []).length + ((borrador[n] || []).length === 1 ? ' nueva' : ' nuevas')}>
                   <i className={'ag-punto i' + ((i % 4) + 1)} aria-hidden="true"></i>
-                  {nombrePila(n)} <span className="suave">{(borrador[n] || []).length} {(borrador[n] || []).length === 1 ? 'nueva' : 'nuevas'}</span>
+                  {nombrePila(n)} <span className="suave">+{(borrador[n] || []).length}</span>
                 </span>
               ))}
             </div>
@@ -488,11 +472,16 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
                 <li key={v.fila} className={'ag-s' + (dueno ? ' tomada' : '')}>
                   <div className="ag-s-txt">
                     <DireccionAG dir={v.direccion} />
-                    <RadicadoAG radicado={v.radicado} fecha={v.fechaRad} />
-                    <div className="ag-por" title={'Puntaje ' + v.score + ' · radicado ' + v.radicado}>
-                      <span className="nivel">{m.nivel}</span>
-                      {m.texto && <> · <span className={m.vencida ? 'vencida' : ''}>{m.texto}</span></>}
-                      {!agrupar && <> · {v.barrio || 'Sin barrio'} · {etiquetaComuna(v.comuna)}</>}
+                    {/* Una sola línea: nivel (solo si la PQR tiene prioridad: «Sin
+                        análisis» era jerga interna), días, radicado. La fecha de
+                        radicado queda en el title; los días ya la dicen. */}
+                    <div className="ag-por" title={'Puntaje ' + v.score + (v.fechaRad ? ' · radicado el ' + formatearFecha(v.fechaRad) : '')}>
+                      {[
+                        nivelPrioridad(v.prioridad) && <span key="n" className="nivel">{m.nivel}</span>,
+                        m.texto && <span key="t" className={m.vencida ? 'vencida' : ''}>{m.texto}</span>,
+                        v.radicado && <span key="r" className="ag-rad-inline">{v.radicado}</span>,
+                        !agrupar && <span key="b">{(v.barrio || 'Sin barrio') + ' · ' + etiquetaComuna(v.comuna)}</span>,
+                      ].filter(Boolean).reduce((acc, el, i) => acc.concat(i ? [' · ', el] : [el]), [])}
                     </div>
                   </div>
                   <div className="ag-s-acc">
@@ -538,6 +527,7 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
     if (k && zonasYa.indexOf(k) === -1) zonasYa.push(k);
   });
   // Con el borrador editado a mano no se sabe por qué falta: no se explica.
+  // (zonasYa también va en el encabezado: «2 ya asignadas · 1 nueva · Rural».)
   const corta = !editado && ya.length > 0 && zonasYa.length > 0 && total < meta;
   const clase = 'ag-caja ag-insp i' + ((indice % 4) + 1);
   return (
@@ -546,7 +536,12 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
         <span className="ag-ini" aria-hidden="true">{inicialesInsp(nombre)}</span>
         <div className="ag-insp-nom">
           <h2 id={'ag-insp-' + indice} title={nombre}>{nombreCorto(nombre)}</h2>
-          <small>{ya.length ? `ya tenía ${ya.length} ${ya.length === 1 ? 'asignada' : 'asignadas'} ese día` : 'sin otras visitas ese día'}</small>
+          {/* Cuántas ya tenía y cuántas suma este borrador, y en qué zona. */}
+          <small>
+            {ya.length ? `${ya.length} ya ${ya.length === 1 ? 'asignada' : 'asignadas'}` : 'sin otras visitas ese día'}
+            {' · '}<b className="ag-nuevas">{nuevas.length} {nuevas.length === 1 ? 'nueva' : 'nuevas'}</b>
+            {zonasYa.length > 0 && <> · {zonasYa.map(etiquetaComuna).join(', ')}</>}
+          </small>
         </div>
         <div className={'ag-meta' + (total > meta ? ' pasa' : '')}>
           {total}<span>/{meta}</span>
@@ -556,14 +551,18 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
       {total ? (
         <ol className="ag-ruta">
           {paradas.map((p, i) => (
-            <li key={(p.ya ? 'y' : 'n') + p.fila} className="ag-parada">
+            // Lo ya asignado va atenuado (número gris, texto suave) y lo nuevo
+            // con el color del inspector y «Nueva»: se ve qué suma el borrador
+            // sin leer «YA ASIGNADA» en cada renglón (rediseño 2026-10-13).
+            <li key={(p.ya ? 'y' : 'n') + p.fila} className={'ag-parada ' + (p.ya ? 'ya' : 'nueva')}>
               <span className="ag-num">{i + 1}</span>
               <div>
-                <DireccionAG dir={p.direccion} />
+                <DireccionAG dir={p.direccion}>
+                  {p.ya ? <span className="sr-only"> (ya asignada)</span> : <span className="ag-tag">Nueva</span>}
+                </DireccionAG>
                 <RadicadoAG radicado={p.radicado} fecha={p.fechaRad} />
                 <div className="ag-por">
                   {[p.barrio, p.comuna != null && p.comuna !== '' ? etiquetaComuna(p.comuna) : ''].filter(Boolean).join(' · ')}
-                  {p.ya && <> · <span className="ag-ya">YA ASIGNADA</span></>}
                   {!p.punto && <> · sin ubicación</>}
                 </div>
               </div>
@@ -589,14 +588,43 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
 // Mapa de comunas: SVG propio (sin Google Maps: costo cero y funciona sin
 // señal). Tono = pendientes; tocar una comuna filtra las sugeridas; encima,
 // la ruta de cada inspector con su color.
-function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrador, ya, puntos }) {
+// Rediseño 2026-10-13: es el selector de comuna («Pendientes por comuna»),
+// no «Ruta sugerida» (la mayoría de paradas no tiene punto). La cuadrícula
+// lleva todas las comunas, sin «+7» que esconda la mitad; el mapa solo se
+// pinta con ancho de sobra (≥1600, CSS): por debajo empujaba las sugeridas
+// bajo el pliegue y la cuadrícula hace lo mismo.
+function MapaAgenda({ mapa, comunas, comunaFiltro, totalPendientes, onComuna, inspectores, borrador, ya, puntos }) {
   const totales = {};
   comunas.forEach(g => { totales[String(g.comuna)] = g.total; });
-  const rural = comunas.find(g => g.comuna === 'RURAL');
+  const orden = comunas.slice().sort((a, b) => b.total - a.total);
+  const cuadricula = (
+    <div className="ag-coms" role="group" aria-label="Comuna">
+      <button type="button" className={'ag-com-b' + (comunaFiltro == null ? ' activo' : '')}
+        aria-pressed={comunaFiltro == null} onClick={() => onComuna(null)}>
+        Todas<span>{totalPendientes}</span>
+      </button>
+      {orden.map(g => {
+        const activo = String(g.comuna) === String(comunaFiltro);
+        return (
+          <button key={g.comuna} type="button" className={'ag-com-b' + (activo ? ' activo' : '')}
+            aria-pressed={activo} onClick={() => onComuna(g.comuna)}>
+            {etiquetaComuna(g.comuna)}<span>{g.total}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  const cab = (
+    <div className="ag-caja-cab">
+      <h2 id="ag-mapa-t">Pendientes por comuna</h2>
+      <span>toca una para ver sus visitas</span>
+    </div>
+  );
   if (!mapa) {
     return (
-      <section className="ag-caja ag-mapa" aria-label="Mapa de comunas">
-        <div className="ag-vacio">Cargando el mapa…</div>
+      <section className="ag-caja ag-mapa" aria-labelledby="ag-mapa-t">
+        {cab}
+        {cuadricula}
       </section>
     );
   }
@@ -626,16 +654,13 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrad
   const cercaOfi = c => Math.abs(c.cx - ofi[0]) < 40 && Math.abs(c.cy - ofi[1]) < 26;
   return (
     <section className="ag-caja ag-mapa" aria-labelledby="ag-mapa-t">
-      <div className="ag-caja-cab">
-        <h2 id="ag-mapa-t">Ruta sugerida</h2>
-        <div className="ag-ley">
-          <span className="ag-escala">pendientes
-            <span><i style={{ background: '#F1EBE1' }}></i><i style={{ background: '#E4D8C6' }}></i><i style={{ background: '#D3C1A6' }}></i><i style={{ background: '#C2AB88' }}></i></span>
-            1 → 21+</span>
-          {inspectores.map((n, i) => (
-            <span key={n}><i className={'ag-punto i' + ((i % 4) + 1)}></i>{nombrePila(n)}</span>
-          ))}
-        </div>
+      {cab}
+      <div className="ag-ley">
+        <span className="ag-escala">pendientes
+          <span><i style={{ background: '#F1EBE1' }}></i><i style={{ background: '#E4D8C6' }}></i><i style={{ background: '#D3C1A6' }}></i><i style={{ background: '#C2AB88' }}></i></span>
+          1 → 21+</span>
+        {/* Sin los nombres: en la columna angosta partían la leyenda, y el
+            color de cada pin ya lo dice el día de su inspector. */}
       </div>
       <svg className="ag-svg" viewBox={`-12 -12 ${mapa.w + 24} ${mapa.h + 24}`} role="img"
         aria-label="Comunas de Bello con las visitas pendientes y la ruta de cada inspector">
@@ -671,15 +696,7 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrad
           <text x={ofi[0]} y={ofi[1] - 11}>Alcaldía</text>
         </g>
       </svg>
-      <div className="ag-mapa-pie">
-        {rural && (
-          <button type="button" className={'ag-rural' + (comunaFiltro === 'RURAL' ? ' activo' : '')}
-            aria-pressed={comunaFiltro === 'RURAL'} onClick={() => onComuna('RURAL')}>
-            Zona rural<span>{rural.total}</span>
-          </button>
-        )}
-        <span>Toca una comuna para ver sus sugeridas. Cada ruta empieza en la visita más lejana y vuelve hacia la Alcaldía.</span>
-      </div>
+      {cuadricula}
     </section>
   );
 }
