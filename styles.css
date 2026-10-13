@@ -490,15 +490,15 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   min-height: var(--tap);
   display: flex; align-items: center; justify-content: center;
   padding: 10px 12px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  border-radius: var(--r-ctl);
   text-align: center;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background .15s, border-color .15s, color .15s;
-  background: var(--surface);
-  color: var(--ink-3);
+  background: var(--surface-2);
+  color: var(--ink-2);
   -webkit-user-select: none;
   /* _Radio ahora renderiza <button role="radio">: los botones no heredan
      tipografía del documento y traen estilo nativo. */
@@ -507,12 +507,15 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 @media (hover: hover) and (pointer: fine) {
   .radio-opcion:hover:not(.sel) {
-    background: var(--surface-2);
+    background: var(--surface-3);
   }
 }
+/* Marcada en tinta, como el chip común: el café es acción, no selección
+   (sistema visual 2026-10-13; antes las 55 opciones del formulario se
+   marcaban en café lleno). */
 .radio-opcion.sel {
-  border-color: var(--brand);
-  background: var(--brand);
+  border-color: var(--ink-2);
+  background: var(--ink-2);
   color: var(--surface);
   font-weight: 600;
 }
@@ -523,10 +526,10 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .chip-vis {
   padding: 7px 13px;
   min-height: var(--tap-min);
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-2);
-  background: var(--surface);
-  color: var(--ink-3);
+  border-radius: var(--r-ctl);
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--ink-2);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -540,17 +543,17 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   -webkit-appearance: none;
 }
 @media (hover: hover) and (pointer: fine) {
-  .chip:hover, .chip-inf:hover, .chip-vis:hover {
-    background: var(--surface-2);
-    color: var(--ink-2);
+  .chip:not(.activo):hover, .chip-inf:not(.activo):hover, .chip-vis:not(.activo):hover {
+    background: var(--surface-3);
+    color: var(--ink);
   }
 }
 .chip.activo,
 .chip-inf.activo,
 .chip-vis.activo {
-  background: var(--brand);
+  background: var(--ink-2);
   color: var(--surface);
-  border-color: var(--brand);
+  border-color: var(--ink-2);
   font-weight: 600;
 }
 .chips, .chips-inf {
@@ -577,7 +580,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   /* El padding por sí solo ya daba 48px, pero varias pantallas lo pisan con
      `style={{ padding: '8px 12px' }}` y ahí caía a ~32px. El piso lo sostiene. */
   min-height: var(--tap);
-  border-radius: var(--r);
+  border-radius: var(--r-card);
   font-size: 15px; font-weight: 600;
   cursor: pointer; font-family: inherit;
   width: 100%;
@@ -585,7 +588,8 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   gap: 8px; margin-bottom: 10px;
   transition: background .12s, border-color .12s, color .12s, transform .08s;
   letter-spacing: -0.1px;
-  box-shadow: 0 4px 12px var(--brand-glow);
+  /* Sin halo café (2026-10-13): ningún otro botón lo tenía; el lleno basta. */
+  box-shadow: none;
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-principal:hover { background: var(--brand-ink); }
@@ -710,8 +714,8 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--tap);
   padding: 9px 14px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--brand);
+  border-radius: var(--r-ctl);
+  border: 1px solid transparent;
   background: var(--brand-bg);
   color: var(--brand-ink);
   font-family: inherit; font-size: 13px; font-weight: 600;
@@ -725,7 +729,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .btn-accion:active { transform: scale(0.97); }
 .btn-accion:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 @media (hover: hover) and (pointer: fine) {
-  .btn-accion:not(:disabled):hover { background: #F6DACC; border-color: var(--brand-ink); }
+  .btn-accion:not(:disabled):hover { background: #F6D8C9; }
 }
 
 /* Cancelar / retroceder. Un solo lenguaje: antes había SIETE apariencias
@@ -735,9 +739,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--tap);
   padding: 11px 16px;
-  border-radius: var(--r);
-  border: 1px solid var(--line-2);
-  background: transparent;
+  border-radius: var(--r-ctl);
+  border: 1px solid transparent;
+  background: var(--surface-2);
   color: var(--ink-2);
   font-family: inherit; font-size: 14px; font-weight: 600;
   line-height: 1.2; cursor: pointer;
@@ -746,7 +750,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .btn-neutro:active { transform: scale(0.97); }
 .btn-neutro:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 @media (hover: hover) and (pointer: fine) {
-  .btn-neutro:not(:disabled):hover { background: var(--surface-2); color: var(--ink); }
+  .btn-neutro:not(:disabled):hover { background: var(--surface-3); color: var(--ink); }
 }
 
 /* Terciario: se lee como texto, pulsa como botón. Para escapes discretos
@@ -1259,11 +1263,11 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 /* ── Formulario: secciones ──────────────────────────────── */
 .form-seccion {
   background: var(--surface);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-panel);
   padding: 16px;
   margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
 }
 /* Indicador binario a la derecha del título: check verde = completa,
    punto ámbar = con algo pendiente (solo tras un intento de generar
