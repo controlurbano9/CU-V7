@@ -3485,3 +3485,4 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .fv-gestion-pie { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 @media (pointer: coarse) { .bq-gestion .vc-btn { min-height: 44px; } }
 .fv-pqr-x { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; margin-left: 12px; }
+.ag-rad { margin-top: 1px; font: 500 12px/1.4 var(--font-mono); color: var(--ink-2); overflow-wrap: anywhere; }

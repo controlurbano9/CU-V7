@@ -88,6 +88,11 @@ function nombreCorto(n) {
   const p = String(n || '').trim().split(/\s+/);
   return [_capitalizar(p[0]), _capitalizar(p[1])].filter(Boolean).join(' ');
 }
+// Radicado y fecha de radicado bajo la dirección (pedido del usuario 2026-10-12).
+function RadicadoAG({ radicado, fecha }) {
+  if (!radicado && !fecha) return null;
+  return <div className="ag-rad">{radicado || 'Sin radicado'}{fecha && <> · radicado el {fecha}</>}</div>;
+}
 function nombrePila(n) { return _capitalizar(String(n || '').trim().split(/\s+/)[0]); }
 function inicialesInsp(n) {
   const p = String(n || '').trim().split(/\s+/);
@@ -448,6 +453,7 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
                 <li key={v.fila} className={'ag-s' + (dueno ? ' tomada' : '')}>
                   <div className="ag-s-txt">
                     <div className="ag-dir">{v.direccion || 'Sin dirección'}</div>
+                    <RadicadoAG radicado={v.radicado} fecha={v.fechaRad} />
                     <div className="ag-por" title={'Puntaje ' + v.score + ' · radicado ' + v.radicado}>
                       <span className="nivel">{m.nivel}</span>
                       {m.texto && <> · <span className={m.vencida ? 'vencida' : ''}>{m.texto}</span></>}
@@ -485,7 +491,7 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
 
 function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, onQuitar }) {
   const paradas = ordenarRuta(
-    ya.map(f => ({ ya: true, fila: f._idx, direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntos[direccionVisita(f)] || null }))
+    ya.map(f => ({ ya: true, fila: f._idx, radicado: f['RADICADO'] || '', fechaRad: f['FECHA RADICADO'] || '', direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntos[direccionVisita(f)] || null }))
       .concat(nuevas.map(v => Object.assign({ punto: puntos[v.direccion] || null }, v))),
     AGENDA_OFICINA);
   const total = paradas.length;
@@ -510,6 +516,7 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, onQuitar }) {
               <span className="ag-num">{i + 1}</span>
               <div>
                 <div className="ag-dir">{p.direccion || 'Sin dirección'}</div>
+                <RadicadoAG radicado={p.radicado} fecha={p.fechaRad} />
                 <div className="ag-por">
                   {[p.barrio, p.comuna != null && p.comuna !== '' ? etiquetaComuna(p.comuna) : ''].filter(Boolean).join(' · ')}
                   {p.ya && <> · <span className="ag-ya">YA ASIGNADA</span></>}
