@@ -2658,8 +2658,15 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .mv-pqr {
   height: clamp(420px, 66vh, 860px); border: 1px solid var(--line); border-radius: var(--r);
   overflow: hidden; background: var(--surface-2);
+  position: relative; container-type: size;
 }
-.mv-pqr iframe { display: block; width: 100%; height: 100%; border: 0; }
+/* «Girar» (PqrPanelMV): el visor gira sobre su centro; a 90°/270° se le
+   intercambian ancho y alto (cqh/cqw del marco) para que llene el marco. */
+.mv-pqr iframe {
+  position: absolute; top: 50%; left: 50%; display: block; width: 100cqw; height: 100cqh; border: 0;
+  transform: translate(-50%, -50%) rotate(var(--pqr-giro, 0deg));
+}
+.mv-pqr.mv-pqr-lado iframe { width: 100cqh; height: 100cqw; }
 
 /* ── Ficha de la visita (ficha-visita.jsx, E2b): la misma en el panel de Mis
    visitas y, más adelante, en «Ver datos» sin panel (E2c). Arriba, fija, lo
