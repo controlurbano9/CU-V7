@@ -23,28 +23,34 @@
 <title>Control Urbano · Generador F-GGO-43</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════════
-   Tokens V6 — terracotta sobre crema (alineado con styles.css)
+   Tokens V6 — los mismos valores de styles.css (sistema visual,
+   2026-10-13). Hasta entonces el café de acción era otro (#C96442
+   contra #AC5031), el ocre también, los radios iban de 8 a 18 y había
+   monoespaciada: dentro de la app el generador se veía de otra marca.
+   Café = acción; selección y hover en neutro; serif solo en el título.
 ═══════════════════════════════════════════════════════════════ */
 :root{
   --brand:#1F1B16; --brand-med:#2A2520; --brand-light:#3F362B;
-  --brand-bg:#FBE9E0; --brand-accent:#C96442; --brand-ink:#8A3F26;
-  --brand-glow:rgba(201,100,66,0.30);
+  --brand-bg:#FBE9E0; --brand-accent:#AC5031; --brand-ink:#8A3F26;
+  --brand-glow:rgba(172,80,49,0.18);
   --verde:#6B7A3A; --verde-bg:#EFF1E1; --verde-dark:#565E2E;
   --rojo:#B43A2E; --rojo-bg:#F8E4DF;
   --azul:#4A6B7C; --azul-bg:#E0E8EC;
-  --amarillo:#B8873A; --amarillo-bg:#FAF1DD;
+  --amarillo:#8D682D; --amarillo-bg:#FAF1DD;
   --texto:#1F1B16; --texto-2:#2A2520; --texto-suave:#5C5142; --texto-3:#806F5A;
   --superficie:#FFFBF5; --fondo:#F5F1EB;
-  --borde:rgba(31,27,22,0.08); --borde-med:rgba(31,27,22,0.16);
-  --sombra-sm:0 1px 3px rgba(31,27,22,0.06),0 1px 2px rgba(31,27,22,0.04);
-  --sombra:0 4px 6px rgba(31,27,22,0.06),0 2px 4px rgba(31,27,22,0.04);
+  --neutro:#ECE5D9; --neutro-2:#DED5C8;
+  --borde:rgba(31,27,22,0.10); --borde-med:rgba(31,27,22,0.18);
+  --sombra-sm:0 1px 2px rgba(31,27,22,0.05),0 1px 1px rgba(31,27,22,0.03);
+  --sombra:0 12px 28px -12px rgba(31,27,22,0.18),0 2px 4px rgba(31,27,22,0.04);
   --font-sans:'Inter',-apple-system,system-ui,'Helvetica Neue',sans-serif;
   --font-serif:'Source Serif 4','Source Serif Pro',Georgia,serif;
-  --font-mono:'JetBrains Mono','SF Mono',Monaco,Consolas,monospace;
-  --r-sm:8px; --r:12px; --r-md:14px; --r-lg:18px;
+  --font-mono:var(--font-sans);
+  /* Escala de la app: control 6 · tarjeta 8 · panel 12 */
+  --r-sm:6px; --r:8px; --r-md:12px; --r-lg:12px;
   --sidebar-w:248px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -52,6 +58,7 @@ body{
   font-family:var(--font-sans); background:var(--fondo); color:var(--texto);
   font-size:13px; line-height:1.55; min-height:100vh;
   font-feature-settings:'cv11','ss01','ss03';
+  font-variant-numeric:tabular-nums;
 }
 
 /* Shell: sidebar fijo + main amplio (escritorio) */
@@ -59,7 +66,7 @@ body{
 
 /* ── Sidebar V6 ───────────────────────────────────────────── */
 .sb{
-  background:var(--superficie); border-right:0.5px solid var(--borde);
+  background:var(--fondo); border-right:0;
   padding:22px 16px; display:flex; flex-direction:column; gap:4px;
   position:sticky; top:0; height:100vh; overflow-y:auto;
 }
@@ -69,8 +76,8 @@ body{
   letter-spacing:-0.3px;
 }
 .sb-logo span{
-  display:block; font-family:var(--font-sans); font-size:10px; font-weight:500;
-  color:var(--texto-3); margin-top:3px; letter-spacing:.04em; text-transform:uppercase;
+  display:block; font-family:var(--font-sans); font-size:11px; font-weight:400;
+  color:var(--texto-3); margin-top:2px;
 }
 .sbt{
   display:flex; align-items:center; gap:10px; background:transparent; border:none;
@@ -78,15 +85,18 @@ body{
   padding:9px 12px; border-radius:var(--r-sm); cursor:pointer; text-align:left;
   transition:all .15s; width:100%;
 }
-.sbt:hover{background:var(--brand-bg); color:var(--brand-ink)}
-.sbt.active{background:var(--brand-bg); color:var(--brand-ink); font-weight:600}
+/* Dentro de la ventana de la app la barra de la ventana ya nombra el
+   generador y el radicado: el logo de la página sobra. */
+body.embebido .sb-logo{display:none}
+.sbt:hover{background:var(--neutro); color:var(--texto)}
+.sbt.active{background:var(--neutro); color:var(--texto); font-weight:600}
 .sbt.done{color:var(--texto-3)}
 .sbn{
   width:22px; height:22px; border-radius:50%; border:1.5px solid currentColor;
   display:flex; align-items:center; justify-content:center;
   font-size:11px; font-weight:600; font-family:var(--font-mono); flex-shrink:0;
 }
-.sbt.active .sbn{background:var(--brand-accent); border-color:var(--brand-accent); color:#fff}
+.sbt.active .sbn{background:var(--texto); border-color:var(--texto); color:#fff}
 .sbt.done .sbn{background:var(--verde); border-color:var(--verde); color:#fff}
 .sbt.done .sbn::before{content:'✓'; font-family:var(--font-sans)}
 .sbt.done .sbn{font-size:0}
@@ -119,7 +129,7 @@ body{
 .psub{color:var(--texto-3); font-size:13px; margin-bottom:28px; font-weight:400}
 
 .card{
-  background:var(--superficie); border:0.5px solid var(--borde);
+  background:var(--superficie); border:0;
   border-radius:var(--r-md); padding:24px 28px; margin-bottom:14px;
   box-shadow:var(--sombra-sm);
 }
@@ -128,10 +138,10 @@ body{
   padding-bottom:14px; border-bottom:0.5px solid var(--borde);
 }
 .ci{
-  width:34px; height:34px; border-radius:var(--r-sm); background:var(--brand-bg);
+  width:34px; height:34px; border-radius:var(--r-sm); background:var(--neutro);
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
-.ci svg{width:16px; height:16px; fill:var(--brand-ink)}
+.ci svg{width:16px; height:16px; fill:var(--texto-suave)}
 .ct{font-size:14px; font-weight:600; color:var(--texto); letter-spacing:-0.1px}
 .cst{font-size:11px; color:var(--texto-3); margin-top:2px}
 
@@ -182,7 +192,7 @@ body{
 .btn-p:hover{background:var(--brand-ink)}
 .btn-p:disabled{opacity:.45; cursor:not-allowed}
 .btn-o{background:transparent; border:1px solid var(--borde-med); color:var(--texto-suave)}
-.btn-o:hover{border-color:var(--brand-accent); color:var(--brand-accent); background:var(--brand-bg)}
+.btn-o:hover{border-color:var(--texto-3); color:var(--texto); background:var(--neutro)}
 .btn-g{background:var(--verde); color:#fff}
 .btn-g:hover{background:var(--verde-dark)}
 .btn-gd{background:var(--brand-ink); color:#fff}
@@ -204,14 +214,14 @@ body{
 /* Tabla Art. 135 */
 .tv{width:100%; border-collapse:collapse; font-size:12px; margin-top:10px}
 .tv th{
-  background:var(--brand); color:#fff; padding:8px 10px;
+  background:var(--neutro); color:var(--texto); padding:8px 10px;
   text-align:left; font-weight:600; font-size:11px; letter-spacing:0.02em;
 }
 .tv td{border:0.5px solid var(--borde-med); padding:7px 9px; vertical-align:top}
 .tv tr:nth-child(even) td{background:var(--fondo)}
 .tv .cbrow td{
-  background:var(--brand-bg); font-weight:600; font-size:11px;
-  color:var(--brand-ink); text-transform:uppercase; letter-spacing:.03em;
+  background:var(--fondo); font-weight:600; font-size:12px;
+  color:var(--texto-2);
 }
 .tv select,.tv input[type=text]{
   background:var(--superficie); border:1px solid var(--borde-med);
@@ -227,8 +237,9 @@ body{
   cursor:pointer; background:var(--fondo); transition:all .15s;
   font-size:13px; margin-bottom:12px;
 }
-.chkblock:hover{border-color:var(--brand-accent); background:var(--brand-bg)}
-.chkblock input{accent-color:var(--brand-accent); width:15px; height:15px; flex-shrink:0}
+/* Marcado y hover en neutro, como el chip de la app: el café es acción. */
+.chkblock:hover{border-color:var(--texto-3); background:var(--neutro)}
+.chkblock input{accent-color:var(--texto); width:15px; height:15px; flex-shrink:0}
 
 /* Hallazgos: lista clickeable */
 .hlist{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
@@ -238,9 +249,9 @@ body{
   border-radius:var(--r-sm); border:1px solid var(--borde-med);
   cursor:pointer; background:var(--fondo); transition:all .15s; font-size:12px;
 }
-.hitem:hover{border-color:var(--brand-accent); background:var(--brand-bg)}
-.hitem input{accent-color:var(--brand-accent); width:14px; height:14px; flex-shrink:0}
-.hitem:has(input:checked){border-color:var(--brand-accent); background:var(--brand-bg); color:var(--brand-ink)}
+.hitem:hover{border-color:var(--texto-3); background:var(--neutro)}
+.hitem input{accent-color:var(--texto); width:14px; height:14px; flex-shrink:0}
+.hitem:has(input:checked){border-color:var(--texto-3); background:var(--neutro); color:var(--texto); font-weight:500}
 
 /* Modalidad chips */
 .mod-chk-wrap{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
@@ -249,9 +260,9 @@ body{
   padding:6px 12px; border:1px solid var(--borde-med); border-radius:var(--r-sm);
   cursor:pointer; background:var(--fondo); transition:all .15s;
 }
-.mod-chk-wrap label:hover{border-color:var(--brand-accent); background:var(--brand-bg)}
-.mod-chk-wrap label:has(input:checked){border-color:var(--brand-accent); background:var(--brand-bg); color:var(--brand-ink); font-weight:500}
-.mod-chk-wrap input{accent-color:var(--brand-accent)}
+.mod-chk-wrap label:hover{border-color:var(--texto-3); background:var(--neutro)}
+.mod-chk-wrap label:has(input:checked){border-color:var(--texto); background:var(--texto); color:var(--superficie); font-weight:500}
+.mod-chk-wrap input{accent-color:var(--texto)}
 
 /* Vista previa de texto IA */
 .prev-box{
@@ -305,7 +316,7 @@ body{
 
 .res-chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
 .res-chips span{
-  background:var(--brand-bg); color:var(--brand-ink); font-size:11px;
+  background:var(--neutro); color:var(--texto); font-size:11px;
   padding:3px 10px; border-radius:var(--r-lg); font-weight:500;
 }
 
@@ -315,7 +326,7 @@ body{
   border:1px solid var(--borde-med); border-radius:var(--r-sm);
   margin-bottom:8px; background:var(--fondo); transition:opacity .15s;
 }
-.revitem input[type=checkbox]{margin-top:11px; accent-color:var(--brand-accent); width:15px; height:15px; flex-shrink:0}
+.revitem input[type=checkbox]{margin-top:11px; accent-color:var(--texto); width:15px; height:15px; flex-shrink:0}
 .revitem textarea{flex:1; min-height:52px; line-height:1.5}
 .revitem.excluido{opacity:.5}
 
@@ -349,8 +360,8 @@ body.v2-mode .v2-rail{display:flex; flex-direction:column; gap:4px}
   padding:9px 12px; border-radius:var(--r-sm); cursor:pointer; text-align:left; width:100%;
   transition:background-color 150ms ease, color 150ms ease;
 }
-.v2-rail-item:hover{background:var(--brand-bg); color:var(--brand-ink)}
-.v2-rail-item.activo{background:var(--brand-bg); color:var(--brand-ink); font-weight:600}
+.v2-rail-item:hover{background:var(--neutro); color:var(--texto)}
+.v2-rail-item.activo{background:var(--neutro); color:var(--texto); font-weight:600}
 .v2-rail-item.bloqueado{opacity:.5; cursor:not-allowed}
 .v2-rail-item .estado{
   width:20px; height:20px; border-radius:50%; border:1.5px solid currentColor;
@@ -379,11 +390,36 @@ body.v2-mode .v2-autosave{display:inline-flex}
 #modal-emision.visible .caja{transform:scale(1); opacity:1}
 #modal-emision .fase{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--texto-suave); margin-bottom:8px}
 #modal-emision .fase.hecha{color:var(--verde-dark)}
-#modal-emision .fase.activa{color:var(--brand-ink); font-weight:600}
+#modal-emision .fase.activa{color:var(--texto); font-weight:600}
 @media (prefers-reduced-motion: reduce){#modal-emision .caja{transition:opacity 1ms}}
+
+/* Celular (el generador se abre en pestaña nueva por debajo de 1200 px):
+   hasta 2026-10-13 no había ninguna regla para pantallas angostas y el menú
+   de 248 px se quedaba fijo — a 390 px la página medía 867 de ancho. El
+   menú pasa a una tira de pasos fija arriba, como las pestañas de la app. */
+@media (max-width:899px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .sb{
+    position:sticky; top:0; z-index:50; height:auto; overflow:visible;
+    flex-direction:row; align-items:center; gap:6px; padding:8px 12px;
+    overflow-x:auto; scrollbar-width:none; border-bottom:1px solid var(--borde);
+  }
+  .sb-logo,.sb-info{display:none}
+  .sbt{width:auto; flex:none; white-space:nowrap; min-height:44px; padding:0 12px}
+  .btn-nuevo{width:auto; flex:none; margin:0 0 0 auto; min-height:44px; white-space:nowrap}
+  body.v2-mode .v2-rail{flex-direction:row}
+  .v2-rail-item{width:auto; flex:none; white-space:nowrap; min-height:44px}
+  .mn{padding:20px 16px 48px; max-width:none}
+  .ptitle{font-size:24px; letter-spacing:-0.4px}
+  .card{padding:18px 16px}
+  .br{flex-wrap:wrap}
+  .btn{min-height:44px}
+  .tv{display:block; overflow-x:auto}
+}
 </style>
 </head>
 <body>
+<script>try{if(window.self!==window.top)document.body.classList.add('embebido')}catch(e){document.body.classList.add('embebido')}</script>
 <div class="shell">
 <aside class="sb">
   <div class="sb-logo">Control Urbano <span>Informe F-GGO-43</span></div>
@@ -674,7 +710,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
     <div id="preguntas-clarificacion" class="hidden" style="margin-top:10px"></div>
   </div>
 
-  <div class="card hidden" id="card-obs-mejorada" data-momento="2" style="border-left:3px solid var(--brand-accent)">
+  <div class="card hidden" id="card-obs-mejorada" data-momento="2" style="border-left:3px solid var(--azul)">
     <div class="ch" style="margin-bottom:10px;padding-bottom:10px">
       <div class="ci"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z"/></svg></div>
       <div>
@@ -855,7 +891,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
           📁 Reemplazar por captura QGIS
           <input type="file" id="input-loc-qgis" accept="image/*" style="display:none" onchange="subirImagenLocalizacion(this)">
         </label>
-        <button class="btn btn-o" id="btn-loc-restaurar" onclick="borrarImagenLocalizacion()" style="display:none;color:var(--brand-ink);border-color:var(--brand-accent)">Volver al mapa automático</button>
+        <button class="btn btn-o" id="btn-loc-restaurar" onclick="borrarImagenLocalizacion()" style="display:none">Volver al mapa automático</button>
         <div id="loc-status" style="font-size:11px;color:var(--texto-suave)"></div>
       </div>
     </div>
@@ -1080,7 +1116,7 @@ function mostrarModalEmision(estado, datos) {
     var nHallazgos = HALLAZGOS_CONFIRMADOS.length;
     var sinLicEl = document.getElementById('sinLic');
     var sinLic = sinLicEl ? sinLicEl.checked : false;
-    html = '<div style="font-family:var(--font-serif);font-size:17px;font-weight:600;margin-bottom:14px">Confirmar emision</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:14px">Confirmar emision</div>'
       + '<div style="font-size:13px;color:var(--texto-2);line-height:1.9">'
       + '<div><b>' + nHallazgos + '</b> hallazgo' + (nHallazgos === 1 ? '' : 's') + '</div>'
       + '<div><b>' + nFotos + '</b> fotografia' + (nFotos === 1 ? '' : 's') + '</div>'
@@ -1093,20 +1129,20 @@ function mostrarModalEmision(estado, datos) {
   } else if (estado === 'generando') {
     var fases = ['Leyendo visita', 'Redactando', 'Verificando'];
     var activaIdx = datos.fase || 0;
-    html = '<div style="font-family:var(--font-serif);font-size:17px;font-weight:600;margin-bottom:14px">Generando informe</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:14px">Generando informe</div>'
       + fases.map(function(f, i) {
           var cls = i < activaIdx ? 'fase hecha' : (i === activaIdx ? 'fase activa' : 'fase');
           return '<div class="' + cls + '">' + (i < activaIdx ? '✓' : (i === activaIdx ? '●' : '○')) + ' ' + f + '</div>';
         }).join('');
   } else if (estado === 'error') {
-    html = '<div style="font-family:var(--font-serif);font-size:17px;font-weight:600;margin-bottom:10px;color:var(--rojo)">No pudimos generar el informe</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:10px;color:var(--rojo)">No pudimos generar el informe</div>'
       + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">' + (datos.mensaje || 'Intenta de nuevo en unos segundos.') + '</div>'
       + '<div style="display:flex;gap:10px">'
       + '<button class="btn btn-p" onclick="mostrarModalEmision(\'cerrar\');generarInformeV2()">Reintentar</button>'
       + '<button class="btn btn-o" onclick="mostrarModalEmision(\'cerrar\')">Cerrar</button>'
       + '</div>';
   } else if (estado === 'exito') {
-    html = '<div style="font-family:var(--font-serif);font-size:17px;font-weight:600;margin-bottom:10px;color:var(--verde-dark)">✓ Informe generado</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:10px;color:var(--verde-dark)">✓ Informe generado</div>'
       + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">Guardado en Drive. Puedes descargarlo o seguir editando.</div>'
       + (datos.link ? '<a href="' + datos.link + '" target="_blank" style="color:var(--brand-accent);font-size:13px">Ver archivo en Drive</a><br><br>' : '')
       + '<button class="btn btn-p" onclick="mostrarModalEmision(\'cerrar\')">Cerrar</button>';
@@ -1824,7 +1860,7 @@ function _renderChipsPendientesCatalogo(catalogo) {
     var h = _hallazgoPorClave(clave, catalogo);
     var label = (h ? h.hallazgo : clave).toString().replace(/</g, '&lt;');
     return '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.04);'
-      + 'border:1px dashed var(--brand-accent);border-radius:14px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0">'
+      + 'border:1px dashed var(--texto-3);border-radius:12px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0">'
       + label
       + ' <button type="button" onclick="_rechazarChipSugeridoCatalogo(\'' + clave.replace(/'/g, "\\'") + '\')" '
       + 'style="border:none;background:none;cursor:pointer;color:var(--rojo);font-weight:bold">×</button></span>';
@@ -2257,7 +2293,7 @@ function buildRes() {
     return '<div class="res-chips">' + arr.map(function(x) { return '<span>' + escapeHtml(x) + '</span>'; }).join('') + '</div>';
   }
 
-  var h = '<div style="font-family:var(--font-serif);font-size:20px;font-weight:600;color:var(--texto);letter-spacing:-0.3px">Resumen del caso</div>';
+  var h = '<div style="font-family:var(--font-sans);font-size:18px;font-weight:600;color:var(--texto);letter-spacing:-0.3px">Resumen del caso</div>';
 
   // ── Datos del caso ─────────────────────────────────────────
   h += '<div class="res-grid" style="margin-top:14px">';
@@ -2364,8 +2400,8 @@ function buildRes() {
 }
 function showStatus(tipo, titulo, msg) {
   var box = document.getElementById('stbox');
-  var bgMap = {load:'var(--brand-bg)', ok:'var(--verde-bg)', er:'var(--rojo-bg)'};
-  var brMap = {load:'var(--brand-accent)', ok:'var(--verde)', er:'var(--rojo)'};
+  var bgMap = {load:'var(--neutro)', ok:'var(--verde-bg)', er:'var(--rojo-bg)'};
+  var brMap = {load:'var(--texto-3)', ok:'var(--verde)', er:'var(--rojo)'};
   var tcMap = {load:'var(--brand-ink)', ok:'var(--verde-dark)', er:'var(--rojo)'};
   var ic = tipo === 'load' ? '<div class="spin"></div>' : '<span style="font-size:16px;color:'+tcMap[tipo]+'">' + (tipo==='ok'?'&#10003;':'&#10007;') + '</span>';
   box.style.background = bgMap[tipo];

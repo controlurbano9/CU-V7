@@ -107,44 +107,29 @@ function InformeIframeUI({ params, onCerrar }) {
       width: '100%', height: '100%', maxWidth: 1440,
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* Toolbar de la "ventana" */}
+      {/* Barra de la "ventana": el mismo lenguaje de la app (Inter, botón
+          común, radio de panel). Es la única cabecera: la página del
+          generador oculta su logo cuando va dentro de este marco. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
-        padding: '12px 16px', background: 'var(--superficie, #FFFBF5)',
-        borderRadius: '14px 14px 0 0', borderBottom: '0.5px solid var(--borde, rgba(31,27,22,0.08))',
+        padding: '10px 12px 10px 20px', background: 'var(--surface)',
+        borderRadius: 'var(--r-panel) var(--r-panel) 0 0', borderBottom: '1px solid var(--line)',
       }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 7, background: 'var(--brand-bg, #FBE9E0)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--brand-ink, #8A3F26)', fontFamily: 'var(--font-serif)',
-          fontSize: 12, fontWeight: 700,
-        }}>F</div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Informe de inspección</div>
           <div style={{
-            fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600,
-            letterSpacing: -0.2, color: 'var(--texto, #1F1B16)',
-          }}>Generador F-GGO-43</div>
-          <div style={{
-            fontSize: 11, color: 'var(--texto-suave, #5C5142)',
-            fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            fontSize: 12, color: 'var(--ink-3)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {params.radicado || '—'} {params.direccion && '· ' + params.direccion}
           </div>
         </div>
-        <button onClick={function() {
+        <button type="button" className="vc-btn" onClick={function() {
           // Abrir en pestaña nueva (mantiene el modal abierto).
           window.open(src, '_blank', 'noopener');
-        }} title="Abrir en pestaña nueva" style={{
-          background: 'transparent', border: '1px solid var(--borde-med, rgba(31,27,22,0.16))',
-          color: 'var(--texto-suave, #5C5142)', borderRadius: 8, padding: '6px 12px',
-          fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
-        }}>↗ Pestaña nueva</button>
-        <button onClick={onCerrar} aria-label="Cerrar" title="Cerrar (Esc)" style={{
-          background: 'transparent', border: '1px solid var(--borde-med, rgba(31,27,22,0.16))',
-          color: 'var(--texto-suave, #5C5142)', borderRadius: 8, padding: '6px 10px',
-          fontFamily: 'inherit', fontSize: 16, cursor: 'pointer', lineHeight: 1,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}><Icon.Close size={16} /></button>
+        }} title="Abrir en pestaña nueva">↗ Pestaña nueva</button>
+        <button type="button" className="vc-btn" onClick={onCerrar} aria-label="Cerrar" title="Cerrar (Esc)"
+          style={{ width: 36, padding: 0 }}><Icon.Close size={16} /></button>
       </div>
 
       {/* Iframe ocupa todo el alto restante */}
@@ -154,8 +139,8 @@ function InformeIframeUI({ params, onCerrar }) {
         title="Generador F-GGO-43"
         style={{
           flex: 1, width: '100%', border: 'none',
-          background: 'var(--fondo, #F5F1EB)',
-          borderRadius: '0 0 14px 14px',
+          background: 'var(--paper)',
+          borderRadius: '0 0 var(--r-panel) var(--r-panel)',
         }}
       />
     </div>
