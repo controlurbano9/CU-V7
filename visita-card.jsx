@@ -48,12 +48,14 @@ function _primerVisitador(f) {
 // stopPropagation porque la tarjeta puede vivir dentro de contenedores
 // clickeables (acordeones, filas de resultado).
 // ═══════════════════════════════════════════════════════════════
-function BotonPdfRadicado({ f, titulo }) {
+// `onAbrir(e)` (opcional): quien lo aloja puede tomar el clic (la ficha
+// muestra la PQR a su lado con e.preventDefault()); si no, abre la pestaña.
+function BotonPdfRadicado({ f, titulo, onAbrir }) {
   const link = linkPdfRadicado(f);
   if (!link) return null;
   return (
     <a href={link} target="_blank" rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); if (onAbrir) onAbrir(e); }}
       title={titulo || 'Abrir el PDF de la PQR radicada (pestaña nueva)'}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,

@@ -3484,3 +3484,4 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .bq-campo .adm-tab.bq-campo-mas { flex: 0 0 auto; color: var(--ink-3); }
 .fv-gestion-pie { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 @media (pointer: coarse) { .bq-gestion .vc-btn { min-height: 44px; } }
+.fv-pqr-x { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; margin-left: 12px; }

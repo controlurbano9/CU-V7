@@ -498,12 +498,13 @@ function MapaPanelMV({ f }) {
 // frame-src del CSP de index.html, y que los PDF sigan siendo de enlace
 // público: si se restringen, este bloque habrá que servirlo por el webhook
 // (precedente: obtenerFotoBase64).
-function PqrPanelMV({ id, link, radicado }) {
+function PqrPanelMV({ id, link, radicado, onCerrar }) {
   const enLinea = typeof navigator === 'undefined' || navigator.onLine !== false;
   return (
     <div className="mv-bloque">
       <h3 className="mv-sub">PQR radicada
         <a className="mv-sub-link" href={link} target="_blank" rel="noopener noreferrer">Abrir en otra pestaña</a>
+        {onCerrar && <button type="button" className="mv-sub-link fv-pqr-x" onClick={onCerrar}>Ocultar</button>}
       </h3>
       {enLinea
         ? <div className="mv-pqr">

@@ -22,6 +22,15 @@ function _scrollerFV(el) {
 function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion }) {
   const raizRef = useRefFV(null);
   const fijaRef = useRefFV(null);
+  // La PQR se abre a demanda (decisión del usuario 2026-10-12): antes ocupaba
+  // media ficha en cada visita. Con ficha ancha se muestra al lado; angosta,
+  // el chip abre la pestaña nueva como en las tarjetas.
+  const [verPqr, setVerPqr] = useStateFV(false);
+  const alternarPqr = (e) => {
+    if (!raizRef.current || raizRef.current.offsetWidth < 900) return;
+    e.preventDefault();
+    setVerPqr(v => !v);
+  };
 
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const empezada = est === 'INICIADO' || est === 'COMPLETADO';
@@ -32,8 +41,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
   // visitadoresBD devuelve el texto de la columna («A / B»), no una lista.
   const quienes = String(visitadoresBD(f) || '').split(/\s*[\/,]\s*/).map(s => s.trim()).filter(Boolean);
 
-  // Otra visita: la ficha vuelve arriba y la cabecera se re-mide.
+  // Otra visita: la ficha vuelve arriba, sin la PQR abierta de la anterior.
   useEffectFV(() => {
+    setVerPqr(false);
     const raiz = raizRef.current;
     if (!raiz) return;
     const scroller = _scrollerFV(raiz);
@@ -83,7 +93,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
     }
   }
 
-  const idPqr = idArchivoDrive(linkPdfRadicado(f));
+  const idPqr = verPqr ? idArchivoDrive(linkPdfRadicado(f)) : '';
   const secciones = seccionesFicha(f, usuario && usuario.rol);
 
   // Campos crudos de la BD (solo admin, diagnóstico): pares no vacíos.
@@ -110,7 +120,8 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
             <div className="fv-dir">{dir}</div>
             <div className="vc-ident">
               <span className="vc-rad">{f['RADICADO'] || '—'}</span>
-              <BotonPdfRadicado f={f} />
+              <BotonPdfRadicado f={f} onAbrir={alternarPqr}
+                titulo={verPqr ? 'Ocultar la PQR' : 'Ver la PQR radicada'} />
               {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
               {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
               {quienes.length > 0 && <><span className="vc-sep">·</span><span>{titleCaseNombre(quienes[0])}{quienes.length > 1 ? ' +' + (quienes.length - 1) : ''}</span></>}
@@ -180,7 +191,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
 
         {idPqr && (
           <div className="fv-col-pqr">
-            <PqrPanelMV id={idPqr} link={linkPdfRadicado(f)} radicado={f['RADICADO']} />
+            <PqrPanelMV id={idPqr} link={linkPdfRadicado(f)} radicado={f['RADICADO']} onCerrar={() => setVerPqr(false)} />
           </div>
         )}
       </div>
