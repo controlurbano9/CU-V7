@@ -75,7 +75,11 @@
   /* ── Tipografía ──────────────────────────────────────────── */
   --font-serif: 'Source Serif 4', 'Source Serif Pro', Georgia, 'Times New Roman', serif;
   --font-sans:  'Inter', -apple-system, system-ui, 'Helvetica Neue', sans-serif;
-  --font-mono:  'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
+  /* Sin tercera letra (auditoría 2026-10-13): lo que iba en monoespaciada
+     (radicados, fechas, conteos) va en Inter con cifras tabulares, que el
+     body activa para toda la app. El token se conserva para no tocar las ~50
+     reglas que lo usan. */
+  --font-mono:  var(--font-sans);
 
   /* ── Layout ──────────────────────────────────────────────── */
   --sidebar-w:   256px;
@@ -169,6 +173,7 @@
 html { height: 100%; }
 body {
   font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
@@ -2768,32 +2773,37 @@ button.sv-col-head {
 .mv-chips .sv-chip { height: 28px; padding: 0 12px; font-size: 12px; }
 .mv-urg { margin-top: 10px; }
 
+/* Cabecera de grupo (Mis visitas, Buscar, Administración): en Inter y sin
+   mayúsculas forzadas — era una tercera voz tipográfica. */
 .mv-grupo {
-  display: flex; align-items: baseline; gap: 8px; margin: 16px 0 6px;
-  font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3);
+  display: flex; align-items: baseline; gap: 8px; margin: 16px 2px 6px;
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
 }
 .mv-grupo:first-child { margin-top: 0; }
-.mv-grupo span {
-  font-family: var(--font-mono); font-weight: 400; letter-spacing: 0;
-  text-transform: none; color: var(--ink-4);
-}
+.mv-grupo span { font-weight: 400; color: var(--ink-4); }
 
-/* Fila: mismo código de estado de .sv-card y .al-card (barra de 3 px, sin
-   border-radius). Ocre = por hacer, azul = en curso, olivo = completada. */
+/* Fila: la tarjeta de visita común (.sv-card): 8 px, sombra, sin borde y
+   barra de estado separada del borde. Ocre = por hacer, azul = en curso,
+   olivo = completada. */
 .mv-fila {
+  position: relative;
   display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap;
-  background: var(--surface); border: 0.5px solid var(--line); border-left: 3px solid var(--amber);
-  padding: 8px 10px 8px 12px; margin-bottom: 5px;
+  background: var(--surface); border: 0; border-radius: var(--r-card); box-shadow: var(--shadow-sm);
+  padding: 10px 12px 10px 17px; margin-bottom: 6px;
 }
-.mv-fila.mv-curso { border-left-color: var(--info); }
-.mv-fila.mv-hecha { border-left-color: var(--green); }
+.mv-fila::before {
+  content: ''; position: absolute; left: 6px; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 2px; background: var(--amber);
+}
+.mv-fila.mv-curso::before { background: var(--info); }
+.mv-fila.mv-hecha::before { background: var(--green); }
 .mv-txt { flex: 1 1 200px; min-width: 0; }
 .mv-dir {
   display: block; max-width: 100%; padding: 0; border: 0; background: none;
   text-align: left; cursor: pointer; color: var(--ink);
-  font-family: var(--font-serif); font-size: 15px; font-weight: 600; line-height: 1.3;
+  font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.35;
 }
-.mv-hecha .mv-dir { font-size: 14px; }
+.mv-hecha .mv-dir { font-size: 13px; }
 /* Escala de las listas (Buscar y Mis visitas, 2026-10-13): dirección 15,
    identidad 12, nota 12 — antes 11, se leía con esfuerzo. */
 .mv-fila .vc-ident { font-size: 12px; }
@@ -2809,14 +2819,24 @@ button.sv-col-head {
   background: var(--green-bg); color: var(--green-ink); box-shadow: inset 0 0 0 1px rgba(86,94,46,.35);
 }
 .mv-acc { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.mv-acc .vc-btn-cta { min-width: 92px; }   /* mismo ancho de .ent-btn */
-.mv-fecha { flex: none; width: 46px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+/* La acción de la fila en tinte, como en Inicio: con un café lleno por fila
+   había seis a la vez y ninguno destacaba. El lleno queda para el panel. */
+.mv-acc .vc-btn { border-color: transparent; background: var(--surface-2); }
+.mv-acc .vc-btn-cta { min-width: 92px; background: var(--brand-bg); color: var(--brand-ink); }   /* mismo ancho de .ent-btn */
+@media (hover: hover) and (pointer: fine) {
+  .mv-acc .vc-btn:hover { background: var(--surface-3); }
+  .mv-acc .vc-btn-cta:hover { background: #F6D8C9; color: var(--brand-ink); filter: none; }
+}
+.mv-fecha { flex: none; width: 46px; font-size: 12px; color: var(--ink-3); }
 .mv-mas { display: flex; margin: 10px auto 0; }
 .mv-mas span { font-weight: 400; color: var(--ink-3); }
 
 /* Sin panel (o con el dedo): los botones bajan a su propio renglón, a 44 px
    y repartiendo el ancho. */
 @media (max-width: 1199px), (pointer: coarse) {
+  /* La dirección abre la visita: 20 px de alto era un blanco chico. El
+     relleno se compensa con margen negativo para no mover el renglón. */
+  .mv-dir { padding: 10px 0; margin: -10px 0; }
   .mv-acc { flex-basis: 100%; }
   .mv-acc .vc-btn { min-height: var(--tap); flex: 1 1 0; }
   /* «Diligencia X» en su renglón: al lado empujaba «Ver datos» a un tercero. */
@@ -2844,15 +2864,21 @@ button.sv-col-head {
     grid-template-rows: minmax(0, 1fr);
   }
   .mv-lista, .mv-panel { min-height: 0; overflow-y: auto; }
-  .mv-lista { padding-right: 4px; }
+  /* La lista sobre carril (como un día de Inicio); el panel, superficie con
+     sombra y sin borde. */
+  .mv-lista {
+    padding: 8px; background: var(--carril); border-radius: var(--r-panel);
+    scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent;
+  }
+  .mv-lista .mv-grupo { margin-left: 4px; }
   .mv-panel {
     display: block; container-type: inline-size;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-sm);
   }
   .mv-fila { cursor: pointer; }
   .mv-dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* La barra de estado se conserva: el trazo de selección va por dentro. */
-  /* Elegida en neutro: el café es acción, no selección (auditoría 2026-10-13). */
+  /* Elegida en neutro: el café es acción, no selección (auditoría 2026-10-13).
+     La barra de estado se conserva; el trazo va por dentro. */
   .mv-fila.sel { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--ink-4); }
 }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
@@ -2862,8 +2888,8 @@ button.sv-col-head {
 .mv-p-cab { display: flex; align-items: flex-start; gap: 12px 20px; flex-wrap: wrap; padding: 16px 20px 14px; }
 .mv-p-id { flex: 1 1 320px; min-width: 0; }
 .mv-p-dir {
-  font-family: var(--font-serif); font-size: 24px; font-weight: 600;
-  letter-spacing: -.4px; line-height: 1.15; margin: 6px 0 4px;
+  font-family: var(--font-sans); font-size: 20px; font-weight: 600;
+  letter-spacing: -.3px; line-height: 1.2; margin: 6px 0 4px;
 }
 .mv-p-acc { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .mv-p-acc .vc-btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
@@ -2909,7 +2935,7 @@ button.sv-col-head {
 .mv-sub {
   display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; padding-bottom: 6px;
   border-bottom: 0.5px solid var(--line);
-  font-family: var(--font-serif); font-size: 15px; font-weight: 600;
+  font-family: var(--font-sans); font-size: 15px; font-weight: 600;
 }
 .mv-sub small { font-family: var(--font-sans); font-size: 11px; font-weight: 400; color: var(--ink-3); }
 .mv-sub-link {
@@ -2963,7 +2989,7 @@ button.sv-col-head {
 .fv-estado-txt { font-weight: 600; color: var(--ink-3); }
 .fv-estado-txt.espera { color: var(--amber); }
 .fv-estado-txt.demora { color: var(--red); }
-.fv-dir { margin-top: 4px; font: 600 20px/1.2 var(--font-serif); letter-spacing: -.3px; color: var(--ink); }
+.fv-dir { margin-top: 4px; font: 600 20px/1.2 var(--font-sans); letter-spacing: -.3px; color: var(--ink); }
 .fv-fija .vc-ident { margin-top: 4px; }
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
@@ -2972,7 +2998,7 @@ button.sv-col-head {
    de la Semana (3 px, sin radio en ese lado) + estado en texto. La elegida,
    con borde de tinta y fondo de superficie; las demás, apagadas. */
 .fv-vcaso { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin: -2px 0 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); }
-.fv-vcaso-tit { font: 700 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.fv-vcaso-tit { font: 600 12px/1 var(--font-sans); color: var(--ink-2); }
 .fv-vcaso-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .fv-vcaso-op { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
   min-height: 40px; padding: 4px 12px 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-2);
@@ -2988,7 +3014,7 @@ button.sv-col-head {
 .fv-vcaso-op.vcs-asig  { border-left-color: var(--amarillo); }
 .fv-vcaso-op.vcs-curso { border-left-color: var(--azul); }
 .fv-vcaso-op.vcs-hecha { border-left-color: var(--verde); }
-.fv-vcaso-op.vcs-pend  { border-left-color: var(--brand); }
+.fv-vcaso-op.vcs-pend  { border-left-color: var(--ink-4); }
 .fv-hoja .fv-vcaso { padding-right: 48px; }
 /* Angosto (hoja en el teléfono): las visitas lado a lado y repartidas, no
    apiladas — apiladas se comían ~100 px de la cabecera fija. */
@@ -3609,7 +3635,7 @@ button.sv-col-head {
 .bq-est.on { background: var(--ink-2); border-color: var(--ink-2); color: var(--surface); box-shadow: none; }
 .bq-est.on i { color: inherit; opacity: .75; }
 .bq-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-4); display: inline-block; }
-.bq-dot.pend { background: var(--brand); } .bq-dot.asig { background: var(--amber); }
+.bq-dot.pend { background: var(--ink-4); } .bq-dot.asig { background: var(--amber); }
 .bq-dot.curso { background: var(--info); } .bq-dot.hecha { background: var(--green); }
 .bq-est:not(.on) .bq-dot { opacity: .45; }
 .bq-sep-v { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
@@ -3686,7 +3712,8 @@ button.sv-col-head {
 .bq-div { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 6px;
   font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .bq-div span { font: 400 11px var(--font-mono); letter-spacing: 0; text-transform: none; color: var(--ink-4); }
-.mv-fila.bq-pend { border-left-color: var(--brand); }
+/* Pendiente en gris, como en el formulario: el café es acción, no estado. */
+.mv-fila.bq-pend::before { background: var(--ink-4); }
 .bq-fila .mv-dir { cursor: inherit; }
 .bq-fila mark, .bq-sug mark { background: rgba(141,104,45,.22); color: var(--ink); border-radius: 2px; padding: 0 1px; }
 .bq-tag { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 3px; background: var(--surface-2);
