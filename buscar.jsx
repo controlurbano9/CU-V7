@@ -44,7 +44,7 @@ const BQ_LIMITE_PASO = 50;
 // un teléfono no deben ni cargarse. 1200–1599 lista+ficha; ≥1600 tres columnas.
 const BQ_ANCHO_PANEL = '(min-width: 1200px)';
 
-function _usarMinAnchoBQ(media) {
+function useMinAnchoBQ(media) {
   const hayMQ = typeof window.matchMedia === 'function';
   const [ancho, setAncho] = useStateB(() => hayMQ && window.matchMedia(media).matches);
   useEffectB(() => {
@@ -261,7 +261,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [asignandoFila, setAsignandoFila] = useStateB(null); // _idx con panel de inspector abierto
 
   const inputBuscarRef = useRefB(null);
-  const conPanel = _usarMinAnchoBQ(BQ_ANCHO_PANEL);
+  const conPanel = useMinAnchoBQ(BQ_ANCHO_PANEL);
   const esAdmin = usuario.rol === 'ADMIN';
   const veTodo = veTodasLasVisitas(usuario.rol);
   const hoy = useMemoB(() => new Date(), []);

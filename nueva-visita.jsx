@@ -713,7 +713,7 @@ function _Input({ value, onChange, placeholder, type, mono, ...rest }) {
 // `autoAlto`: el cuadro crece con el texto en vez de mostrar barra de
 // desplazamiento — en «Situación encontrada» el inspector debe ver todo lo que
 // irá al acta (2026-10-12). Nunca baja de `rows`; el usuario aún puede estirarlo.
-function _TextArea({ value, onChange, placeholder, rows, autoAlto, ...rest }) {
+function TextAreaNV({ value, onChange, placeholder, rows, autoAlto, ...rest }) {
   const ref = React.useRef(null);
   React.useLayoutEffect(() => {
     const el = ref.current;
@@ -4952,7 +4952,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               </select>
             </_Campo>
             <_Campo label="Observaciones de la licencia" fullWidth>
-              <_TextArea value={d.obsLicencia} onChange={v => setCampo('obsLicencia', v)} rows={3} />
+              <TextAreaNV value={d.obsLicencia} onChange={v => setCampo('obsLicencia', v)} rows={3} />
             </_Campo>
           </>
         )}
@@ -4962,7 +4962,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo="Descripción de la situación encontrada"
         estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         <_Campo label="Actuación / Observaciones" fullWidth
-          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <_TextArea value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
+          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <TextAreaNV value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
         </_Campo>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap' }}>
           <_BtnAccion busy={busyMejora} onClick={ejecutarMejora}>
@@ -5210,7 +5210,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo="Observaciones y conclusiones" color="gris">
         <_Campo label="Conclusiones generales del inspector" fullWidth
           hint="Dictamen técnico, observaciones sobre la situación encontrada y su relación con la normativa aplicable.">
-          <_TextArea value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={6}
+          <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={6}
             placeholder="Describa las conclusiones de la visita, hallazgos relevantes y recomendaciones..." />
         </_Campo>
       </_Seccion>
