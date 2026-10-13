@@ -157,3 +157,11 @@ test('puntoMapaDesdeCatastro — placas vecinas, varios predios o nada: no se ad
   assert.equal(puntoMapaDesdeCatastro({ exacta: true, terrenos: [] }, 0), null);
   assert.equal(puntoMapaDesdeCatastro(null, 0), null);
 });
+
+test('linkMapaVisita — dirección que es coordenada: el punto, sin «Bello, Antioquia»', () => {
+  const dms = linkMapaVisita({ 'DIRECCION INFRACCION': '6 21\'3,858"N 75 33\'28,272"W' });
+  assert.equal(dms, 'https://www.google.com/maps/search/?api=1&query=6.351072,-75.557853');
+  const dec = linkMapaVisita({ 'DIRECCION': '6.335529, -75.558507' });
+  assert.equal(dec, 'https://www.google.com/maps/search/?api=1&query=6.335529,-75.558507');
+  assert.equal(filaNecesitaPuntoCatastro({ 'DIRECCION': '6.335529, -75.558507' }), false);
+});

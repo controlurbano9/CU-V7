@@ -69,6 +69,11 @@ function _parsearCoordenadas(texto) {
   var txt = texto.trim();
   if (!txt) return null;
 
+  // 0. Formatos que ya entiende utils.js, incluido el DMS sin «°» que trae la BD
+  //    («6 21'3,858"N 75 33'28,272"W»), que los patrones de abajo no leen.
+  var pc = puntoDesdeTextoCoord(txt);
+  if (pc) return pc;
+
   // 1. Extraer de URL de Google Maps (...@lat,lon,zoom...)
   var urlMatch = txt.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
   if (urlMatch) {

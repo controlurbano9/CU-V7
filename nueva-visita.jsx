@@ -3099,7 +3099,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (terrenosDir.length === 1) { _pinEnPredioDireccion(terrenosDir[0].tcod); return; }
     setBusyGeo(true);
     try {
-      const q = d.direccion + (d.barrio && d.barrio !== '__otro__' ? ', ' + d.barrio : '') + ', Bello, Antioquia';
+      // Dirección-coordenada: sin barrio ni municipio (geocodeDireccion la
+      // resuelve sin red si le llega sola).
+      const q = puntoDesdeTextoCoord(d.direccion) ? d.direccion : d.direccion + (d.barrio && d.barrio !== '__otro__' ? ', ' + d.barrio : '') + ', Bello, Antioquia';
       const r = await geocodeDireccion(q);
       const c = r.data || r;
       if (c.lat && c.lng) {

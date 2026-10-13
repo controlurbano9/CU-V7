@@ -431,6 +431,9 @@ function MapaPanelMV({ f }) {
 
   useEffectMV(() => {
     if (lat != null && lon != null) { setPunto({ lat: lat, lon: lon, origen: 'bd' }); return; }
+    // Dirección que es una coordenada: ese es el punto (catastro no la lee).
+    const pc = puntoDesdeTextoCoord(dir);
+    if (pc) { setPunto({ lat: pc.lat, lon: pc.lon, origen: 'bd' }); return; }
     setPunto(null);
     if (!filaNecesitaPuntoCatastro(f) || typeof puntoMapaCatastro !== 'function') return;
     let vivo = true;

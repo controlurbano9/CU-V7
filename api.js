@@ -1013,6 +1013,12 @@ async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpeta
 // ── NUEVA VISITA ───────────────────────────────────────────────
 // Geocoding (forward o reverse) — la API key vive en Apps Script.
 async function geocodeDireccion(query) {
+  // Una «dirección» que es una coordenada no va al geocoder: los llamadores le
+  // pegan «, Bello, Antioquia» y Google no la resuelve. El punto ya está ahí.
+  if (typeof puntoDesdeTextoCoord === 'function') {
+    const pc = puntoDesdeTextoCoord(String(query || '').replace(/,\s*Bello\b.*$/i, ''));
+    if (pc) return { ok: true, data: { lat: pc.lat, lng: pc.lon, formatted: '' } };
+  }
   // query puede ser "Cl 50 # 32-10, Bello" o "lat,lng"
   const params = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(query)
     ? { accion: 'geocode', latlng: query.replace(/\s+/g, '') }

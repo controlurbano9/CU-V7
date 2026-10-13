@@ -1148,6 +1148,10 @@ function linkMapaVisita(fila, puntoCatastro) {
   if (lat != null && lon != null) return base + lat.toFixed(6) + ',' + lon.toFixed(6);
   var dir = String(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '').trim();
   if (!dir) return '';
+  // Dirección que es una coordenada («6 21'3,858"N 75 33'28,272"W»): se manda
+  // el punto tal cual. Con «, Bello, Antioquia…» detrás Google no la resuelve.
+  var pc = puntoDesdeTextoCoord(dir);
+  if (pc) return base + pc.lat.toFixed(6) + ',' + pc.lon.toFixed(6);
   if (puntoCatastro && isFinite(puntoCatastro[0]) && isFinite(puntoCatastro[1])) {
     return base + Number(puntoCatastro[0]).toFixed(6) + ',' + Number(puntoCatastro[1]).toFixed(6);
   }
@@ -1170,6 +1174,7 @@ function filaNecesitaPuntoCatastro(fila) {
   if (!fila) return false;
   if (normalizarCoord(fila['LATITUD'], 'lat') != null &&
       normalizarCoord(fila['LONGITUD'], 'lon') != null) return false;
+  if (puntoDesdeTextoCoord(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '')) return false;
   return !!claveDireccionCatastro(fila['DIRECCION INFRACCION'] || fila['DIRECCION'] || '');
 }
 
