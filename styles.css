@@ -1283,16 +1283,18 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .titulo-cafe,
 .titulo-gris,
 .titulo-verde {
-  font-family: var(--font-serif);
-  font-size: 17px; font-weight: 600;
-  letter-spacing: -0.2px;
+  /* En tinta y en Inter (auditoría 2026-10-13): el café es solo acción y la
+     serif solo el título de la pantalla. Las clases de color (titulo-azul,
+     -cafe, -gris, -verde) ya no pintaban distinto; quedan por compatibilidad. */
+  font-family: var(--font-sans);
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.1px;
   margin-bottom: 14px;
   display: inline-flex;
   align-items: center; gap: 8px;
-  color: var(--brand);
-  padding: 0 0 0 10px;
-  border-left: 3px solid var(--brand);
-  line-height: 1.2;
+  color: var(--ink);
+  padding: 0;
+  line-height: 1.25;
 }
 
 /* ── Centro de control de la visita (nueva-visita) ────────
@@ -1551,11 +1553,12 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
   font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
   padding: 3px 10px; border-radius: var(--r-full);
 }
-/* Tonos por punto del ciclo de vida — mismos roles semánticos de la app:
-   ámbar=pendiente, azul=asignado, terracota=iniciado, oliva=completado */
+/* Tonos por punto del ciclo de vida — el código de la Semana y Alertas:
+   gris=pendiente, ocre=asignado, azul=iniciado, oliva=completado. El café
+   no es un estado: es acción. */
+.ep-gris     { background: var(--surface-2); color: var(--ink-3); }
 .ep-amarillo { background: var(--amber-bg); color: var(--amber); }
 .ep-azul     { background: var(--info-bg);  color: var(--info); }
-.ep-naranja  { background: var(--brand-bg); color: var(--brand-ink); }
 .ep-verde    { background: var(--green-bg); color: var(--green-ink); }
 .estado-id { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--ink-3); }
 .estado-visita-n {
@@ -2827,7 +2830,8 @@ button.sv-col-head {
   .mv-fila { cursor: pointer; }
   .mv-dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* La barra de estado se conserva: el trazo de selección va por dentro. */
-  .mv-fila.sel { background: var(--brand-bg); box-shadow: inset 0 0 0 1px var(--brand); }
+  /* Elegida en neutro: el café es acción, no selección (auditoría 2026-10-13). */
+  .mv-fila.sel { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--ink-4); }
 }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
   .mv-fila:not(.sel):hover { background: var(--surface-2); }
@@ -3082,7 +3086,7 @@ button.sv-col-head {
 .adm-t-seg.rojo     { background: var(--red); }
 .adm-t-txt { font-size: 12px; color: var(--ink-3); margin-top: 5px; }
 .adm-t-demora { font-weight: 600; color: var(--red); }
-.adm-tarjeta.sel { border-color: var(--brand-accent); box-shadow: inset 0 0 0 1px var(--brand-accent); }
+.adm-tarjeta.sel { background: var(--surface-2); border-color: var(--ink-4); box-shadow: inset 0 0 0 1px var(--ink-4); }
 @media (hover: hover) and (pointer: fine) {
   .adm-tarjeta:not(.sel):hover { background: var(--surface-2); }
 }
@@ -3322,7 +3326,10 @@ button.sv-col-head {
    orden de ⚙ Reglas: terracota, azul, ocre, oliva. agenda.jsx. El segundo
    era tinta casi negra: su avatar se leía como deshabilitado y su punto
    desaparecía sobre la barra oscura (revisión 2026-10-13). */
-.ag-pantalla { --ag-i1: var(--brand); --ag-i2: var(--info); --ag-i3: var(--amber); --ag-i4: var(--green); }
+/* Colores de inspector propios (decisión 2026-10-13): antes eran café, azul,
+   ocre y verde, los mismos de acción y estado, y un botón café aquí quería
+   decir «de Alejandro». Ciruela · verde azulado · gris pizarra · índigo. */
+.ag-pantalla { --ag-i1: #7A4B6E; --ag-i2: #2F6F6A; --ag-i3: #55606B; --ag-i4: #4B4F8A; }
 .ag-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 22px; }
 .ag-dia { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .ag-dia .page-title { margin: 0; white-space: nowrap; }
@@ -3411,9 +3418,9 @@ button.sv-col-head {
   border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--surface); font: 600 11px var(--font-sans); color: var(--ink-2); cursor: pointer; }
 .ag-mas::before { content: '+'; font-size: 14px; font-weight: 500; color: var(--c); }
 .ag-mas.i2 { --c: var(--ag-i2); } .ag-mas.i3 { --c: var(--ag-i3); } .ag-mas.i4 { --c: var(--ag-i4); }
-.ag-en { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-full);
-  background: var(--brand-bg); color: var(--brand-ink); font: 600 12px var(--font-sans); cursor: pointer; }
-.ag-en.i2, .ag-en.i3, .ag-en.i4 { background: var(--surface-2); color: var(--ink); }
+.ag-en { --c: var(--ag-i1); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-full);
+  background: var(--surface-2); background: color-mix(in srgb, var(--c) 13%, var(--surface)); color: var(--c); font: 600 12px var(--font-sans); cursor: pointer; }
+.ag-en.i2 { --c: var(--ag-i2); } .ag-en.i3 { --c: var(--ag-i3); } .ag-en.i4 { --c: var(--ag-i4); }
 .ag-en::after { content: '×'; font-size: 15px; font-weight: 400; opacity: .7; }
 .ag-ver { display: block; width: 100%; margin-top: 8px; padding: 10px 0 2px; border: 0; background: none; text-align: left;
   font: 600 13px var(--font-sans); color: var(--brand-ink); cursor: pointer; }
@@ -3575,8 +3582,10 @@ button.sv-col-head {
 .bq-est i { font: normal 400 11px var(--font-mono); color: var(--ink-4); font-style: normal; }
 /* Marcado = relleno, como .bq-op.on (antes solo cambiaba el borde y no se
    distinguía del apagado). */
-.bq-est.on { background: var(--brand-bg); border-color: var(--brand); color: var(--brand-ink); box-shadow: inset 0 0 0 1px var(--brand); }
-.bq-est.on i { color: var(--brand-ink); }
+/* Activo como el chip común (relleno de tinta); el punto conserva el color
+   del estado, que es lo que dice. */
+.bq-est.on { background: var(--ink-2); border-color: var(--ink-2); color: var(--surface); box-shadow: none; }
+.bq-est.on i { color: inherit; opacity: .75; }
 .bq-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-4); display: inline-block; }
 .bq-dot.pend { background: var(--brand); } .bq-dot.asig { background: var(--amber); }
 .bq-dot.curso { background: var(--info); } .bq-dot.hecha { background: var(--green); }
@@ -3623,7 +3632,7 @@ button.sv-col-head {
   background: none; text-align: left; font: 500 13px var(--font-sans); color: var(--ink-2); cursor: pointer; }
 .bq-vista i { margin-left: auto; font: normal 400 11px var(--font-mono); color: var(--ink-4); font-style: normal; }
 .bq-vista:hover { background: var(--surface-2); }
-.bq-vista.on { background: var(--brand-bg); color: var(--brand-ink); font-weight: 600; }
+.bq-vista.on { background: var(--surface-2); color: var(--ink); font-weight: 600; }
 .bq-vista .bq-mia { font-size: 10px; color: var(--ink-4); font-weight: 400; }
 .bq-vista-nueva { color: var(--brand-ink); font-weight: 600; }
 .bq-vista-x { flex: none; width: 32px; height: 32px; border: 0; background: none; border-radius: var(--r-sm);

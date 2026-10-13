@@ -2015,14 +2015,16 @@ function _AvisoCasosRelacionados({ casos, motivo, ofrecerSeguimiento, onAbrir, o
 //   Componentes puramente presentacionales — sin hooks ni estado propio.
 // ══════════════════════════════════════════════════════════════
 
-// Tono del badge según el punto del ciclo de vida (mismos colores
-// semánticos del resto de la app, no una paleta nueva).
+// Tono del badge según el punto del ciclo de vida: el mismo código de la
+// Semana, Alertas y Mis visitas (ocre asignada, azul iniciada, verde
+// completada). Hasta 2026-10-13 aquí iniciada era café y asignada azul, así
+// que el inspector veía dos colores para el mismo estado.
 function _tonoEstadoVisita(estado) {
   switch (String(estado || '').toUpperCase()) {
     case 'COMPLETADO': return 'verde';
-    case 'INICIADO':   return 'naranja';
-    case 'ASIGNADO':   return 'azul';
-    default:           return 'amarillo'; // PENDIENTE o desconocido
+    case 'INICIADO':   return 'azul';
+    case 'ASIGNADO':   return 'amarillo';
+    default:           return 'gris'; // PENDIENTE o desconocido
   }
 }
 
