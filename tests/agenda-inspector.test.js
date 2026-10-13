@@ -19,6 +19,7 @@ const vm = require('node:vm');
 const {
   AGENDA_OFICINA, nivelPrioridad, motivoPrioridad, ordenarRuta, armarBorradorAgenda,
   diaInicialAgenda, moverDiaHabil, fechaLargaAgenda, visitasDelDia,
+  puntoDesdeTextoCoord, claveComunaAgenda,
 } = require('../utils.js');
 
 test('nivelPrioridad: escala de la priorización y su plazo', () => {
@@ -103,6 +104,49 @@ test('armarBorradorAgenda: si una comuna no alcanza sigue con la siguiente, y al
   // Solo queda la 5 en una comuna libre; después repite la comuna 6.
   assert.deepEqual(b.A2.map(x => x.fila), [5, 4]);
   assert.deepEqual(armarBorradorAgenda([], ['A1'], 3, {}), { A1: [] });
+});
+
+test('armarBorradorAgenda: quien ya tiene visitas ese día solo recibe de su zona', () => {
+  const comunas = [
+    { comuna: 2, visitas: [{ fila: 1, barrio: 'A' }, { fila: 2, barrio: 'A' }] },
+    { comuna: 'RURAL', visitas: [{ fila: 3, barrio: 'Vda. La China' }] },
+    { comuna: 5, visitas: [{ fila: 4, barrio: 'B' }, { fila: 5, barrio: 'B' }, { fila: 6, barrio: 'B' }] },
+  ];
+  // Caso real del 13/10: Alejandro ya tenía dos veredas y se le sumaba C2.
+  const b = armarBorradorAgenda(comunas, ['ALEJANDRO', 'MAURICIO', 'NELSON'], 3,
+    { ALEJANDRO: 2, MAURICIO: 1 }, { ALEJANDRO: ['RURAL', 'RURAL'], MAURICIO: ['05'] });
+  assert.deepEqual(b.ALEJANDRO.map(x => x.fila), [3]);
+  assert.deepEqual(b.MAURICIO.map(x => x.fila), [4, 5]);
+  // Nelson, sin visitas ese día: la comuna que nadie usa (C2) y, al final,
+  // repite la que sobra. Los de zona van primero y no le ceden la suya.
+  assert.deepEqual(b.NELSON.map(x => x.fila), [1, 2, 6]);
+  // Sin más en su zona se queda corto (la meta es aviso), no salta a otra comuna.
+  const corto = armarBorradorAgenda(comunas, ['ALEJANDRO'], 3, { ALEJANDRO: 1 }, { ALEJANDRO: ['RURAL'] });
+  assert.deepEqual(corto.ALEJANDRO.map(x => x.fila), [3]);
+  // Una visita ya asignada sin comuna no fija zona.
+  const sinZona = armarBorradorAgenda(comunas, ['ALEJANDRO'], 3, { ALEJANDRO: 1 }, { ALEJANDRO: [''] });
+  assert.deepEqual(sinZona.ALEJANDRO.map(x => x.fila), [1, 2]);
+});
+
+test('claveComunaAgenda: mismo criterio que el backend', () => {
+  assert.equal(claveComunaAgenda(5), '5');
+  assert.equal(claveComunaAgenda('05'), '5');
+  assert.equal(claveComunaAgenda('5.0'), '5');
+  assert.equal(claveComunaAgenda(' rural '), 'RURAL');
+  assert.equal(claveComunaAgenda(''), '');
+  assert.equal(claveComunaAgenda(null), '');
+});
+
+test('puntoDesdeTextoCoord: coordenadas escritas como dirección', () => {
+  const cerca = (p, lat, lon) => p && Math.abs(p.lat - lat) < 1e-4 && Math.abs(p.lon - lon) < 1e-4;
+  assert.ok(cerca(puntoDesdeTextoCoord('6°25\'33.0"N 75°35\'25.0"W'), 6.425833, -75.590278));
+  assert.ok(cerca(puntoDesdeTextoCoord('6° 25´33.0 N 75° 35´25.0 W'), 6.425833, -75.590278));
+  assert.ok(cerca(puntoDesdeTextoCoord('6°22\'42.6"N 75°35\'37"W'), 6.378500, -75.593611));
+  assert.ok(cerca(puntoDesdeTextoCoord('6.3456, -75.5612'), 6.3456, -75.5612));
+  assert.equal(puntoDesdeTextoCoord('CL 29 # 55-22'), null);
+  assert.equal(puntoDesdeTextoCoord('CR 52 N° 64-134'), null);
+  assert.equal(puntoDesdeTextoCoord('4°36\'N 74°04\'W'), null, 'fuera de Bello no se acepta');
+  assert.equal(puntoDesdeTextoCoord(''), null);
 });
 
 test('días de la agenda: abre en hoy o en el siguiente día hábil', () => {

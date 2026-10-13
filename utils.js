@@ -607,6 +607,37 @@ function normalizarCoord(v, tipo) {
   return Math.abs(orig) <= (tipo === 'lat' ? 90 : 180) ? orig : null;
 }
 
+// Coordenadas escritas como dirección (visitas rurales sin nomenclatura):
+// «6°25'33.0"N 75°35'25.0"W», «6° 25´33.0 N 75° 35´25.0 W», «6.3456, -75.5612».
+// → { lat, lon } o null. Sin hemisferio la longitud se toma oeste (Bello).
+// Solo se acepta lo que cae en el rango de Bello: el texto libre de una
+// dirección no debe convertirse en un punto inventado.
+function puntoDesdeTextoCoord(texto) {
+  var s = String(texto || '');
+  if (!s) return null;
+  var num = function (x) { return x == null || x === '' ? 0 : parseFloat(String(x).replace(',', '.')); };
+  var lat = null, lon = null;
+  if (s.indexOf('°') !== -1 || s.indexOf('º') !== -1) {
+    var re = /(\d{1,3}(?:[.,]\d+)?)\s*[°º]\s*(?:(\d{1,2}(?:[.,]\d+)?)\s*['´’′]?\s*)?(?:(\d{1,2}(?:[.,]\d+)?)\s*(?:["”″]|['´’′]{2})?\s*)?([NSEWOnsewo])?/g;
+    var ms = [], m;
+    while ((m = re.exec(s)) && ms.length < 2) ms.push(m);
+    if (ms.length < 2) return null;
+    var dec = function (g) { return num(g[1]) + num(g[2]) / 60 + num(g[3]) / 3600; };
+    var hem = function (g) { return String(g[4] || '').toUpperCase(); };
+    lat = dec(ms[0]) * (hem(ms[0]) === 'S' ? -1 : 1);
+    lon = dec(ms[1]) * (hem(ms[1]) === 'E' ? 1 : -1);
+  } else {
+    var d = /^\s*(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})\s*$/.exec(s);
+    if (!d) return null;
+    lat = parseFloat(d[1]);
+    lon = -Math.abs(parseFloat(d[2]));
+  }
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (lat < _RANGO_COORD.lat[0] || lat > _RANGO_COORD.lat[1] ||
+      lon < _RANGO_COORD.lon[0] || lon > _RANGO_COORD.lon[1]) return null;
+  return { lat: lat, lon: lon };
+}
+
 // ── Numeración de visitas de un radicado (Buscar) ─────────────
 // Una fila PENDIENTE es la queja sin atender, no una visita: sale con
 // n = null y nunca lleva el rótulo "Visita N de M". Solo ASIGNADO,
@@ -1438,6 +1469,15 @@ function ordenarRuta(paradas, oficina) {
   return [primera].concat(mejor, sin);
 }
 
+// Comuna como clave comparable: 'RURAL', '5' (de 5, '5', '05', '5.0') o ''.
+// Mismo criterio que obtenerAgendaDiaria del backend.
+function claveComunaAgenda(c) {
+  var s = String(c == null ? '' : c).trim().toUpperCase();
+  if (s === 'RURAL') return 'RURAL';
+  var n = parseFloat(s);
+  return isNaN(n) ? '' : String(Math.round(n));
+}
+
 // Borrador del día (el tablero arranca armado, decisión del usuario): por
 // inspector, en orden, faltan = meta − lo que ya tiene ese día. Toma de la
 // primera comuna que ningún otro inspector use, agrupando por barrio
@@ -1445,21 +1485,43 @@ function ordenarRuta(paradas, oficina) {
 // final repite comuna. Nunca la misma visita en dos inspectores.
 // `comunas` = respuesta de obtenerAgenda, en orden de urgencia;
 // `yaPorInspector` = { nombre: cuántas tiene ya ese día }.
-function armarBorradorAgenda(comunas, inspectores, meta, yaPorInspector) {
+// `zonasPorInspector` = { nombre: [comuna de cada visita que ya tiene] }:
+// quien ya tiene visitas ese día solo recibe sugerencias de esas mismas
+// comunas (o de rural, si las suyas son rurales). Un día con dos veredas y
+// una casa en C2 no se puede recorrer (revisión 2026-10-13). Si ahí no queda
+// nada, se queda corto: la meta es aviso, no tope. Van primero, para que
+// otro inspector no les gaste su zona.
+function armarBorradorAgenda(comunas, inspectores, meta, yaPorInspector, zonasPorInspector) {
   var borrador = {};
   var tomadas = {};
   var usadas = {};
-  (inspectores || []).forEach(function (nombre) {
-    borrador[nombre] = [];
+  var zonasDe = function (nombre) {
+    var z = {};
+    ((zonasPorInspector && zonasPorInspector[nombre]) || []).forEach(function (c) {
+      var k = claveComunaAgenda(c);
+      if (k) z[k] = true;
+    });
+    return Object.keys(z).length ? z : null;
+  };
+  var orden = (inspectores || []).filter(function (n) { return zonasDe(n); })
+    .concat((inspectores || []).filter(function (n) { return !zonasDe(n); }));
+  (inspectores || []).forEach(function (nombre) { borrador[nombre] = []; });
+  orden.forEach(function (nombre) {
+    var zonas = zonasDe(nombre);
     var faltan = Math.max(0, (meta || 0) - ((yaPorInspector && yaPorInspector[nombre]) || 0));
+    if (zonas) Object.keys(zonas).forEach(function (k) { usadas[k] = true; });
     [false, true].forEach(function (repetir) {
       (comunas || []).forEach(function (g) {
-        if (!faltan || (!repetir && usadas[g.comuna])) return;
+        var k = claveComunaAgenda(g.comuna);
+        if (zonas) {
+          // Solo su zona, en una sola pasada.
+          if (repetir || !faltan || !zonas[k]) return;
+        } else if (!faltan || (!repetir && usadas[k])) return;
         var libres = (g.visitas || []).filter(function (v) { return !tomadas[v.fila]; });
         if (!libres.length) return;
         var elegidas = armarJornadaPorBarrio(libres, faltan).items;
         elegidas.forEach(function (v) { tomadas[v.fila] = true; borrador[nombre].push(v); });
-        usadas[g.comuna] = true;
+        usadas[k] = true;
         faltan -= elegidas.length;
       });
     });
@@ -2633,6 +2695,8 @@ var _cuUtilsExports = {
   ultimaActividad: ultimaActividad,
   categoriaLog: categoriaLog,
   describirLog: describirLog,
+  puntoDesdeTextoCoord: puntoDesdeTextoCoord,
+  claveComunaAgenda: claveComunaAgenda,
   validarPinNuevo: validarPinNuevo,
   seccionesFicha: seccionesFicha,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)

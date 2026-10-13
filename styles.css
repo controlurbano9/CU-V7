@@ -3076,8 +3076,10 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 /* ── Agenda por inspector (2026-10-03) ─────────────────────────
    Sin mañana/tarde: mapa de comunas | sugeridas | el día de cada inspector,
    y una barra con un solo botón para asignar. Color por inspector, en el
-   orden de ⚙ Reglas: terracota, tinta, ocre, oliva. agenda.jsx. */
-.ag-pantalla { --ag-i1: var(--brand); --ag-i2: var(--ink-2); --ag-i3: var(--amber); --ag-i4: var(--green); }
+   orden de ⚙ Reglas: terracota, azul, ocre, oliva. agenda.jsx. El segundo
+   era tinta casi negra: su avatar se leía como deshabilitado y su punto
+   desaparecía sobre la barra oscura (revisión 2026-10-13). */
+.ag-pantalla { --ag-i1: var(--brand); --ag-i2: var(--info); --ag-i3: var(--amber); --ag-i4: var(--green); }
 .ag-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 22px; }
 .ag-dia { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .ag-dia .page-title { margin: 0; white-space: nowrap; }
@@ -3196,6 +3198,7 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .ag-vuelve i { width: 24px; height: 24px; flex: none; display: grid; place-items: center; font-style: normal; font-size: 12px;
   border: 1.5px solid var(--ink-3); border-radius: 5px; background: var(--surface); position: relative; z-index: 1; }
 .ag-restablecer { justify-self: start; font-size: 13px; }
+.ag-corta { margin-top: 8px; padding: 8px 10px; border-radius: var(--r); background: var(--surface-2); font-size: 12px; line-height: 1.45; color: var(--ink-2); }
 @media (hover: hover) and (pointer: fine) {
   .ag-quitar:hover { background: var(--surface-2); color: var(--ink); }
 }
@@ -3244,6 +3247,10 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 }
 @media (min-width: 900px) {
   .ag-bar { bottom: 0; margin: 20px 0 0; padding: 14px 16px 14px 22px; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  /* La barra se pega por encima del relleno inferior del contenedor que
+     scrollea, y por esa franja se veían pasar las sugeridas por debajo
+     (revisión 2026-10-13). Se tapa con el fondo de la página. */
+  .ag-bar::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 64px; background: var(--paper); pointer-events: none; }
   .ag-bar-btn { width: auto; }
 }
 @media (min-width: 1200px) {

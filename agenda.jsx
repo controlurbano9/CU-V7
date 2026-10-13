@@ -89,9 +89,32 @@ function nombreCorto(n) {
   return [_capitalizar(p[0]), _capitalizar(p[1])].filter(Boolean).join(' ');
 }
 // Radicado y fecha de radicado bajo la dirección (pedido del usuario 2026-10-12).
+// La fecha pasa siempre por formatearFecha: la de las visitas ya asignadas
+// sale de la BD y puede llegar como Date/ISO («2026-09-09T05:00:00.000Z»).
 function RadicadoAG({ radicado, fecha }) {
-  if (!radicado && !fecha) return null;
-  return <div className="ag-rad">{radicado || 'Sin radicado'}{fecha && <> · radicado el {fecha}</>}</div>;
+  const f = formatearFecha(fecha);
+  if (!radicado && !f) return null;
+  return <div className="ag-rad">{radicado || 'Sin radicado'}{f && <> · radicado el {f}</>}</div>;
+}
+
+// Dirección para pintar: las rurales escritas como coordenadas
+// («6°25'33.0"N 75°35'25.0"W») se dicen «Punto GPS»; el texto original
+// queda en el title.
+function DireccionAG({ dir }) {
+  if (!dir) return <div className="ag-dir">Sin dirección</div>;
+  if (puntoDesdeTextoCoord(dir)) return <div className="ag-dir" title={dir}>Punto GPS</div>;
+  return <div className="ag-dir">{dir}</div>;
+}
+
+// Punto de una parada: coordenadas guardadas en la fila → coordenadas
+// escritas como dirección → predio de catastro (si ya está en el equipo).
+function puntoParadaAG(dir, fila, puntos) {
+  if (fila) {
+    const lat = normalizarCoord(fila['LATITUD'], 'lat');
+    const lon = normalizarCoord(fila['LONGITUD'], 'lon');
+    if (lat != null && lon != null) return { lat, lon };
+  }
+  return puntoDesdeTextoCoord(dir) || (puntos && puntos[dir]) || null;
 }
 function nombrePila(n) { return _capitalizar(String(n || '').trim().split(/\s+/)[0]); }
 function inicialesInsp(n) {
@@ -179,9 +202,13 @@ function AgendaScreen({ usuario }) {
       inspectores.forEach(n => { r[n] = (ed[n] || []).map(f => porFila[f]).filter(Boolean); });
       return r;
     }
-    const yaN = {};
-    inspectores.forEach(n => { yaN[n] = ya[n].length; });
-    return armarBorradorAgenda(comunas || [], inspectores, meta, yaN);
+    const yaN = {}, zonas = {};
+    inspectores.forEach(n => {
+      yaN[n] = ya[n].length;
+      // Lo que ya tiene ese día fija su zona: no se le suma otra comuna.
+      zonas[n] = ya[n].map(f => f['COMUNA']);
+    });
+    return armarBorradorAgenda(comunas || [], inspectores, meta, yaN, zonas);
   }, [ediciones, diaKey, inspectores, porFila, comunas, meta, ya]);
 
   const duenoDe = useMemoG(() => {
@@ -201,7 +228,7 @@ function AgendaScreen({ usuario }) {
   useEffectG(() => {
     if (typeof puntoMapaCatastro !== 'function') return;
     dirsRuta.forEach(dir => {
-      if (!dir || dir in pidiendoPuntos.current) return;
+      if (!dir || dir in pidiendoPuntos.current || puntoDesdeTextoCoord(dir)) return;
       pidiendoPuntos.current[dir] = true;
       puntoMapaCatastro(dir)
         .then(p => setPuntos(prev => Object.assign({}, prev, { [dir]: p ? { lat: p[0], lon: p[1] } : null })))
@@ -403,7 +430,7 @@ function AgendaScreen({ usuario }) {
               {inspectores.map((n, i) => (
                 <DiaInspector key={n} nombre={n} indice={i} meta={meta}
                   nuevas={borrador[n] || []} ya={ya[n] || []} puntos={puntos}
-                  sinPendientes={!data.totalPendientes} onQuitar={quitar} />
+                  sinPendientes={!data.totalPendientes} editado={!!ediciones[diaKey]} onQuitar={quitar} />
               ))}
               {ediciones[diaKey] && (
                 <button type="button" className="ag-link ag-restablecer" onClick={volverASugerencia}>
@@ -419,7 +446,7 @@ function AgendaScreen({ usuario }) {
               {inspectores.map((n, i) => (
                 <span key={n}>
                   <i className={'ag-punto i' + ((i % 4) + 1)} aria-hidden="true"></i>
-                  {nombrePila(n)} <span className="suave">{(borrador[n] || []).length} nuevas</span>
+                  {nombrePila(n)} <span className="suave">{(borrador[n] || []).length} {(borrador[n] || []).length === 1 ? 'nueva' : 'nuevas'}</span>
                 </span>
               ))}
             </div>
@@ -460,7 +487,7 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
               return (
                 <li key={v.fila} className={'ag-s' + (dueno ? ' tomada' : '')}>
                   <div className="ag-s-txt">
-                    <div className="ag-dir">{v.direccion || 'Sin dirección'}</div>
+                    <DireccionAG dir={v.direccion} />
                     <RadicadoAG radicado={v.radicado} fecha={v.fechaRad} />
                     <div className="ag-por" title={'Puntaje ' + v.score + ' · radicado ' + v.radicado}>
                       <span className="nivel">{m.nivel}</span>
@@ -497,12 +524,21 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
   );
 }
 
-function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes, onQuitar }) {
+function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes, editado, onQuitar }) {
   const paradas = ordenarRuta(
-    ya.map(f => ({ ya: true, fila: f._idx, radicado: f['RADICADO'] || '', fechaRad: f['FECHA RADICADO'] || '', direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntos[direccionVisita(f)] || null }))
-      .concat(nuevas.map(v => Object.assign({ punto: puntos[v.direccion] || null }, v))),
+    ya.map(f => ({ ya: true, fila: f._idx, radicado: f['RADICADO'] || '', fechaRad: f['FECHA RADICADO'] || '', direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntoParadaAG(direccionVisita(f), f, puntos) }))
+      .concat(nuevas.map(v => Object.assign({ punto: puntoParadaAG(v.direccion, null, puntos) }, v))),
     AGENDA_OFICINA);
   const total = paradas.length;
+  // La sugerencia solo toma de la zona de lo que ya tiene (armarBorradorAgenda):
+  // si se queda corta, se dice por qué en vez de dejar la meta a medias sin más.
+  const zonasYa = [];
+  ya.forEach(f => {
+    const k = claveComunaAgenda(f['COMUNA']);
+    if (k && zonasYa.indexOf(k) === -1) zonasYa.push(k);
+  });
+  // Con el borrador editado a mano no se sabe por qué falta: no se explica.
+  const corta = !editado && ya.length > 0 && zonasYa.length > 0 && total < meta;
   const clase = 'ag-caja ag-insp i' + ((indice % 4) + 1);
   return (
     <section className={clase} aria-labelledby={'ag-insp-' + indice}>
@@ -523,7 +559,7 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
             <li key={(p.ya ? 'y' : 'n') + p.fila} className="ag-parada">
               <span className="ag-num">{i + 1}</span>
               <div>
-                <div className="ag-dir">{p.direccion || 'Sin dirección'}</div>
+                <DireccionAG dir={p.direccion} />
                 <RadicadoAG radicado={p.radicado} fecha={p.fechaRad} />
                 <div className="ag-por">
                   {[p.barrio, p.comuna != null && p.comuna !== '' ? etiquetaComuna(p.comuna) : ''].filter(Boolean).join(' · ')}
@@ -539,6 +575,12 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
           ))}
         </ol>
       ) : <div className="ag-vacio">{sinPendientes ? 'Nada pendiente por agendar.' : 'Sin visitas para este día. Agrégalas desde las sugeridas.'}</div>}
+      {corta && (
+        <div className="ag-corta">
+          Solo se sugiere en {zonasYa.map(etiquetaComuna).join(', ')}, donde ya tiene visitas, y ahí no queda
+          más por agendar. Si hace falta, agrégalas desde las sugeridas.
+        </div>
+      )}
       {total > 0 && <div className="ag-vuelve"><i aria-hidden="true">⌂</i> vuelve hacia la Alcaldía</div>}
     </section>
   );
@@ -562,13 +604,26 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrad
   const xy = p => [(p.lon * pr.k - pr.minX) * pr.s, (pr.maxY - p.lat) * pr.s];
   const ofi = xy(AGENDA_OFICINA);
   const sel = mapa.comunas.find(c => String(c.c) === String(comunaFiltro));
+  // Mismo punto que la lista (puntoParadaAG) y mismo orden, así el número
+  // del pin es el de la parada. Las veredas lejanas caen fuera del dibujo de
+  // comunas: esas no se pintan (la lista sí las lleva).
+  const dentro = p => p[0] >= -12 && p[1] >= -12 && p[0] <= mapa.w + 12 && p[1] <= mapa.h + 12;
   const rutas = inspectores.map((n, i) => {
     const paradas = ordenarRuta(
-      (ya[n] || []).map(f => ({ punto: puntos[direccionVisita(f)] || null }))
-        .concat((borrador[n] || []).map(v => ({ punto: puntos[v.direccion] || null }))),
-      AGENDA_OFICINA).filter(p => p.punto);
-    return { clase: 'i' + ((i % 4) + 1), pts: paradas.map(p => xy(p.punto)) };
+      (ya[n] || []).map(f => ({ punto: puntoParadaAG(direccionVisita(f), f, puntos) }))
+        .concat((borrador[n] || []).map(v => ({ punto: puntoParadaAG(v.direccion, null, puntos) }))),
+      AGENDA_OFICINA);
+    const pts = [];
+    paradas.forEach((p, j) => {
+      if (!p.punto) return;
+      const q = xy(p.punto);
+      if (dentro(q)) pts.push({ q, num: j + 1 });
+    });
+    return { clase: 'i' + ((i % 4) + 1), pts };
   });
+  // El rótulo de la comuna donde está la Alcaldía quedaba debajo de su
+  // marcador («C4 20» ilegible): se sube por encima.
+  const cercaOfi = c => Math.abs(c.cx - ofi[0]) < 40 && Math.abs(c.cy - ofi[1]) < 26;
   return (
     <section className="ag-caja ag-mapa" aria-labelledby="ag-mapa-t">
       <div className="ag-caja-cab">
@@ -593,20 +648,20 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, onComuna, inspectores, borrad
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onComuna(Number(c.c)); } }}>
               <title>{etiqueta}</title>
               <path d={c.d} fill={_tonoComuna(n)} />
-              <text x={c.cx} y={c.cy - 2}>C{c.c}</text>
-              <text className="n" x={c.cx} y={c.cy + 12}>{n}</text>
+              <text x={c.cx} y={c.cy - 2 - (cercaOfi(c) ? 30 : 0)}>C{c.c}</text>
+              <text className="n" x={c.cx} y={c.cy + 12 - (cercaOfi(c) ? 30 : 0)}>{n}</text>
             </g>
           );
         })}
         {sel && <path className="ag-filtro" d={sel.d} />}
         {rutas.map((r, i) => r.pts.length > 0 && (
           <g key={i} className={'ag-rutamapa ' + r.clase}>
-            {r.pts.length > 1 && <polyline className="ag-linea" points={r.pts.map(p => p.join(',')).join(' ')} />}
-            <line className="ag-vuelta" x1={r.pts[r.pts.length - 1][0]} y1={r.pts[r.pts.length - 1][1]} x2={ofi[0]} y2={ofi[1]} />
+            {r.pts.length > 1 && <polyline className="ag-linea" points={r.pts.map(p => p.q.join(',')).join(' ')} />}
+            <line className="ag-vuelta" x1={r.pts[r.pts.length - 1].q[0]} y1={r.pts[r.pts.length - 1].q[1]} x2={ofi[0]} y2={ofi[1]} />
             {r.pts.map((p, j) => (
               <g key={j} className="ag-pin">
-                <circle cx={p[0]} cy={p[1]} r="9" />
-                <text x={p[0]} y={p[1] + 0.5}>{j + 1}</text>
+                <circle cx={p.q[0]} cy={p.q[1]} r="9" />
+                <text x={p.q[0]} y={p.q[1] + 0.5}>{p.num}</text>
               </g>
             ))}
           </g>
