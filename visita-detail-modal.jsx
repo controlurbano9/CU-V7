@@ -17,28 +17,40 @@
 const { useState: useStateVD, useEffect: useEffectVD, useRef: useRefVD } = React;
 
 let _pushVisitaDetail = null;
+let _refrescarVisitaDetail = null;
 
 // «Continuar» desde el modal: se cierra primero y luego se abre el formulario,
 // para que el velo no quede tapando la pantalla nueva.
 function VisitaDetailModalHost({ onContinuar }) {
   const [fila, setFila] = useStateVD(null);
   const [gestion, setGestion] = useStateVD(null);
+  const abiertaRef = useRefVD(null);   // _idx de la visita abierta (null = cerrado)
+  const cerrar = () => { abiertaRef.current = null; setFila(null); };
 
   useEffectVD(() => {
-    _pushVisitaDetail = function(f, g) { setFila(f); setGestion(g != null ? g : null); };
-    return function() { _pushVisitaDetail = null; };
+    _pushVisitaDetail = function(f, g) {
+      abiertaRef.current = f ? f._idx : null;
+      setFila(f); setGestion(g != null ? g : null);
+    };
+    // Datos nuevos de la misma visita (tras completar, asignar…): solo si
+    // sigue abierta; nunca la reabre.
+    _refrescarVisitaDetail = function(f, g) {
+      if (!f || abiertaRef.current !== f._idx) return;
+      setFila(f); setGestion(g != null ? g : null);
+    };
+    return function() { _pushVisitaDetail = null; _refrescarVisitaDetail = null; };
   }, []);
 
   useEffectVD(() => {
     if (!fila) return;
-    function onKey(e) { if (e.key === 'Escape') setFila(null); }
+    function onKey(e) { if (e.key === 'Escape') cerrar(); }
     window.addEventListener('keydown', onKey);
     return function() { window.removeEventListener('keydown', onKey); };
   }, [fila]);
 
   if (!fila) return null;
-  return <VisitaDetailUI f={fila} onCerrar={() => setFila(null)} gestion={gestion}
-    onContinuar={onContinuar ? (idx, f) => { setFila(null); onContinuar(idx, f); } : null} />;
+  return <VisitaDetailUI f={fila} onCerrar={cerrar} gestion={gestion}
+    onContinuar={onContinuar ? (idx, f) => { cerrar(); onContinuar(idx, f); } : null} />;
 }
 
 // ── Helper de lectura tolerante a variantes de nombre de columna ──
@@ -264,6 +276,10 @@ window.abrirVisitaDetail = function(filaBD, gestion) {
     const link = filaBD && (filaBD['LINK_DRIVE'] || filaBD['LINK_PDF_ACTA']);
     if (link) window.open(link, '_blank', 'noopener');
   }
+};
+
+window.refrescarVisitaDetail = function(filaBD, gestion) {
+  if (_refrescarVisitaDetail) _refrescarVisitaDetail(filaBD, gestion);
 };
 
 window.VisitaDetailModalHost = VisitaDetailModalHost;

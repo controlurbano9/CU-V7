@@ -248,6 +248,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [filtrosAbiertos, setFiltrosAbiertos] = useStateB(false);
   const [toastBQ, setToastBQ]   = useStateB('');
   const [exportando, setExportando] = useStateB(false);
+  const [modalIdx, setModalIdx] = useStateB(null);   // visita abierta en «Ver datos»
   const toastRef = useRefB(null);
 
   // Sugerencias de la casilla: lista + índice activo.
@@ -508,7 +509,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       invalidarCache('visitas');
       setAsignandoFila(null);
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
+    } catch (e) {
+      // La respuesta puede perderse en el segundo salto de Google con la
+      // escritura ya hecha: se recarga igual para mostrar lo que quedó en BD.
+      invalidarCache('visitas'); cargar(true);
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' });
+    }
     setBusyFila(null);
   }, [cargar]);
 
@@ -528,7 +534,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       await cargar(true);
       await appAlert('Visita N°' + (r.nVisita || '?') + ' creada y asignada a ' + inspector + '.',
         { tono: 'exito', titulo: 'Nueva visita asignada' });
-    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
+    } catch (e) {
+      // La respuesta puede perderse en el segundo salto de Google con la
+      // escritura ya hecha: se recarga igual para mostrar lo que quedó en BD.
+      invalidarCache('visitas'); cargar(true);
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' });
+    }
     setBusyFila(null);
   }, [cargar]);
 
@@ -543,7 +554,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       await gasPost({ accion: 'desasignarRadicado', fila, radicadoConocido: rad || '' });
       invalidarCache('visitas');
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
+    } catch (e) {
+      // La respuesta puede perderse en el segundo salto de Google con la
+      // escritura ya hecha: se recarga igual para mostrar lo que quedó en BD.
+      invalidarCache('visitas'); cargar(true);
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' });
+    }
     setBusyFila(null);
   }, [cargar]);
 
@@ -637,7 +653,12 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       }
       invalidarCache('visitas');
       await cargar(true);
-    } catch (e) { await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' }); }
+    } catch (e) {
+      // La respuesta puede perderse en el segundo salto de Google con la
+      // escritura ya hecha: se recarga igual para mostrar lo que quedó en BD.
+      invalidarCache('visitas'); cargar(true);
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' });
+    }
     setBusyFila(null);
   }, [cargar, datos]);
 
@@ -755,7 +776,19 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       onAsignar={adminAsignar} onAsignarNuevaVisita={adminAsignarNuevaVisita}
       onDesasignar={adminDesasignar} onCompletar={adminCompletar} />
   );
-  const verDatos = (rep) => window.abrirVisitaDetail && window.abrirVisitaDetail(rep.f, gestionDe(rep));
+  const verDatos = (rep) => {
+    setModalIdx(rep.f._idx);
+    window.abrirVisitaDetail && window.abrirVisitaDetail(rep.f, gestionDe(rep));
+  };
+  // «Ver datos» guarda una copia de la fila y de la gestión: sin esto, tras
+  // completar o asignar desde ahí seguía mostrando el estado de antes, y el
+  // panel de inspectores no abría (sus props quedaban congeladas).
+  useEffectB(() => {
+    if (modalIdx == null || !window.refrescarVisitaDetail) return;
+    const c = universo.find(x => x.f._idx === modalIdx);
+    if (!c) return;
+    window.refrescarVisitaDetail(c.f, gestionDe({ f: c.f, todas: universo.filter(x => x.clave === c.clave) }));
+  }, [universo, modalIdx, busyFila, asignandoFila, inspectores]);
   // «Asignar» en la fila: elige el caso y deja el panel de inspectores abierto.
   const asignarDesdeFila = (rep) => {
     setAsignandoFila(rep.f._idx);

@@ -630,6 +630,23 @@ function suscribirVisitas(fn) {
   return () => window.removeEventListener('cu-visitas-actualizadas', h);
 }
 
+// Lo que otro equipo cambió (el admin completa desde su escritorio, el
+// inspector tiene Inicio abierto en el teléfono) solo llegaba al volver a
+// entrar a una pantalla. Al volver a la app y cada 5 min con ella a la vista
+// se pregunta «¿cambió algo?»: con la firma, si no cambió la respuesta es de
+// ~100 bytes; si cambió, las pantallas se re-pintan por 'cu-visitas-actualizadas'.
+const VISITAS_REFRESCO_MS = 5 * 60 * 1000;
+function _refrescarVisitasSiViejas() {
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+  if (!_visitasUltimas || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+  if (Date.now() - _visitasTs < CACHE_TTL_MS) return;
+  _descargarVisitas().catch(e => console.warn('[visitas] refresco: ' + e.message));
+}
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('visibilitychange', _refrescarVisitasSiViejas);
+  setInterval(_refrescarVisitasSiViejas, VISITAS_REFRESCO_MS);
+}
+
 // Resuelve cuando termina (bien o mal) la primera descarga de la BD: las
 // precargas pesadas de app.jsx esperan a esto para no quitarle ancho de banda.
 function esperarPrimeraCargaVisitas() { return _primeraCargaVisitas; }
