@@ -81,10 +81,12 @@ function SemanaCard({ f, movil, onAbrir }) {
   // En rural la vereda ya viene dentro de la dirección: repetirla gasta la
   // única línea de contexto que tiene la tarjeta.
   const esRural = /rural/i.test(comuna) || (!barrio && /^v(da|ereda)\b/i.test(dir));
-  const ubic = esRural ? 'Rural' : [barrio, comuna].filter(Boolean).join(' · ');
+  // La comuna sola («3 · …») no se entendía sin saber qué era: «C3».
+  const comunaTxt = /^\d+$/.test(comuna) ? 'C' + comuna : comuna;
+  const ubic = esRural ? 'Rural' : [barrio, comunaTxt].filter(Boolean).join(' · ');
 
   let accion = 'Iniciar';
-  if (e === 'INICIADO') accion = movil ? 'Continuar' : 'Seguir';
+  if (e === 'INICIADO') accion = 'Continuar';
   else if (e === 'COMPLETADO') accion = movil ? 'Ver datos' : 'Ver';
   else if (movil) accion = 'Iniciar visita';
   // Un supervisor ve la semana de todos: en visita ajena solo consulta, no
@@ -108,7 +110,7 @@ function SemanaCard({ f, movil, onAbrir }) {
           {/* Firma (fila, datos): la misma de BotonContinuarVisita y AlertaCard.
               Con solo (f) el router recibe la fila donde espera el _idx y el
               formulario abre sin datos. */}
-          <button className="sv-btn" onClick={() => soloVer
+          <button className={'sv-btn' + (e === 'COMPLETADO' || soloVer ? '' : ' sv-btn-acc')} onClick={() => soloVer
             ? (window.abrirVisitaDetail && window.abrirVisitaDetail(f))
             : (onAbrir && onAbrir(f._idx, f))}>{accion}</button>
           <BotonMapaVisita f={f} variante="icono" />
@@ -119,9 +121,20 @@ function SemanaCard({ f, movil, onAbrir }) {
 }
 
 // ── Componente principal ───────────────────────────────────────
-function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector, onAbrirDia }) {
+function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector, onAbrirDia,
+  offset: offsetExt, onOffset }) {
   const prefs0 = _svPrefs();
-  const [offset, setOffset] = useStateSV(prefs0.offset || 0);
+  // Con onOffset la semana la maneja Inicio, que pinta navegación y filtro en
+  // una barra común a la Semana y a Alertas; la cabecera propia no se pinta.
+  const [offsetLocal, setOffsetLocal] = useStateSV(prefs0.offset || 0);
+  const controlada = !!onOffset;
+  const offset = controlada ? (offsetExt || 0) : offsetLocal;
+  const setOffset = onOffset || setOffsetLocal;
+  // «Ver en su semana» cambia la semana Y elige el día; el efecto que suelta
+  // el día al navegar no debe deshacer esa elección.
+  const offsetRef = React.useRef(offset);
+  const saltoRef = React.useRef(false);
+  offsetRef.current = offset;
   // El filtro de inspector lo comparte Inicio con la lista de Alertas: si el
   // padre lo maneja (onInspector), manda el suyo; si no, es estado propio.
   const [inspectorLocal, setInspectorLocal] = useStateSV(prefs0.inspector || '');
@@ -149,6 +162,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     const on = (ev) => {
       const d = ev.detail || {};
       if (typeof d.offset !== 'number') return;
+      if (d.offset !== offsetRef.current) saltoRef.current = true;
       setOffset(d.offset);
       const f = parsearFecha(d.fecha || '');
       if (!f) { setDiaSel(null); return; }
@@ -164,6 +178,16 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   useEffectSV(() => {
     try { sessionStorage.setItem(SV_PREFS, JSON.stringify({ offset, inspector })); } catch (e) {}
   }, [offset, inspector]);
+
+  // Semana movida desde fuera (barra de Inicio): el día elegido era de la
+  // semana anterior, se vuelve a hoy o al lunes.
+  const offsetPrevRef = React.useRef(offset);
+  useEffectSV(() => {
+    if (offsetPrevRef.current === offset) return;
+    offsetPrevRef.current = offset;
+    if (saltoRef.current) { saltoRef.current = false; return; }
+    setDiaSel(null);
+  }, [offset]);
 
   const { dias, porDia, hoyIdx } = useMemoSV(() => {
     const r = rangoSemana(new Date(), offset);
@@ -183,7 +207,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     setDiaSel(null);
   }
 
-  const cabecera = (
+  const cabecera = controlada ? null : (
     <div className="sv-head">
       <div className="sv-nav">
         <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => irSemana(-1)}>‹</button>
@@ -258,12 +282,12 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
               <button type="button" className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}
                 aria-label={'Abrir la agenda del ' + SV_ROTULOS[i] + ' ' + d.getDate()}
                 onClick={() => onAbrirDia(d)}>
-                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
+                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx && <span className="sv-pill-hoy">hoy</span>}
                 {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
               </button>
             ) : (
               <div className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}>
-                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx ? ' · hoy' : ''}
+                {SV_ROTULOS[i]} {d.getDate()}{i === hoyIdx && <span className="sv-pill-hoy">hoy</span>}
                 {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
               </div>
             )}

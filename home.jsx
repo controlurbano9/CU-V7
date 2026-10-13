@@ -52,9 +52,12 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const veTodo = veTodasLasVisitas(usuario.rol);
   const miNombre = usuario.usuario.toUpperCase();
 
-  // Filtro de inspector: uno solo para la Semana y para Alertas (los chips
-  // viven en la cabecera de la Semana). Arranca del que la Semana recordaba.
+  // Filtro de inspector: uno solo para la Semana y para Alertas, en la barra
+  // común a las dos (no toca los indicadores). Arranca del que la Semana
+  // recordaba. La semana visible también vive aquí: su navegación va en esa
+  // misma barra.
   const [inspector, setInspector] = useStateH(() => _svPrefs().inspector || '');
+  const [offsetSemana, setOffsetSemana] = useStateH(() => _svPrefs().offset || 0);
   // Filtro por tipo de alerta: '' | 'urgente' | 'sinIniciar' | 'sinCompletar'.
   const [filtroAlerta, setFiltroAlerta] = useStateH('');
 
@@ -266,25 +269,27 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       </div>
 
       {/* ── Indicadores: el recorrido de una visita. «Pendientes» es lo que
-          no tiene inspector, así que solo lo ve quien ve todas las visitas. ── */}
+          no tiene inspector, así que solo lo ve quien ve todas las visitas.
+          Sin «Mes anterior/actual»: el rótulo ya nombra el mes. Los que abren
+          Buscar muestran una flecha al pasar el ratón. ── */}
       <div className={'ind-fila' + (veTodo ? '' : ' ind-3')}>
         {veTodo && (
           <button type="button" className="ind ind-realizar" title="Visitas sin inspector asignado. Abre Buscar"
             onClick={() => _irBuscarConEstados(['PENDIENTE'], onNavegar)}>
-            <div className="ind-cab"><span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Pendientes</span></div>
+            <span className="ind-num">{num(stats.porRealizar)}</span><span className="ind-rot">Pendientes</span>
+            <span className="ind-flecha" aria-hidden="true">→</span>
           </button>
         )}
         <button type="button" className="ind ind-completar" title="Asignadas e iniciadas sin completar"
           onClick={() => veTodo ? _irBuscarConEstados(['ASIGNADO', 'INICIADO'], onNavegar) : onNavegar('mis-visitas')}>
-          <div className="ind-cab"><span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Asignadas e iniciadas</span></div>
+          <span className="ind-num">{num(porCompletar)}</span><span className="ind-rot">Asignadas e iniciadas</span>
+          <span className="ind-flecha" aria-hidden="true">→</span>
         </button>
         <div className="ind ind-hecho">
-          <div className="ind-cab"><span className="ind-num">{num(stats.mesAnterior)}</span><span className="ind-rot">Completadas en {mesAnteriorTxt}</span></div>
-          <div className="ind-sub ind-sub-ancho">Mes anterior</div>
+          <span className="ind-num">{num(stats.mesAnterior)}</span><span className="ind-rot">Completadas en {mesAnteriorTxt}</span>
         </div>
         <div className="ind ind-hecho">
-          <div className="ind-cab"><span className="ind-num">{num(stats.mesActual)}</span><span className="ind-rot">Completadas en {mesActualTxt}</span></div>
-          <div className="ind-sub ind-sub-ancho">Mes actual</div>
+          <span className="ind-num">{num(stats.mesActual)}</span><span className="ind-rot">Completadas en {mesActualTxt}</span>
         </div>
       </div>
 
@@ -323,14 +328,38 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       )}
 
-      {/* ── Semana + Alertas en dos columnas ≥1200 (ver
-          .home-2col en styles.css); en móvil van apiladas como siempre ── */}
+      {/* ── Barra del área de trabajo: semana visible a la izquierda y filtro
+          de inspector a la derecha. Va encima de la Semana y de Alertas
+          porque el filtro afecta a las dos (y a los indicadores no). ── */}
+      <div className="home-barra">
+        <div className="sv-nav">
+          <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => setOffsetSemana(offsetSemana - 1)}>‹</button>
+          <span className="sv-rango">{_svRango(rangoSemana(new Date(), offsetSemana).dias)}</span>
+          <button className="sv-nav-btn" aria-label="Semana siguiente" onClick={() => setOffsetSemana(offsetSemana + 1)}>›</button>
+          {offsetSemana !== 0 && (
+            <button className="sv-hoy" onClick={() => setOffsetSemana(0)}>Hoy</button>
+          )}
+        </div>
+        {veTodo && inspectores.length > 0 && (
+          <div className="sv-chips home-insp">
+            <button className={'sv-chip' + (inspector === '' ? ' activo' : '')} aria-pressed={inspector === ''}
+              onClick={() => setInspector('')}>Todos</button>
+            {inspectores.map(n => (
+              <button key={n} className={'sv-chip' + (inspector === n ? ' activo' : '')} aria-pressed={inspector === n}
+                onClick={() => setInspector(n)}>{titleCaseNombre(n).split(/\s+/)[0]}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Semana + Alertas: carriles del mismo alto ≥1440 (ver .home-2col
+          en styles.css); por debajo, Alertas va debajo de la semana ── */}
       <div className="home-2col">
       {/* ── Semana de visitas: sustituye a «Asignadas por hacer», que era
           exactamente su columna de hoy. Cada visita se queda en SU día —
           registrar no es visitar, el inspector puede registrar al día
           siguiente, y reubicarla en hoy sería reagendarla. ── */}
-      <div style={{ marginBottom: 18 }}>
+      <div className="home-sem">
         {cargando && <div className="cargando"><div className="spinner"></div>Cargando...</div>}
         {!cargando && (
           <SemanaVisitas
@@ -341,6 +370,8 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
             onAbrir={onContinuar}
             inspector={inspector}
             onInspector={setInspector}
+            offset={offsetSemana}
+            onOffset={setOffsetSemana}
             onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
           />
         )}
@@ -348,15 +379,15 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
 
       {/* ── Alertas ── Con un inspector elegido la columna se queda aunque
           no tenga alertas: si desapareciera, la rejilla saltaría de ancho al
-          cambiar de chip. */}
+          cambiar de chip. Es un carril como los días: la cabecera queda fija
+          y la lista desplaza dentro. */}
       {!cargando && (alertas.total > 0 || (veTodo && inspector)) && (
-        <div style={{ marginBottom: 8 }}>
+        <div className="home-al">
           <div className="al-head">
-            <SeccionHeader
-              titulo="Alertas"
-              count={alertas.total}
-              tono={alertas.conteo.urgente > 0 ? 'rojo' : 'amarillo'}
-            />
+            <h2 className="home-al-tit">
+              Alertas
+              <span className={'home-al-n' + (alertas.conteo.urgente > 0 ? ' urg' : '')}>{alertas.total}</span>
+            </h2>
             {alertas.total > 0 && (
               <div className="sv-chips al-chips">
                 {[['', 'Todas', alertas.total],
@@ -366,7 +397,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
                 ].filter(c => c[2] > 0).map(c => (
                   <button key={c[0]} type="button" aria-pressed={filtroAl === c[0]}
                     className={'sv-chip' + (filtroAl === c[0] ? ' activo' : '')}
-                    onClick={() => setFiltroAlerta(c[0])}>{c[1]} {c[2]}</button>
+                    onClick={() => setFiltroAlerta(c[0])}>{c[1]} <span className="sv-chip-n">{c[2]}</span></button>
                 ))}
               </div>
             )}
@@ -381,36 +412,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       )}
       </div>{/* .home-2col */}
-    </div>
-  );
-}
-
-// ── Header de sección (Alertas, Asignadas hoy, etc.) ──────────
-// Estilo editorial: tipografía serif, contador en chip suave.
-function SeccionHeader({ titulo, count, tono }) {
-  const tonos = {
-    rojo:     { bg: 'var(--rojo-bg)',    fg: 'var(--rojo)',    border: 'rgba(180,58,46,0.18)' },
-    amarillo: { bg: 'var(--amarillo-bg)',fg: 'var(--cafe)',    border: 'rgba(184,135,58,0.22)' },
-    acento:   { bg: 'var(--brand-bg)',   fg: 'var(--brand-ink)', border: 'rgba(201,100,66,0.18)' },
-    neutro:   { bg: 'var(--gris-bg)',    fg: 'var(--texto-suave)', border: 'var(--borde)' },
-  };
-  const t = tonos[tono] || tonos.neutro;
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10,
-      paddingBottom: 6, borderBottom: '0.5px solid var(--borde)',
-    }}>
-      <h2 style={{
-        fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 600,
-        color: 'var(--texto)', margin: 0, letterSpacing: '-0.2px',
-      }}>{titulo}</h2>
-      {count != null && (
-        <span style={{
-          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-          background: t.bg, color: t.fg, border: '0.5px solid ' + t.border,
-          fontFamily: 'var(--font-mono)', letterSpacing: '0.02em',
-        }}>{count}</span>
-      )}
     </div>
   );
 }
@@ -467,7 +468,7 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
             <Icon.Agenda size={14} />
           </button>
         )}
-        <button type="button" className="al-btn" onClick={() => puede
+        <button type="button" className={'al-btn' + (puede ? ' al-btn-acc' : '')} onClick={() => puede
           ? onContinuar(f._idx, f)
           : (window.abrirVisitaDetail && window.abrirVisitaDetail(f))}>
           {!puede ? 'Ver datos' : (iniciada ? 'Continuar' : 'Iniciar')}
