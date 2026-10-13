@@ -267,6 +267,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const hoy = useMemoB(() => new Date(), []);
 
   const activos = activosBuscar(S);
+  const nQuien = S.visitador.length + (S.mias ? 1 : 0);   // el resto de «quien» va en «Más filtros»
   const nActivos = activos.total;
 
   // ── Carga de datos ──
@@ -945,7 +946,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             <CuandoBQ S={S} parcharS={parcharS} base={baseFecha} hoy={hoy} />
           </BQSeccion>
 
-          <BQSeccion titulo="Quién" n={activos.quien}>
+          <BQSeccion titulo="Quién" n={nQuien}>
             {veTodo && (
               <>
                 <div className="bq-lbl">Visitador</div>
@@ -975,6 +976,11 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                 </div>
               </>
             )}
+          </BQSeccion>
+
+          {/* «Más filtros» (2026-10-12, decisión del usuario): lo de uso
+              ocasional, plegado. Arriba quedan Vistas, Dónde, Cuándo y Quién. */}
+          <BQSeccion titulo="Más filtros" n={activos.total - activos.donde - activos.cuando - nQuien}>
             <div className="bq-lbl">Tipo de caso</div>
             <div className="bq-opts">
               {['PQR', 'OFICIO', 'V2'].map(v => (
@@ -1010,9 +1016,6 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                 </div>
               </>
             )}
-          </BQSeccion>
-
-          <BQSeccion titulo="Qué se encontró" n={activos.que}>
             {valoresInfr.length > 0 && (
               <>
                 <div className="bq-lbl">Infracción</div>
@@ -1050,9 +1053,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                 </button>
               ))}
             </div>
-          </BQSeccion>
-
-          <BQSeccion titulo="Qué falta" n={activos.falta}>
+            <div className="bq-lbl">Qué falta</div>
             <div className="bq-opts">
               {BUSCAR_FALTAS.map(par => (
                 <button key={par[0]} type="button" className={'bq-op' + (S.falta.includes(par[0]) ? ' on' : '')} aria-pressed={S.falta.includes(par[0])}
@@ -1349,11 +1350,14 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
   const panelNuevaAbierto = !!filaBase && asignandoFila === ('nueva:' + filaBase._idx);
 
   const abrirPanel = (id) => setAsignandoFila(asignandoFila === id ? null : id);
+  // Sin acciones (p. ej. completada con otra visita pendiente) no hay barra.
+  const conNueva = puedeNueva && (abierta || (!pendiente && est === 'COMPLETADO'));
+  if (est !== 'PENDIENTE' && est !== 'ASIGNADO' && est !== 'INICIADO' && !conNueva) return null;
 
   return (
-    <section className="fv-sec bq-gestion">
-      <h3 className="mv-sub">Gestión</h3>
+    <section className="bq-gestion" aria-label="Gestión">
       <div className="bq-seg">
+        <span className="bq-gestion-tit" aria-hidden="true">Gestión</span>
         {est === 'PENDIENTE' && (
           <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
             {abierto ? 'Cancelar' : 'Asignar'}
@@ -1589,14 +1593,16 @@ function DondeBQ({ S, parcharS, base, mapas, veredas }) {
   );
 }
 
-const BQ_CAMPOS = [['rad', 'Radicado', 'de radicado'], ['asig', 'Asignación', 'de asignación'],
-  ['vis', 'Visita', 'de visita'], ['cierre', 'Cierre', 'de cierre'], ['cit', 'Citación', 'de citación']];
+const BQ_CAMPOS = [['rad', 'Radicado', 'de radicado'], ['vis', 'Visita', 'de visita'],
+  ['asig', 'Asignación', 'de asignación'], ['cierre', 'Cierre', 'de cierre'], ['cit', 'Citación', 'de citación']];
+const BQ_CAMPOS_BASICOS = 2;   // Radicado y Visita; el resto, tras «Otras fechas»
 const BQ_CAMPO_FECHA = { rad: 'fRad', asig: 'fAsig', vis: 'fVis', cierre: 'fCierre', cit: 'fCit' };
 const BQ_MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const BQ_ANIO0 = 2024;
 
 function CuandoBQ({ S, parcharS, base, hoy }) {
   const [arrastre, setArrastre] = useStateB(null);   // { a, b } índices de mes
+  const [otrasFechas, setOtrasFechas] = useStateB(false);
   const nMes = (hoy.getFullYear() - BQ_ANIO0) * 12 + hoy.getMonth() + 1;
   const idxMes = d => (d.getFullYear() - BQ_ANIO0) * 12 + d.getMonth();
   const deISO = t => { const p = t.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
@@ -1644,10 +1650,13 @@ function CuandoBQ({ S, parcharS, base, hoy }) {
   return (
     <>
       <div className="adm-tabs bq-campo" role="group" aria-label="Qué fecha">
-        {BQ_CAMPOS.map(([k, l]) => (
+        {BQ_CAMPOS.filter((x, i) => i < BQ_CAMPOS_BASICOS || otrasFechas || x[0] === campo).map(([k, l]) => (
           <button key={k} type="button" className={'adm-tab' + (campo === k ? ' activo' : '')} aria-pressed={campo === k}
             onClick={() => parcharS({ campo: k })}>{l}</button>
         ))}
+        {!otrasFechas && (
+          <button type="button" className="adm-tab bq-campo-mas" onClick={() => setOtrasFechas(true)}>Otras fechas…</button>
+        )}
       </div>
       <div className="bq-opts" style={{ marginTop: 8 }}>
         {presets.map(([l, a, b]) => {

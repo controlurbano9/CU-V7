@@ -157,9 +157,6 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
             </section>
           )}
 
-          {/* Gestión (E5 la inyecta): sin envoltorio. */}
-          {gestion}
-
           {secciones.map(s => <_SecFV key={s.clave} s={s} f={f} />)}
 
           <MapaPanelMV f={f} />
@@ -187,6 +184,11 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion 
           </div>
         )}
       </div>
+
+      {/* Gestión (E5 la inyecta): barra fija al pie, fuera de la información
+          (decisión del usuario 2026-10-12; antes iba entre los entregables y
+          la sección 1). */}
+      {gestion && <div className="fv-gestion-pie">{gestion}</div>}
     </div>
   );
 }

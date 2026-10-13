@@ -3474,3 +3474,13 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
 .bq-export-pie > span { flex: 1 1 220px; font-size: 12px; color: var(--ink-3); }
 .bq-export-pie .vc-btn { min-height: 44px; padding: 0 16px; font-size: 13px; }
 @media (max-width: 1199px) { .bq-colg label { min-height: var(--tap-min); } }
+
+/* ── Buscar 2026-10-12: gestión al pie de la ficha y «Otras fechas» ── */
+.fv-gestion-pie { position: sticky; bottom: 0; z-index: 4; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 10px 20px; box-shadow: 0 -8px 16px -12px rgba(31,27,22,.45); max-height: 70vh; overflow-y: auto; }
+.fv-gestion-pie:empty { display: none; }
+.bq-gestion .bq-seg { align-items: center; }
+.bq-gestion-tit { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); margin-right: 4px; }
+.bq-campo .adm-tab.bq-campo-mas { flex: 0 0 auto; color: var(--ink-3); }
+.fv-gestion-pie { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+@media (pointer: coarse) { .bq-gestion .vc-btn { min-height: 44px; } }
