@@ -143,6 +143,10 @@ test('puntoDesdeTextoCoord: coordenadas escritas como dirección', () => {
   assert.ok(cerca(puntoDesdeTextoCoord('6° 25´33.0 N 75° 35´25.0 W'), 6.425833, -75.590278));
   assert.ok(cerca(puntoDesdeTextoCoord('6°22\'42.6"N 75°35\'37"W'), 6.378500, -75.593611));
   assert.ok(cerca(puntoDesdeTextoCoord('6.3456, -75.5612'), 6.3456, -75.5612));
+  // Sin símbolo de grado y con coma decimal (visto en BD, Buscar 2026-10-13).
+  assert.ok(cerca(puntoDesdeTextoCoord('6 21\'3,858"N 75 33\'28,272"W'), 6.351072, -75.557853));
+  assert.equal(puntoDesdeTextoCoord('CL 29 55 22'), null);
+  assert.equal(puntoDesdeTextoCoord('6 21\'3,858" 75 33\'28,272"'), null, 'sin hemisferios no se acepta');
   assert.equal(puntoDesdeTextoCoord('CL 29 # 55-22'), null);
   assert.equal(puntoDesdeTextoCoord('CR 52 N° 64-134'), null);
   assert.equal(puntoDesdeTextoCoord('4°36\'N 74°04\'W'), null, 'fuera de Bello no se acepta');

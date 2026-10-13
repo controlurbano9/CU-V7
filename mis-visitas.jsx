@@ -288,7 +288,8 @@ function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinua
             la visita, sin panel abre sus datos. */}
         <button type="button" className="mv-dir" title={dir}
           aria-pressed={conPanel ? elegida : undefined}
-          onClick={sinPropagar(conPanel ? () => onElegir(f) : verDatos)}>{dir}</button>
+          onClick={sinPropagar(conPanel ? () => onElegir(f) : verDatos)}>
+          {puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</button>
         <div className="vc-ident">
           <span className="vc-rad">{f['RADICADO'] || '—'}</span>
           {!conPanel && <BotonPdfRadicado f={f} />}

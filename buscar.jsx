@@ -945,7 +945,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           <div className="bq-sec">
             <div className="bq-sec-tit">Vistas</div>
             <div className="bq-vistas">
-              {vistasTodas.map(v => (
+              {/* Las de uso diario en 0 no salen (como los chips del resto de
+                  la app); la activa y las propias se quedan siempre. */}
+              {vistasTodas.filter(v => v.propia || firmaVista(v) === firmaActual || contarVista(v) > 0).map(v => (
                 <div key={v.id} className="bq-vista-fila">
                   <button type="button" className={'bq-vista' + (firmaVista(v) === firmaActual ? ' on' : '')}
                     onClick={() => aplicarVista(v)}>
@@ -1277,7 +1279,9 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
           <button type="button" className="mv-dir" title={c.dir}
             aria-pressed={conPanel ? sel : undefined}
             onClick={sinPropagar(conPanel ? () => onElegir(c) : () => onVerDatos(c))}>
-            <MarcarBQ texto={c.dir} q={q} />
+            {/* Una dirección que es una coordenada se dice «Punto GPS», como
+                en la Agenda; la coordenada queda en el title. */}
+            {puntoDesdeTextoCoord(c.dir) ? 'Punto GPS' : <MarcarBQ texto={c.dir} q={q} />}
           </button>
           <div className="vc-ident">
             {c.tipo === 'V2'

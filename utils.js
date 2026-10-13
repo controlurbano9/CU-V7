@@ -627,10 +627,19 @@ function puntoDesdeTextoCoord(texto) {
     lat = dec(ms[0]) * (hem(ms[0]) === 'S' ? -1 : 1);
     lon = dec(ms[1]) * (hem(ms[1]) === 'E' ? 1 : -1);
   } else {
-    var d = /^\s*(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})\s*$/.exec(s);
-    if (!d) return null;
-    lat = parseFloat(d[1]);
-    lon = -Math.abs(parseFloat(d[2]));
+    // Grados, minutos y segundos sin el símbolo de grado («6 21'3,858"N
+    // 75 33'28,272"W», visto en BD). Exige los dos hemisferios y que el texto
+    // sea solo la coordenada: «CL 29 # 55-22» no debe leerse como punto.
+    var g = /^\s*(\d{1,3})\s+(\d{1,2})\s*['´’′]\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:["”″]|['´’′]{2})?\s*([NS])\s*[,;]?\s*(\d{1,3})\s+(\d{1,2})\s*['´’′]\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:["”″]|['´’′]{2})?\s*([EWO])\s*$/i.exec(s);
+    if (g) {
+      lat = (num(g[1]) + num(g[2]) / 60 + num(g[3]) / 3600) * (g[4].toUpperCase() === 'S' ? -1 : 1);
+      lon = (num(g[5]) + num(g[6]) / 60 + num(g[7]) / 3600) * (g[8].toUpperCase() === 'E' ? 1 : -1);
+    } else {
+      var d = /^\s*(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})\s*$/.exec(s);
+      if (!d) return null;
+      lat = parseFloat(d[1]);
+      lon = -Math.abs(parseFloat(d[2]));
+    }
   }
   if (!isFinite(lat) || !isFinite(lon)) return null;
   if (lat < _RANGO_COORD.lat[0] || lat > _RANGO_COORD.lat[1] ||
