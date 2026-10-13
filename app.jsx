@@ -547,15 +547,23 @@ function AppV6() {
     const barra = document.querySelector('.header');
     if (!barra) return;
     const medir = () => {
-      const alto = Math.round(barra.getBoundingClientRect().height);
-      if (alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
+      // Desde 900 px la barra no se muestra (marco 2026-10-13: el nombre,
+      // PIN y «Salir» viven al pie del menú) y lo pegado debajo debe subir
+      // hasta arriba: oculta cuenta 0. Visible y aún sin medir (0) no se toca.
+      const oculta = getComputedStyle(barra).display === 'none';
+      const alto = oculta ? 0 : Math.round(barra.getBoundingClientRect().height);
+      if (oculta || alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
     };
     medir();
     // El alto cambia sin que cambie el viewport (el nombre del inspector
     // llega después del login y reenvuelve), de ahí el observador.
     const ro = new ResizeObserver(medir);
     ro.observe(barra);
-    return () => ro.disconnect();
+    // Al cruzar los 900 px la barra se oculta o reaparece por CSS: el
+    // observador debería avisarlo, pero el cambio de ventana es el disparo
+    // seguro.
+    window.addEventListener('resize', medir);
+    return () => { ro.disconnect(); window.removeEventListener('resize', medir); };
   }, [usuario]);
 
   // ── Precarga automática de capas POT + catastro tras login ──
@@ -794,7 +802,8 @@ function AppV6() {
                   <Icon.Admin size={20} />
                 </button>
               )}
-              {!enFormulario && <ActualizarDatos ancho={isDesktop} />}
+              {/* En escritorio la barra no se muestra: esto vive al pie del menú. */}
+              {!enFormulario && !isDesktop && <ActualizarDatos ancho={false} />}
               <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
                 aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
                 <Icon.Lock size={16} />{isDesktop && <span>PIN</span>}
@@ -804,9 +813,19 @@ function AppV6() {
           </div>
         </div>
 
-        {/* ── SIDEBAR DESKTOP ── */}
+        {/* ── SIDEBAR DESKTOP ──
+            Desde 2026-10-13 es todo el marco en escritorio: la barra superior
+            se oculta por CSS ≥900 y su contenido (marca, «Actualizado», usuario,
+            PIN y «Salir») vive aquí. Una franja menos y una caja menos. */}
         {isDesktop && (
           <div id="sidebar-desktop" style={{ display: 'flex' }}>
+            <div className="sidebar-marca">
+              <img src="logo.jpg" alt="Alcaldía de Bello" />
+              <div>
+                <b>Control Urbano</b>
+                <small>Inspección N°9</small>
+              </div>
+            </div>
             {/* En escritorio «Nueva visita» va aquí con su nombre: el «+»
                 flotante quedaba en la esquina, lejos del contenido. */}
             {!enFormulario && (
@@ -823,6 +842,20 @@ function AppV6() {
               <SidebarBtn pantalla={pantalla} setPantalla={navegar}
                 k="admin" label="Administración" Icono={Icon.Admin} />
             </>}
+            <div className="sidebar-pie">
+              {!enFormulario && <ActualizarDatos ancho />}
+              <div className="sidebar-usuario">
+                <b>{titleCaseNombre(usuario.usuario)}</b>
+                {usuario.cargo && <small>{usuario.cargo}</small>}
+              </div>
+              <div className="sidebar-pie-acc">
+                <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
+                  aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
+                  <Icon.Lock size={14} /><span>PIN</span>
+                </button>
+                <button type="button" className="btn-logout" onClick={salir}>Salir</button>
+              </div>
+            </div>
           </div>
         )}
 

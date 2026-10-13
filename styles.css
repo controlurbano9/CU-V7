@@ -253,9 +253,9 @@ body {
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-logout:hover {
-    background: var(--brand-bg);
-    color: var(--brand);
-    border-color: var(--brand);
+    background: var(--surface-2);
+    color: var(--ink);
+    border-color: var(--ink-4);
   }
 }
 .btn-logout:active { transform: scale(0.96); }
@@ -2032,29 +2032,48 @@ body.is-offline .header {
     width: 56px; height: 56px;
   }
 
+  /* Marco de escritorio (2026-10-13): sin barra superior. El menú es del
+     mismo color que el fondo y sin borde; marca arriba, usuario abajo.
+     app.jsx publica --header-h = 0 cuando la barra está oculta. */
   #app-wrapper {
     max-width: 100%;
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 1fr;
     min-height: 100vh;
   }
-  .header {
-    grid-column: 1 / -1;
-    padding: 10px 24px;
-  }
+  .header { display: none; }
   #sidebar-desktop {
     display: flex !important;
     flex-direction: column;
-    background: rgba(255,251,245,0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-right: 1px solid var(--line-2);
-    padding: 16px 10px;
-    position: sticky; top: var(--header-h);
-    height: calc(100vh - var(--header-h));
+    background: var(--paper);
+    padding: 20px 14px 16px;
+    position: sticky; top: 0;
+    height: 100vh;
     overflow-y: auto; gap: 2px;
   }
+  .sidebar-marca { display: flex; align-items: center; gap: 10px; padding: 0 6px 18px; }
+  .sidebar-marca img {
+    width: 34px; height: 34px; flex: none; border-radius: var(--r-card);
+    object-fit: contain; background: #fff; padding: 2px;
+  }
+  .sidebar-marca b { display: block; font: 600 15px/1.2 var(--font-serif); color: var(--ink); }
+  .sidebar-marca small { display: block; font-size: 11px; color: var(--ink-4); }
+  .sidebar-pie {
+    margin-top: auto; padding: 12px 6px 0; border-top: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  }
+  .sidebar-pie .btn-actualizar { margin-left: -8px; }
+  .sidebar-usuario b { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .sidebar-usuario small { display: block; font-size: 11px; color: var(--ink-4); }
+  .sidebar-pie-acc { display: flex; gap: 6px; }
+  /* El anillo de foco global es café: en el menú se leía como un botón con
+     borde (el recuadro de «Inicio» en la captura del 2026-10-13). */
+  #sidebar-desktop .sidebar-btn:focus-visible { outline-color: var(--ink-3); outline-offset: -2px; }
+  /* Sin barra superior, el aviso «sin conexión» (40 px fijos arriba) ya no
+     empuja nada: menú y contenido bajan solos. */
+  body.is-offline #sidebar-desktop { top: 40px; height: calc(100vh - 40px); }
+  body.is-offline #content-desktop { margin-top: 40px; max-height: calc(100vh - 40px); }
   .sidebar-btn {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px;
@@ -2074,9 +2093,10 @@ body.is-offline .header {
       color: var(--ink);
     }
   }
+  /* Activo en neutro: el café queda solo para «Nueva visita», justo encima. */
   .sidebar-btn.activo {
-    background: var(--brand-bg);
-    color: var(--brand);
+    background: var(--surface-2);
+    color: var(--ink);
     font-weight: 600;
   }
   .sidebar-btn svg {
@@ -2670,10 +2690,12 @@ button.sv-col-head {
    días se desalinearían). Inicio ocupa todo el ancho: con el tope de
    --content-max quedaba flotando con ~100 px vacíos a cada lado. */
 @media (min-width: 1600px) {
+  /* height y no max-height: con max-height los carriles solo llegaban al pie
+     cuando Alertas era larga; con pocas o ninguna se quedaban cortos. */
   .pantalla.home-pantalla {
     display: flex; flex-direction: column;
     min-height: 0; max-width: none;
-    max-height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
+    height: calc(100vh - var(--header-h) - var(--content-pad-top) - 48px);
   }
   .pantalla.home-pantalla > * { flex-shrink: 0; }
   .pantalla.home-pantalla .home-2col {

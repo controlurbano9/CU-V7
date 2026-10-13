@@ -177,7 +177,7 @@ const AppQA = function () {
     if (!barra) return;
     const medir = function () {
       const alto = Math.round(barra.getBoundingClientRect().height);
-      if (alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
+      if (getComputedStyle(barra).display === 'none') { document.documentElement.style.setProperty('--header-h', '0px'); return; } if (alto > 0) document.documentElement.style.setProperty('--header-h', alto + 'px');
     };
     medir();
     const ro = new ResizeObserver(medir);
