@@ -171,6 +171,9 @@
   -webkit-tap-highlight-color: transparent;
 }
 html { height: 100%; }
+/* Los controles no heredan la letra por defecto: sin esto, un botón sin
+   font-family propio salía en Arial (flechas y «×» de la Agenda, 2026-10-13). */
+button, input, select, textarea { font-family: inherit; }
 body {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
@@ -3382,8 +3385,9 @@ button.sv-col-head {
 .ag-dia { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .ag-dia .page-title { margin: 0; white-space: nowrap; }
 .ag-flechas { display: flex; gap: 6px; }
-.ag-flecha { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%;
-  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); cursor: pointer; font-size: 18px; line-height: 1; }
+/* Flechas de día como las de la semana de Inicio: sin borde ni círculo. */
+.ag-flecha { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-ctl);
+  border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: 18px; line-height: 1; }
 .ag-dia-nota { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
 .ag-dia-nota button, .ag-link { padding: 0; border: 0; background: none; font: inherit; color: var(--brand-ink);
   text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
@@ -3403,9 +3407,11 @@ button.sv-col-head {
 .ag-sug  { grid-area: sug; }
 .ag-plan { grid-area: plan; display: grid; gap: 12px; align-content: start; }
 
-.ag-caja { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 18px; min-width: 0; }
+/* Cajas como el resto de paneles (sistema visual, 2026-10-13): radio 12,
+   sombra y sin borde; títulos en Inter (la serif es solo la fecha-título). */
+.ag-caja { background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-sm); padding: 16px 18px; min-width: 0; }
 .ag-caja-cab { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
-.ag-caja-cab h2 { margin: 0; font: 600 18px/1.2 var(--font-serif); color: var(--ink); }
+.ag-caja-cab h2 { margin: 0; font: 600 15px/1.25 var(--font-sans); color: var(--ink); }
 .ag-caja-cab > span { font-size: 12px; color: var(--ink-3); }
 
 /* Mapa: SVG propio de las comunas (comunas-mapa.json), sin Google Maps. */
@@ -3436,16 +3442,19 @@ button.sv-col-head {
 /* Cuadrícula de comunas: el selector (rediseño 2026-10-13). Todas visibles,
    de la que más tiene a la que menos; «Todas» primero. */
 .ag-coms { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 10px; }
+/* Comunas: fondo neutro sin borde; la elegida en tinta, como el chip común. */
 .ag-com-b { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 34px; padding: 0 10px;
-  border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); cursor: pointer;
+  border: 0; border-radius: var(--r-ctl); background: var(--surface-2); cursor: pointer;
   font: 600 12px var(--font-sans); color: var(--ink-2); }
 .ag-com-b span { font: 400 11px var(--font-mono); color: var(--ink-3); }
-.ag-com-b.activo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); }
+.ag-com-b.activo { background: var(--ink-2); color: var(--surface); }
+.ag-com-b.activo span { color: inherit; opacity: .75; }
 .ag-com-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 /* El mapa y su leyenda solo con ancho de sobra (ver .ag-grid ≥1600). */
 .ag-mapa .ag-ley, .ag-mapa .ag-svg { display: none; }
 @media (hover: hover) and (pointer: fine) {
-  .ag-flecha:hover { background: var(--surface-2); }
+  .ag-flecha:hover { background: var(--surface-2); color: var(--ink); }
+  .ag-com-b:not(.activo):hover { background: var(--surface-3); }
   .ag-com:hover path { fill: #BBA27F; }
 }
 
@@ -3456,14 +3465,14 @@ button.sv-col-head {
 .ag-sugs { list-style: none; margin: 0; padding: 0; }
 .ag-s { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .ag-s-txt { flex: 1; min-width: 0; }
-.ag-dir { font: 600 15px/1.3 var(--font-serif); color: var(--ink); overflow-wrap: anywhere; }
+.ag-dir { font: 600 14px/1.35 var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
 .ag-por { margin-top: 1px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
 .ag-por .vencida { color: var(--red); font-weight: 600; }
 .ag-por .nivel { color: var(--ink-2); font-weight: 600; }
 .ag-s.tomada .ag-dir { color: var(--ink-3); }
 .ag-s-acc { display: flex; gap: 4px; flex: none; }
 .ag-mas { --c: var(--ag-i1); display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 52px; height: 32px; padding: 0 9px 0 7px;
-  border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--surface); font: 600 11px var(--font-sans); color: var(--ink-2); cursor: pointer; }
+  border: 0; border-radius: var(--r-full); background: var(--surface-2); font: 600 11px var(--font-sans); color: var(--ink-2); cursor: pointer; }
 .ag-mas::before { content: '+'; font-size: 14px; font-weight: 500; color: var(--c); }
 .ag-mas.i2 { --c: var(--ag-i2); } .ag-mas.i3 { --c: var(--ag-i3); } .ag-mas.i4 { --c: var(--ag-i4); }
 .ag-en { --c: var(--ag-i1); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-full);
@@ -3473,7 +3482,7 @@ button.sv-col-head {
 .ag-ver { display: block; width: 100%; margin-top: 8px; padding: 10px 0 2px; border: 0; background: none; text-align: left;
   font: 600 13px var(--font-sans); color: var(--brand-ink); cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
-  .ag-mas:hover { background: var(--surface-2); }
+  .ag-mas:hover { background: var(--surface-3); }
 }
 
 /* El día de cada inspector, en el orden del recorrido. */
@@ -3483,7 +3492,7 @@ button.sv-col-head {
 .ag-ini { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--c); color: var(--surface);
   font: 600 12px/34px var(--font-sans); text-align: center; }
 .ag-insp-nom { min-width: 0; }
-.ag-insp-cab h2 { margin: 0; font: 600 18px/1.2 var(--font-serif); color: var(--ink); }
+.ag-insp-cab h2 { margin: 0; font: 600 15px/1.25 var(--font-sans); color: var(--ink); }
 .ag-insp-cab small { display: block; font-size: 12px; color: var(--ink-3); }
 .ag-meta { margin-left: auto; text-align: right; font: 600 20px/1 var(--font-mono); color: var(--ink); white-space: nowrap; }
 .ag-meta > span { color: var(--ink-4); }
@@ -3499,7 +3508,7 @@ button.sv-col-head {
 .ag-insp-cab small .ag-nuevas { font-weight: 600; color: var(--c); }
 .ag-parada.ya .ag-num { background: var(--surface-2); color: var(--ink-3); }
 .ag-parada.ya .ag-dir { font-size: 14px; color: var(--ink-2); }
-.ag-parada.nueva { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 8%, transparent), transparent 75%); border-radius: var(--r); }
+.ag-parada.nueva { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 8%, transparent), transparent 75%); border-radius: var(--r-card); }
 .ag-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); background: var(--c); color: var(--surface);
   font: 600 10px var(--font-sans); letter-spacing: .02em; vertical-align: 2px; }
 .ag-quitar { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); font-size: 18px; line-height: 1; cursor: pointer; }
@@ -3507,31 +3516,37 @@ button.sv-col-head {
 .ag-vuelve i { width: 24px; height: 24px; flex: none; display: grid; place-items: center; font-style: normal; font-size: 12px;
   border: 1.5px solid var(--ink-3); border-radius: 5px; background: var(--surface); position: relative; z-index: 1; }
 .ag-restablecer { justify-self: start; font-size: 13px; }
-.ag-corta { margin-top: 8px; padding: 8px 10px; border-radius: var(--r); background: var(--surface-2); font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+.ag-corta { margin-top: 8px; padding: 8px 10px; border-radius: var(--r-card); background: var(--surface-2); font-size: 12px; line-height: 1.45; color: var(--ink-2); }
 @media (hover: hover) and (pointer: fine) {
   .ag-quitar:hover { background: var(--surface-2); color: var(--ink); }
 }
 
-/* Un solo botón para el día: dice exactamente lo que va a escribir. */
+/* Un solo botón para el día: dice exactamente lo que va a escribir. Barra
+   clara con sombra (sistema visual, 2026-10-13): era la única superficie
+   oscura de la app; la acción se lee como acción por el café lleno. */
 .ag-bar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 24px;
-  margin: 16px -16px 0; padding: 12px 16px; background: var(--ink); color: var(--paper); box-shadow: 0 -10px 30px -16px rgba(31,27,22,.45); }
+  margin: 16px -16px 0; padding: 12px 16px; background: var(--surface); color: var(--ink);
+  box-shadow: 0 -10px 30px -16px rgba(31,27,22,.35), 0 -1px 0 var(--line); }
 .ag-bar-res { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; flex: 1 1 320px; font-size: 14px; }
 .ag-bar-res > span { display: inline-flex; align-items: center; gap: 8px; }
 .ag-bar-res b { font-weight: 600; }
-.ag-bar-res .suave { color: rgba(245,241,235,.72); }
-.ag-bar-res .ag-punto { margin: 0; box-shadow: 0 0 0 2px rgba(245,241,235,.35); }
-.ag-bar-btn { width: 100%; height: 46px; padding: 0 22px; border: 0; border-radius: var(--r); background: var(--brand); color: var(--surface);
+.ag-bar-res .suave { color: var(--ink-3); }
+.ag-bar-res .ag-punto { margin: 0; }
+.ag-bar-btn { width: 100%; height: 46px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--brand); color: var(--surface);
   font: 600 15px var(--font-sans); cursor: pointer; white-space: nowrap; }
-.ag-bar-btn:disabled { background: rgba(245,241,235,.14); color: rgba(245,241,235,.72); cursor: default; }
+.ag-bar-btn:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .ag-bar-btn:not(:disabled):hover { background: var(--brand-ink); }
+}
 .ag-flecha:focus-visible, .ag-mas:focus-visible, .ag-en:focus-visible, .ag-quitar:focus-visible, .ag-bar-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* ⚙ Reglas: panel que se despliega del botón; el tablero sigue a la vista. */
 .ag-reglas { position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 340px; max-width: calc(100vw - 32px); box-sizing: border-box;
-  padding: 16px 18px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--shadow-md); color: var(--ink); }
-.ag-reglas h3 { margin: 0 0 12px; font: 600 17px var(--font-serif); }
+  padding: 16px 18px; background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-md); color: var(--ink); }
+.ag-reglas h3 { margin: 0 0 12px; font: 600 16px var(--font-sans); }
 .ag-reglas-t { margin-bottom: 4px; font-size: 12px; color: var(--ink-3); }
 .ag-hab { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
-.ag-hab input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--brand); }
+.ag-hab input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--ink-2); }
 .ag-hab b { font-weight: 600; }
 .ag-hab input:not(:checked) + b { font-weight: 500; color: var(--ink-3); }
 .ag-reglas-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
@@ -3555,7 +3570,7 @@ button.sv-col-head {
   .ag-reglas { right: auto; left: 0; }
 }
 @media (min-width: 900px) {
-  .ag-bar { bottom: 0; margin: 20px 0 0; padding: 14px 16px 14px 22px; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .ag-bar { bottom: 0; margin: 20px 0 0; padding: 14px 16px 14px 22px; border-radius: var(--r-panel) var(--r-panel) 0 0; }
   /* La barra se pega por encima del relleno inferior del contenedor que
      scrollea, y por esa franja se veían pasar las sugeridas por debajo
      (revisión 2026-10-13). Se tapa con el fondo de la página. */
