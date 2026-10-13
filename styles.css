@@ -415,21 +415,23 @@ body {
 }
 
 /* ── 5.5 Card genérico ───────────────────────────────────── */
+/* Panel común (sistema visual 2026-10-13): radio 12, sombra y borde
+   transparente — se conserva el ancho del borde para que los avisos que
+   lo colorean en línea (error de Norma) sigan funcionando. Título en Inter. */
 .card {
   background: var(--surface);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-panel);
   padding: 16px;
   margin-bottom: 12px;
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
 }
 .card-titulo {
-  font-family: var(--font-serif);
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 15px;
   font-weight: 600;
-  color: var(--ink-2);
+  color: var(--ink);
   margin-bottom: 12px;
-  letter-spacing: -0.1px;
 }
 
 /* ── 5.6 Input ────────────────────────────────────────────── */
@@ -3076,11 +3078,11 @@ button.sv-col-head {
 .adm-cab .page-title { margin: 0; }
 .adm-tabs {
   display: inline-flex; padding: 3px; gap: 2px;
-  background: var(--surface-2); border-radius: var(--r);
+  background: var(--surface-2); border-radius: var(--r-card);
 }
 .adm-tab {
-  border: 0; background: none; cursor: pointer; border-radius: var(--r-sm);
-  padding: 0 14px; height: 30px; font-family: inherit; font-size: 13px;
+  border: 0; background: none; cursor: pointer; border-radius: var(--r-ctl);
+  padding: 0 14px; height: 32px; font-family: inherit; font-size: 13px;
   font-weight: 600; color: var(--ink-3); white-space: nowrap;
 }
 .adm-tab.activo { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
@@ -3108,20 +3110,25 @@ button.sv-col-head {
     grid-template-rows: minmax(0, 1fr);
   }
   .adm-lista, .adm-panel { min-height: 0; overflow-y: auto; }
-  .adm-lista { padding-right: 4px; }
+  /* Lista sobre carril y panel como superficie con sombra, sin borde
+     (sistema visual 2026-10-13, como Mis visitas). */
+  .adm-lista {
+    padding: 8px; background: var(--carril); border-radius: var(--r-panel);
+    scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent;
+  }
   .adm-panel {
     display: block;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-sm);
   }
 }
 
 /* Tarjeta de persona. */
 .adm-tarjeta {
-  background: var(--surface); border: 0.5px solid var(--line);
-  padding: 10px 12px; margin-bottom: 5px; cursor: pointer;
+  background: var(--surface); border: 1px solid transparent; border-radius: var(--r-card); box-shadow: var(--shadow-sm);
+  padding: 10px 12px; margin-bottom: 6px; cursor: pointer;
 }
 .adm-t-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.adm-t-nombre { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
+.adm-t-nombre { font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
 .adm-t-act { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .adm-t-act.aviso { color: var(--amber); font-weight: 600; }
 /* Pista = la carga de quien más tiene en el equipo; la barra, la de esta
@@ -3146,12 +3153,11 @@ button.sv-col-head {
    .mv-grupo, pero clicable. */
 .adm-grupo-btn {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
-  margin: 16px 0 6px; padding: 0; border: 0; background: none; cursor: pointer;
-  font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--ink-3); text-align: left;
+  margin: 10px 0 2px; padding: 0 2px; min-height: 36px; align-items: center; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); text-align: left;
 }
 .adm-grupo-btn::before { content: '▸'; font-size: 12px; color: var(--ink-3); }
-.adm-grupo-btn span { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-4); }
+.adm-grupo-btn span { font-weight: 400; color: var(--ink-4); }
 .adm-grupo-btn[aria-expanded="true"]::before { content: '▾'; }
 
 /* Panel de la persona. */
@@ -3160,14 +3166,15 @@ button.sv-col-head {
   flex: none; width: 48px; height: 48px; border-radius: 50%;
   display: grid; place-items: center;
   background: var(--surface-2); color: var(--ink-2);
-  font-family: var(--font-serif); font-size: 18px; font-weight: 600;
+  font-family: var(--font-sans); font-size: 16px; font-weight: 600;
 }
 .adm-p-id { min-width: 0; }
-.adm-p-nombre { font-family: var(--font-serif); font-size: 22px; font-weight: 600; line-height: 1.15; text-transform: capitalize; }
+.adm-p-nombre { font-family: var(--font-sans); font-size: 20px; font-weight: 600; letter-spacing: -.3px; line-height: 1.2; text-transform: capitalize; }
 .adm-p-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px; font-size: 12px; color: var(--ink-3); }
 .adm-chip-rol {
+  /* Neutro: el azul es el estado «iniciada», no un rol. */
   padding: 2px 8px; border-radius: var(--r-full);
-  background: var(--info-bg); color: var(--info);
+  background: var(--surface-2); color: var(--ink-2);
   font-size: 11px; font-weight: 600;
 }
 .adm-p-estado { display: inline-flex; align-items: center; gap: 6px; }
@@ -3181,7 +3188,7 @@ button.sv-col-head {
 }
 
 .adm-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-.adm-cifra { padding: 10px 12px; background: var(--surface-2); border-radius: var(--r); }
+.adm-cifra { padding: 10px 12px; background: var(--surface-2); border-radius: var(--r-card); }
 .adm-cifra b { display: block; font-family: var(--font-mono); font-size: 22px; color: var(--ink); }
 .adm-cifra span { display: block; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 .adm-cifra em { display: block; font-style: normal; font-size: 12px; color: var(--ink-3); margin-top: 4px; }
@@ -3196,7 +3203,7 @@ button.sv-col-head {
 .adm-ver-visitas { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
 
 /* Acceso y permisos: rótulo arriba, control debajo, separados por línea. */
-.adm-p-ajustes { border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px 16px; }
+.adm-p-ajustes { border: 0; background: var(--paper); border-radius: var(--r-card); padding: 14px 16px 16px; }
 .adm-p-ajustes .mv-sub { margin-bottom: 4px; }
 .adm-ajuste { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .adm-ajuste-rot { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
@@ -3221,7 +3228,7 @@ button.sv-col-head {
 .adm-volver {
   display: inline-flex; align-items: center; gap: 6px;
   min-height: var(--tap); margin-bottom: 8px; padding: 0 12px;
-  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+  border: 0; border-radius: var(--r-ctl); background: var(--surface-2);
   font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer;
 }
 .adm-panel-movil .adm-panel { display: block; }
@@ -3238,21 +3245,31 @@ button.sv-col-head {
 .adm-b-dir span { color: var(--ink-3); font-size: 11px; }
 .adm-b-meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 .adm-b-acc { display: flex; gap: 6px; align-items: center; }
+/* Acciones repetidas por fila (Bandeja) en tinte, como en Mis visitas: con
+   un café lleno por fila ninguno destacaba. */
+.adm-b-acc .vc-btn, .adm-pend-acc .vc-btn { border-color: transparent; background: var(--surface-2); }
+.adm-b-acc .vc-btn-cta, .adm-pend-acc .vc-btn-cta { background: var(--brand-bg); color: var(--brand-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .adm-b-acc .vc-btn:hover, .adm-pend-acc .vc-btn:hover { background: var(--surface-3); }
+  .adm-b-acc .vc-btn-cta:hover, .adm-pend-acc .vc-btn-cta:hover { background: #F6D8C9; color: var(--brand-ink); filter: none; }
+}
 .adm-b-re { min-width: 40px; min-height: 36px; padding: 0; }
 
 /* Actividad. */
 .adm-buscar {
   width: 100%; max-width: 420px; padding: 9px 12px; margin-bottom: 10px;
-  border: 1px solid var(--line); border-radius: var(--r);
+  border: 1px solid var(--line-2); border-radius: var(--r-ctl);
   background: var(--surface); font-family: inherit; font-size: 14px;
 }
 .adm-chips { margin-bottom: 12px; }
 .adm-log-fila {
-  padding: 8px 10px 8px 12px; margin-bottom: 5px;
-  background: var(--surface-2); border-radius: var(--r);
-  border-left: 3px solid transparent;
+  position: relative; padding: 8px 10px 8px 15px; margin-bottom: 5px;
+  background: var(--surface-2); border-radius: var(--r-card);
 }
-.adm-log-fila.seg { border-left-color: var(--red); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.adm-log-fila.seg::before {
+  content: ''; position: absolute; left: 5px; top: 7px; bottom: 7px; width: 3px;
+  border-radius: 2px; background: var(--red);
+}
 .adm-log-acc { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .adm-log-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 /* En el panel de la persona: hecho a la izquierda, hora a la derecha. */
@@ -3264,7 +3281,7 @@ button.sv-col-head {
 
 /* Vacío compartido. */
 .adm-vacio { text-align: center; padding: 28px 16px; }
-.adm-vacio b { display: block; font-family: var(--font-serif); font-size: 15px; }
+.adm-vacio b { display: block; font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
 .adm-vacio span { display: block; font-size: 12px; color: var(--ink-3); margin-top: 4px; }
 
 /* Móvil: los botones de la Bandeja a 44 px, como el resto de la app. */
@@ -3279,9 +3296,10 @@ button.sv-col-head {
 .adm-nota { font-size: 12px; color: var(--ink-3); margin: 4px 0 10px; }
 
 /* Rol: control segmentado (role=radiogroup) */
-.adm-rol { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--r); }
+/* Mismo control segmentado que las pestañas (32 px; 44 en táctil). */
+.adm-rol { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--r-card); }
 .adm-rol-op {
-  min-height: var(--tap-min); padding: 0 14px; border: 0; border-radius: var(--r-sm);
+  min-height: 32px; padding: 0 14px; border: 0; border-radius: var(--r-ctl);
   background: transparent; color: var(--ink-3); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .adm-rol-op.activo { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
