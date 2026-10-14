@@ -179,8 +179,10 @@ function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaD
   var pct = total ? Math.round(progreso / total * 100) : 0;
   var bottom = (posicion && posicion.bottom != null) ? posicion.bottom : 80;
   var right = (posicion && posicion.right != null) ? posicion.right : 16;
+  // Misma franja de gestos que suma .nav-inferior: con un valor fijo el aviso
+  // quedaba sobre las pestañas en teléfonos con barra de gestos.
   return React.createElement('div', { style: {
-    position: 'fixed', bottom: bottom, right: right, zIndex: 9000,
+    position: 'fixed', bottom: 'calc(' + bottom + 'px + env(safe-area-inset-bottom))', right: right, zIndex: 9000,
     background: completado ? 'var(--verde-bg)' : 'var(--superficie)',
     border: '1px solid ' + (completado ? 'rgba(107,122,58,0.30)' : 'var(--borde-med)'),
     borderRadius: 10, padding: '8px 14px', fontSize: 11,
