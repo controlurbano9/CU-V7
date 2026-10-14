@@ -43,7 +43,18 @@ test('chequeo local: el acta 20261083449 tal como salió', () => {
     actuacion: DESC_ACTA, conclusion: CONC_ACTA,
     infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true,
   });
-  assert.deepEqual(ids(s), ['alcance', 'area', 'categoria', 'traslado']);
+  // R06 (cubierta en el antejardín sin A3) y R06b (material acopiado en el
+  // antejardín sin D13): las reglas de la fase 1 que preguntan por el texto.
+  assert.deepEqual(ids(s), ['R06', 'R06b', 'alcance', 'area', 'categoria', 'traslado']);
+});
+
+test('huellaRevision: las casillas que revisan también vencen la revisión', () => {
+  const { camposRevision } = require('../utils.js');
+  const d = { repLocativa: 'NO', area: '16', licenciaAportada: 'NO', usos: 'Residencial' };
+  const h = huellaRevision('a', 'b', '', camposRevision(d));
+  assert.equal(h, huellaRevision('a', 'b', '', camposRevision(Object.assign({}, d))));
+  assert.notEqual(h, huellaRevision('a', 'b', '', camposRevision(Object.assign({}, d, { area: '20' }))));
+  assert.notEqual(h, huellaRevision('a', 'b', '', camposRevision(Object.assign({}, d, { repLocativa: 'SI' }))));
 });
 
 test('chequeo local: prosa de otra herramienta', () => {

@@ -382,10 +382,15 @@ function _normTextoUI(s) {
 // Lo que viaja a REVISION_DESCRIPCION al guardar: la revisión solo si sigue
 // vigente (una vencida no se borra de la hoja: el cliente la compara por
 // huella y ya no vale). El backend no reescribe si la huella es la misma.
+// Revisión vigente = la huella sellada es la de los textos, los chips y las
+// casillas que leen las reglas con justificación (camposRevision, utils.js).
+function _revisionVigenteD(dObj) {
+  return revisionVigente(dObj.revision, dObj.actuacion, dObj.obsConclusion,
+    _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj));
+}
 function _revisionParaGuardar(dObj) {
   const rev = dObj.revision;
-  if (!rev || !revisionVigente(rev, dObj.actuacion, dObj.obsConclusion,
-      _infraccionSoloCatalogo(dObj.infraccion))) return undefined;
+  if (!rev || !_revisionVigenteD(dObj)) return undefined;
   const out = { modo: rev.modo, huella: rev.huella };
   if (dObj.revisionJustif) out.justificacion = dObj.revisionJustif;
   return out;
@@ -763,15 +768,16 @@ function TextAreaNV({ value, onChange, placeholder, rows, autoAlto, ...rest }) {
 // Grupo de opciones excluyentes. Antes cada opción era un <div onClick>:
 // sin foco, sin teclado y sin estado anunciado — en un control de captura de
 // datos primario. Ahora son <button role="radio"> dentro de un radiogroup.
-function _Radio({ value, onChange, opciones }) {
+function _Radio({ value, onChange, opciones, disabled }) {
   return (
-    <div className="radio-grupo" role="radiogroup">
+    <div className="radio-grupo" role="radiogroup" aria-disabled={disabled || undefined}>
       {opciones.map(o => {
         const v = typeof o === 'string' ? o : o.v;
         const l = typeof o === 'string' ? o : o.l;
         return (
           <button key={v} type="button" role="radio" aria-checked={value === v}
             className={'radio-opcion' + (value === v ? ' sel' : '')}
+            disabled={disabled}
             onClick={() => onChange(v)}>
             {l}
           </button>
@@ -2302,7 +2308,29 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (predioDirEstado === 'idle' && d.direccion && !_esRuralUbic) return;
     consultaAlAbrirRef.current = true;
     ejecutarBusquedaCatastral(null, null, false, { alAbrir: true });
+    // R11 (regla fundamental, sin justificación): suelo de protección y
+    // retiro de quebrada salen del POT en el punto, no de la mano. Del POT
+    // solo se toman esas dos casillas (el resto no se repite, como arriba).
+    const latA = d.lat, lonA = d.lon;
+    consultarPOT(latA, lonA).then(r => _aplicarRefPOT(latA, lonA, r))
+      .catch(e => console.warn('[R11] POT al abrir:', e.message));
   }, [fase, predioDirEstado]);
+
+  // Referencia del POT para «¿Suelo de protección?» y «¿Dentro de retiro de
+  // quebrada?» en el punto actual: con ella las dos casillas quedan sin
+  // edición (para cambiarlas se mueve el pin) y valen lo que dice el POT.
+  // Solo se aplica si el punto no se movió mientras se consultaba.
+  function _aplicarRefPOT(lat, lon, r) {
+    if (!r) return;
+    setD(prev => {
+      if (String(prev.lat) !== String(lat) || String(prev.lon) !== String(lon)) return prev;
+      const ref = { lat: lat, lon: lon, sueloProt: r.sueloProt || '', quebrada: r.enRetiro || '' };
+      const next = Object.assign({}, prev, { potProtQueb: ref });
+      if (ref.sueloProt && prev.sueloProt !== ref.sueloProt) next.sueloProt = ref.sueloProt;
+      if (ref.quebrada && prev.quebrada !== ref.quebrada) next.quebrada = ref.quebrada;
+      return next;
+    });
+  }
 
   // Terrenos de la dirección que cuentan para comparar con el pin: con
   // coincidencia exacta, todos (el pin desempata) o el elegido; con placas
@@ -3204,6 +3232,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       actuacion: p.desc, conclusion: p.conc,
       infraccion: _infraccionSoloCatalogo(d.infraccion), poligono: d.poligono,
       area: d.area, areaNoAplica: d.areaNoAplica, areaNoMedible: d.areaNoMedible,
+      repLocativa: d.repLocativa, licenciaAportada: d.licenciaAportada,
+      alturaPisos: d.alturaPisos, pisos: d.pisos, destActuales: d.destActuales,
+      destinaciones: d.destinaciones, usos: d.usos,
     });
   }
 
@@ -3220,7 +3251,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     setCampo('obsConclusion', p.conc);
     const hoy = new Date();
     setCampo('revision', {
-      modo, huella: huellaRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion)),
+      modo, huella: huellaRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
       fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
         '/' + hoy.getFullYear(),
       nombre: '',
@@ -3232,12 +3263,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // Botón «Revisar» + estado de la revisión. Va en la descripción y en
   // Conclusiones: la revisión cubre las dos casillas.
   function _barraRevision(conDictado) {
-    const vigente = revisionVigente(d.revision, d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion));
+    const vigente = _revisionVigenteD(d);
     const MODO_TXT = { IA: 'con IA', PROPIO: 'con el texto propio', LOCAL: 'sin IA (no respondió)' };
     const estado = vigente
       ? '✓ Revisado ' + (MODO_TXT[d.revision.modo] || '') + (d.revision.fecha ? ' · ' + d.revision.fecha : '')
       : d.revision
-        ? 'Revisión vencida: cambió el texto o la tipificación. Revisa otra vez antes de generar el acta.'
+        ? 'Revisión vencida: cambió el texto, la tipificación o una casilla que revisa. Revisa otra vez antes de generar el acta.'
         : 'Sin revisar. La revisión es necesaria para generar el acta y el informe.';
     return (
       <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -3323,7 +3354,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               {senales.map(s => <li key={s.id + s.donde} style={{ marginBottom: 4 }}>{s.mensaje}</li>)}
             </ul>
             <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 6 }}>
-              Corrígelos en el texto (o, si es el área, en «Tipificación y medidas») o explica por qué el acta sale así.
+              Corrígelos en el texto o en la casilla que corresponda, o explica por qué el acta sale así.
             </div>
             <textarea className="input-campo" rows={3} value={p.justif}
               placeholder="Justificación (mínimo 20 caracteres)"
@@ -3430,6 +3461,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (r.sueloProt)      setCampo('sueloProt', r.sueloProt);   // 'SI' | 'NO'
       if (r.amenaza)        setCampo('amenaza',   r.amenaza);     // 'SI' | 'NO'
       if (r.enRetiro)       setCampo('quebrada',  r.enRetiro);    // 'SI' | 'NO'
+      _aplicarRefPOT(lat, lon, r);   // R11: las dos casillas quedan del POT
       // Barrio sugerido — intentar hacer match con la lista y actualizar comuna
       // El barrio del POT prima sobre lo diligenciado a mano: el polígono
       // manda, el inspector pudo elegir mal en el desplegable. Solo se
@@ -3932,7 +3964,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       retiroQuebrada: d.quebrada,
       infraccion:     _infraccionSoloCatalogo(d.infraccion),
       area:           _areaTexto(d),
-      obsConclusion:  d.obsConclusion || '',
+      // A38: la frase jurídica que arma la app desde los chips (una por
+      // comportamiento, con la cita literal del art. 135) y debajo el texto
+      // revisado del inspector. Solo en el acta: en BD queda lo del inspector.
+      obsConclusion:  [
+        conclusionJuridicaActa(_infraccionSoloCatalogo(d.infraccion),
+          { valor: d.areaNoAplica ? '' : d.area, noMedible: d.areaNoMedible }),
+        d.obsConclusion || '',
+      ].filter(s => String(s).trim()).join('\n\n'),
       // Citación
       orden:          (d.orden && String(d.orden).trim()) ? d.orden : 'N/A',
       citacion:       d.noCitacion
@@ -4048,8 +4087,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // la huella sellada al cerrar «Revisar» tiene que ser la de la descripción,
     // las conclusiones y los chips actuales. Bloquea acta, regenerar e informe.
     if (d.actuacion) {
-      req(revisionVigente(d.revision, d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion)),
-        d.revision ? 'Revisar el texto otra vez (cambió la descripción, las conclusiones o la tipificación)'
+      req(_revisionVigenteD(d),
+        d.revision ? 'Revisar el texto otra vez (cambió la descripción, las conclusiones, la tipificación o una casilla que revisa)'
                    : 'Revisión del texto (botón «Revisar» en la descripción)');
     }
     sec = 'Tipificación y medidas';
@@ -4058,6 +4097,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       'Área de contravención (m², "no aplica" o "no se pudo medir")');
 
     sec = 'Tipificación y medidas';
+    // Reglas de coherencia que bloquean (fase 1, reglasBloqueoActa en
+    // utils.js): contradicciones entre casillas que no se pasan con
+    // justificación. Van como faltantes de esta sección.
+    reglasBloqueoActa({
+      infraccion: _infraccionSoloCatalogo(d.infraccion), areaNoAplica: d.areaNoAplica,
+      repLocativa: d.repLocativa, licenciaAportada: d.licenciaAportada,
+      estadoObra: d.estadoObra, suspension: d.suspension,
+      sueloProt: d.sueloProt, quebrada: d.quebrada,
+    }).forEach(function(r) { req(false, r.mensaje); });
+
     // Suspensión / citación
     if (d.estadoObra !== 'Terminada') {
       req(d.suspension, '¿Se decreta suspensión?');
@@ -4596,6 +4645,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // Insumos del centro de control: estado por sección y bloqueo compartido
   // de generadores (una sola acción de documento a la vez).
   const evaluacion = _evaluarFormulario();
+  // R11: referencia del POT para el punto actual (null si el pin se movió
+  // después de consultar, o si el POT no respondió: entonces se editan a mano).
+  const _potRefActual = d.potProtQueb && String(d.potProtQueb.lat) === String(d.lat) &&
+    String(d.potProtQueb.lon) === String(d.lon) ? d.potProtQueb : null;
   const estadosSeccion = {};
   evaluacion.seccionesConObligatorios.forEach(function (titulo) {
     const pendiente = evaluacion.faltan.some(f => f.seccion === titulo);
@@ -4987,12 +5040,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             <_Radio value={d.amenaza} onChange={v => setCampo('amenaza', v)}
               opciones={['SI', 'NO']} />
           </_Campo>
-          <_Campo label="¿Suelo de protección?">
+          {/* R11: con el POT del punto actual, estas dos casillas no se
+              editan a mano (pasarlas a NO esquivaría A1): se mueve el pin. */}
+          <_Campo label="¿Suelo de protección?"
+            hint={_potRefActual && _potRefActual.sueloProt ? 'Lo da el POT del punto: se cambia moviendo el pin.' : undefined}>
             <_Radio value={d.sueloProt} onChange={v => setCampo('sueloProt', v)}
+              disabled={!!(_potRefActual && _potRefActual.sueloProt)}
               opciones={['SI', 'NO']} />
           </_Campo>
-          <_Campo label="¿Dentro de retiro de quebrada?">
+          <_Campo label="¿Dentro de retiro de quebrada?"
+            hint={_potRefActual && _potRefActual.quebrada ? 'Lo da el POT del punto: se cambia moviendo el pin.' : undefined}>
             <_Radio value={d.quebrada} onChange={v => setCampo('quebrada', v)}
+              disabled={!!(_potRefActual && _potRefActual.quebrada)}
               opciones={['SI', 'NO']} />
           </_Campo>
         </div>

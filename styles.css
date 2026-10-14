@@ -519,6 +519,11 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   color: var(--surface);
   font-weight: 600;
 }
+/* Sin edición (p. ej. suelo de protección y retiro de quebrada cuando los da
+   el POT del punto, regla R11): la marcada se sigue leyendo, la otra se apaga. */
+.radio-opcion:disabled { cursor: default; }
+.radio-opcion:disabled:not(.sel) { opacity: .45; }
+.radio-opcion.sel:disabled { opacity: 1; background: var(--ink-2); border-color: var(--ink-2); color: var(--surface); }
 
 /* ── 5.8 Chips (filtros / multi-select) ─────────────────── */
 .chip,

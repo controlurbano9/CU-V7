@@ -2729,6 +2729,82 @@ function comportamientosParaIA(infraccion) {
   return out;
 }
 
+// ── Conclusión jurídica del acta (capa 4) ─────────────────────
+// docs/PROPUESTA_2026-10-14_coherencia-acta.md: la casilla «Conclusiones»
+// (A38) arranca con la misma frase del informe F-43, una por comportamiento
+// marcado, y debajo va el texto del inspector. Sale de los chips: para
+// cambiarla se cambian los chips, no el texto (decisión del usuario).
+// Con «No se evidencia infracción» o sin nada marcado no hay frase.
+// `area`: { valor: '16' | '', noMedible: bool }.
+function conclusionJuridicaActa(infraccion, area) {
+  var lista = comportamientosParaIA(infraccion);
+  if (!lista.length || lista[0] === 'NINGUNO') return '';
+  var frases = lista.map(function(c) {
+    return 'Los hechos descritos constituyen un comportamiento contrario a la integridad urbanística ' +
+      'según el artículo 135, ' + c.split(' — ').slice(1).join(' — ') + ', de la Ley 1801 de 2016.';
+  });
+  var a = area || {};
+  var valor = String(a.valor || '').trim();
+  if (valor) frases.push('Área en contravención: ' + valor + (/m/i.test(valor) ? '' : ' m²') + '.');
+  else if (a.noMedible) frases.push('Área en contravención: no se pudo medir.');
+  return frases.join('\n');
+}
+
+// ── Reglas de coherencia que bloquean el acta (fase 1) ────────
+// docs/PROPUESTA_2026-10-14_coherencia-acta.md § 4, con las decisiones del
+// usuario: contradicciones entre casillas que no se pasan con justificación.
+// _evaluarFormulario las convierte en faltantes, así frenan acta, regenerar
+// e informe. Las que admiten justificación van en revisarTextoLocal.
+// `e`: { infraccion, areaNoAplica, repLocativa, licenciaAportada, estadoObra,
+//        suspension, sueloProt, quebrada }
+function reglasBloqueoActa(e) {
+  e = e || {};
+  var out = [];
+  function add(id, mensaje) { out.push({ id: id, mensaje: mensaje }); }
+  var chips = String(e.infraccion || '').split(' | ')
+    .map(function(s) { return s.trim(); }).filter(Boolean);
+  var ninguno = chips.indexOf('No se evidencia infracción') >= 0;
+  var cod = {};
+  chips.forEach(function(c) {
+    var m = /^([ABCD])(\d{1,2}):/.exec(c);
+    if (m) cod[m[1] + parseInt(m[2], 10)] = true;
+  });
+  var codigos = Object.keys(cod);
+  var literalA = codigos.some(function(c) { return c.charAt(0) === 'A'; });
+  var si = function(v) { return String(v || '').trim().toUpperCase() === 'SI'; };
+
+  // R02: «No se evidencia infracción» es excluyente con cualquier otro chip.
+  if (ninguno && codigos.length) {
+    add('R02', 'Tipificación: «No se evidencia infracción» no puede ir junto con otros comportamientos.');
+  }
+  // R03: con un comportamiento marcado, el área no es «No aplica».
+  if (codigos.length && e.areaNoAplica) {
+    add('R03', 'Área en contravención: hay comportamientos marcados; pon los m² o marca «No se pudo medir».');
+  }
+  // R04: una reparación locativa no requiere licencia; no puede ser a la vez
+  // construir o intervenir (literal A).
+  if (si(e.repLocativa) && literalA) {
+    add('R04', '¿Reparación locativa? dice SI y hay un comportamiento del literal A (construir o intervenir): una de las dos sobra.');
+  }
+  // R09: A2, C9 y C10 comparan contra una licencia aportada (sin excepción).
+  var contraLicencia = ['A2', 'C9', 'C10'].filter(function(c) { return cod[c]; });
+  if (contraLicencia.length && !si(e.licenciaAportada)) {
+    add('R09', contraLicencia.join(', ') + ' compara' + (contraLicencia.length > 1 ? 'n' : '') +
+      ' contra una licencia, y no se aportó licencia: corresponde A4 o C11.');
+  }
+  // R10: no se suspende una obra terminada.
+  if (String(e.estadoObra || '').trim() === 'Terminada' && si(e.suspension)) {
+    add('R10', 'La obra está terminada y la suspensión dice SI: no se suspende una obra terminada.');
+  }
+  // R11: suelo de protección o retiro de quebrada con construcción → A1.
+  // Regla fundamental: sin justificación. O se marca A1, o se mueve el pin.
+  if ((si(e.sueloProt) || si(e.quebrada)) && literalA && !cod.A1) {
+    add('R11', 'El predio está en ' + (si(e.sueloProt) ? 'suelo de protección' : 'retiro de quebrada') +
+      ' y hay un comportamiento del literal A sin A1: marca A1, o mueve el pin si el punto está mal.');
+  }
+  return out;
+}
+
 // ── Revisión obligatoria del texto del acta ───────────────────
 // docs/PROPUESTA_2026-10-14_coherencia-acta.md § 8. Sin una revisión vigente
 // no se genera ni el acta ni el informe. «Vigente» = la huella de la
@@ -2744,11 +2820,24 @@ function _normChipsRevision(infraccion) {
     .map(function(c) { return c.trim(); }).filter(Boolean).sort().join(' | ');
 }
 
+// Las casillas que leen las reglas con justificación de revisarTextoLocal
+// (reparación locativa, área, licencia, pisos, destinaciones, usos): si
+// cambian después de revisar, la justificación ya no habla del acta que sale,
+// así que también vencen la revisión. `d` = estado del formulario.
+function camposRevision(d) {
+  d = d || {};
+  return ['repLocativa', 'area', 'areaNoAplica', 'areaNoMedible', 'licenciaAportada',
+          'alturaPisos', 'pisos', 'destActuales', 'destinaciones', 'usos']
+    .map(function(k) { return _normTextoRevision(d[k] === true ? 'si' : d[k] === false ? '' : d[k]); })
+    .join('|');
+}
+
 // FNV-1a de 32 bits en hexadecimal (8 caracteres). No es criptográfica: solo
 // distingue «el texto que se revisó» de «otro texto».
-function huellaRevision(actuacion, conclusion, infraccion) {
+// `campos` = camposRevision(d); vacío en las llamadas que no lo usan.
+function huellaRevision(actuacion, conclusion, infraccion, campos) {
   var s = _normTextoRevision(actuacion) + '\u0001' + _normTextoRevision(conclusion) +
-    '\u0001' + _normChipsRevision(infraccion);
+    '\u0001' + _normChipsRevision(infraccion) + (campos ? '\u0001' + campos : '');
   var h = 0x811c9dc5;
   for (var i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -2768,8 +2857,8 @@ function leerSelloRevision(valor) {
   return { modo: modo, huella: partes[1], fecha: partes[2] || '', nombre: partes[3] || '' };
 }
 
-function revisionVigente(rev, actuacion, conclusion, infraccion) {
-  return !!(rev && rev.huella && rev.huella === huellaRevision(actuacion, conclusion, infraccion));
+function revisionVigente(rev, actuacion, conclusion, infraccion, campos) {
+  return !!(rev && rev.huella && rev.huella === huellaRevision(actuacion, conclusion, infraccion, campos));
 }
 
 // Muletillas y fórmulas que prohíbe prompt-actuacion.txt (sin tildes, en
@@ -2892,6 +2981,74 @@ function revisarTextoLocal(e) {
       !/antejardin|retiro|fachada|cubierta|terraza|piso|nivel|interior|patio|voladizo|anden|lote|azotea|sotano|culata|muro|losa/.test(_sinTildesRev(desc))) {
     add('falta-donde', 'descripcion', 'La descripción no dice dónde está la intervención (antejardín, retiro, piso, fachada…).');
   }
+
+  // ── Reglas de la fase 1 que admiten justificación ─────────────
+  // (las que no, en reglasBloqueoActa). Ids con el número de la propuesta.
+  var tiene = function(c) { return marcados.indexOf(c) >= 0; };
+  var si = function(v) { return String(v || '').trim().toUpperCase() === 'SI'; };
+  var num = function(v) { var m = String(v || '').replace(',', '.').match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
+
+  // R05: una reparación locativa no agrega área.
+  if (si(e.repLocativa) && num(e.area) > 0 && !e.areaNoAplica) {
+    add('R05', 'area', '¿Reparación locativa? dice SI y hay ' + String(e.area).trim() + ' m² en contravención: una reparación locativa no agrega área.');
+  }
+
+  // R06 / R06b: el antejardín, según lo que diga el texto. Construir o
+  // intervenir ahí es A3; materiales o escombros, D13 (decisión del usuario).
+  // Por texto la detección se equivoca (fase 0: 5 de 7), así que aquí
+  // pregunta; con el catálogo en el acta (fase 2) pasa a bloquear.
+  var oracionesAnte = _sinTildesRev(todo).split(/[.;\n]+/).filter(function(s) {
+    return /antejardin/.test(s) && !/intencion|pretende|quiere|planea|proyecta/.test(s);
+  });
+  var construyeAnte = oracionesAnte.some(function(s) {
+    // Con límite de palabra: «antejardín» contiene «teja».
+    return /\b(cubiertas?|cubrimiento|techos?|tejas?|cerramientos?|estructuras?|losas?|placas?|muros?|columnas?|ampliaci\w*|constru\w*|voladizos?|rejas?|pergolas?|marquesinas?)\b/.test(s);
+  });
+  var acopiaAnte = oracionesAnte.some(function(s) {
+    return /\b(materiales|material|escombros?|acopi\w*|residuos?|arena|ladrillos?|cemento|agregados?)\b/.test(s);
+  });
+  // Vale también con «No se evidencia infracción»: es justo el caso del acta
+  // 20261083449 (cubierta de 16 m² en el antejardín sin comportamiento).
+  if (construyeAnte && !tiene('A3')) {
+    add('R06', 'descripcion', 'El texto describe una construcción o intervención en el antejardín y no está marcado A3. Si solo hay materiales, es D13.');
+  }
+  if (acopiaAnte && !tiene('D13') && !(construyeAnte && tiene('A3'))) {
+    add('R06b', 'descripcion', 'El texto describe materiales o escombros en el antejardín y no está marcado D13.');
+  }
+
+  // R07: lo construido en el antejardín no es licenciable: la medida es
+  // restituir, nunca tramitar la licencia.
+  if (tiene('A3')) {
+    var recomiendaLicencia = _sinTildesRev(textos[1].t + '. ' + textos[0].t).split(/[.;\n]+/).some(function(s) {
+      // «recomienda» y «recomendó»: la raíz cambia.
+      return /recomi?end|\bdeben?\b|\bdebera/.test(s) && /(tramit|solicit|obten|gestion|legaliz)\w*[^.]{0,60}licencia/.test(s);
+    });
+    if (recomiendaLicencia) {
+      add('R07', 'conclusion', 'Está marcado A3 y se recomienda tramitar licencia: el antejardín no es licenciable, la medida es restituirlo.');
+    }
+  }
+
+  // R08: A4 es «sin licencia o caducada».
+  if (si(e.licenciaAportada) && tiene('A4')) {
+    add('R08', 'area', 'Se aportó licencia y está marcado A4 (sin licencia o caducada): confirma que está caducada o que no ampara lo construido.');
+  }
+
+  // R12: más pisos o destinaciones que los aprobados, sin A2.
+  if (si(e.licenciaAportada) && !tiene('A2')) {
+    var pa = num(e.alturaPisos), pl = num(e.pisos), da = num(e.destActuales), dl = num(e.destinaciones);
+    if ((pa > pl) || (da > dl)) {
+      add('R12', 'area', 'Hay ' + (pa > pl ? pa + ' pisos y la licencia aprueba ' + pl : da + ' destinaciones y la licencia aprueba ' + dl) +
+        ', y no está marcado A2 (diferente a lo aprobado).');
+    }
+  }
+
+  // R13: uso no residencial sin C11/C12. La app no sabe si el uso está
+  // permitido en el polígono: lo decide el inspector.
+  var usosNo = (String(e.usos || '').match(/comercial|industrial|servicios/gi) || []);
+  if (usosNo.length && !tiene('C11') && !tiene('C12')) {
+    add('R13', 'area', 'Usos actuales: ' + usosNo.join(', ').toLowerCase() + '. Si el uso no está permitido en el polígono' +
+      (e.poligono ? ' ' + e.poligono : '') + ', marca C11; si lo está, dilo en la justificación.');
+  }
   return senales;
 }
 
@@ -2901,6 +3058,9 @@ var _cuUtilsExports = {
   ART135_TEXTO: ART135_TEXTO,
   citaArt135: citaArt135,
   comportamientosParaIA: comportamientosParaIA,
+  conclusionJuridicaActa: conclusionJuridicaActa,
+  reglasBloqueoActa: reglasBloqueoActa,
+  camposRevision: camposRevision,
   huellaRevision: huellaRevision,
   leerSelloRevision: leerSelloRevision,
   revisionVigente: revisionVigente,
