@@ -109,3 +109,28 @@ test('búsqueda de dirección insensible al separador', () => {
   assert.equal(claveBusquedaDireccion('#'), '');
   assert.equal(claveBusquedaDireccion('Vda. La China'), 'VDALACHINA');
 });
+
+// ── Paridad con el backend (2026-10-14) ──────────────────────────
+// normalizarDireccionBD (apps_script_unificado.js) es una COPIA a mano de
+// normalizarDireccion: si una cambia y la otra no, esta prueba falla. Se
+// salta en la copia sin backend (CI de GitHub).
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  const BACKEND = path.join(__dirname, '..', '..', 'apps_script_unificado.js');
+  const hay = fs.existsSync(BACKEND);
+  test('backend: normalizarDireccionBD da lo mismo que normalizarDireccion', { skip: hay ? false : 'sin backend' }, () => {
+    const src = fs.readFileSync(BACKEND, 'utf8');
+    const vias = /var _VIAS_DIR_BD = \[[\s\S]*?\n\];/.exec(src);
+    const fn = /function normalizarDireccionBD\([^)]*\) \{[\s\S]*?\n\}/.exec(src);
+    assert.ok(vias && fn, 'no se encontró normalizarDireccionBD');
+    const ctx = vm.createContext({});
+    vm.runInContext(vias[0] + '\n' + fn[0], ctx);
+    const bd = vm.runInContext('normalizarDireccionBD', ctx);
+    const casos = ['CALLE 50 32 10', 'cl 50 # 32-10', 'CRA 52 No. 64-134', 'KR 48 N° 60 12', 'Diagonal 55 43 90',
+      'TV 50A # 38-21 INT 201', 'AVENIDA 38A N 42EB-43', 'CL 47 (NO EXISTE)', 'CR 20E 43C-44', 'CL 50 32 BIS 10',
+      'VDA LA CUCHILLA SECTOR 3', '', null, '  calle   44   51 30  ', 'CQ 74 # 30-11'];
+    for (const c of casos) assert.equal(bd(c), normalizarDireccion(c), 'difieren con: ' + JSON.stringify(c));
+  });
+}
