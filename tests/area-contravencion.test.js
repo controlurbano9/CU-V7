@@ -114,7 +114,9 @@ test('los tres consumidores usan _areaTexto, ninguno lee d.area a secas', () => 
     assert.match(src, re, 'consumidor sin _areaTexto: ' + re);
   }
   // Y que no haya quedado ningún `area: d.area` suelto hacia un entregable.
-  assert.doesNotMatch(src, /areas?:\s+d\.area\b/);
+  // Excepción: el chequeo local (revisarTextoLocal) recibe el área cruda CON
+  // sus marcas al lado (areaNoAplica/areaNoMedible) y decide él; no es un entregable.
+  assert.doesNotMatch(src, /areas?:\s+d\.area\b(?!,\s*areaNoAplica:)/);
 });
 
 test('el área cae en la columna Y del payload posicional', () => {
