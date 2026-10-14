@@ -1114,6 +1114,9 @@ async function guardarVisita(payload) {
   // Fuera de `valores` como ultimaModConocida: el backend la escribe por
   // nombre. Sin el campo (autoguardado de la carpeta), no se toca la columna.
   if (payload.ubicacionConfirmada !== undefined) body.ubicacionConfirmada = payload.ubicacionConfirmada;
+  // Revisión del texto ({ modo, huella, justificacion? }): el backend la sella
+  // por nombre en REVISION_DESCRIPCION. Sin el campo no toca la columna.
+  if (payload.revisionTexto) body.revisionTexto = payload.revisionTexto;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
@@ -1136,8 +1139,14 @@ async function guardarVisita(payload) {
 // `perfil` elige el prompt del backend: 'actuacion' para la descripción de la
 // situación encontrada (desarma prosa inflada y acorta). Sin perfil queda el
 // prompt genérico, que es el que necesita el JSON del informe F-GGO-43.
-async function mejorarTexto(texto, perfil) {
-  const d = await gasPost({ accion: 'mejorarTexto', texto, perfil });
+// `comportamientos` (solo perfil 'actuacion'): los chips del art. 135 en la
+// forma de comportamientosParaIA() (utils.js). Con ellos la IA conserva una
+// calificación del texto solo si coincide con lo marcado. Backend viejo lo
+// ignora.
+async function mejorarTexto(texto, perfil, comportamientos) {
+  const body = { accion: 'mejorarTexto', texto, perfil };
+  if (Array.isArray(comportamientos)) body.comportamientos = comportamientos;
+  const d = await gasPost(body);
   return d.texto || '';
 }
 

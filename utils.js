@@ -2659,8 +2659,253 @@ function seccionesFicha(f, rol) {
   return secciones;
 }
 
+// ── Artículo 135 de la Ley 1801 de 2016: cita literal ─────────
+// Encabezados de literal y numerales (numeración absoluta de la ley),
+// tomados del Anexo A del AGENTE EXPERTO URBANÍSTICO, que los cotejó contra
+// el PDF oficial. Copia de ART135_LITERALES / ART135_TEXTO del generador del
+// informe (informe/index.html): la fase 2 de
+// docs/PROPUESTA_2026-10-14_coherencia-acta.md deja una sola, esta.
+var ART135_LITERALES = {
+  A: 'Parcelar, urbanizar, demoler, intervenir o construir',
+  B: 'Actuaciones en los inmuebles declarados de conservación e interés cultural, histórico, urbanístico, paisajístico y arquitectónico',
+  C: 'Usar o destinar un inmueble a',
+  D: 'Incumplir cualquiera de las siguientes obligaciones'
+};
+var ART135_TEXTO = {
+  1: 'En áreas protegidas o afectadas por el plan vial o de infraestructura de servicios públicos domiciliarios, y las destinadas a equipamientos públicos',
+  2: 'Con desconocimiento a lo preceptuado en la licencia',
+  3: 'En bienes de uso público y terrenos afectados al espacio público',
+  4: 'En terrenos aptos para estas actuaciones, sin licencia o cuando esta hubiere caducado',
+  5: 'Demoler sin previa autorización o licencia',
+  6: 'Intervenir o modificar sin la licencia',
+  7: 'Incumplir las obligaciones para su adecuada conservación',
+  8: 'Realizar acciones que puedan generar impactos negativos en el bien de interés cultural',
+  9: 'Uso diferente al señalado en la licencia de construcción',
+  10: 'Ubicación diferente a la señalada en la licencia de construcción',
+  11: 'Contravenir los usos específicos del suelo',
+  12: 'Facilitar, en cualquier clase de inmueble, el desarrollo de usos o destinaciones del suelo no autorizados en licencia de construcción o con desconocimiento de las normas urbanísticas sobre usos específicos',
+  13: 'Destinar un lugar al interior de la construcción para guardar materiales, maquinaria, escombros o residuos y no ocupar con ellos, ni siquiera de manera temporal, el andén, las vías o espacios públicos circundantes',
+  14: 'Proveer de unidades sanitarias provisionales para el personal que labora y visita la obra y adoptar las medidas requeridas para mantenerlas aseadas, salvo que exista una solución viable, cómoda e higiénica en el área',
+  15: 'Instalar protecciones o elementos especiales en los frentes y costados de la obra y señalización, semáforos o luces nocturnas para la seguridad de quienes se movilizan por el lugar y evitar accidentes o incomodidades',
+  16: 'Limpiar las llantas de los vehículos que salen de la obra para evitar que se arroje barro o cemento en el espacio público',
+  17: 'Limpiar el material, cemento y los residuos de la obra, de manera inmediata, cuando caigan en el espacio público',
+  18: 'Retirar los andamios, barreras, escombros y residuos de cualquier clase una vez terminada la obra, cuando esta se suspenda por más de dos (2) meses, o cuando sea necesario por seguridad de la misma',
+  19: 'Exigir a quienes trabajan y visitan la obra, el uso de cascos e implementos de seguridad industrial y contar con el equipo necesario para prevenir y controlar incendios o atender emergencias de acuerdo con esta ley',
+  20: 'Tomar las medidas necesarias para evitar la emisión de partículas en suspensión, provenientes de materiales de construcción, demolición o desecho, de conformidad con las leyes vigentes',
+  21: 'Aislar completamente las obras de construcción que se desarrollen aledañas a canales o fuentes de agua, para evitar la contaminación del agua con materiales e implementar las acciones de prevención y mitigación que disponga la autoridad ambiental respectiva',
+  22: 'Reparar los daños o averías que en razón de la obra se realicen en el andén, las vías, espacios y redes de servicios públicos',
+  23: 'Reparar los daños, averías o perjuicios causados a bienes colindantes o cercanos',
+  24: 'Demoler, construir o reparar obras en el horario comprendido entre las 6 de la tarde y las 8 de la mañana, como también los días festivos, en zonas residenciales'
+};
+
+// 'A', 3 → 'literal A «Parcelar, …», numeral 3 «En bienes de uso público …»'.
+// '' si el literal o el numeral no existen.
+function citaArt135(literal, numeral) {
+  var enc = ART135_LITERALES[literal], n = parseInt(numeral, 10), txt = ART135_TEXTO[n];
+  if (!enc || !txt) return '';
+  return 'literal ' + literal + ' «' + enc + '», numeral ' + n + ' «' + txt + '»';
+}
+
+// Los chips de «Tipificación y medidas» (TIPO DE INFRACCION, separados por
+// ' | ', p. ej. 'A3: Bienes uso público (Antejardín) | D13: Materiales en
+// vía') en la forma que necesita «Mejorar con IA» para comparar la
+// calificación del texto contra lo marcado:
+//   []                → no hay nada marcado todavía
+//   ['NINGUNO']       → se marcó «No se evidencia infracción»
+//   ['A3 — literal A «…», numeral 3 «…»', …] → un renglón por comportamiento
+// Lo que no es un chip con código (textos de V2) se ignora: la IA solo
+// compara contra lo que el inspector ve marcado en pantalla.
+function comportamientosParaIA(infraccion) {
+  var chips = String(infraccion || '').split(' | ')
+    .map(function(s) { return s.trim(); }).filter(Boolean);
+  if (chips.indexOf('No se evidencia infracción') >= 0) return ['NINGUNO'];
+  var out = [];
+  chips.forEach(function(c) {
+    var m = /^([ABCD])(\d{1,2}):/.exec(c);
+    if (!m) return;
+    var cita = citaArt135(m[1], m[2]);
+    if (cita) out.push(m[1] + parseInt(m[2], 10) + ' — ' + cita);
+  });
+  return out;
+}
+
+// ── Revisión obligatoria del texto del acta ───────────────────
+// docs/PROPUESTA_2026-10-14_coherencia-acta.md § 8. Sin una revisión vigente
+// no se genera ni el acta ni el informe. «Vigente» = la huella de la
+// descripción, las conclusiones y los chips es la misma que se selló al
+// cerrar la revisión: cualquier cambio de contenido la vence (decisión del
+// usuario). Espacios y saltos de línea no cuentan como cambio.
+
+function _normTextoRevision(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+}
+function _normChipsRevision(infraccion) {
+  return String(infraccion || '').split(' | ')
+    .map(function(c) { return c.trim(); }).filter(Boolean).sort().join(' | ');
+}
+
+// FNV-1a de 32 bits en hexadecimal (8 caracteres). No es criptográfica: solo
+// distingue «el texto que se revisó» de «otro texto».
+function huellaRevision(actuacion, conclusion, infraccion) {
+  var s = _normTextoRevision(actuacion) + '\u0001' + _normTextoRevision(conclusion) +
+    '\u0001' + _normChipsRevision(infraccion);
+  var h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
+// Columna REVISION_DESCRIPCION: 'IA · 1a2b3c4d · 14/10/2026 · NOMBRE'.
+// MODO = IA (usó la versión de la IA) | PROPIO (conservó su texto) | LOCAL
+// (la IA no respondió y se cerró solo con el chequeo local).
+var MODOS_REVISION = ['IA', 'PROPIO', 'LOCAL'];
+function leerSelloRevision(valor) {
+  var partes = String(valor || '').split('·').map(function(p) { return p.trim(); });
+  var modo = (partes[0] || '').toUpperCase();
+  if (MODOS_REVISION.indexOf(modo) < 0 || !/^[0-9a-f]{8}$/.test(partes[1] || '')) return null;
+  return { modo: modo, huella: partes[1], fecha: partes[2] || '', nombre: partes[3] || '' };
+}
+
+function revisionVigente(rev, actuacion, conclusion, infraccion) {
+  return !!(rev && rev.huella && rev.huella === huellaRevision(actuacion, conclusion, infraccion));
+}
+
+// Muletillas y fórmulas que prohíbe prompt-actuacion.txt (sin tildes, en
+// minúscula). Si cambia el prompt, cambiar aquí: el chequeo local y la IA
+// tienen que medir con la misma vara.
+var MULETILLAS_REVISION = [
+  'cabe destacar', 'es importante senalar', 'en el marco de', 'por otro lado',
+  'en conclusion', 'en sintesis', 'asimismo', 'no obstante', 'en este orden de ideas',
+  'se puede evidenciar', 'se procede a', 'es fundamental', 'el suscrito',
+  'de conformidad con lo establecido', 'en atencion a lo anteriormente', 'la precitada',
+  'se permite informar', 'toda vez que', 'con el fin de dar cumplimiento',
+  'objeto de la presente', 'una vez realizada la inspeccion ocular', 'respectivamente'
+];
+var _NUMERALES_LITERAL = { A: [1, 4], B: [5, 8], C: [9, 12], D: [13, 24] };
+
+function _sinTildesRev(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Comportamientos del art. 135 que cita un texto: por código («A3», «D13»)
+// y por cita completa («literal A … numeral 3»). Se quita antes el polígono
+// POT, que trae códigos con la misma forma («ZDI-1-C5»).
+function _comportamientosCitados(texto, poligono) {
+  var t = String(texto || '');
+  if (poligono && String(poligono).trim()) t = t.split(String(poligono).trim()).join(' ');
+  var out = {};
+  function valido(lit, num) {
+    var r = _NUMERALES_LITERAL[lit];
+    return r && num >= r[0] && num <= r[1];
+  }
+  // Sin lookbehind a propósito: Safari anterior a 16.4 no lo entiende y un
+  // error de sintaxis aquí tumbaría utils.js entero.
+  var rxCod = /(^|[^-\w])([ABCD])\.?\s?(\d{1,2})\b/g, mc;
+  while ((mc = rxCod.exec(t))) {
+    if (valido(mc[2], parseInt(mc[3], 10))) out[mc[2] + parseInt(mc[3], 10)] = true;
+  }
+  var rx = /literal\s+([abcd])\b[^.;]{0,400}?numeral\s+(\d{1,2})\b/gi, m;
+  var tn = _sinTildesRev(t);
+  while ((m = rx.exec(tn))) {
+    var lit = m[1].toUpperCase(), num = parseInt(m[2], 10);
+    if (valido(lit, num)) out[lit + num] = true;
+  }
+  return Object.keys(out);
+}
+
+// Chequeo local de la revisión (sin IA, sin red). Devuelve las señales que,
+// si quedan al cerrar la revisión, piden una justificación:
+//   [{ id, donde: 'descripcion' | 'conclusion' | 'area', mensaje }]
+// `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
+function revisarTextoLocal(e) {
+  e = e || {};
+  var senales = [];
+  function add(id, donde, mensaje) { senales.push({ id: id, donde: donde, mensaje: mensaje }); }
+  var lista = comportamientosParaIA(e.infraccion);
+  var ninguno = lista[0] === 'NINGUNO';
+  var marcados = ninguno ? [] : lista.map(function(c) { return c.split(' — ')[0]; });
+  // `nombre` encabeza el mensaje («En la descripción: …») para no tener que
+  // concordar el verbo con cada casilla.
+  var textos = [
+    { donde: 'descripcion', nombre: 'En la descripción:', t: String(e.actuacion || '') },
+    { donde: 'conclusion', nombre: 'En las conclusiones:', t: String(e.conclusion || '') }
+  ];
+
+  // Texto traído de otra herramienta (solo la descripción: es la larga).
+  var desc = textos[0].t.trim();
+  if (desc) {
+    var dn = _sinTildesRev(desc);
+    var mul = MULETILLAS_REVISION.filter(function(p) { return dn.indexOf(p) >= 0; });
+    var oraciones = desc.split(/[.!?]+\s+/).filter(function(s) { return s.trim().length > 3; });
+    var ppo = desc.split(/\s+/).length / Math.max(1, oraciones.length);
+    if (mul.length >= 3 || ppo > 35 || desc.length > 2000) {
+      add('externo', 'descripcion', 'La descripción parece redactada por otra herramienta (' +
+        (mul.length >= 3 ? mul.length + ' fórmulas de oficina' :
+         ppo > 35 ? Math.round(ppo) + ' palabras por oración' : desc.length + ' caracteres') + ').');
+    }
+  }
+
+  textos.forEach(function(x) {
+    if (!x.t.trim()) return;
+    var n = _sinTildesRev(x.t);
+    var citados = _comportamientosCitados(x.t, e.poligono);
+    if (ninguno) {
+      if (citados.length || /\b(configura|constituye)n?\b[^.]{0,80}\b(comportamiento|infraccion|contravencion)/.test(n)) {
+        add('califica-sin-chip', x.donde, x.nombre + ' se califica un comportamiento, pero se marcó «No se evidencia infracción».');
+      }
+    } else if (marcados.length) {
+      var sobran = citados.filter(function(c) { return marcados.indexOf(c) < 0; });
+      if (sobran.length) {
+        add('cita-no-marcada', x.donde, x.nombre + ' se cita ' + sobran.join(', ') + ', que no está marcado en la tipificación.');
+      }
+      if (/no se evidencia (ninguna )?(infraccion|comportamiento)|no presenta(n)? (ninguna )?infraccion/.test(n)) {
+        add('niega-con-chips', x.donde, x.nombre + ' dice que no hay infracción, pero hay comportamientos marcados.');
+      }
+    }
+    if (/afectacion publica|califica como/.test(n)) {
+      add('categoria', x.donde, x.nombre + ' hay una calificación que no es de la ley («califica como», «afectación pública»).');
+    }
+    if (/\btraslad(ar|ado|ada|o|a)\b|dependencias? correspondientes?|autoridad(es)? competentes?/.test(n)) {
+      add('traslado', x.donde, x.nombre + ' se traslada el caso a otra dependencia; la inspección es la que lo conoce.');
+    }
+    if (/\binfractor(a|es)?\b/.test(n)) {
+      add('infractor', x.donde, x.nombre + ' dice «infractor»: es el propietario o el responsable.');
+    }
+    if (/exhaustiv|total ausencia|en su totalidad/.test(n)) {
+      add('alcance', x.donde, x.nombre + ' hay un alcance absoluto («exhaustivo», «total ausencia»): decir qué se recorrió.');
+    }
+  });
+
+  // Área: el texto trae m² y la casilla está vacía o en «No aplica».
+  var todo = textos[0].t + ' ' + textos[1].t;
+  var mArea = /(\d+(?:[.,]\d+)?)\s*(m2|m²|mts2|metros cuadrados)/i.exec(todo);
+  var areaVacia = !String(e.area || '').trim() && !e.areaNoMedible;
+  if (mArea && areaVacia) {
+    add('area', 'area', 'El texto menciona ' + mArea[1] + ' ' + mArea[2] + ' y el área en contravención ' +
+      (e.areaNoAplica ? 'dice «No aplica»' : 'está vacía') + '.');
+  }
+
+  // Comportamiento de construcción marcado y la descripción no dice dónde.
+  if (desc && marcados.some(function(c) { return c.charAt(0) === 'A'; }) &&
+      !/antejardin|retiro|fachada|cubierta|terraza|piso|nivel|interior|patio|voladizo|anden|lote|azotea|sotano|culata|muro|losa/.test(_sinTildesRev(desc))) {
+    add('falta-donde', 'descripcion', 'La descripción no dice dónde está la intervención (antejardín, retiro, piso, fachada…).');
+  }
+  return senales;
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
+  ART135_LITERALES: ART135_LITERALES,
+  ART135_TEXTO: ART135_TEXTO,
+  citaArt135: citaArt135,
+  comportamientosParaIA: comportamientosParaIA,
+  huellaRevision: huellaRevision,
+  leerSelloRevision: leerSelloRevision,
+  revisionVigente: revisionVigente,
+  revisarTextoLocal: revisarTextoLocal,
+  MULETILLAS_REVISION: MULETILLAS_REVISION,
   AGENDA_OFICINA: AGENDA_OFICINA,
   nivelPrioridad: nivelPrioridad,
   motivoPrioridad: motivoPrioridad,
@@ -2818,6 +3063,8 @@ function clonarParaSeguimiento(filaBase, nVisita) {
    'LINK_ORDEN_POLICIA', 'ULTIMA_MODIFICACION', 'ULTIMA_MODIFICACION_POR',
    // La confirmación de ubicación es de la visita anterior: la nueva la vuelve a pedir.
    'UBICACION_CONFIRMADA',
+   // La revisión del texto es de los textos de la visita anterior.
+   'REVISION_DESCRIPCION', 'JUSTIFICACIONES_COHERENCIA',
   ].forEach(function (k) { d[k] = ''; });
   return d;
 }

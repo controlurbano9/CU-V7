@@ -374,6 +374,23 @@ function _origenConfirmadoParaGuardar(dObj) {
   return ubicacionConfirmadaVigente(dObj.ubicConf, dObj) ? dObj.ubicConf.origen : '';
 }
 
+// Mismo criterio que la huella (utils.js): espacios y saltos no cuentan.
+function _normTextoUI(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+}
+
+// Lo que viaja a REVISION_DESCRIPCION al guardar: la revisión solo si sigue
+// vigente (una vencida no se borra de la hoja: el cliente la compara por
+// huella y ya no vale). El backend no reescribe si la huella es la misma.
+function _revisionParaGuardar(dObj) {
+  const rev = dObj.revision;
+  if (!rev || !revisionVigente(rev, dObj.actuacion, dObj.obsConclusion,
+      _infraccionSoloCatalogo(dObj.infraccion))) return undefined;
+  const out = { modo: rev.modo, huella: rev.huella };
+  if (dObj.revisionJustif) out.justificacion = dObj.revisionJustif;
+  return out;
+}
+
 // ── Estado inicial (en blanco o prefill) ───────────────────────
 function _estadoInicial(datosIniciales) {
   const d = datosIniciales || {};
@@ -517,6 +534,11 @@ function _estadoInicial(datosIniciales) {
     direccion: _est.direccion, catastral: _est.catastral,
   } : null;
   _est.ubicPreferirPunto = null;
+  // Revisión obligatoria del texto (REVISION_DESCRIPCION): { modo, huella,
+  // fecha, nombre } o null. Vale mientras la huella de descripción,
+  // conclusiones y chips no cambie (revisionVigente, utils.js).
+  _est.revision = leerSelloRevision(d['REVISION_DESCRIPCION']);
+  _est.revisionJustif = '';
   return _est;
 }
 // El backend siempre escribe `.../drive/folders/<id>`, pero en BD hay links de
@@ -2190,7 +2212,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   const geoTimeoutRef = React.useRef(null);
   const mejorPosGeoRef = React.useRef(null); // {lat, lon, acc} de la última lectura del watch activo
   const [busyMejora, setBusyMe] = React.useState(false);
-  const [sugerenciaIA, setSugerenciaIA] = React.useState(''); // texto mejorado pendiente de aceptar
+  // Panel de «Revisar» abierto: { ia, origDesc, origConc, desc, conc, justif }
+  // o null. `ia` = la IA respondió (si no, la revisión se cierra en modo LOCAL).
+  const [revisionPanel, setRevisionPanel] = React.useState(null);
   const [dictando, setDictando] = React.useState(false);    // grabación por voz activa
   const [busyPOT, setBusyPOT]   = React.useState(false);
   const [busyCat, setBusyCat]   = React.useState(false);
@@ -2591,7 +2615,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur) });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -3125,39 +3149,201 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     setBusyGeo(false);
   }
 
-  // ── Mejorar texto con IA (genera sugerencia, no reemplaza directo) ──
-  // Anti-martilleo: además de busy durante la petición, mantenemos 3s de
-  // cooldown después para no saturar Apps Script + Claude/Deepseek con
-  // doble-click accidentales (rate-limit 429).
-  async function ejecutarMejora() {
+  // ── Revisión obligatoria del texto (antes «Mejorar texto») ──────────
+  // docs/PROPUESTA_2026-10-14_coherencia-acta.md § 8. Revisar = propuesta de
+  // la IA para la descripción y las conclusiones (con los chips marcados) +
+  // chequeo local (revisarTextoLocal). Al cerrar se sella la huella de los
+  // textos y los chips; sin ese sello vigente no se genera acta ni informe
+  // (_evaluarFormulario). Si quedan señales del chequeo local, cerrar pide
+  // una justificación, que va a JUSTIFICACIONES_COHERENCIA y LOG_AUDITORIA.
+  // Anti-martilleo: 3 s de enfriamiento tras la petición (rate-limit 429).
+  async function ejecutarRevision() {
     if (busyMejora) return;  // doble-click defensivo
     if (!d.actuacion) {
-      await appAlert('Escribe algo en la descripción primero.', { tono: 'aviso', titulo: 'Nada que mejorar' });
+      await appAlert('Escribe algo en la descripción primero.', { tono: 'aviso', titulo: 'Nada que revisar' });
       return;
     }
-    // IA requiere conexión obligatoria (la respuesta es el texto mejorado
-    // que el inspector ve para aceptar/rechazar — no tiene sentido encolarlo).
+    // Sin señal no se abre: generar el acta también necesita conexión, y
+    // cerrar «LOCAL» sin red sería una forma de saltarse la IA.
     if (!navigator.onLine) {
-      await appAlert('Sin conexión: la mejora con IA requiere internet. Guarda la descripción tal cual y mejórala cuando vuelva la señal.',
+      await appAlert('Sin conexión: la revisión necesita internet. Guarda la descripción tal cual y revísala cuando vuelva la señal.',
         { tono: 'aviso', titulo: 'Sin conexión' });
       return;
     }
     setBusyMe(true);
+    const chips = comportamientosParaIA(_infraccionSoloCatalogo(d.infraccion));
+    const origDesc = d.actuacion || '';
+    const origConc = d.obsConclusion || '';
+    let ia = true, desc = origDesc, conc = origConc;
     try {
-      const t = await mejorarTexto(d.actuacion, 'actuacion');
-      if (t) setSugerenciaIA(t);
+      const [tD, tC] = await Promise.all([
+        mejorarTexto(origDesc, 'actuacion', chips),
+        origConc.trim() ? mejorarTexto(origConc, 'conclusionActa', chips) : Promise.resolve(''),
+      ]);
+      if (!tD || (origConc.trim() && !tC)) throw new Error('respuesta vacía');
+      desc = tD;
+      if (origConc.trim()) conc = tC;
     } catch (e) {
-      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Mejora con IA' });
+      // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
+      // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
+      console.warn('[revisión] la IA no respondió:', e.message);
+      ia = false;
     }
-    // Cooldown 3s antes de liberar el botón
+    setRevisionPanel({ ia, origDesc, origConc, iaDesc: desc, iaConc: conc, desc, conc, justif: '' });
+    // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
+    setTimeout(() => {
+      const el = document.getElementById('nv-revision');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
     setTimeout(() => setBusyMe(false), 3000);
   }
-  function aceptarSugerenciaIA() {
-    setCampo('actuacion', sugerenciaIA);
-    setSugerenciaIA('');
+
+  // Señales del chequeo local sobre lo que hay en el panel.
+  function _senalesPanel(p) {
+    return revisarTextoLocal({
+      actuacion: p.desc, conclusion: p.conc,
+      infraccion: _infraccionSoloCatalogo(d.infraccion), poligono: d.poligono,
+      area: d.area, areaNoAplica: d.areaNoAplica, areaNoMedible: d.areaNoMedible,
+    });
   }
-  function descartarSugerenciaIA() {
-    setSugerenciaIA('');
+
+  function cerrarRevision() {
+    const p = revisionPanel;
+    if (!p) return;
+    const senales = _senalesPanel(p);
+    const justif = (p.justif || '').trim();
+    if (senales.length && justif.length < 20) return;   // el botón ya está deshabilitado
+    const propio = _normTextoUI(p.desc) === _normTextoUI(p.origDesc) &&
+                   _normTextoUI(p.conc) === _normTextoUI(p.origConc);
+    const modo = !p.ia ? 'LOCAL' : (propio ? 'PROPIO' : 'IA');
+    setCampo('actuacion', p.desc);
+    setCampo('obsConclusion', p.conc);
+    const hoy = new Date();
+    setCampo('revision', {
+      modo, huella: huellaRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion)),
+      fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
+        '/' + hoy.getFullYear(),
+      nombre: '',
+    });
+    setCampo('revisionJustif', senales.length ? justif : '');
+    setRevisionPanel(null);
+  }
+
+  // Botón «Revisar» + estado de la revisión. Va en la descripción y en
+  // Conclusiones: la revisión cubre las dos casillas.
+  function _barraRevision(conDictado) {
+    const vigente = revisionVigente(d.revision, d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion));
+    const MODO_TXT = { IA: 'con IA', PROPIO: 'con el texto propio', LOCAL: 'sin IA (no respondió)' };
+    const estado = vigente
+      ? '✓ Revisado ' + (MODO_TXT[d.revision.modo] || '') + (d.revision.fecha ? ' · ' + d.revision.fecha : '')
+      : d.revision
+        ? 'Revisión vencida: cambió el texto o la tipificación. Revisa otra vez antes de generar el acta.'
+        : 'Sin revisar. La revisión es necesaria para generar el acta y el informe.';
+    return (
+      <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap', alignItems: 'center' }}>
+        <_BtnAccion busy={busyMejora} onClick={ejecutarRevision}>
+          {busyMejora ? 'Revisando...' : 'Revisar'}
+        </_BtnAccion>
+        {conDictado && (
+          <_BtnAccion onClick={toggleDictado} aria-pressed={dictando}>
+            {dictando ? 'Detener dictado' : 'Dictar'}
+          </_BtnAccion>
+        )}
+        {conDictado && dictando && (
+          <span style={{
+            fontSize: 12, color: 'var(--rojo)', fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', background: 'var(--rojo)',
+              display: 'inline-block', animation: 'pulsar 1s infinite',
+            }} />
+            Grabando...
+          </span>
+        )}
+        <span role="status" style={{ fontSize: 12, color: vigente ? 'var(--verde)' : 'var(--texto-suave)', flexBasis: '100%' }}>
+          {estado}
+        </span>
+      </div>
+    );
+  }
+
+  // Panel de la revisión abierta: propuesta editable de cada casilla, señales
+  // del chequeo local y, si quedan señales, la justificación.
+  function _panelRevision() {
+    const p = revisionPanel;
+    if (!p) return null;
+    const senales = _senalesPanel(p);
+    const justifOk = !senales.length || (p.justif || '').trim().length >= 20;
+    const set = (k, v) => setRevisionPanel(prev => prev ? Object.assign({}, prev, { [k]: v }) : prev);
+    const hayConc = !!(p.origConc.trim() || p.conc.trim());
+    function bloque(titulo, k, orig, ia) {
+      const esOrig = _normTextoUI(p[k]) === _normTextoUI(orig);
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{titulo}</div>
+            <span style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
+              {esOrig ? 'Tu texto' : 'Propuesta de la IA (puedes editarla)'}
+            </span>
+            {!esOrig && (
+              <button type="button" className="btn-neutro" style={{ fontSize: 12, padding: '6px 12px', marginLeft: 'auto' }}
+                onClick={() => set(k, orig)}>Volver a mi texto</button>
+            )}
+            {esOrig && p.ia && _normTextoUI(ia) !== _normTextoUI(orig) && (
+              <button type="button" className="btn-neutro" style={{ fontSize: 12, padding: '6px 12px', marginLeft: 'auto' }}
+                onClick={() => set(k, ia)}>Usar la propuesta de la IA</button>
+            )}
+          </div>
+          <textarea className="input-campo" rows={8} value={p[k]}
+            onChange={e => set(k, e.target.value)}
+            style={{ background: 'var(--superficie)' }} />
+        </div>
+      );
+    }
+    return (
+      <div id="nv-revision" style={{
+        gridColumn: '1 / -1', marginTop: 12, padding: 16, scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
+        background: 'var(--brand-bg)', borderRadius: 'var(--r-card, 12px)',
+      }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>Revisión del texto</div>
+        <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 12 }}>
+          {p.ia
+            ? 'La IA propone una versión con los comportamientos marcados. Puedes editarla o volver a tu texto.'
+            : 'La IA no respondió: la revisión se cierra solo con el chequeo de la app.'}
+        </div>
+        {bloque('Situación encontrada', 'desc', p.origDesc, p.iaDesc)}
+        {hayConc && bloque('Conclusiones', 'conc', p.origConc, p.iaConc)}
+        {senales.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--rojo)' }}>
+              Queda{senales.length > 1 ? 'n' : ''} {senales.length} punto{senales.length > 1 ? 's' : ''} por revisar
+            </div>
+            <ul style={{ margin: '0 0 8px 18px', padding: 0, fontSize: 13 }}>
+              {senales.map(s => <li key={s.id + s.donde} style={{ marginBottom: 4 }}>{s.mensaje}</li>)}
+            </ul>
+            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 6 }}>
+              Corrígelos en el texto (o, si es el área, en «Tipificación y medidas») o explica por qué el acta sale así.
+            </div>
+            <textarea className="input-campo" rows={3} value={p.justif}
+              placeholder="Justificación (mínimo 20 caracteres)"
+              onChange={e => set('justif', e.target.value)}
+              style={{ background: 'var(--superficie)' }} />
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={cerrarRevision} disabled={!justifOk}
+            className="btn-principal secundario" style={{ margin: 0, fontSize: 13, padding: '8px 18px' }}>
+            Cerrar revisión
+          </button>
+          <button type="button" onClick={() => setRevisionPanel(null)} className="btn-neutro"
+            style={{ fontSize: 13, padding: '9px 16px' }}>Cancelar</button>
+          <span style={{ fontSize: 11, color: 'var(--texto-suave)', marginLeft: 'auto' }}>
+            Al cerrar, los textos de arriba reemplazan los del formulario.
+          </span>
+        </div>
+      </div>
+    );
   }
 
   // ── Dictado por voz (Web Speech API) ───────────────────────
@@ -3638,7 +3824,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal) });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
@@ -3858,6 +4044,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     sec = 'Descripción de la situación encontrada';
     // Descripción / conclusiones
     req(d.actuacion, 'Descripción de la situación encontrada');
+    // Revisión obligatoria (docs/PROPUESTA_2026-10-14_coherencia-acta.md § 8):
+    // la huella sellada al cerrar «Revisar» tiene que ser la de la descripción,
+    // las conclusiones y los chips actuales. Bloquea acta, regenerar e informe.
+    if (d.actuacion) {
+      req(revisionVigente(d.revision, d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion)),
+        d.revision ? 'Revisar el texto otra vez (cambió la descripción, las conclusiones o la tipificación)'
+                   : 'Revisión del texto (botón «Revisar» en la descripción)');
+    }
     sec = 'Tipificación y medidas';
     req(_infraccionSoloCatalogo(d.infraccion), 'Tipo de contravención');
     req(d.area || d.areaNoMedible || d.areaNoAplica,
@@ -4983,65 +5177,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo="Descripción de la situación encontrada"
         estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         <_Campo label="Actuación / Observaciones" fullWidth
-          hint="Texto descriptivo de lo encontrado en sitio. Usa «Mejorar texto» para pulir la redacción con IA.">          <TextAreaNV value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
+          hint="Lo encontrado en sitio: quién atiende y qué se recorrió; qué se encontró, dónde, cuánto mide y de qué material; licencia; lo que manifestó quien atiende. «Revisar» es obligatorio antes del acta.">          <TextAreaNV value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
         </_Campo>
-        <div style={{ display: 'flex', gap: 8, marginTop: 4, gridColumn: '1 / -1', flexWrap: 'wrap' }}>
-          <_BtnAccion busy={busyMejora} onClick={ejecutarMejora}>
-            {busyMejora ? 'Mejorando...' : 'Mejorar texto'}
-          </_BtnAccion>
-          <_BtnAccion onClick={toggleDictado} aria-pressed={dictando}>
-            {dictando ? 'Detener dictado' : 'Dictar'}
-          </_BtnAccion>
-          {dictando && (
-            <span style={{
-              fontSize: 12, color: 'var(--rojo)', fontWeight: 600,
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}>
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%', background: 'var(--rojo)',
-                display: 'inline-block', animation: 'pulsar 1s infinite',
-              }} />
-              Grabando...
-            </span>
-          )}
-        </div>
-
-        {/* Panel comparador: sugerencia IA vs original */}
-        {sugerenciaIA && (
-          <div style={{
-            gridColumn: '1 / -1', marginTop: 12, padding: 16,
-            background: 'var(--brand-bg)', border: '1.5px solid var(--brand-accent)',
-            borderRadius: 'var(--r-lg)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 18 }}>✨</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--brand-ink)' }}>Versión mejorada (sugerencia IA)</div>
-                <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
-                  Puede editarla antes de aplicarla. El texto original se conserva arriba.
-                </div>
-              </div>
-            </div>
-            <textarea
-              className="input-campo"
-              rows={8}
-              value={sugerenciaIA}
-              onChange={e => setSugerenciaIA(e.target.value)}
-              style={{ marginBottom: 10, background: 'var(--superficie)' }}
-            />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" onClick={aceptarSugerenciaIA} className="btn-principal secundario"
-                style={{ margin: 0, fontSize: 13, padding: '8px 18px' }}>
-                Usar esta versión
-              </button>
-              <button type="button" onClick={descartarSugerenciaIA} className="btn-neutro"
-                style={{ fontSize: 13, padding: '9px 16px' }}>Descartar</button>
-              <span style={{ fontSize: 11, color: 'var(--texto-suave)', marginLeft: 'auto' }}>
-                Al usarla, reemplaza el texto original.
-              </span>
-            </div>
-          </div>
-        )}
+        {_barraRevision(true)}
+        {_panelRevision()}
       </_Seccion>
 
       {/* 7B. TIPIFICACIÓN Y MEDIDAS ──────────────────────── */}
@@ -5234,6 +5373,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={6}
             placeholder="Describa las conclusiones de la visita, hallazgos relevantes y recomendaciones..." />
         </_Campo>
+        {/* La revisión cubre las dos casillas: el panel se abre en la descripción. */}
+        {_barraRevision(false)}
+        {revisionPanel && (
+          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--texto-suave)' }}>
+            La revisión está abierta en «Descripción de la situación encontrada».
+          </div>
+        )}
       </_Seccion>
 
       {/* El botón de guardar ya no vive aquí: pasó a la barra fija inferior
