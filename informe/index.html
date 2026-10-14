@@ -1174,7 +1174,7 @@ async function generarInformeV2() {
   tglobal._d = ctx.d;
 
   // Cierre grave: frase fija pre-aprobada, insertada por codigo (nunca la
-  // redacta la IA) cuando algun hallazgo confirmado es Gravedad=Critico.
+  // redacta la IA) cuando el inspector marco algun comportamiento del art. 135.
   var catalogoParaCierre = await cargarCatalogoHallazgos();
   if (_requiereCierreGrave(catalogoParaCierre) && tglobal.conclusiones_items.indexOf(CIERRE_GRAVE_TEXTO) < 0) {
     tglobal.conclusiones_items.push(CIERRE_GRAVE_TEXTO);
@@ -1599,9 +1599,18 @@ function _hallazgoPorClave(clave, catalogo) {
 // solo a .comp-ac (comportamientos contrarios, lo que validarInformeIA
 // valida como ctx.d.comportamientos) — nunca a #art-table (tabla de
 // verificacion cumple/no-cumple de deberes, cosa distinta).
+// Hasta la depuracion del 2026-10-14 el catalogo contaba los literales B, C y
+// D desde 1 ("D.11" = 11.o deber del literal D = numeral 23 de la ley), y aca
+// salia "D11", que no existe: ningun hallazgo de C o D marcaba su
+// comportamiento. Los rangos relativo y absoluto no se cruzan (C 1-4 vs 9-12,
+// D 1-12 vs 13-24), asi que se aceptan los dos formatos.
 function _numeralCatalogoACodigo(numeral) {
-  var m = /^\s*([ACD])\.?\s*(\d{1,2})\s*$/i.exec((numeral || '').toString());
-  return m ? (m[1].toUpperCase() + m[2]) : null;
+  var m = /^\s*([ABCD])\.?\s*(\d{1,2})\s*$/i.exec((numeral || '').toString());
+  if (!m) return null;
+  var lit = m[1].toUpperCase(), num = parseInt(m[2], 10);
+  var offset = { B: 4, C: 8, D: 12 }[lit] || 0, maxRelativo = { B: 4, C: 4, D: 12 }[lit] || 0;
+  if (offset && num <= maxRelativo) num += offset;
+  return lit + num;
 }
 
 // Marca (nunca desmarca) el .comp-ac cuyo codigo coincide — visible y
@@ -1693,7 +1702,7 @@ function _fragmentoRespaldoHallazgo(h, textoOriginal) {
 // para copiar, en vez de confiar solo en la instruccion.
 function _ocultarCodigosArt135(texto) {
   return (texto || '').toString()
-    .replace(/\b[ACD]\.?\d{1,2}\b/g, '')
+    .replace(/\b[ABCD]\.?\d{1,2}\b/g, '')
     .replace(/\s*;\s*;/g, ';')
     .replace(/^\s*;\s*|\s*;\s*$/g, '')
     .replace(/\s{2,}/g, ' ')
@@ -2166,13 +2175,13 @@ async function confirmarYGenerarInforme() {
     return;
   }
   // Cierre grave re-verificado tras la edicion humana: el momento 5 permite
-  // desmarcar/editar items, pero con un hallazgo Critico confirmado la frase
+  // desmarcar/editar items, pero con un comportamiento del art. 135 marcado la frase
   // de cierre es obligatoria (fija pre-aprobada, nunca redactada por la IA)
   // y no puede excluirse ni editarse. validarInformeIA() no la comprueba
   // porque solo valida patrones de texto — esta es la unica barrera post-edicion.
   var catalogoRevision = await cargarCatalogoHallazgos();
   if (_requiereCierreGrave(catalogoRevision) && tFinal.conclusiones_items.indexOf(CIERRE_GRAVE_TEXTO) < 0) {
-    mostrarErrorRevisionIA(['Hay un hallazgo critico confirmado: la conclusion de cierre grave es obligatoria y no puede excluirse ni editarse.']);
+    mostrarErrorRevisionIA(['Hay comportamientos del art. 135 marcados: la conclusion de cierre grave es obligatoria y no puede excluirse ni editarse.']);
     return;
   }
   var validacion = validarInformeIA(tFinal, ctx);
@@ -2492,16 +2501,26 @@ async function construirPromptF43(ctx) {
   var licNota = sinLic
     ? 'No se aporto documentacion urbanistica. En antecedentes indicar exactamente que "no fue aportada ni exhibida documentacion urbanistica que acredite licencia de construccion" — la ausencia de exhibicion deja la carga de acreditarla en quien construye. Nunca afirmar que la obra "no tiene licencia" (hecho negativo absoluto, no verificable en una sola visita) ni escribir "no fue posible verificar" (sugeriria que la licencia existe y solo falto comprobarla).'
     : d.estado_licencia === 'VENCIDA'
-      ? 'Se aporto licencia, pero su termino de vigencia se encontraba vencido a la fecha de la visita (dato del inspector). Indicarlo en observaciones de forma objetiva (ej. "licencia con fecha de ejecutoria ' + (d.fecha_ejec || '[segun DATOS]') + ', cuyo termino de vigencia se encontraba vencido a la fecha de la visita") y contrastar lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion. PROHIBIDO tratarla como licencia vigente.'
-      : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificar si eso constituye infraccion.'
+      ? 'Se aporto licencia, pero su termino de vigencia se encontraba vencido a la fecha de la visita (dato del inspector). Indicarlo en observaciones de forma objetiva (ej. "licencia con fecha de ejecutoria ' + (d.fecha_ejec || '[segun DATOS]') + ', cuyo termino de vigencia se encontraba vencido a la fecha de la visita") y contrastar lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificarlo en observaciones (la calificacion va en CONCLUSIONES). PROHIBIDO tratarla como licencia vigente.'
+      : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificarlo en observaciones (la calificacion va en CONCLUSIONES).'
         + (d.estado_licencia === 'VIGENTE' ? '' : ' Su vigencia a la fecha de la visita no fue verificada: no afirmes que esta vigente ni que esta vencida.');
   // Recomendacion permanente de licencia — un caso por estado (2026-09-28:
   // una licencia vencida salia con "cenirse a lo aprobado", como si estuviera
   // vigente, y ademas mezclada con el hallazgo del tercer piso).
   var recLicencia;
   if (d.estado_licencia === 'SIN_LICENCIA') {
-    recLicencia = 'la visita se realizo sin licencia aportada — tratada como licencia no vigente —: recomienda '
-      + 'abstenerse de ejecutar obras nuevas o de modificacion hasta tramitar y obtener la licencia de construccion vigente.';
+    // 2026-10-14: lo ya construido sin licencia no se legaliza con "licencia
+    // de construccion" sino con acto de reconocimiento, y quien decide si
+    // procede es la curaduria — el informe no lo da por hecho. El plazo de 60
+    // dias (art. 135 par. 2) lo concede el Inspector, no este informe.
+    recLicencia = 'no se aporto licencia. Son DOS items propios: '
+      + '(a) "Tramitar ante una curaduria urbana el reconocimiento de la edificacion existente (Decreto 1077 de 2015, '
+      + 'art. 2.2.6.4.1.1 y siguientes, con el peritaje tecnico que exige el art. 2.2.6.4.2.2) y la licencia de '
+      + 'construccion para las obras inconclusas o por ejecutar; si la curaduria no los concede, restituir la edificacion '
+      + 'demoliendo las obras no amparadas" — adapta el texto a las obras concretas del caso (si todo esta en ejecucion '
+      + 'y nada terminado, basta la licencia de construccion; si todo esta terminado, basta el reconocimiento); '
+      + '(b) abstenerse de continuar (o de reanudar, si la obra estaba inactiva en la visita) y de ejecutar nuevas obras '
+      + 'de construccion, ampliacion o modificacion hasta contar con licencia urbanistica.';
   } else if (d.estado_licencia === 'VENCIDA') {
     recLicencia = 'la licencia aportada estaba VENCIDA a la fecha de la visita: recomienda abstenerse de ejecutar '
       + 'nuevas obras de construccion, ampliacion, modificacion o adecuacion en el inmueble hasta contar con licencia '
@@ -2561,7 +2580,7 @@ async function construirPromptF43(ctx) {
                   : '\n  Este hallazgo amerita cuantificar el area afectada, pero esta visita no trae area en contravencion cuantificable: describe la afectacion sin cifras — nunca estimes un area.')
               : '')
           + '\n  Sugerencia de conclusion (adaptar al caso, no copiar literal): ' + (h.conclusion_sugerida || 'sin sugerencia disponible')
-          + '\n  Sugerencia de recomendacion (adaptar al caso, no copiar literal; solo verbos permitidos de la regla 5): ' + (h.recomendacion_sugerida || 'sin sugerencia disponible')
+          + '\n  Sugerencia de recomendacion (adaptar al caso, no copiar literal; solo verbos permitidos de la regla 5; si viene en tono tentativo — "verificar si", "evaluar", "considerar" — conviertela en accion directa al propietario): ' + (h.recomendacion_sugerida || 'sin sugerencia disponible')
           + '\n  Contexto normativo interno (NUNCA citar en el texto — solo para redactar con precision tecnica): ' + _ocultarCodigosArt135(h.fundamento_normativo);
       }).join('\n')
     : 'ninguno confirmado — usa unicamente lo que describan las observaciones';
@@ -2572,16 +2591,32 @@ async function construirPromptF43(ctx) {
     ? aclaracionesRespondidas.map(function(pc) { return '- ' + pc.pregunta + ' -> ' + pc.respuesta; }).join('\n')
     : '';
   var compsList = ctx.d.comportamientos || [];
-  var compsNota = compsList.length ? compsList.join('; ') : '';
-  var prompt = 'Eres arquitecto inspector redactando la seccion tecnica de un informe F-GGO-43 de Control Urbano en Bello, Antioquia. '
-    + 'Tu rol es describir hechos observados y su correspondencia tecnica con la normativa YA IDENTIFICADA por el inspector — '
-    + 'no calificar juridicamente ni ordenar medidas (eso corresponde al Inspector de Convivencia, no a ti).\n\n'
+  // Cada codigo marcado viaja con su cita completa y el texto literal de la
+  // ley (ART135_TEXTO), para que la conclusion juridica la copie exacta en vez
+  // de parafrasearla de memoria.
+  var compsNota = compsList.map(function(c) {
+    var cod = (/^([ABCD])(\d{1,2})/.exec(c) || []);
+    var cita = cod[0] ? _citaArt135(cod[1], cod[2]) : '';
+    return cita ? cod[0] + ' -> ' + cita : c;
+  }).join('\n');
+  // 2026-10-14 (decision del usuario, a partir de un informe real cuyas
+  // conclusiones solo repetian las observaciones y no mencionaban el A4
+  // marcado): las conclusiones DETERMINAN si las obras constituyen un
+  // comportamiento del art. 135, como en los informes que redacta el equipo a
+  // mano; lo que sigue siendo del Inspector de Policia es la responsabilidad
+  // de las personas, las medidas correctivas y los plazos.
+  var prompt = 'Eres el profesional tecnico (arquitecto) de la Inspeccion N.9 de Control Urbano de Bello, Antioquia, redactando la seccion tecnica de un informe F-GGO-43. '
+    + 'El informe es la prueba tecnica del proceso: describe los hechos observados y CONCLUYE de forma contundente si las obras '
+    + 'constituyen un comportamiento contrario a la integridad urbanistica del art. 135 de la Ley 1801 de 2016, segun los '
+    + 'comportamientos ya marcados por el inspector. Lo que NO te corresponde: declarar responsable a una persona, imponer u '
+    + 'ordenar medidas correctivas o sanciones, ni fijar plazos — eso es del Inspector de Policia.\n\n'
     + 'Responde SOLO con JSON valido. Sin texto previo ni markdown.\n\n'
     + 'DATOS: ' + JSON.stringify(d) + '\n'
     + 'NOTA LICENCIA: ' + licNota + '\n'
     + 'HALLAZGOS DEL CATALOGO CONFIRMADOS POR EL INSPECTOR (orientacion de redaccion — adaptar cada sugerencia al caso concreto de esta visita, PROHIBIDO copiarla tal cual; el "contexto normativo interno" es solo para precision tecnica, PROHIBIDO citarlo como fuente legal):\n' + hsNota + '\n\n'
     + (aclaracionesNota ? 'ACLARACIONES DEL INSPECTOR (respuestas a preguntas de contexto, fuente valida igual que DATOS):\n' + aclaracionesNota + '\n\n' : '')
-    + 'COMPORTAMIENTOS ART.135 YA IDENTIFICADOS POR EL INSPECTOR (unica fuente valida de cita legal): ' + (compsNota || 'ninguno marcado') + '\n\n'
+    + 'COMPORTAMIENTOS ART.135 YA IDENTIFICADOS POR EL INSPECTOR (codigo -> cita completa con el texto literal de la ley; '
+    + 'unicos comportamientos que puedes concluir):\n' + (compsNota || 'ninguno marcado') + '\n\n'
     + 'JSON exacto requerido:\n'
     + '{"antecedentes":"parrafos separados por \\n","observaciones":"parrafos separados por \\n",'
     + '"conclusiones_items":["item1","item2"],"recomendaciones_items":["item1","item2"]}\n\n'
@@ -2598,7 +2633,8 @@ async function construirPromptF43(ctx) {
     + 'sobra. Basta decir que el objeto fue verificar las condiciones urbanisticas del inmueble, sin detallarla. PROHIBIDO '
     + 'tambien adelantar hallazgos, estado de la obra o conclusiones — eso va en OBSERVACIONES. Nunca inventes '
     + 'un motivo, denuncia, radicado o solicitud que no aparezca explicitamente en DATOS — si ese dato no viene, '
-    + 'omite la frase de motivo por completo, no la sustituyas por una suposicion. Maximo 4 lineas.\n'
+    + 'omite la frase de motivo por completo, no la sustituyas por una suposicion. Maximo 4 lineas. '
+    + 'El campo "catastral" de DATOS es el CODIGO catastral: nombralo "codigo catastral", nunca "ficha catastral".\n'
     + (d.es_diligencia
         ? 'ORIGEN DE LA ACTUACION: la visita se realizo en razon a diligencia de inspeccion al lugar decretada en audiencia por el inspector de convivencia — incluye esa circunstancia en ANTECEDENTES tal cual esta. Nombrar al inspector que decreto la diligencia es parte del origen y no viola la prohibicion de nombrar a quien realiza la visita.\n'
         : '')
@@ -2617,20 +2653,60 @@ async function construirPromptF43(ctx) {
     + 'medida de campo o descripcion del estado real del predio: son valores APROBADOS, no verificados — '
     + 'solo pueden citarse como "lo aprobado" en el contraste con lo hallado. El area construida observada '
     + 'solo puede provenir de obs, areas o la descripcion de fotografias; si no hay area medida, describe '
-    + 'sin cifra, nunca tomes la de la licencia. ' + areaCierra + '\n'
-    + '3. CITAS LEGALES: cita exclusivamente los codigos de COMPORTAMIENTOS ART.135 ya listados arriba, tal como '
-    + 'aparecen (ej. "A1", "C9"). Prohibido inventar numerales, incisos o articulos adicionales que no esten en '
-    + 'esa lista — si no hay comportamientos marcados, no cites el Art. 135 en absoluto. Nunca escribas "conforme '
-    + 'a la normativa", "segun la legislacion vigente" ni "de acuerdo con el POT" de forma generica — menciona la '
-    + 'norma especifica solo si aparece en DATOS (ej. "Acuerdo 033 de 2009"); si no esta disponible, omite la '
-    + 'referencia.\n'
-    + '4. CONCLUSIONES: deben limitarse a sintetizar los hechos ya descritos en OBSERVACIONES o los '
-    + 'comportamientos ya marcados por el inspector — no incorporar hechos nuevos, interpretaciones adicionales '
-    + 'ni calificar si constituyen infraccion (esa calificacion es del Inspector). ' + areaItem + '\n'
-    + '5. RECOMENDACIONES: cada item debe indicar directamente la accion correctiva concreta para lo YA '
-    + 'verificado en OBSERVACIONES/CONCLUSIONES — no es una sugerencia tentativa, ya se confirmo el hallazgo. '
-    + 'Usa verbos directos: restituir, demoler, ajustar, corregir, retirar, cerrar, desmontar, tramitar '
-    + '(legalizar mediante modificacion de licencia), abstenerse, garantizar. Si un hallazgo admite dos '
+    + 'sin cifra, nunca tomes la de la licencia. ' + areaCierra + ' '
+    + 'OBSERVACIONES solo describe: PROHIBIDO incluir en ellas recomendaciones o conclusiones ("se recomienda", '
+    + '"permite concluir", "en consecuencia") — si las observaciones del inspector (obs) las traen, llevalas a su '
+    + 'seccion. PROHIBIDO afirmar que la obra "no tiene" o "no cuenta con" licencia, o que "se verifico" su inexistencia: '
+    + 'usa la formula de la NOTA LICENCIA. Una inferencia sobre antiguedad o secuencia constructiva (ej. "la losa fue '
+    + 'adicionada despues") solo se escribe junto al indicio fisico concreto que la sostiene y que este en DATOS; '
+    + 'sin ese indicio, se omite. Las manifestaciones de las partes (invasion de un predio, linderos, titularidad) se '
+    + 'registran atribuidas a quien las hizo ("segun manifesto la quejosa"), sin valorarlas.\n'
+    + '3. CITAS LEGALES — LISTA BLANCA (solo estas normas, con esta misma numeracion; nada fuera de ella): '
+    + '(a) Ley 1801 de 2016, art. 135, UNICAMENTE en la cita completa dada en COMPORTAMIENTOS para los codigos marcados — '
+    + 'si no hay comportamientos marcados, no cites el art. 135; '
+    + '(b) Decreto 1077 de 2015: art. 2.2.6.1.1.7 (licencia de construccion y sus modalidades: obra nueva, ampliacion, '
+    + 'adecuacion, modificacion, restauracion, reforzamiento estructural, demolicion, reconstruccion, cerramiento), '
+    + 'arts. 2.2.6.4.1.1 y siguientes (reconocimiento de edificaciones) y art. 2.2.6.4.2.2 (requisitos del '
+    + 'reconocimiento, incluido el peritaje tecnico); '
+    + '(c) Reglamento Colombiano de Construccion Sismo Resistente NSR-10 (Ley 400 de 1997); '
+    + '(d) Acuerdo 033 de 2009 (POT de Bello) y Decreto 193 de 2011 (reglamentacion especifica de Bello), solo '
+    + 'nombrandolos, sin citar articulos. '
+    + 'PROHIBIDO inventar articulos, numerales o incisos, y PROHIBIDO citar la norma de forma generica ("conforme a la '
+    + 'normativa", "segun la legislacion vigente", "de acuerdo con el POT", "los criterios normativos aplicables").\n'
+    + '4. CONCLUSIONES: son DETERMINACIONES, no un resumen. PROHIBIDO volver a contar lo descrito en OBSERVACIONES '
+    + '(niveles, acabados, materiales, estado) salvo como sujeto breve de una determinacion; cada item debe decir algo '
+    + 'que el lector no obtiene leyendo las observaciones. Sigue este orden:\n'
+    + '  a) Que actuacion urbanistica son las obras observadas (obra nueva, ampliacion, modificacion, adecuacion, '
+    + 'demolicion, reforzamiento...) y que exigen licencia de construccion en esa modalidad (Decreto 1077 de 2015, art. '
+    + '2.2.6.1.1.7). Agrupa las obras en un solo item, nombrandolas brevemente.\n'
+    + '  b) La situacion de la licencia frente a esas obras, segun la NOTA LICENCIA (no aportada; vencida; o aportada y en '
+    + 'que difiere lo ejecutado de lo aprobado).\n'
+    + '  c) Solo si hay un comportamiento del literal A marcado: que el predio es apto para estas actuaciones segun la '
+    + 'consulta POT de DATOS (clasificacion, poligono, suelo de proteccion o amenaza), o que no lo es. PROHIBIDO evaluar '
+    + 'alturas, indices, densidades o el cumplimiento de la norma POT: eso lo estudia la curaduria en el tramite.\n'
+    + '  d) UNA conclusion por cada comportamiento marcado, contundente, con esta forma: "[Las obras descritas | el '
+    + 'elemento concreto] constituyen un comportamiento contrario a la integridad urbanistica segun el articulo 135, '
+    + '[cita completa dada en COMPORTAMIENTOS], de la Ley 1801 de 2016, al [razon concreta del caso]". Copia la cita '
+    + 'literal tal como viene, con sus comillas. La determinacion recae sobre las OBRAS: PROHIBIDO llamar "infractor" o '
+    + 'responsable a una persona. NO empieces ningun item con "En consecuencia" (esa frase la reserva el sistema).\n'
+    + '  e) Determinaciones tecnicas adicionales que se desprendan de los hechos: elementos estructurales ejecutados sin '
+    + 'que se aportara diseno o soporte tecnico (NSR-10), obras inconclusas o inactivas y lo que implicaria continuarlas, '
+    + 'incumplimientos de las obligaciones del literal D marcados. PROHIBIDO afirmar riesgo de colapso, inestabilidad o '
+    + 'amenaza a las personas salvo que DATOS describa danos, deformaciones, fisuras o fallas concretas: el tamano o el '
+    + 'peso de un elemento no bastan.\n'
+    + '  f) ' + (areaItem || 'Sin item de area.') + '\n'
+    + 'PROHIBIDO en CONCLUSIONES y RECOMENDACIONES tratar invasiones, linderos o titularidad del predio: la inspeccion no '
+    + 'resuelve esas controversias, solo verifica que las obras tengan licencia y se ajusten a lo aprobado.\n'
+    + '5. RECOMENDACIONES: dirigidas al propietario o responsable de la obra, en imperativo, cada una para corregir '
+    + 'una irregularidad concreta de las CONCLUSIONES o para prevenir una nueva. No son sugerencias tentativas: PROHIBIDO '
+    + '"verificar si", "evaluar la necesidad", "evaluar la viabilidad", "considerar", y PROHIBIDO recomendar a la propia '
+    + 'inspeccion nuevas visitas, mediciones, levantamientos o verificaciones. PROHIBIDO mencionar plazos o terminos '
+    + '(dias, meses, el paragrafo 2 del art. 135): los fija el Inspector de Policia. '
+    + 'Elementos ejecutados sin licencia que comprometen la estructura (porticos, losas, voladizos, columnas): '
+    + 'recomienda desmontarlos o, en su defecto, incluirlos en el tramite ante la curaduria con diseno estructural firmado '
+    + 'por ingeniero civil conforme a la NSR-10. '
+    + 'Usa verbos directos: tramitar, restituir, demoler, desmontar, ajustar, corregir, retirar, cerrar, abstenerse, '
+    + 'garantizar. Si un hallazgo admite dos '
     + 'salidas excluyentes (legalizar vs. restablecer a lo aprobado), dilo directamente como opcion binaria '
     + '("legalizar mediante modificacion de licencia, o en su defecto, restablecer X a lo aprobado"), no como '
     + 'pregunta abierta. No repitas como pendiente-de-verificar algo que OBSERVACIONES ya confirmo con '
@@ -2644,17 +2720,19 @@ async function construirPromptF43(ctx) {
     + 'generica ni de vuelta al mismo Inspector que ya tiene el caso. Si hay un comportamiento marcado en '
     + 'area protegida o espacio publico, no recomiendes "obtener licencia" (esa obra no es susceptible de '
     + 'licenciamiento); recomienda la restitucion/demolicion directa. RECOMENDACION PERMANENTE DE LICENCIA '
-    + '(siempre presente como un item propio): en esta visita ' + recLicencia + ' Ese item habla SOLO de la '
-    + 'licencia: PROHIBIDO mencionar en el hallazgos puntuales (un piso adicional, un voladizo, un uso, etc.) — '
-    + 'cada uno de esos va en su propio item. Excepto cuando el hallazgo sea en area protegida o espacio '
-    + 'publico, caso en el que aplica la restriccion de arriba. No repitas el area en contravencion aqui.\n'
-    + '6. Lenguaje: prohibido "constituye", "demuestra", "acredita", "confirma", "prueba", "evidencia plenamente", '
+    + '(siempre presente): en esta visita ' + recLicencia + ' Los hallazgos puntuales que piden una accion propia '
+    + '(un elemento a desmontar, un uso a ajustar, materiales a retirar) van cada uno en su propio item. Excepto '
+    + 'cuando el hallazgo sea en area protegida o espacio publico, caso en el que aplica la restriccion de arriba. '
+    + 'No repitas el area en contravencion aqui.\n'
+    + '6. Lenguaje: "constituyen un comportamiento contrario a la integridad urbanistica" se usa SOLO en la conclusion '
+    + 'del punto 4.d. Prohibido "demuestra", "acredita", "confirma", "prueba", "evidencia plenamente", '
     + '"se encuentra plenamente establecido", "desconocimiento total", "carece de estructura aprobada" — usa '
     + '"se observo", "se evidencio", "se identifico", "durante la visita". Nunca escribas "no fue posible verificar" — describe el hecho observado, no lo que falto comprobar (con sin-licencia sugeriria que la licencia existe). Sin puntos '
     + 'suspensivos ni coloquialismos.\n'
     + '7. VERIFICACION INTERNA (no la incluyas en la respuesta, es un paso silencioso antes de responder): '
-    + 'revisa que ningun comportamiento citado este fuera de la lista dada, que ninguna norma citada este fuera '
-    + 'de DATOS, que toda conclusion provenga de observaciones o comportamientos ya dados, que ninguna '
+    + 'revisa que ningun comportamiento citado este fuera de la lista dada, que cada comportamiento marcado tenga su '
+    + 'conclusion del punto 4.d, que ninguna norma citada este fuera de la lista blanca de la regla 3, que ninguna '
+    + 'conclusion se limite a repetir las observaciones, que toda conclusion provenga de observaciones o comportamientos ya dados, que ninguna '
     + 'recomendacion use un verbo prohibido, que no haya antecedentes inventados y que no haya contradiccion '
     + 'entre observaciones y conclusiones, que ningun area construida observada provenga del cuadro de '
     + 'licencia (area_apro), y que se cumplan las reglas 8 y 9 de abajo. Elimina cualquier frase '
@@ -2683,8 +2761,13 @@ async function construirPromptF43(ctx) {
 // palabras de certeza excesiva, texto de plantilla filtrado y citas legales
 // fuera de lo que el inspector ya autorizo. El prompt reduce el riesgo de
 // que la IA se equivoque; esto lo atrapa si igual se equivoca.
+// 'constituye' salio el 2026-10-14: la conclusion del punto 4.d del prompt
+// la usa a proposito ("constituyen un comportamiento contrario..."). En su
+// lugar se prohibe calificar a la PERSONA ('infractor').
+// Se comparan con limite de palabra: 'acredita' por substring atrapaba
+// "acreditar", que es legitimo en una recomendacion.
 var PALABRAS_PROHIBIDAS_INFORME = [
-  'constituye', 'demuestra', 'acredita',
+  'demuestra', 'acredita', 'infractor', 'infractora', 'infractores',
   'evidencia plenamente', 'se encuentra plenamente establecido',
   'desconocimiento total', 'carece de estructura aprobada'
 ];
@@ -2696,14 +2779,29 @@ var PALABRAS_PROHIBIDAS_INFORME = [
 // 'pruebas', que aparecen en recomendaciones perfectamente correctas.
 // Lo que el arquitecto NO puede hacer es dar por probada la CALIFICACION
 // JURIDICA, asi que el verbo se ata a su objeto y se evalua como regex con
-// limite de palabra. 'constituye'/'demuestra'/'acredita' siguen sueltas
+// limite de palabra. 'demuestra'/'acredita' siguen sueltas
 // porque no aparecen en frases inocentes.
 var CERTEZA_SOBRE_CALIFICACION_INFORME = [
   /\b(?:confirma|confirman|prueba|prueban)\s+(?:la|el|las|los|una|un)?\s*(?:infraccion|infracciones|incumplimiento|incumplimientos|contravencion|contravenciones|violacion|ilegalidad)\b/
 ];
 var FRASES_NORMATIVA_VAGA_INFORME = [
-  'conforme a la normativa', 'segun la legislacion vigente', 'de acuerdo con el pot'
+  'conforme a la normativa', 'segun la legislacion vigente', 'de acuerdo con el pot',
+  'criterios normativos'
 ];
+// Recomendaciones en tono tentativo (2026-10-14): el hallazgo ya esta
+// verificado; la recomendacion dice que hacer, no que habria que evaluar.
+var RECOMENDACION_TENTATIVA = /\b(?:verificar si|evaluar la (?:necesidad|viabilidad|posibilidad)|considerar)\b/;
+// Plazos: los concede el Inspector de Policia (ej. los 60 dias del art. 135
+// par. 2), nunca este informe.
+var PLAZO_EN_RECOMENDACION = /\b(?:\d+|sesenta|treinta|noventa)\s*\(?\d*\)?\s*(?:dias|meses)\b|\bparagrafo\s*(?:2|segundo)\b/;
+// Linderos, invasion y titularidad: la inspeccion no resuelve esas
+// controversias. Pueden aparecer en OBSERVACIONES atribuidas a quien las
+// manifesto, nunca en conclusiones ni recomendaciones.
+var TEMA_FUERA_DE_ALCANCE = /\b(?:linderos?|invasion|invadid[oa]s?|invadio|titularidad|levantamiento topografico)\b/;
+// Hecho negativo absoluto sobre la licencia (no verificable en una visita).
+var LICENCIA_NEGATIVA_ABSOLUTA = /\b(?:no|ninguno|ninguna)\b[^.]{0,40}\b(?:cuenta|cuentan|tiene|tienen|posee|poseen)\s+(?:con\s+)?(?:la\s+|una\s+)?licencia\b/;
+// Conclusion o recomendacion metida en las observaciones.
+var JUICIO_EN_OBSERVACIONES = /\b(?:se recomienda|recomienda|permite concluir|se concluye|en consecuencia)\b/;
 // 'sancion' va por RAIZ a proposito: cubre sancionar/sancion/sanciones/
 // sancionatorias, que es como se colaban en la practica ("considerar la
 // remision del caso para que se apliquen las medidas sancionatorias" pasaba
@@ -2728,16 +2826,60 @@ var RECOMENDACIONES_MIN = 3, RECOMENDACIONES_MAX = 8;
 var VERBO_RECTOR_LITERAL_A = /parcel|urbaniz|demol|interven|intervin|intervien|constru/;
 
 // Cierre grave — frase fija pre-aprobada, NUNCA redactada por la IA. Se
-// inserta por codigo cuando algun hallazgo confirmado es de Gravedad
-// Critico (ver _requiereCierreGrave), mismo principio que restringir la
-// cita de Art.135 a codigos ya marcados: la condicion es mecanica.
-var CIERRE_GRAVE_TEXTO = 'En consecuencia, la edificacion objeto de inspeccion incurre en una grave y reiterada infraccion urbanistica, afectando no solo los principios de legalidad, planificacion y proteccion del espacio publico, sino tambien en detrimento del ordenamiento territorial y la convivencia en el municipio de Bello.';
+// inserta por codigo cuando el inspector marco al menos un comportamiento del
+// art. 135 (decision del usuario 2026-10-14: "cuando haya infraccion"; antes
+// dependia de la gravedad del catalogo, y un hallazgo Critico sin
+// comportamiento marcado la ponia sin sustento). Sin "y reiterada": la
+// reiteracion es la reincidencia del art. 136 y una primera visita no la
+// acredita.
+var CIERRE_GRAVE_TEXTO = 'En consecuencia, la edificación objeto de inspección incurre en una grave infracción urbanística, afectando no solo los principios de legalidad, planificación y protección del espacio público, sino también en detrimento del ordenamiento territorial y la convivencia en el municipio de Bello.';
 
+// El parametro se conserva por compatibilidad con las tres llamadas; ya no se usa.
 function _requiereCierreGrave(catalogo) {
-  return HALLAZGOS_CONFIRMADOS.some(function(clave) {
-    var h = _hallazgoPorClave(clave, catalogo);
-    return h && _quitarTildesInforme(h.gravedad) === 'critico';
-  });
+  return document.querySelectorAll('.comp-ac:checked').length > 0;
+}
+
+// Texto literal del art. 135 de la Ley 1801 de 2016 (encabezados de literal y
+// numerales), tomado del Anexo A del proyecto AGENTE EXPERTO URBANISTICO, que
+// lo transcribio y cotejo contra el PDF oficial. La conclusion juridica copia
+// esta cita en vez de parafrasear la ley de memoria.
+var ART135_LITERALES = {
+  A: 'Parcelar, urbanizar, demoler, intervenir o construir',
+  B: 'Actuaciones en los inmuebles declarados de conservación e interés cultural, histórico, urbanístico, paisajístico y arquitectónico',
+  C: 'Usar o destinar un inmueble a',
+  D: 'Incumplir cualquiera de las siguientes obligaciones'
+};
+var ART135_TEXTO = {
+  1: 'En áreas protegidas o afectadas por el plan vial o de infraestructura de servicios públicos domiciliarios, y las destinadas a equipamientos públicos',
+  2: 'Con desconocimiento a lo preceptuado en la licencia',
+  3: 'En bienes de uso público y terrenos afectados al espacio público',
+  4: 'En terrenos aptos para estas actuaciones, sin licencia o cuando esta hubiere caducado',
+  5: 'Demoler sin previa autorización o licencia',
+  6: 'Intervenir o modificar sin la licencia',
+  7: 'Incumplir las obligaciones para su adecuada conservación',
+  8: 'Realizar acciones que puedan generar impactos negativos en el bien de interés cultural',
+  9: 'Uso diferente al señalado en la licencia de construcción',
+  10: 'Ubicación diferente a la señalada en la licencia de construcción',
+  11: 'Contravenir los usos específicos del suelo',
+  12: 'Facilitar, en cualquier clase de inmueble, el desarrollo de usos o destinaciones del suelo no autorizados en licencia de construcción o con desconocimiento de las normas urbanísticas sobre usos específicos',
+  13: 'Destinar un lugar al interior de la construcción para guardar materiales, maquinaria, escombros o residuos y no ocupar con ellos, ni siquiera de manera temporal, el andén, las vías o espacios públicos circundantes',
+  14: 'Proveer de unidades sanitarias provisionales para el personal que labora y visita la obra y adoptar las medidas requeridas para mantenerlas aseadas, salvo que exista una solución viable, cómoda e higiénica en el área',
+  15: 'Instalar protecciones o elementos especiales en los frentes y costados de la obra y señalización, semáforos o luces nocturnas para la seguridad de quienes se movilizan por el lugar y evitar accidentes o incomodidades',
+  16: 'Limpiar las llantas de los vehículos que salen de la obra para evitar que se arroje barro o cemento en el espacio público',
+  17: 'Limpiar el material, cemento y los residuos de la obra, de manera inmediata, cuando caigan en el espacio público',
+  18: 'Retirar los andamios, barreras, escombros y residuos de cualquier clase una vez terminada la obra, cuando esta se suspenda por más de dos (2) meses, o cuando sea necesario por seguridad de la misma',
+  19: 'Exigir a quienes trabajan y visitan la obra, el uso de cascos e implementos de seguridad industrial y contar con el equipo necesario para prevenir y controlar incendios o atender emergencias de acuerdo con esta ley',
+  20: 'Tomar las medidas necesarias para evitar la emisión de partículas en suspensión, provenientes de materiales de construcción, demolición o desecho, de conformidad con las leyes vigentes',
+  21: 'Aislar completamente las obras de construcción que se desarrollen aledañas a canales o fuentes de agua, para evitar la contaminación del agua con materiales e implementar las acciones de prevención y mitigación que disponga la autoridad ambiental respectiva',
+  22: 'Reparar los daños o averías que en razón de la obra se realicen en el andén, las vías, espacios y redes de servicios públicos',
+  23: 'Reparar los daños, averías o perjuicios causados a bienes colindantes o cercanos',
+  24: 'Demoler, construir o reparar obras en el horario comprendido entre las 6 de la tarde y las 8 de la mañana, como también los días festivos, en zonas residenciales'
+};
+// 'A', '4' -> 'literal A «Parcelar, ...», numeral 4 «En terrenos aptos ...»'
+function _citaArt135(literal, numeral) {
+  var enc = ART135_LITERALES[literal], txt = ART135_TEXTO[parseInt(numeral, 10)];
+  if (!enc || !txt) return '';
+  return 'literal ' + literal + ' «' + enc + '», numeral ' + parseInt(numeral, 10) + ' «' + txt + '»';
 }
 
 // ── Mejora continua: hallazgo nuevo pendiente de revision ───────────────
@@ -2810,7 +2952,7 @@ function validarInformeIA(json, ctx) {
   var todoNorm = _quitarTildesInforme(todoTexto);
 
   PALABRAS_PROHIBIDAS_INFORME.forEach(function(p) {
-    if (todoNorm.indexOf(_quitarTildesInforme(p)) >= 0) {
+    if (new RegExp('\\b' + _quitarTildesInforme(p) + '\\b').test(todoNorm)) {
       problemas.push('Usa una palabra de certeza no permitida: "' + p + '".');
     }
   });
@@ -2840,20 +2982,58 @@ function validarInformeIA(json, ctx) {
   if (marcadorSuelto) {
     problemas.push('Quedo un marcador sin sustituir: "' + marcadorSuelto[0] + '".');
   }
-  if (/\bnumeral\b/.test(todoNorm)) {
-    problemas.push('Menciona un "numeral" del Art. 135 — se cita por literal y numero (ej. "A1", "C9"), nunca por "numeral".');
-  }
+  // (2026-10-14) Ya no se prohibe la palabra "numeral": la conclusion
+  // juridica cita "literal A ..., numeral 4 ..." completo, como los informes
+  // del equipo.
 
   // Citas de comportamientos Art.135 fuera de lo que el inspector marco.
+  // Por codigo corto ("C10") y por cita completa ("literal C ..., numeral 10").
+  // Los poligonos POT ("ZR-1-C10", "C4-CN2-2") se quitan antes: contienen
+  // codigos con la misma forma y no son citas.
   var autorizados = {};
   (ctx.d.comportamientos || []).forEach(function(c) {
-    var m = /^([ACD]\d{1,2})/.exec(c);
-    if (m) autorizados[m[1]] = true;
+    var m = /^([ABCD])(\d{1,2})/.exec(c);
+    if (m) autorizados[m[1] + parseInt(m[2], 10)] = true;
+  });
+  var textoSinPoligonos = todoTexto;
+  [ctx.d.polig_uso, ctx.d.polig_trat].forEach(function(p) {
+    if (p && String(p).trim()) textoSinPoligonos = textoSinPoligonos.split(String(p).trim()).join(' ');
   });
   var citados = {};
-  (todoTexto.match(/\b[ACD]\d{1,2}\b/g) || []).forEach(function(c) { citados[c] = true; });
+  (textoSinPoligonos.match(/(?<![-\w])[ACD]\d{1,2}\b/g) || []).forEach(function(c) { citados[c] = true; });
+  var rxCitaCompleta = /literal\s+([ABCD])\b[^.;]{0,400}?numeral\s+(\d{1,2})\b/gi, mc;
+  var textoCitasNorm = _quitarTildesInforme(textoSinPoligonos);
+  while ((mc = rxCitaCompleta.exec(textoCitasNorm))) citados[mc[1].toUpperCase() + parseInt(mc[2], 10)] = true;
   Object.keys(citados).forEach(function(c) {
     if (!autorizados[c]) problemas.push('Cita el comportamiento "' + c + '" que el inspector no marco.');
+  });
+
+  // Cada comportamiento marcado debe tener su conclusion juridica (punto 4.d
+  // del prompt): el informe del 2026-10-07 tenia A4 marcado y ninguna
+  // conclusion lo mencionaba.
+  var conclusionesNorm = (json.conclusiones_items || []).map(_quitarTildesInforme);
+  Object.keys(autorizados).forEach(function(cod) {
+    var lit = cod.charAt(0).toLowerCase(), num = cod.slice(1);
+    var rx = new RegExp('literal\\s+' + lit + '\\b[^]*?numeral\\s+' + num + '\\b');
+    var tiene = conclusionesNorm.some(function(c) { return rx.test(c) && c.indexOf('1801') >= 0; });
+    if (!tiene) problemas.push('El comportamiento ' + cod + ' esta marcado pero ninguna conclusion lo cita (literal, numeral y Ley 1801 de 2016).');
+  });
+
+  // Hecho negativo absoluto sobre la licencia, en cualquier seccion.
+  var mNeg = LICENCIA_NEGATIVA_ABSOLUTA.exec(todoNorm);
+  if (mNeg) problemas.push('Afirma un hecho negativo sobre la licencia ("' + mNeg[0] + '") — use "no se aporto ni exhibio licencia".');
+
+  // El dato del wizard es el codigo catastral (30 digitos), no la ficha.
+  if (/\bficha catastral\b/.test(todoNorm)) problemas.push('Llama "ficha catastral" al codigo catastral.');
+
+  // Observaciones solo describen.
+  var mJuicio = JUICIO_EN_OBSERVACIONES.exec(_quitarTildesInforme(json.observaciones || ''));
+  if (mJuicio) problemas.push('OBSERVACIONES incluye una conclusion o recomendacion ("' + mJuicio[0] + '") — va en su seccion.');
+
+  // Linderos / invasion / titularidad fuera de conclusiones y recomendaciones.
+  (json.conclusiones_items || []).concat(json.recomendaciones_items || []).forEach(function(item) {
+    var mF = TEMA_FUERA_DE_ALCANCE.exec(_quitarTildesInforme(item));
+    if (mF) problemas.push('Conclusiones/recomendaciones tratan un tema que la inspeccion no resuelve ("' + mF[0] + '").');
   });
 
   // Verbos administrativos/sancionatorios prohibidos (esas son decisiones
@@ -2865,6 +3045,10 @@ function validarInformeIA(json, ctx) {
     VERBOS_PROHIBIDOS_RECOMENDACION.forEach(function(v) {
       if (norm.indexOf(v) >= 0) problemas.push('Recomendacion ' + (i + 1) + ' usa un verbo que no corresponde al arquitecto: "' + v + '".');
     });
+    var mTent = RECOMENDACION_TENTATIVA.exec(norm);
+    if (mTent) problemas.push('Recomendacion ' + (i + 1) + ' es tentativa ("' + mTent[0] + '") — debe indicar la accion directa.');
+    var mPlazo = PLAZO_EN_RECOMENDACION.exec(norm);
+    if (mPlazo) problemas.push('Recomendacion ' + (i + 1) + ' fija un plazo ("' + mPlazo[0] + '") — los plazos los concede el Inspector de Policia.');
     // 'remisi' cubre remision/remisiones, que esquivaban el indexOf de
     // 'remitir'. Sigue siendo condicional a "autoridad competente": remitir
     // nombrando una entidad con competencia distinta si esta permitido.
@@ -2921,7 +3105,10 @@ function validarInformeIA(json, ctx) {
       problemas.push('Hay comportamiento(s) del literal A marcado(s) (' + comportamientosA.join(', ') + ') pero OBSERVACIONES no menciona ninguna conjugacion de parcelar/urbanizar/demoler/intervenir/construir (verbo rector del literal A).');
     }
     comportamientosA.forEach(function(codigo) {
-      var conclusionQueCita = conclusiones.find(function(c) { return new RegExp('\\b' + codigo + '\\b').test(c); });
+      var rxCita = new RegExp('\\b' + codigo + '\\b|literal\\s+a\\b[^]*?numeral\\s+' + codigo.slice(1) + '\\b');
+      var conclusionQueCita = conclusiones.find(function(c) {
+        return rxCita.test(c) || rxCita.test(_quitarTildesInforme(c));
+      });
       if (conclusionQueCita && !VERBO_RECTOR_LITERAL_A.test(_quitarTildesInforme(conclusionQueCita))) {
         problemas.push('La conclusion que cita "' + codigo + '" no menciona ninguna conjugacion de parcelar/urbanizar/demoler/intervenir/construir (verbo rector del literal A).');
       }
@@ -2938,7 +3125,10 @@ async function pedirJsonIA(prompt) {
     var r = await fetch(WH, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify(_bodyConSesion({ accion: 'mejorarTexto', texto: prompt }))
+      // perfil 'informeF43': el backend usa un system prompt propio y manda el
+      // prompt tal cual (sin perfil lo envolvia en "reescribe en parrafos
+      // fluidos y orden cronologico"). Backend viejo lo ignora: compatible.
+      body: JSON.stringify(_bodyConSesion({ accion: 'mejorarTexto', perfil: 'informeF43', texto: prompt }))
     });
     var data = await r.json();
     if (!data.ok || !data.texto) throw new Error(data.error || 'Sin respuesta');
@@ -2979,7 +3169,7 @@ async function generarInforme() {
   tglobal._d = ctx.d;
 
   // Cierre grave: frase fija pre-aprobada, insertada por codigo (nunca la
-  // redacta la IA) cuando algun hallazgo confirmado es Gravedad=Critico.
+  // redacta la IA) cuando el inspector marco algun comportamiento del art. 135.
   var catalogoParaCierreV1 = await cargarCatalogoHallazgos();
   if (_requiereCierreGrave(catalogoParaCierreV1) && tglobal.conclusiones_items.indexOf(CIERRE_GRAVE_TEXTO) < 0) {
     tglobal.conclusiones_items.push(CIERRE_GRAVE_TEXTO);
