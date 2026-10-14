@@ -150,7 +150,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
         <div>
           {/* Entregables: la carpeta de la visita primero; solo si la visita
               empezó (las reglas del panel: «Falta» / «No se generó»). */}
-          {empezada && (
+          {empezada && (!completa || f['LINK_DRIVE'] || _entregablesMV(f).some(e => e.link)) && (
             <section className="fv-sec">
               <h3 className="mv-sub">Entregables{!completa && <small>se generan dentro de la visita</small>}</h3>
               {f['LINK_DRIVE'] && (
@@ -160,13 +160,14 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                   <a className="vc-btn" href={f['LINK_DRIVE']} target="_blank" rel="noopener noreferrer">Abrir</a>
                 </div>
               )}
-              {_entregablesMV(f).map(e => (
+              {/* Completada: solo lo que existe y se puede abrir (decisión del usuario 2026-10-14). */}
+              {_entregablesMV(f).filter(e => !completa || e.link).map(e => (
                 <div className="mv-ent" key={e.n}>
-                  <span className={'ent-dot' + (e.link ? ' ed-ok' : (completa ? '' : ' ed-pend'))} aria-hidden="true" />
+                  <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
                   <span className="mv-ent-n">{e.n}</span>
                   {e.link
                     ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
-                    : <span className={'mv-ent-e' + (completa ? '' : ' falta')}>{completa ? 'No se generó' : 'Falta'}</span>}
+                    : <span className="mv-ent-e falta">Falta</span>}
                 </div>
               ))}
             </section>
