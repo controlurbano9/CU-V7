@@ -520,6 +520,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       await gasPost({
         accion: 'asignarRadicado', fila, inspector,
         radicadoConocido: (f && f['RADICADO']) || '',
+        idVisita: (f && f['ID_VISITA']) || '',
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
       invalidarCache('visitas');
@@ -541,6 +542,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       const r = await gasPost({
         accion: 'crearNuevaVisitaAsignada',
         radicadoConocido: (fOrigen && fOrigen['RADICADO']) || '',
+        idVisita: (fOrigen && fOrigen['ID_VISITA']) || '',
         fila: filaOrigen, inspector,
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
       });
@@ -559,7 +561,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     setBusyFila(null);
   }, [cargar]);
 
-  const adminDesasignar = useCallbackB(async (fila, rad) => {
+  const adminDesasignar = useCallbackB(async (fila, rad, idVisita) => {
     const ok = await appConfirm(
       '¿Quitar asignación de ' + (rad || 'este radicado') + '?\nVolverá a estado PENDIENTE.',
       { titulo: 'Desasignar', btnOk: 'Desasignar', peligro: true }
@@ -567,7 +569,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     if (!ok) return;
     setBusyFila(fila);
     try {
-      await gasPost({ accion: 'desasignarRadicado', fila, radicadoConocido: rad || '' });
+      await gasPost({ accion: 'desasignarRadicado', fila, radicadoConocido: rad || '', idVisita: idVisita || '' });
       invalidarCache('visitas');
       await cargar(true);
     } catch (e) {
@@ -609,6 +611,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             idCarpetaVisita: idCarpeta,
             radicado:        f['RADICADO'] || '',
             radicadoConocido: f['RADICADO'] || '',
+            idVisita: f['ID_VISITA'] || '',
             // La celda puede llegar como Date serializada a ISO: el nombre del
             // archivo salía «…_20260924T05:00:00.000Z». Se manda DD/MM/YYYY.
             fechaVisita:     formatearFecha(f['FECHA DE VISITA']) || '',
@@ -618,7 +621,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           });
           // Con la orden ya escaneada, deja armado el PDF único para la
           // policía (solicitud + orden). Sin orden todavía no arma nada.
-          await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '');
+          await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '', f['ID_VISITA'] || '');
         } catch (e) {
           await appAlert('Error generando oficio: ' + e.message + '\n\nLa visita NO se marcó como completada.', { tono: 'error', titulo: 'Error' });
           setBusyFila(null);
@@ -659,6 +662,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
       await gasPost({
         accion: 'completarRegistro', fila,
         radicadoConocido: (f && f['RADICADO']) || '',
+        idVisita: (f && f['ID_VISITA']) || '',
         dias: dias || '',
         fecha: hoyDDMMAAAA(),
       });
@@ -669,7 +673,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           f._idx,
           f['LINK_XLSX_ACTA'],
           f['RADICADO'] || '',
-          extraerIdCarpetaDrive(f['LINK_DRIVE'] || '')
+          extraerIdCarpetaDrive(f['LINK_DRIVE'] || ''),
+          f['ID_VISITA'] || ''
         ).catch(e => console.warn('[completar] pdf acta best-effort:', e.message));
       }
       invalidarCache('visitas');
@@ -1414,7 +1419,7 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
               {abierto ? 'Cancelar' : 'Reasignar'}
             </button>
             <button type="button" className="vc-btn" disabled={busy}
-              onClick={() => onDesasignar(f._idx, f['RADICADO'])}>
+              onClick={() => onDesasignar(f._idx, f['RADICADO'], f['ID_VISITA'])}>
               <Icon.Undo size={14} /> Desasignar
             </button>
           </>

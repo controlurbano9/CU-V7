@@ -1313,6 +1313,7 @@ function _construirPayloadF43Plantilla(tFinal) {
     idCarpetaVisita:         V6_CTX.idCarpeta,
     fila:                    V6_CTX.fila,
     radicadoConocido:        V6_CTX.radicadoFila || '',
+    idVisita:                V6_CTX.idVisita || '',
     radicado:                V6_CTX.radicado || 'informe',
     // Siempre true: llegar aquí es haber recorrido el wizard y pedir un informe
     // nuevo. Con false el backend devolvía el F-GGO-43 que ya estuviera en la
@@ -4399,6 +4400,8 @@ function prefillDesdeURL() {
   // Radicado que tiene la fila en BD: viaja como radicadoConocido para que el
   // backend no escriba el link del informe en la fila de otra visita.
   V6_CTX.radicadoFila = p.get('radicadoFila') || '';
+  // ID_VISITA (2026-10-14): el backend escribe en la fila real de la visita.
+  V6_CTX.idVisita = p.get('idVisita') || '';
   V6_CTX.direccion = p.get('direccion') || null;
   V6_CTX.lat       = p.get('lat') || null;
   V6_CTX.lon       = p.get('lon') || null;
@@ -4597,6 +4600,7 @@ async function subirInformeAlDrive(blob) {
         sesionHash: SESION_HASH,
         fila: V6_CTX.fila,
         radicadoConocido: V6_CTX.radicadoFila || '',
+        idVisita: V6_CTX.idVisita || '',
         idCarpeta: V6_CTX.idCarpeta,
         nombreArchivo: nombre,
         base64: base64

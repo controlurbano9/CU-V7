@@ -216,6 +216,7 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
         idCarpetaVisita:  idCarpeta,
         radicado:         f['RADICADO'] || '',
         radicadoConocido: f['RADICADO'] || '',
+        idVisita:         f['ID_VISITA'] || '',
         // Date serializada a ISO rompía el nombre del archivo → DD/MM/YYYY.
         fechaVisita:      formatearFecha(f['FECHA DE VISITA']) || '',
         nOrdenPolicia:    f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '',
@@ -224,7 +225,7 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
       });
       // Si la orden ya está escaneada, se arma de una vez el PDF único que se
       // envía a la policía (solicitud + orden). Si no, lo hará el escáner.
-      if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '');
+      if (r.ok) await armarSolicitudUnificada(f._idx, idCarpeta, f['RADICADO'] || '', f['ID_VISITA'] || '');
       await recargarVisitas();
       if (r.linkDoc) window.open(r.linkDoc, '_blank', 'noopener,noreferrer');
     } catch (e) {

@@ -2416,6 +2416,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // otro radicado (una fila borrada en el Sheet corre todas las de abajo), y
   // también sirve para descartar un borrador local que no es de esta visita.
   const _radicadoFilaRef = React.useRef(String((datosIniciales || {})['RADICADO'] || ''));
+  // ID_VISITA de la visita que edita este formulario (2026-10-14). Viaja junto
+  // a radicadoConocido: con él el backend escribe en la fila real aunque se
+  // haya corrido. Vacío en una visita nueva hasta que `agregar` lo devuelve.
+  const _idVisitaRef = React.useRef(String((datosIniciales || {})['ID_VISITA'] || ''));
   // QW25: refs para que el useEffect del autoguardado remoto no dependa de
   // estos flags — cambian seguido (cada guardado manual/acta/RF) y antes
   // reiniciaban el setInterval de 60s en cada toggle.
@@ -2587,7 +2591,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur) });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -2779,6 +2783,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     _prevDraftKeyRef.current = null;
     _radicadoFilaRef.current = (res.tipo === 'pqr' && !res.esNueva)
       ? String((res.datosIniciales || {})['RADICADO'] || '') : '';
+    _idVisitaRef.current = (res.tipo === 'pqr' && !res.esNueva)
+      ? String((res.datosIniciales || {})['ID_VISITA'] || '') : '';
     if (res.tipo === 'oficio') {
       // Visita de oficio — formulario en blanco con flag _oficio
       setD(_estadoInicial({ '_oficio': true }));
@@ -2902,7 +2908,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         const vals = _construirPayload(d, estadoVisita, linkDrive, datosIniciales);
         let rBg = null;
         try {
-          rBg = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: d.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current });
+          rBg = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: d.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current });
           _radicadoFilaRef.current = String(vals[0] || '');
         } catch (e) { /* silencioso, se reintenta al próximo save */ }
         if (cancelado) return;
@@ -2969,6 +2975,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           accion: 'recuperarEntregables',
           fila: filaEditando,
           radicadoConocido: _radicadoFilaRef.current,
+          idVisita: _idVisitaRef.current,
           idCarpetaVisita: d.idCarpetaVisita,
         });
         if (cancelado || !r || !r.ok) return;
@@ -3631,8 +3638,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal) });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
+      if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
 
       // 4. Actualizar state local con metadatos derivados
@@ -3760,6 +3768,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // El backend no escribe el link del acta/RF si en esa fila hay ya otro
       // radicado (fila corrida) — mismo control que `actualizar`.
       radicadoConocido: _radicadoFilaRef.current,
+      idVisita: _idVisitaRef.current,
     };
   }
 
@@ -4049,6 +4058,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // El radicado que tiene la fila en BD (no el del formulario, que puede
         // estar editado sin guardar): el backend lo compara antes de escribir.
         radicadoFila: _radicadoFilaRef.current,
+        idVisita: _idVisitaRef.current,
         idCarpeta: d.idCarpetaVisita,
         // Oficio: el radicado no vive en el state, se deriva de la orden
         // (mismo criterio que _construirPayload y _construirDatosF46).
@@ -4136,6 +4146,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         accion: 'subirInformeF43',
         fila: filaEditando,
         radicadoConocido: _radicadoFilaRef.current,
+        idVisita: _idVisitaRef.current,
         idCarpeta: d.idCarpetaVisita,
         nombreArchivo: 'F-GGO-43_' + String(rad || 'informe').replace(/[^a-zA-Z0-9._-]/g, '_') +
           '_' + (fechaIso || 'sin_fecha') + '.docx',
@@ -4174,6 +4185,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           accion: 'actualizarLinks',
           fila: filaEditando,
           radicadoConocido: _radicadoFilaRef.current,
+          idVisita: _idVisitaRef.current,
           linkXlsxActa: link,
           linkPdfActa: r.linkPdf || d.linkPdfActa || '',
         }).catch(e => console.warn('[actualizarLinks] no se pudo persistir en BD:', e.message));
@@ -5279,6 +5291,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               idCarpetaVisita={d.idCarpetaVisita}
               fila={filaEditando}
               radicadoFila={_radicadoFilaRef.current}
+              idVisita={_idVisitaRef.current}
               orden={d.orden}
               linkInicial={d.linkOrdenPolicia}
               onSubido={link => setCampo('linkOrdenPolicia', link)}

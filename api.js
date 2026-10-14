@@ -881,8 +881,10 @@ async function generarSolicitudVigilancia(params) {
 // fila): el radicado que el cliente cree que hay en esa fila. Si en el Sheet
 // se borró una fila de más arriba, todas se corren y el número apunta a la
 // visita de otro; el backend compara y se niega (_controlFilaVisita).
-async function obtenerPdfsSolicitud(fila, radicadoConocido) {
-  return gasPost({ accion: 'obtenerPdfsSolicitud', fila, radicadoConocido: radicadoConocido || '' });
+// `idVisita` (2026-10-14): con él el backend encuentra la fila real aunque se
+// haya corrido (_resolverFilaPorId); radicadoConocido queda de segunda red.
+async function obtenerPdfsSolicitud(fila, radicadoConocido, idVisita) {
+  return gasPost({ accion: 'obtenerPdfsSolicitud', fila, radicadoConocido: radicadoConocido || '', idVisita: idVisita || '' });
 }
 
 async function subirSolicitudUnificada(params) {
@@ -949,10 +951,10 @@ function _bytesAB64(bytes) {
 // Sin orden escaneada no se arma nada: un "PDF unificado" con una sola pieza
 // no aporta, y dejarlo sin generar es lo que hace que al escanear la orden
 // más tarde se arme por primera vez.
-async function armarSolicitudUnificada(fila, idCarpetaVisita, radicadoConocido) {
+async function armarSolicitudUnificada(fila, idCarpetaVisita, radicadoConocido, idVisita) {
   try {
     if (!fila || !idCarpetaVisita) return '';
-    const r = await obtenerPdfsSolicitud(fila, radicadoConocido);
+    const r = await obtenerPdfsSolicitud(fila, radicadoConocido, idVisita);
     if (!r || !r.ok || !r.hayOrden) return '';
 
     const { PDFDocument } = await cargarPdfLib();
@@ -968,6 +970,7 @@ async function armarSolicitudUnificada(fila, idCarpetaVisita, radicadoConocido) 
     const res = await subirSolicitudUnificada({
       fila, idCarpetaVisita,
       radicadoConocido: radicadoConocido || '',
+      idVisita: idVisita || '',
       base64: _bytesAB64(await salida.save()),
       nombre: r.nombre,
     });
@@ -984,7 +987,7 @@ async function armarSolicitudUnificada(fila, idCarpetaVisita, radicadoConocido) 
 // de los entregables abría el Sheet editable en vez del PDF. Se invoca
 // best-effort tras completar una visita con acta generada (Sheet): un fallo
 // aquí no debe bloquear el cierre, el Sheet sigue disponible.
-async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpetaVisita) {
+async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpetaVisita, idVisita) {
   try {
     const m = String(linkActaSheet || '').match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
     if (!m) return '';
@@ -1000,6 +1003,7 @@ async function generarPdfActaDesdeSheet(fila, linkActaSheet, radicado, idCarpeta
       accion: 'actualizarLinks',
       fila: fila,
       radicadoConocido: radicado || '',
+      idVisita: idVisita || '',
       linkPdfActa: r.linkPdf,
     }).catch(e => console.warn('[generarPdfActa] no se pudo persistir linkPdfActa:', e.message));
     invalidarCache('visitas');
@@ -1097,6 +1101,8 @@ async function guardarVisita(payload) {
   // Sheet, y ULTIMA_MODIFICACION no lo detecta si la fila de destino nunca se
   // estampó (así se perdió 20261084284 el 2026-09-25). Backend viejo lo ignora.
   if (payload.fila && payload.radicadoConocido) body.radicadoConocido = payload.radicadoConocido;
+  // ID_VISITA: el backend escribe en la fila real de la visita aunque se corra.
+  if (payload.fila && payload.idVisita) body.idVisita = payload.idVisita;
   // requestId solo para 'actualizar': si Google pierde la respuesta de un
   // guardado que sí se escribió, el reintento (o la cola) recibe el resultado
   // ya hecho en vez de un conflicto falso por ULTIMA_MODIFICACION.
@@ -1176,12 +1182,13 @@ async function subirFotoConDescripcion(idCarpetaFotos, base64, mime, descripcion
 // (raíz, no /Fotos) y deja el link en BD col LINK_ORDEN_POLICIA.
 // El PDF llega ya armado desde el cliente (escaner-orden.jsx). Mismo trato
 // offline que las fotos: sin red se encola y sube al recuperar conexión.
-async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden, radicadoConocido) {
+async function subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden, radicadoConocido, idVisita) {
   const body = {
     accion: 'subirOrdenPolicia',
     idCarpeta: idCarpetaVisita,
     fila: fila,
     radicadoConocido: radicadoConocido || '',
+    idVisita: idVisita || '',
     base64: base64,
     nombre: nombre,
     orden: orden || '',
