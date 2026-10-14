@@ -69,21 +69,170 @@ function _svMismoDia(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// «Barrio · C3», o «Rural». En rural la vereda ya viene dentro de la
+// dirección: repetirla gasta la única línea de contexto que hay. La comuna
+// sola («3 · …») no se entendía sin saber qué era: «C3».
+function _svUbic(f) {
+  const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+  const barrio = String(f['BARRIO'] || '').trim();
+  const comuna = String(f['COMUNA'] || '').trim();
+  const esRural = /rural/i.test(comuna) || (!barrio && /^v(da|ereda)\b/i.test(dir));
+  const comunaTxt = /^\d+$/.test(comuna) ? 'C' + comuna : comuna;
+  return esRural ? 'Rural' : [barrio, comunaTxt].filter(Boolean).join(' · ');
+}
+
+// ── Ruta del día (2026-10-14) ──────────────────────────────────
+// Decisiones del usuario: dos opciones — las visitas propias o las de todo el
+// equipo (salen juntos en el carro) —; las ajenas solo se ven aquí, dirección
+// y nombre, sin abrir la ficha; arranca en la ubicación actual y sigue el
+// recorrido más corto (rutaMasCortaDesde, utils.js). Entra lo que falta
+// visitar: la iniciada ya se visitó (se inicia en el sitio).
+const SV_DIAS_LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'];
+
+function _svPorVisitar(f) {
+  const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  return e !== 'COMPLETADO' && e !== 'INICIADO';
+}
+
+function _svPuntoFila(f) {
+  const lat = normalizarCoord(f['LATITUD'], 'lat');
+  const lon = normalizarCoord(f['LONGITUD'], 'lon');
+  if (lat != null && lon != null) return { lat, lon };
+  return puntoDesdeTextoCoord(String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '')) || null;
+}
+
+function RutaDia({ dia, datos, miNombre, onCerrar }) {
+  const { mias, equipo, hechas } = useMemoSV(() => {
+    const eq = agruparSemana(datos, [dia], { esAdmin: true, inspector: '' }).porDia[0];
+    const mi = miNombre ? agruparSemana(datos, [dia], { esAdmin: false, miNombre }).porDia[0] : [];
+    const mias = mi.filter(_svPorVisitar), equipo = eq.filter(_svPorVisitar);
+    return { mias, equipo, hechas: { mias: mi.length - mias.length, equipo: eq.length - equipo.length } };
+  }, [datos, dia, miNombre]);
+  const [alcance, setAlcance] = useStateSV(mias.length ? 'mias' : 'equipo');
+  const [origen, setOrigen] = useStateSV(null);
+  const [gps, setGps] = useStateSV('buscando'); // buscando | ok | sin
+  const [puntosCat, setPuntosCat] = useStateSV({});
+  const cerrarRef = React.useRef(null);
+
+  useEffectSV(() => {
+    if (cerrarRef.current) cerrarRef.current.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onCerrar(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Para ordenar basta una ubicación aproximada y reciente; Maps afina la suya.
+  useEffectSV(() => {
+    let vivo = true;
+    if (!navigator.geolocation) { setGps('sin'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => { if (vivo) { setOrigen({ lat: p.coords.latitude, lon: p.coords.longitude }); setGps('ok'); } },
+      () => { if (vivo) setGps('sin'); },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 });
+    return () => { vivo = false; };
+  }, []);
+
+  // Sin coordenadas, el punto del predio si catastro ya está en el equipo
+  // (puntoMapaCatastro nunca lo descarga), igual que «Cómo llegar».
+  useEffectSV(() => {
+    let vivo = true;
+    equipo.forEach((f) => {
+      if (!filaNecesitaPuntoCatastro(f)) return;
+      const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+      puntoMapaCatastro(dir).then((p) => {
+        if (vivo && p) setPuntosCat((prev) => Object.assign({}, prev, { [dir]: { lat: p[0], lon: p[1] } }));
+      }).catch(() => {});
+    });
+    return () => { vivo = false; };
+  }, [equipo]);
+
+  const lista = alcance === 'mias' ? mias : equipo;
+  const nHechas = hechas[alcance];
+  const orden = useMemoSV(() => rutaMasCortaDesde(lista.map((f) => {
+    const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+    return { f, dir, punto: _svPuntoFila(f) || puntosCat[dir] || null };
+  }), origen), [lista, puntosCat, origen]);
+  const tramos = linksRutaMaps(orden);
+
+  const titulo = 'Ruta del ' + SV_DIAS_LARGOS[dia.getDay() - 1] + ' ' + dia.getDate();
+  const sub = gps === 'buscando' ? 'Buscando tu ubicación…'
+    : gps === 'ok' ? 'El recorrido más corto desde donde estás'
+    : 'Sin tu ubicación: el orden sale desde la Alcaldía';
+
+  return (
+    <div className="dlg-overlay" onClick={onCerrar}>
+      <div className="dlg ruta" role="dialog" aria-modal="true" aria-labelledby="ruta-tit"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="dlg-grip" aria-hidden="true" />
+        <div className="ruta-head">
+          <div>
+            <div className="ruta-tit" id="ruta-tit">{titulo}</div>
+            <div className="ruta-sub" aria-live="polite">{sub}</div>
+          </div>
+          <button ref={cerrarRef} type="button" className="ruta-x" aria-label="Cerrar" onClick={onCerrar}>
+            <Icon.Close size={18} />
+          </button>
+        </div>
+
+        {mias.length > 0 && mias.length !== equipo.length && (
+          <div className="ruta-seg" role="group" aria-label="Qué visitas entran en la ruta">
+            {[['mias', 'Mis visitas', mias.length], ['equipo', 'Todo el equipo', equipo.length]].map(([k, t, n]) => (
+              <button key={k} type="button" aria-pressed={alcance === k}
+                className={alcance === k ? 'activo' : ''} onClick={() => setAlcance(k)}>
+                {t} <span className="ruta-seg-n">{n}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {orden.length === 0 ? (
+          <div className="ruta-vacio">No queda nada por visitar este día.</div>
+        ) : (
+          <ol className="ruta-lista">
+            {orden.map((p, i) => (
+              <li key={p.f._idx || i} className="ruta-parada">
+                <span className="ruta-n" aria-hidden="true">{i + 1}</span>
+                <div className="ruta-txt">
+                  <div className="ruta-dir">{puntoDesdeTextoCoord(p.dir) ? 'Punto GPS' : (p.dir || 'Sin dirección')}</div>
+                  <div className="ruta-meta">
+                    {[_svUbic(p.f), alcance === 'equipo' ? _svNombreCorto(p.f) : ''].filter(Boolean).join(' · ')}
+                    {!p.punto && <span className="ruta-aprox">{_svUbic(p.f) || alcance === 'equipo' ? ' · ' : ''}ubicación por dirección</span>}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {nHechas > 0 && (
+          <div className="ruta-nota">
+            {nHechas === 1 ? '1 visita ya iniciada o completada no entra.' : nHechas + ' visitas ya iniciadas o completadas no entran.'}
+          </div>
+        )}
+
+        {tramos.length > 0 && (
+          <div className="ruta-acciones">
+            {tramos.map((t, k) => (
+              <a key={k} className="dlg-btn dlg-btn-ok" href={t.url} target="_blank" rel="noopener noreferrer">
+                <Icon.Route size={18} />
+                {tramos.length > 1 ? 'Tramo ' + (k + 1) + ' · paradas ' + t.desde + '–' + t.hasta : 'Abrir en Google Maps'}
+              </a>
+            ))}
+            <div className="ruta-ayuda">Maps sale de donde estés y te lleva parada por parada.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Tarjeta de visita ──────────────────────────────────────────
 function SemanaCard({ f, movil, onAbrir }) {
   const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección';
-  const barrio = String(f['BARRIO'] || '').trim();
-  const comuna = String(f['COMUNA'] || '').trim();
   const rad = String(f['RADICADO'] || '').trim();
   const fRad = _svDDMM(f['FECHA RADICADO']);
-
-  // En rural la vereda ya viene dentro de la dirección: repetirla gasta la
-  // única línea de contexto que tiene la tarjeta.
-  const esRural = /rural/i.test(comuna) || (!barrio && /^v(da|ereda)\b/i.test(dir));
-  // La comuna sola («3 · …») no se entendía sin saber qué era: «C3».
-  const comunaTxt = /^\d+$/.test(comuna) ? 'C' + comuna : comuna;
-  const ubic = esRural ? 'Rural' : [barrio, comunaTxt].filter(Boolean).join(' · ');
+  const ubic = _svUbic(f);
 
   let accion = 'Iniciar';
   if (e === 'INICIADO') accion = 'Continuar';
@@ -141,6 +290,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   const inspector = onInspector ? (inspectorExt || '') : inspectorLocal;
   const setInspector = onInspector || setInspectorLocal;
   const [diaSel, setDiaSel] = useStateSV(null);
+  const [rutaDia, setRutaDia] = useStateSV(null);
   const [movil, setMovil] = useStateSV(() => {
     try { return window.matchMedia(SV_MOVIL).matches; } catch (e) { return false; }
   });
@@ -189,14 +339,23 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     setDiaSel(null);
   }, [offset]);
 
-  const { dias, porDia, hoyIdx } = useMemoSV(() => {
+  const { dias, porDia, hoyIdx, conRuta } = useMemoSV(() => {
     const r = rangoSemana(new Date(), offset);
     const g = agruparSemana(datos, r.dias, { esAdmin, miNombre, inspector });
     const hoy = new Date();
     let idx = -1;
     r.dias.forEach((d, i) => { if (_svMismoDia(d, hoy)) idx = i; });
-    return { dias: r.dias, porDia: g.porDia, hoyIdx: idx };
+    // «Ruta» en hoy y días por venir con algo del equipo por visitar: la
+    // ruta de las ajenas existe aunque la columna (filtrada) esté vacía.
+    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    const eq = agruparSemana(datos, r.dias, { esAdmin: true, inspector: '' }).porDia;
+    const conRuta = r.dias.map((d, i) => d >= inicioHoy && eq[i].some(_svPorVisitar));
+    return { dias: r.dias, porDia: g.porDia, hoyIdx: idx, conRuta };
   }, [datos, esAdmin, miNombre, inspector, offset]);
+
+  const hojaRuta = rutaDia && (
+    <RutaDia dia={rutaDia} datos={datos} miNombre={miNombre} onCerrar={() => setRutaDia(null)} />
+  );
 
   // Sin selección explícita se abre en hoy; fuera de la semana actual (o en
   // fin de semana, que no tiene columna) cae en el lunes.
@@ -255,10 +414,19 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
         <div className="sv-lista">
           {/* Solo con onAbrirDia (admin): la tira de días sigue seleccionando;
               agendar tiene su botón propio para no robarle el toque al día. */}
-          {onAbrirDia && (
-            <button type="button" className="sv-agendar" onClick={() => onAbrirDia(dias[sel])}>
-              Agendar
-            </button>
+          {(onAbrirDia || conRuta[sel]) && (
+            <div className="sv-dia-acc">
+              {conRuta[sel] && (
+                <button type="button" className="sv-ruta" onClick={() => setRutaDia(dias[sel])}>
+                  <Icon.Route size={16} /> Ruta del día
+                </button>
+              )}
+              {onAbrirDia && (
+                <button type="button" className="sv-agendar" onClick={() => onAbrirDia(dias[sel])}>
+                  Agendar
+                </button>
+              )}
+            </div>
           )}
           {porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
           {porDia[sel].map((f, i) => (
@@ -266,6 +434,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
           ))}
         </div>
         {pie}
+        {hojaRuta}
       </div>
     );
   }
@@ -291,6 +460,13 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
                 {porDia[i].length > 0 && <span className="sv-col-n">{porDia[i].length}</span>}
               </div>
             )}
+            {conRuta[i] && (
+              <button type="button" className="sv-ruta"
+                aria-label={'Ruta del ' + SV_DIAS_LARGOS[i] + ' ' + d.getDate()}
+                onClick={() => setRutaDia(d)}>
+                <Icon.Route size={14} /> Ruta
+              </button>
+            )}
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
               <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} />
@@ -299,6 +475,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
         ))}
       </div>
       {pie}
+      {hojaRuta}
     </div>
   );
 }

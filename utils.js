@@ -1483,6 +1483,69 @@ function ordenarRuta(paradas, oficina) {
   return [primera].concat(mejor, sin);
 }
 
+// ── Ruta del día (Semana de visitas, 2026-10-14) ────────────────
+// Decisiones del usuario: arranca en la ubicación actual del inspector y
+// sigue el recorrido más corto (no vuelve a la oficina, a diferencia de
+// ordenarRuta, que es el orden de la Agenda). Sin ubicación, desde la Alcaldía.
+// Recorrido abierto exacto hasta 8 paradas; con más, vecino más cercano.
+// ponytail: vecino más cercano puede quedar ~20 % arriba del óptimo; 2-opt si
+// algún día hay días de >8 paradas con punto.
+function rutaMasCortaDesde(paradas, origen) {
+  var con = [], sin = [];
+  (paradas || []).forEach(function (p) { (p && p.punto ? con : sin).push(p); });
+  var o = origen || AGENDA_OFICINA;
+  if (con.length < 2) return con.concat(sin);
+  var mejor = null;
+  if (con.length <= 8) {
+    var mejorCosto = Infinity;
+    (function permutar(prefijo, quedan, costo, prev) {
+      if (costo >= mejorCosto) return;
+      if (!quedan.length) { mejorCosto = costo; mejor = prefijo; return; }
+      quedan.forEach(function (p, i) {
+        permutar(prefijo.concat([p]), quedan.slice(0, i).concat(quedan.slice(i + 1)),
+          costo + _distanciaM(prev, p.punto), p.punto);
+      });
+    })([], con, 0, o);
+  } else {
+    mejor = [];
+    var actual = o, pendientes = con.slice();
+    while (pendientes.length) {
+      var j = 0;
+      pendientes.forEach(function (p, i) {
+        if (_distanciaM(actual, p.punto) < _distanciaM(actual, pendientes[j].punto)) j = i;
+      });
+      mejor.push(pendientes[j]);
+      actual = pendientes[j].punto;
+      pendientes.splice(j, 1);
+    }
+  }
+  return mejor.concat(sin);
+}
+
+// Enlaces de Google Maps para un recorrido ya ordenado. Sin `origin`: Maps
+// sale de donde está el teléfono. Maps acepta 9 paradas intermedias + destino,
+// así que más de 10 paradas se parten en tramos (el 2.º sale de donde termina
+// el 1.º, que es donde estará el inspector al abrirlo).
+// Parada = { punto: {lat, lon} | null, dir }. Sin punto va la dirección en
+// texto, sin barrio (ver linkMapaVisita: el barrio empeora la resolución).
+var RUTA_MAX_PARADAS_TRAMO = 10;
+function linksRutaMaps(paradas) {
+  var lugar = function (p) {
+    if (p.punto) return p.punto.lat.toFixed(6) + ',' + p.punto.lon.toFixed(6);
+    return String(p.dir || '').trim() + ', Bello, Antioquia, Colombia';
+  };
+  var validas = (paradas || []).filter(function (p) { return p && (p.punto || String(p.dir || '').trim()); });
+  var tramos = [];
+  for (var i = 0; i < validas.length; i += RUTA_MAX_PARADAS_TRAMO) {
+    var t = validas.slice(i, i + RUTA_MAX_PARADAS_TRAMO).map(lugar);
+    var url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' +
+      encodeURIComponent(t[t.length - 1]);
+    if (t.length > 1) url += '&waypoints=' + t.slice(0, -1).map(encodeURIComponent).join('%7C');
+    tramos.push({ desde: i + 1, hasta: i + t.length, url: url });
+  }
+  return tramos;
+}
+
 // Comuna como clave comparable: 'RURAL', '5' (de 5, '5', '05', '5.0') o ''.
 // Mismo criterio que obtenerAgendaDiaria del backend.
 function claveComunaAgenda(c) {
@@ -2602,6 +2665,8 @@ var _cuUtilsExports = {
   nivelPrioridad: nivelPrioridad,
   motivoPrioridad: motivoPrioridad,
   ordenarRuta: ordenarRuta,
+  rutaMasCortaDesde: rutaMasCortaDesde,
+  linksRutaMaps: linksRutaMaps,
   armarBorradorAgenda: armarBorradorAgenda,
   moverDiaHabil: moverDiaHabil,
   diaInicialAgenda: diaInicialAgenda,

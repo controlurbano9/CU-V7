@@ -140,6 +140,12 @@ const Icon = {
     React.createElement('path',   { key: 1, d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }),
     React.createElement('circle', { key: 2, cx: 12, cy: 10, r: 3 }),
   ], p?.size),
+  // Ruta — «Ruta del día» de la Semana (origen, recorrido, destino)
+  Route:   (p) => _svg([
+    React.createElement('circle', { key: 1, cx: 6, cy: 19, r: 2.5 }),
+    React.createElement('circle', { key: 2, cx: 18, cy: 5, r: 2.5 }),
+    React.createElement('path',   { key: 3, d: 'M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5' }),
+  ], p?.size),
   File:    (p) => _svg([
     React.createElement('path',     { key: 1, d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
     React.createElement('polyline', { key: 2, points: '14 2 14 8 20 8' }),

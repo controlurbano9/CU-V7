@@ -3982,3 +3982,65 @@ button.sv-col-head {
   .bq-estados::-webkit-scrollbar { display: none; }
   .bq-estados > * { flex-shrink: 0; }
 }
+
+/* ── Ruta del día (semana-visitas.jsx, 2026-10-14) ──
+   Botón en tinte (acción secundaria del día; el café lleno queda para
+   «Abrir en Google Maps»). La hoja reutiliza .dlg: sheet en móvil, tarjeta
+   centrada ≥640. Solo la lista desplaza: el botón de Maps no se va con ella. */
+.sv-ruta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; height: 28px; border: 0; border-radius: var(--r-ctl);
+  background: var(--brand-bg); color: var(--brand-ink);
+  font: 600 12px var(--font-sans); cursor: pointer;
+}
+.sv-ruta:hover { background: #F6DCCF; }
+.sv-dia-acc { display: flex; gap: 8px; }
+.sv-dia-acc > * { flex: 1; }
+.sv-dia-acc .sv-ruta,
+.sv-dia-acc .sv-agendar { height: var(--tap); margin: 0; font-size: 13px; }
+
+.dlg.ruta { display: flex; flex-direction: column; overflow: hidden; }
+.ruta-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ruta-tit { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.ruta-sub { margin-top: 2px; font-size: 13px; color: var(--ink-3); }
+.ruta-x {
+  flex: none; width: 36px; height: 36px; margin: -6px -8px 0 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-card); background: none; color: var(--ink-3); cursor: pointer;
+}
+.ruta-x:hover { background: var(--surface-2); color: var(--ink); }
+
+.ruta-seg {
+  display: flex; gap: 2px; margin-top: 16px; padding: 3px;
+  background: var(--surface-2); border-radius: var(--r-card);
+}
+.ruta-seg button {
+  flex: 1; height: 36px; border: 0; border-radius: var(--r-ctl);
+  background: none; color: var(--ink-3); font: 600 13px var(--font-sans); cursor: pointer;
+}
+.ruta-seg button.activo { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(31,27,22,.12); }
+.ruta-seg-n { font-weight: 500; color: var(--ink-4); margin-left: 2px; }
+
+/* Recorrido: número + línea punteada que une las paradas. */
+.ruta-lista { list-style: none; margin: 16px 0 0; padding: 0 2px 0 0; overflow-y: auto; min-height: 0; }
+.ruta-parada { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+.ruta-parada:not(:last-child)::before {
+  content: ''; position: absolute; left: 11px; top: 28px; bottom: 3px;
+  border-left: 2px dotted var(--line-2);
+}
+.ruta-n {
+  flex: none; width: 24px; height: 24px; border-radius: var(--r-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ink-2); color: var(--surface);
+  font: 600 12px var(--font-sans); font-variant-numeric: tabular-nums;
+}
+.ruta-txt { min-width: 0; padding-top: 2px; }
+.ruta-dir { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
+.ruta-meta { margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.ruta-aprox { color: var(--amber); }
+.ruta-vacio { padding: 24px 0 8px; text-align: center; font-size: 14px; color: var(--ink-3); }
+.ruta-nota { font-size: 12px; color: var(--ink-4); }
+.ruta-acciones { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.ruta-acciones .dlg-btn { flex: none; width: 100%; gap: 8px; text-decoration: none; }
+.ruta-ayuda { text-align: center; font-size: 12px; color: var(--ink-4); }
+@media (min-width: 640px) { .dlg.ruta { max-width: 440px; max-height: 80vh; } }
