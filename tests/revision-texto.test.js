@@ -116,3 +116,88 @@ test('chequeo local: «infractor» y área con «No se pudo medir» no pide áre
   });
   assert.deepEqual(ids(s), ['infractor']);
 });
+
+// ── 2026-10-15: justificación solo por coherencia y capacidad del acta ──
+
+test('chequeo local: cada señal dice si es de coherencia o de forma', () => {
+  const s = revisarTextoLocal({
+    actuacion: DESC_ACTA, conclusion: CONC_ACTA,
+    infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true,
+  });
+  const tipo = id => s.find(x => x.id === id).tipo;
+  assert.equal(tipo('R06'), 'coherencia');
+  assert.equal(tipo('area'), 'coherencia');
+  assert.equal(tipo('alcance'), 'forma');
+  assert.equal(tipo('traslado'), 'forma');
+  assert.equal(tipo('categoria'), 'forma');
+});
+
+test('chequeo local: el largo ya no marca «otra herramienta» (caso 20251084835)', () => {
+  // La propuesta de la IA para la visita de Alejandro: 2.273 caracteres, sin
+  // muletillas ni oraciones largas. Antes pedía justificación por el largo.
+  const parrafo = 'En el primer nivel se encontró el retiro de un ventanal, la instalación de enchape en algunos muros ' +
+    'y trabajos de cambio de la red de alcantarillado. ';
+  const s = revisarTextoLocal({ actuacion: parrafo.repeat(16), conclusion: '', infraccion: 'No se evidencia infracción' });
+  assert.equal(parrafo.repeat(16).length > 2000, true);
+  assert.deepEqual(ids(s), []);
+});
+
+test('capacidadActa: renglones por párrafo y líneas vacías', () => {
+  const { capacidadActa, renglonesActa, ACTA_CAPACIDAD } = require('../utils.js');
+  const pr = ACTA_CAPACIDAD.situacion.porRenglon;
+  assert.equal(renglonesActa('', pr), 0);
+  assert.equal(renglonesActa('Corto.', pr), 1);
+  assert.equal(renglonesActa('a'.repeat(pr + 1), pr), 2);
+  assert.equal(renglonesActa('Uno.\n\nDos.', pr), 3);           // la línea vacía ocupa renglón
+  // Fila 1552 (2025-020054): párrafos de 1501, 1310 y 1318 caracteres; el
+  // PDF cortó el tercero en su cuarto renglón (22 renglones en total).
+  const texto = ['x'.repeat(1501), 'x'.repeat(1310), 'x'.repeat(1318)].join('\n');
+  const c = capacidadActa(texto, 'situacion');
+  assert.equal(c.renglones, 28);
+  assert.equal(c.cabe, false);
+  assert.equal(c.caracteres < 0, true);
+  assert.equal(capacidadActa('x'.repeat(1501), 'situacion').cabe, true);
+});
+
+test('capacidadActa: las conclusiones cuentan la frase del art. 135', () => {
+  const { capacidadActa, conclusionJuridicaActa } = require('../utils.js');
+  const jur = conclusionJuridicaActa('A4: Sin licencia o caducada', { valor: '', noMedible: true });
+  // Fila 1698 (20191038116): frase + área ocupan 3 renglones, la línea vacía
+  // uno, y la conclusión del inspector (296 caracteres) ya no cabe entera.
+  const conc = 'x'.repeat(296);
+  assert.equal(capacidadActa([jur, conc].join('\n\n'), 'conclusiones').cabe, false);
+  assert.equal(capacidadActa([jur, 'x'.repeat(140)].join('\n\n'), 'conclusiones').cabe, true);
+});
+
+test('caracteresParaActa: lo que cabe según párrafos y lo ya ocupado', () => {
+  const { caracteresParaActa } = require('../utils.js');
+  assert.equal(caracteresParaActa('situacion', 0, 1), Math.floor(22 * 152 * 0.9));
+  assert.equal(caracteresParaActa('situacion', 0, 3), Math.floor(18 * 152 * 0.9));
+  // Conclusiones con A4: la frase y el área ocupan 3, la línea vacía 1.
+  assert.equal(caracteresParaActa('conclusiones', 4, 1), Math.floor(1 * 152 * 0.9));
+  assert.equal(caracteresParaActa('conclusiones', 5, 1), 0);
+});
+
+test('resumenCambios: el caso de Alejandro avisa la salvedad perdida', () => {
+  const { resumenCambios } = require('../utils.js');
+  const orig = 'Durante la inspección del primer nivel de la edificación de cinco (5) niveles, no se evidenciaron ' +
+    'retiros de muros. No obstante, estas actividades no evidencian, por sí mismas, una intervención que requiera ' +
+    'licencia urbanística, toda vez que el retiro del ventanal no compromete elementos portantes. Asimismo, se ' +
+    'deja constancia de que la apreciación se limita a las áreas inspeccionadas.';
+  const prop = 'En el primer nivel de la edificación de cinco niveles no se vieron retiros de muros. Estas actividades ' +
+    'no requieren licencia urbanística. El retiro del ventanal no compromete elementos portantes.';
+  const r = resumenCambios(orig, prop);
+  const tipos = r.map(x => x.tipo);
+  assert.deepEqual(tipos.slice(0, 2), ['pierde', 'pierde']);           // lo perdido va primero
+  assert.match(r[0].texto, /\b5\b/);                                     // la cifra (5)
+  assert.match(r[1].texto, /«por sí mismas»/);                          // con sus tildes
+  assert.ok(tipos.includes('largo'));
+  assert.ok(r.find(x => x.tipo === 'forma').texto.includes('«no obstante»'));
+});
+
+test('resumenCambios: «segundo piso» no cuenta como atribución («según»)', () => {
+  const { resumenCambios } = require('../utils.js');
+  const r = resumenCambios('Hay una ampliación en el segundo piso.', 'Hay una ampliación en el 2.º piso.');
+  assert.equal(r.some(x => /salvedades/.test(x.texto)), false);
+  assert.deepEqual(resumenCambios('Igual.', 'Igual.'), []);
+});

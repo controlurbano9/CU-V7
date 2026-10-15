@@ -1684,14 +1684,31 @@ function idArchivoDrive(link) {
 // con una diferencia decidida por el usuario el 2026-10-02: aquí el registro
 // cuenta siempre que no exista, porque la fila no dice si ya hay fotos
 // subidas. El informe no se lista, igual que allá.
+// Excepción (2026-10-15): la visita que se documenta con informe técnico
+// (DOCUMENTO_VISITA = INFORME) no lleva acta ni su registro fotográfico: lo
+// que falta es el informe (y la orden, si aplica).
 function entregablesFaltantes(fila) {
   if (!fila) return [];
   if (_normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '') !== 'INICIADO') return [];
   var out = [];
+  if (documentoVisita(fila) === 'INFORME') {
+    if (!fila['LINK_DOCX_INFORME']) out.push('Informe');
+    if (ordenPoliciaDe(fila) && !fila['LINK_ORDEN_POLICIA']) out.push('Orden escaneada');
+    return out;
+  }
   if (!(fila['LINK_XLSX_ACTA'] || fila['LINK_PDF_ACTA'])) out.push('Acta');
   if (ordenPoliciaDe(fila) && !fila['LINK_ORDEN_POLICIA']) out.push('Orden escaneada');
   if (!fila['LINK_REGISTRO_FOTOS']) out.push('Registro fotográfico');
   return out;
+}
+
+// Con qué documento se cierra la visita (columna DOCUMENTO_VISITA, decisión
+// del usuario 2026-10-15): 'INFORME' (no lleva acta; el texto no tiene el
+// tope de la celda del acta) o 'ACTA', que es lo de siempre y lo que vale
+// con la columna vacía. Acepta la fila de BD o el valor suelto.
+function documentoVisita(fila) {
+  var v = fila && typeof fila === 'object' ? fila['DOCUMENTO_VISITA'] : fila;
+  return String(v || '').trim().toUpperCase() === 'INFORME' ? 'INFORME' : 'ACTA';
 }
 
 // Las visitas de `miNombre` en tres grupos:
@@ -2796,6 +2813,117 @@ function conclusionJuridicaActa(infraccion, area) {
   return frases.join('\n');
 }
 
+// ── Capacidad de las celdas del acta F-GGO-46 ─────────────────
+// La celda no crece: lo que no cabe no sale en el PDF, y nadie se entera.
+// Medido el 2026-10-15 en PDF reales: la situación (A30) se cortó en el
+// renglón 23 (fila 1552, 2025-020054) y las conclusiones (A38) en el 6
+// (fila 1698, 20191038116, con la frase del art. 135 ocupando 3). Un
+// renglón son ≈ 152 caracteres; cada salto de línea abre renglón y una
+// línea vacía ocupa uno. Si cambia la plantilla, se vuelve a medir aquí.
+var ACTA_CAPACIDAD = {
+  situacion:    { renglones: 22, porRenglon: 152 },
+  conclusiones: { renglones: 5,  porRenglon: 152 }
+};
+
+function renglonesActa(texto, porRenglon) {
+  var t = String(texto == null ? '' : texto).replace(/\s+$/, '');
+  if (!t.trim()) return 0;
+  return t.split('\n').reduce(function(n, linea) {
+    return n + Math.max(1, Math.ceil(linea.replace(/\s+$/, '').length / porRenglon));
+  }, 0);
+}
+
+// `celda`: 'situacion' | 'conclusiones'. `caracteres` ≈ los que aún caben
+// (positivo) o los que sobran (negativo).
+function capacidadActa(texto, celda) {
+  var c = ACTA_CAPACIDAD[celda] || ACTA_CAPACIDAD.situacion;
+  var r = renglonesActa(texto, c.porRenglon);
+  return { renglones: r, max: c.renglones, cabe: r <= c.renglones,
+           caracteres: (c.renglones - r) * c.porRenglon };
+}
+
+// Largo al que «Revisar» condensa un texto que no cabe en su celda.
+// `ocupados`: renglones que ya usa otra cosa (en conclusiones, la frase del
+// art. 135 y su línea vacía). Cada párrafo después del primero cuesta una
+// línea vacía y un renglón a medias; 10 % de margen por el ajuste de
+// palabras. 0 = no queda espacio.
+function caracteresParaActa(celda, ocupados, parrafos) {
+  var c = ACTA_CAPACIDAD[celda] || ACTA_CAPACIDAD.situacion;
+  var p = Math.min(4, Math.max(1, parrafos || 1));
+  var libres = c.renglones - (ocupados || 0) - 2 * (p - 1);
+  return libres > 0 ? Math.floor(libres * c.porRenglon * 0.9) : 0;
+}
+
+// Resumen de lo que cambia la propuesta de «Revisar» frente al texto del
+// inspector. El panel muestra los textos limpios, sin tachar ni resaltar
+// (decisión del usuario 2026-10-15), y esto debajo. Solo lo que se mide sin
+// IA; lo perdido va primero porque es lo que cambia el sentido (caso
+// 20251084835: «no evidencian, por sí mismas, una intervención que requiera
+// licencia» → «no requieren licencia»).
+//   [{ tipo: 'pierde' | 'largo' | 'forma' | 'oraciones', texto }]
+// Fuentes de regex sobre el texto sin tildes y en minúscula. Con límite de
+// palabra: «segun» no puede atrapar «segundo piso».
+var SALVEDADES_REVISION = [
+  '\\bpor si mism\\w*', '\\bpor si sol\\w*', '\\bsiempre que\\b', '\\bsalvo\\b', '\\bexcepto\\b',
+  '\\ba menos que\\b', '\\ben las areas\\b', '\\btuvo acceso\\b', '\\bvisibles?\\b',
+  '\\bno fue posible\\b', '\\bno se pudo\\b', '\\bno se logro\\b', '\\bpresunt\\w*', '\\baparente\\w*',
+  '\\bsegun\\b', '\\bmanifest\\w*'
+];
+function resumenCambios(orig, prop) {
+  orig = String(orig || ''); prop = String(prop || '');
+  var out = [];
+  var on = _sinTildesRev(orig), pn = _sinTildesRev(prop);
+  var cuenta = function(t, src) { return (t.match(new RegExp(src, 'g')) || []).length; };
+  // Cita el fragmento tal como lo escribió el inspector: sin tildes el texto
+  // conserva el largo (NFC → base + marcas → base), así que el índice sirve.
+  var cita = function(src) {
+    var m = new RegExp(src).exec(on);
+    if (!m) return '';
+    var trozo = on.length === orig.length ? orig.substr(m.index, m[0].length) : m[0];
+    return '«' + trozo.toLowerCase() + '»';
+  };
+  var escapar = function(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+
+  // Cifras del original que no aparecen en la propuesta (medidas, pisos…).
+  // Se comparan con el decimal unificado y se muestran como las escribió el inspector.
+  var crudos = function(t) { return t.match(/\d+(?:[.,]\d+)?/g) || []; };
+  var norm = function(n) { return n.replace(',', '.'); };
+  var numsProp = crudos(prop).map(norm);
+  var vistos = {};
+  var perdidas = crudos(orig).filter(function(n) {
+    var k = norm(n);
+    if (vistos[k] || numsProp.indexOf(k) >= 0) return false;
+    return (vistos[k] = true);
+  });
+  if (perdidas.length) out.push({ tipo: 'pierde', texto: 'No aparecen estas cifras: ' + perdidas.slice(0, 6).join(', ') + '.' });
+
+  // Salvedades y atribuciones que la propuesta quita o reduce.
+  var quitadas = SALVEDADES_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
+  if (quitadas.length) out.push({ tipo: 'pierde', texto: 'Quita o reduce salvedades: ' + quitadas.slice(0, 4).map(cita).join(', ') + '. Confirma que el sentido no cambia.' });
+
+  var lo = orig.trim().length, lp = prop.trim().length;
+  if (lo && Math.abs(lp - lo) / lo >= 0.05) {
+    out.push({ tipo: 'largo', texto: (lp < lo ? 'Más corto' : 'Más largo') + ': de ' + lo.toLocaleString('es-CO') + ' a ' +
+      lp.toLocaleString('es-CO') + ' caracteres (' + (lp < lo ? '−' : '+') + Math.round(Math.abs(lp - lo) / lo * 100) + ' %).' });
+  }
+
+  var formulas = MULETILLAS_REVISION.filter(function(p) { return on.indexOf(p) >= 0 && pn.indexOf(p) < 0; });
+  if (formulas.length) {
+    out.push({ tipo: 'forma', texto: 'Quita fórmulas de oficina: ' +
+      formulas.slice(0, 4).map(function(p) { return cita(escapar(p)); }).join(', ') + '.' });
+  }
+
+  var ppo = function(t) {
+    var o = t.split(/[.!?]+\s+/).filter(function(s) { return s.trim().length > 3; });
+    return o.length ? t.split(/\s+/).length / o.length : 0;
+  };
+  var po = ppo(orig), pp = ppo(prop);
+  if (po && pp && po - pp >= 5) {
+    out.push({ tipo: 'oraciones', texto: 'Oraciones más cortas: de ' + Math.round(po) + ' a ' + Math.round(pp) + ' palabras en promedio.' });
+  }
+  return out;
+}
+
 // ── Reglas de coherencia que bloquean el acta (fase 1) ────────
 // docs/PROPUESTA_2026-10-14_coherencia-acta.md § 4, con las decisiones del
 // usuario: contradicciones entre casillas que no se pasan con justificación.
@@ -2950,14 +3078,21 @@ function _comportamientosCitados(texto, poligono) {
   return Object.keys(out);
 }
 
-// Chequeo local de la revisión (sin IA, sin red). Devuelve las señales que,
-// si quedan al cerrar la revisión, piden una justificación:
-//   [{ id, donde: 'descripcion' | 'conclusion' | 'area', mensaje }]
+// Chequeo local de la revisión (sin IA, sin red). Devuelve las señales:
+//   [{ id, tipo: 'coherencia' | 'forma', donde: 'descripcion' | 'conclusion' | 'area', mensaje }]
+// Solo las de coherencia (el texto contradice una casilla) piden
+// justificación al cerrar; las de forma son avisos (decisión del usuario
+// 2026-10-15: a Alejandro se le pidió justificar el largo de la propuesta
+// de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
+var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance'];
 function revisarTextoLocal(e) {
   e = e || {};
   var senales = [];
-  function add(id, donde, mensaje) { senales.push({ id: id, donde: donde, mensaje: mensaje }); }
+  function add(id, donde, mensaje) {
+    senales.push({ id: id, tipo: SENALES_DE_FORMA.indexOf(id) >= 0 ? 'forma' : 'coherencia',
+                   donde: donde, mensaje: mensaje });
+  }
   var lista = comportamientosParaIA(e.infraccion);
   var ninguno = lista[0] === 'NINGUNO';
   var marcados = ninguno ? [] : lista.map(function(c) { return c.split(' — ')[0]; });
@@ -2968,17 +3103,18 @@ function revisarTextoLocal(e) {
     { donde: 'conclusion', nombre: 'En las conclusiones:', t: String(e.conclusion || '') }
   ];
 
-  // Texto traído de otra herramienta (solo la descripción: es la larga).
+  // Prosa de oficina (solo la descripción: es la larga). El largo ya no
+  // cuenta: lo mide capacidadActa contra la celda real.
   var desc = textos[0].t.trim();
   if (desc) {
     var dn = _sinTildesRev(desc);
     var mul = MULETILLAS_REVISION.filter(function(p) { return dn.indexOf(p) >= 0; });
     var oraciones = desc.split(/[.!?]+\s+/).filter(function(s) { return s.trim().length > 3; });
     var ppo = desc.split(/\s+/).length / Math.max(1, oraciones.length);
-    if (mul.length >= 3 || ppo > 35 || desc.length > 2000) {
-      add('externo', 'descripcion', 'La descripción parece redactada por otra herramienta (' +
-        (mul.length >= 3 ? mul.length + ' fórmulas de oficina' :
-         ppo > 35 ? Math.round(ppo) + ' palabras por oración' : desc.length + ' caracteres') + ').');
+    if (mul.length >= 3 || ppo > 35) {
+      add('externo', 'descripcion', 'La descripción tiene ' +
+        (mul.length >= 3 ? mul.length + ' fórmulas de oficina («' + mul.slice(0, 3).join('», «') + '»)'
+                         : 'oraciones de ' + Math.round(ppo) + ' palabras en promedio') + '.');
     }
   }
 
@@ -3111,6 +3247,14 @@ var _cuUtilsExports = {
   leerSelloRevision: leerSelloRevision,
   revisionVigente: revisionVigente,
   revisarTextoLocal: revisarTextoLocal,
+  SENALES_DE_FORMA: SENALES_DE_FORMA,
+  ACTA_CAPACIDAD: ACTA_CAPACIDAD,
+  renglonesActa: renglonesActa,
+  capacidadActa: capacidadActa,
+  caracteresParaActa: caracteresParaActa,
+  documentoVisita: documentoVisita,
+  resumenCambios: resumenCambios,
+  SALVEDADES_REVISION: SALVEDADES_REVISION,
   MULETILLAS_REVISION: MULETILLAS_REVISION,
   AGENDA_OFICINA: AGENDA_OFICINA,
   nivelPrioridad: nivelPrioridad,

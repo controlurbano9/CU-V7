@@ -1118,6 +1118,9 @@ async function guardarVisita(payload) {
   // Revisión del texto ({ modo, huella, justificacion? }): el backend la sella
   // por nombre en REVISION_DESCRIPCION. Sin el campo no toca la columna.
   if (payload.revisionTexto) body.revisionTexto = payload.revisionTexto;
+  // DOCUMENTO_VISITA ('ACTA' | 'INFORME'): con qué documento se cierra la
+  // visita. Por nombre, como los dos de arriba; sin el campo no se toca.
+  if (payload.documentoVisita) body.documentoVisita = payload.documentoVisita;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
@@ -1144,9 +1147,15 @@ async function guardarVisita(payload) {
 // forma de comportamientosParaIA() (utils.js). Con ellos la IA conserva una
 // calificación del texto solo si coincide con lo marcado. Backend viejo lo
 // ignora.
-async function mejorarTexto(texto, perfil, comportamientos) {
+// `maxCaracteres` (opcional): lo que cabe en la celda del acta; el backend
+// condensa hasta ahí. `contexto` (opcional, perfil 'conclusionActa'): la
+// situación y las casillas, para que unas conclusiones vacías se propongan
+// desde lo diligenciado. Backend viejo ignora los dos.
+async function mejorarTexto(texto, perfil, comportamientos, maxCaracteres, contexto) {
   const body = { accion: 'mejorarTexto', texto, perfil };
   if (Array.isArray(comportamientos)) body.comportamientos = comportamientos;
+  if (maxCaracteres > 0) body.maxCaracteres = Math.floor(maxCaracteres);
+  if (contexto) body.contexto = contexto;
   const d = await gasPost(body);
   return d.texto || '';
 }

@@ -70,6 +70,18 @@ test('entregablesFaltantes — el informe no se lista y solo aplica a las inicia
   assert.deepEqual(entregablesFaltantes(null), []);
 });
 
+test('entregablesFaltantes — visita que se documenta con informe: falta el informe, no el acta', () => {
+  const { documentoVisita } = require('../utils.js');
+  const base = { 'ESTADO VISITA': 'INICIADO', 'DOCUMENTO_VISITA': 'INFORME' };
+  assert.deepEqual(entregablesFaltantes(base), ['Informe']);
+  assert.deepEqual(entregablesFaltantes({ ...base, 'N° ORDEN DE POLICIA': '2026-09-015' }), ['Informe', 'Orden escaneada']);
+  assert.deepEqual(entregablesFaltantes({ ...base, 'LINK_DOCX_INFORME': 'https://drive/i' }), []);
+  // Columna vacía o desconocida = acta, como todas las visitas de antes.
+  assert.equal(documentoVisita({}), 'ACTA');
+  assert.equal(documentoVisita({ 'DOCUMENTO_VISITA': 'informe' }), 'INFORME');
+  assert.equal(documentoVisita('ACTA'), 'ACTA');
+});
+
 // ── agruparMisVisitas ──────────────────────────────────────────
 
 test('agruparMisVisitas — reparte por estado y deja fuera lo que no es visita', () => {

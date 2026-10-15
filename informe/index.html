@@ -937,7 +937,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=125"></script>
+<script src="../utils.js?v=127"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -2456,6 +2456,11 @@ function recolectarDatosWizard() {
     cubierta:sinLic?'No se aporto':gv('cubierta'),
     curaduria:sinLic?'No aplica':gv('curaduria'),
     obs:gv('obs'), areas:gv('areas'), comportamientos:comps,
+    // De la visita (no hay campo en el asistente): lo que el inspector
+    // concluyo y si marco "No se evidencia infraccion". Este ultimo solo vale
+    // si aqui tampoco se marco ningun comportamiento.
+    conclusiones_inspector: V6_CTX.conclusionesInspector || '',
+    sin_infraccion: !!V6_CTX.sinInfraccion && !comps.length,
     clasificacion:gv('clasificacion'), polig_uso:gv('poligUso'),
     polig_trat:gv('poligTrat'), franja:gv('franja'), proteccion:gv('proteccion')
   };
@@ -2499,7 +2504,7 @@ function detectarAclaracionesInforme(ctx) {
 async function construirPromptF43(ctx) {
   var d = ctx.d, fotoDescs = ctx.fotoDescs, sinLic = ctx.sinLic;
   var licNota = sinLic
-    ? 'No se aporto documentacion urbanistica. En antecedentes indicar exactamente que "no fue aportada ni exhibida documentacion urbanistica que acredite licencia de construccion" — la ausencia de exhibicion deja la carga de acreditarla en quien construye. Nunca afirmar que la obra "no tiene licencia" (hecho negativo absoluto, no verificable en una sola visita) ni escribir "no fue posible verificar" (sugeriria que la licencia existe y solo falto comprobarla).'
+    ? 'No se aporto documentacion urbanistica. En antecedentes indicar exactamente que "no fue aportada ni exhibida documentacion urbanistica que acredite licencia de construccion". Nada de lo construido consta como aprobado o amparado por una licencia o por planos aprobados: PROHIBIDO decirlo. Nunca afirmar que la obra "no tiene licencia" (hecho negativo absoluto, no verificable en una sola visita) ni escribir "no fue posible verificar" (sugeriria que la licencia existe y solo falto comprobarla).'
     : d.estado_licencia === 'VENCIDA'
       ? 'Se aporto licencia, pero su termino de vigencia se encontraba vencido a la fecha de la visita (dato del inspector). Indicarlo en observaciones de forma objetiva (ej. "licencia con fecha de ejecutoria ' + (d.fecha_ejec || '[segun DATOS]') + ', cuyo termino de vigencia se encontraba vencido a la fecha de la visita") y contrastar lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificarlo en observaciones (la calificacion va en CONCLUSIONES). PROHIBIDO tratarla como licencia vigente.'
       : 'Se aporto licencia. Contrastar en observaciones lo aprobado (segun DATOS) vs. lo hallado en campo, sin calificarlo en observaciones (la calificacion va en CONCLUSIONES).'
@@ -2508,7 +2513,17 @@ async function construirPromptF43(ctx) {
   // una licencia vencida salia con "cenirse a lo aprobado", como si estuviera
   // vigente, y ademas mezclada con el hallazgo del tercer piso).
   var recLicencia;
-  if (d.estado_licencia === 'SIN_LICENCIA') {
+  var sinComportamientos = !(d.comportamientos || []).length;
+  if (sinComportamientos) {
+    // 2026-10-15 (informe de 20251084835): sin comportamientos marcados, la
+    // recomendacion "permanente" de reconocimiento o demolicion se aplicaba
+    // igual y un caso sin infraccion salia recomendando demoler.
+    recLicencia = 'no hay ningun comportamiento marcado'
+      + (d.sin_infraccion ? ' (el inspector marco "No se evidencia infraccion")' : '')
+      + ': no hay irregularidad que corregir. PROHIBIDO recomendar reconocimiento, licencia para lo ya construido, '
+      + 'demolicion o restitucion. Solo cabe una recomendacion preventiva, por ejemplo abstenerse de ejecutar obras '
+      + 'que requieran licencia sin haberla obtenido.';
+  } else if (d.estado_licencia === 'SIN_LICENCIA') {
     // 2026-10-14: lo ya construido sin licencia no se legaliza con "licencia
     // de construccion" sino con acto de reconocimiento, y quien decide si
     // procede es la curaduria — el informe no lo da por hecho. El plazo de 60
@@ -2615,6 +2630,16 @@ async function construirPromptF43(ctx) {
     + 'NOTA LICENCIA: ' + licNota + '\n'
     + 'HALLAZGOS DEL CATALOGO CONFIRMADOS POR EL INSPECTOR (orientacion de redaccion — adaptar cada sugerencia al caso concreto de esta visita, PROHIBIDO copiarla tal cual; el "contexto normativo interno" es solo para precision tecnica, PROHIBIDO citarlo como fuente legal):\n' + hsNota + '\n\n'
     + (aclaracionesNota ? 'ACLARACIONES DEL INSPECTOR (respuestas a preguntas de contexto, fuente valida igual que DATOS):\n' + aclaracionesNota + '\n\n' : '')
+    // 2026-10-15: las conclusiones que el inspector escribio y reviso en la
+    // visita no llegaban al generador, y el informe concluia por su cuenta
+    // (caso 20251084835: dijo lo contrario que el inspector).
+    + ((d.conclusiones_inspector || '').trim()
+        ? 'CONCLUSIONES DEL INSPECTOR (su criterio tecnico, ya revisado en la visita): tus CONCLUSIONES las desarrollan '
+          + 'como determinaciones sin contradecirlas y sin dejar por fuera ninguna de sus determinaciones ni de sus '
+          + 'salvedades ("por si mismas", "siempre que", "en las areas inspeccionadas"); una condicion del inspector sigue '
+          + 'siendo condicion, nunca la conviertas en un hecho. Las recomendaciones que traigan van en RECOMENDACIONES:\n'
+          + d.conclusiones_inspector.trim() + '\n\n'
+        : '')
     + 'COMPORTAMIENTOS ART.135 YA IDENTIFICADOS POR EL INSPECTOR (codigo -> cita completa con el texto literal de la ley; '
     + 'unicos comportamientos que puedes concluir):\n' + (compsNota || 'ninguno marcado') + '\n\n'
     + 'JSON exacto requerido:\n'
@@ -2622,7 +2647,7 @@ async function construirPromptF43(ctx) {
     + '"conclusiones_items":["item1","item2"],"recomendaciones_items":["item1","item2"]}\n\n'
     + 'REGLAS OBLIGATORIAS (incumplirlas invalida el informe como prueba tecnica):\n'
     + '0. REGLA DE ORO: todo hecho afirmado debe tener respaldo directo en DATOS, HALLAZGOS DEL CATALOGO CONFIRMADOS, '
-    + 'ACLARACIONES DEL INSPECTOR (si las hay), COMPORTAMIENTOS ART.135 ya listados o DESCRIPCION DE FOTOGRAFIAS. Si un dato no esta expresamente en esas '
+    + 'ACLARACIONES DEL INSPECTOR (si las hay), CONCLUSIONES DEL INSPECTOR (si las hay) o COMPORTAMIENTOS ART.135 ya listados. Si un dato no esta expresamente en esas '
     + 'fuentes, se omite por completo — no completar con inferencias, conocimiento general ni probabilidades.\n'
     + '1. ANTECEDENTES: es el ORIGEN de la actuacion, NO un resumen del informe. Incluye unicamente: fecha de la '
     + 'visita, direccion y barrio, y el motivo o acto que la origina (radicado de PQR, oficio, '
@@ -2652,7 +2677,7 @@ async function construirPromptF43(ctx) {
     + 'sin explicar su causa. PROHIBIDO usar area_apro, pisos, sist u otro dato del cuadro de licencia como '
     + 'medida de campo o descripcion del estado real del predio: son valores APROBADOS, no verificados — '
     + 'solo pueden citarse como "lo aprobado" en el contraste con lo hallado. El area construida observada '
-    + 'solo puede provenir de obs, areas o la descripcion de fotografias; si no hay area medida, describe '
+    + 'solo puede provenir de obs o areas; si no hay area medida, describe '
     + 'sin cifra, nunca tomes la de la licencia. ' + areaCierra + ' '
     + 'OBSERVACIONES solo describe: PROHIBIDO incluir en ellas recomendaciones o conclusiones ("se recomienda", '
     + '"permite concluir", "en consecuencia") — si las observaciones del inspector (obs) las traen, llevalas a su '
@@ -2663,7 +2688,8 @@ async function construirPromptF43(ctx) {
     + 'registran atribuidas a quien las hizo ("segun manifesto la quejosa"), sin valorarlas.\n'
     + '3. CITAS LEGALES — LISTA BLANCA (solo estas normas, con esta misma numeracion; nada fuera de ella): '
     + '(a) Ley 1801 de 2016, art. 135, UNICAMENTE en la cita completa dada en COMPORTAMIENTOS para los codigos marcados — '
-    + 'si no hay comportamientos marcados, no cites el art. 135; '
+    + 'si no hay comportamientos marcados, el art. 135 solo se nombra para decir que las obras no constituyen un '
+    + 'comportamiento contrario a la integridad urbanistica, sin literal ni numeral; '
     + '(b) Decreto 1077 de 2015: art. 2.2.6.1.1.7 (licencia de construccion y sus modalidades: obra nueva, ampliacion, '
     + 'adecuacion, modificacion, restauracion, reforzamiento estructural, demolicion, reconstruccion, cerramiento), '
     + 'arts. 2.2.6.4.1.1 y siguientes (reconocimiento de edificaciones) y art. 2.2.6.4.2.2 (requisitos del '
@@ -2677,8 +2703,10 @@ async function construirPromptF43(ctx) {
     + '(niveles, acabados, materiales, estado) salvo como sujeto breve de una determinacion; cada item debe decir algo '
     + 'que el lector no obtiene leyendo las observaciones. Sigue este orden:\n'
     + '  a) Que actuacion urbanistica son las obras observadas (obra nueva, ampliacion, modificacion, adecuacion, '
-    + 'demolicion, reforzamiento...) y que exigen licencia de construccion en esa modalidad (Decreto 1077 de 2015, art. '
-    + '2.2.6.1.1.7). Agrupa las obras en un solo item, nombrandolas brevemente.\n'
+    + 'demolicion, reforzamiento...) y, SOLO si la exigen, que licencia de construccion exigen en esa modalidad (Decreto '
+    + '1077 de 2015, art. 2.2.6.1.1.7). Si las CONCLUSIONES DEL INSPECTOR dicen que las obras no requieren licencia '
+    + '(mantenimiento, cambio de acabados o de redes), no las llames adecuacion, ampliacion ni modificacion, que son '
+    + 'modalidades de licencia: describelas como el inspector. Agrupa las obras en un solo item, nombrandolas brevemente.\n'
     + '  b) La situacion de la licencia frente a esas obras, segun la NOTA LICENCIA (no aportada; vencida; o aportada y en '
     + 'que difiere lo ejecutado de lo aprobado).\n'
     + '  c) Solo si hay un comportamiento del literal A marcado: que el predio es apto para estas actuaciones segun la '
@@ -2689,6 +2717,11 @@ async function construirPromptF43(ctx) {
     + '[cita completa dada en COMPORTAMIENTOS], de la Ley 1801 de 2016, al [razon concreta del caso]". Copia la cita '
     + 'literal tal como viene, con sus comillas. La determinacion recae sobre las OBRAS: PROHIBIDO llamar "infractor" o '
     + 'responsable a una persona. NO empieces ningun item con "En consecuencia" (esa frase la reserva el sistema).\n'
+    + (d.sin_infraccion
+        ? '  d-bis) El inspector marco "No se evidencia infraccion": en lugar del punto d), UNA conclusion que diga que las '
+          + 'obras observadas no constituyen un comportamiento contrario a la integridad urbanistica segun el articulo 135 '
+          + 'de la Ley 1801 de 2016, con la razon concreta del caso y el alcance de lo que se verifico. Sin literal ni numeral.\n'
+        : '')
     + '  e) Determinaciones tecnicas adicionales que se desprendan de los hechos: elementos estructurales ejecutados sin '
     + 'que se aportara diseno o soporte tecnico (NSR-10), obras inconclusas o inactivas y lo que implicaria continuarlas, '
     + 'incumplimientos de las obligaciones del literal D marcados. PROHIBIDO afirmar riesgo de colapso, inestabilidad o '
@@ -2719,8 +2752,8 @@ async function construirPromptF43(ctx) {
     + 'sugiere explicitamente, nombrando la entidad — nunca remitas "a la autoridad competente" de forma '
     + 'generica ni de vuelta al mismo Inspector que ya tiene el caso. Si hay un comportamiento marcado en '
     + 'area protegida o espacio publico, no recomiendes "obtener licencia" (esa obra no es susceptible de '
-    + 'licenciamiento); recomienda la restitucion/demolicion directa. RECOMENDACION PERMANENTE DE LICENCIA '
-    + '(siempre presente): en esta visita ' + recLicencia + ' Los hallazgos puntuales que piden una accion propia '
+    + 'licenciamiento); recomienda la restitucion/demolicion directa. RECOMENDACION DE LICENCIA: '
+    + 'en esta visita ' + recLicencia + ' Los hallazgos puntuales que piden una accion propia '
     + '(un elemento a desmontar, un uso a ajustar, materiales a retirar) van cada uno en su propio item. Excepto '
     + 'cuando el hallazgo sea en area protegida o espacio publico, caso en el que aplica la restriccion de arriba. '
     + 'No repitas el area en contravencion aqui.\n'
@@ -2735,7 +2768,7 @@ async function construirPromptF43(ctx) {
     + 'conclusion se limite a repetir las observaciones, que toda conclusion provenga de observaciones o comportamientos ya dados, que ninguna '
     + 'recomendacion use un verbo prohibido, que no haya antecedentes inventados y que no haya contradiccion '
     + 'entre observaciones y conclusiones, que ningun area construida observada provenga del cuadro de '
-    + 'licencia (area_apro), y que se cumplan las reglas 8 y 9 de abajo. Elimina cualquier frase '
+    + 'licencia (area_apro), que ninguna conclusion contradiga las CONCLUSIONES DEL INSPECTOR, y que se cumplan las reglas 8 y 9 de abajo. Elimina cualquier frase '
     + 'que no pase esta verificacion antes de emitir el JSON final.\n'
     + '8. VERBO RECTOR DEL LITERAL A: si algun COMPORTAMIENTO ART.135 marcado empieza con "A" (A1-A4), tanto '
     + 'OBSERVACIONES como la conclusion que cite ese codigo deben mencionar, en cualquier tiempo o forma, alguna '
@@ -2748,10 +2781,10 @@ async function construirPromptF43(ctx) {
     + 'publico segun aplique' + areaEnCuenta + ') y entre ' + (RECOMENDACIONES_MIN||3) + ' y ' +
     (RECOMENDACIONES_MAX||8) + ' recomendaciones. No rellenes con relleno generico solo para llegar al minimo — '
     + 'si los hechos dan para menos items, prioriza calidad sobre cantidad.';
-  if (fotoDescs.length > 0) {
-    prompt += '\n\nDESCRIPCION DE FOTOGRAFIAS DE LA VISITA (contexto adicional para observaciones, no citar como fuente legal):\n';
-    fotoDescs.forEach(function(desc, i) { prompt += (i+1) + '. ' + desc + '\n'; });
-  }
+  // Las descripciones de las fotos ya no viajan (decision del usuario
+  // 2026-10-15): son de la IA de vision, no del inspector, y metian en las
+  // observaciones balcones, cubiertas y "terminada" que nadie verifico. Siguen
+  // siendo los pies del registro fotografico.
   return prompt;
 }
 
@@ -3056,6 +3089,26 @@ function validarInformeIA(json, ctx) {
       problemas.push('Recomendacion ' + (i + 1) + ' remite "a la autoridad competente" de forma generica — debe nombrar una entidad con competencia distinta (ambiental, movilidad, curaduria, etc.), nunca de vuelta al mismo Inspector que ya tiene el caso.');
     }
   });
+
+  // (2026-10-15, informe de 20251084835) Sin comportamientos marcados no hay
+  // irregularidad que corregir: recomendar reconocimiento, demolicion o
+  // restitucion es inventarla. El prompt ya lo prohibe; esto lo atrapa.
+  if (!Object.keys(autorizados).length) {
+    (json.recomendaciones_items || []).forEach(function(item, i) {
+      var mCorr = /\b(?:demol\w*|restitu\w*|reconocimiento)\b/.exec(_quitarTildesInforme(item));
+      if (mCorr) problemas.push('Recomendacion ' + (i + 1) + ' pide "' + mCorr[0] + '" y no hay ningun comportamiento marcado: no hay irregularidad que corregir.');
+    });
+  }
+  // Sin licencia aportada, nada esta "amparado" ni "aprobado" por ella (el
+  // mismo informe afirmaba las dos cosas).
+  if (ctx.d.sin_licencia) {
+    var mAmp = /\b(?:amparad[oa]s?|aprobad[oa]s?|autorizad[oa]s?)\s+(?:por|en)\s+(?:la\s+|una\s+)?(?:licencia|los\s+planos)\b/.exec(todoNorm);
+    if (mAmp) problemas.push('Dice "' + mAmp[0] + '" y no se aporto licencia: nada de lo construido consta como aprobado.');
+  }
+  // Razonamiento interno del prompt que no va en el informe.
+  if (/carga de acreditar/.test(todoNorm)) {
+    problemas.push('Copio una nota interna ("la carga de acreditarla en quien construye"): no va en el informe.');
+  }
 
   // Licencia vencida: la recomendacion permanente debe pedir abstenerse hasta
   // contar con licencia vigente — el caso que el prompt viejo resolvia con
@@ -4433,7 +4486,9 @@ var V6_CTX = {
   radicado: null,
   direccion: null,
   lat: null,
-  lon: null
+  lon: null,
+  conclusionesInspector: '',
+  sinInfraccion: false
 };
 var locImg = { fuente: null, base64: '', mimeType: 'image/png', fuenteLabel: '', precisionLabel: '', generadoEn: '' };
 
@@ -4595,6 +4650,10 @@ function prefillDesdeURL() {
   V6_CTX.direccion = p.get('direccion') || null;
   V6_CTX.lat       = p.get('lat') || null;
   V6_CTX.lon       = p.get('lon') || null;
+  // Conclusiones revisadas en la visita y «No se evidencia infracción»: los
+  // lee construirPromptF43 (2026-10-15).
+  V6_CTX.conclusionesInspector = p.get('conclusiones') || '';
+  V6_CTX.sinInfraccion = /no se evidencia infracci/i.test(p.get('infraccion') || '');
 
   // Convertir DD/MM/YYYY → YYYY-MM-DD (input type=date requiere ISO)
   function _aISOdate(s) {
