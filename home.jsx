@@ -15,13 +15,13 @@ const DIAS_ALERTA_DEMORA = 5;
 // Abre Buscar con un filtro de estado ya puesto. Buscar restaura sus filtros
 // de sessionStorage al montar, así que se le deja escrito lo que debe traer.
 function _irBuscarConEstados(estados, onNavegar) {
-  try { sessionStorage.setItem('cu_buscar_v1', JSON.stringify({ filtrosEstado: estados })); } catch (e) {}
+  try { sessionStorage.setItem('cu_buscar_v2', JSON.stringify({ filtrosEstado: estados })); } catch (e) {}
   onNavegar('buscar');
 }
 
 // La Semana abre la Agenda en el día tocado (solo admin; el supervisor no
 // gestiona). La fecha viaja por sessionStorage porque la Agenda se monta
-// después de navegar: mismo patrón que cu_buscar_v1 y cu_agenda_abrir_reglas.
+// después de navegar: mismo patrón que cu_buscar_v2 y cu_agenda_abrir_reglas.
 function _abrirAgendaEnDia(fecha, onNavegar) {
   const d = fecha instanceof Date ? fecha : parsearFecha(fecha);
   if (!d) return;

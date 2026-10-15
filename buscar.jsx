@@ -6,9 +6,11 @@
 // aquí solo se pinta y se maneja el estado de la pantalla.
 //   - Casilla que filtra en vivo y sugiere convertir el texto en filtro
 //     (barrio del POT, comuna, fecha, visitador o el caso mismo).
-//   - Lo vivo marcado por defecto; las completadas se piden con su chip
-//     (con aviso «también coinciden N completadas»). Un radicado completo
-//     sale siempre y sube con «Coincidencia exacta».
+//   - Todos los estados marcados por defecto, completadas incluidas
+//     (2026-10-15; antes había que pedirlas con su chip y al buscar parecía
+//     que no existían). Si se desmarcan, el aviso «también coinciden N
+//     completadas» lo dice. Un radicado completo sale siempre y sube con
+//     «Coincidencia exacta».
 //   - Vistas fijas + propias (localStorage) + enlace con los filtros (hash).
 //   - ≥1600: filtros · lista · ficha. 1200–1599: filtros en cajón.
 //     <1200: lista sola y la ficha abre como «Ver datos».
@@ -24,8 +26,10 @@ const { useState: useStateB, useEffect: useEffectB, useMemo: useMemoB, useCallba
 const BQ_EST_L = {
   PENDIENTE: 'Pendientes', ASIGNADO: 'Asignadas',
   INICIADO: 'Iniciadas', COMPLETADO: 'Completadas',
+  // Estados de V2 cerrados por otra vía y NO COMPETENCIA (estadoBuscarDe, utils.js).
+  CERRADO: 'Cerradas sin visita',
 };
-const BQ_EST_DOT = { PENDIENTE: 'pend', ASIGNADO: 'asig', INICIADO: 'curso', COMPLETADO: 'hecha' };
+const BQ_EST_DOT = { PENDIENTE: 'pend', ASIGNADO: 'asig', INICIADO: 'curso', COMPLETADO: 'hecha', CERRADO: 'cerr' };
 const BQ_TIPO_L = { PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado (V2)' };
 const BQ_ORDENES = [
   ['urg', 'Más urgente'], ['rec', 'Más reciente'], ['rad', 'Radicado'],
@@ -34,7 +38,10 @@ const BQ_ORDENES = [
 
 // Vistas propias y preferencia de Inicio («Ver en Buscar» con estados).
 const BQ_VISTAS_KEY = 'cu_buscar_vistas_v1';
-const BUSCAR_PREFS_KEY = 'cu_buscar_v1';
+// v2 desde 2026-10-15: la v1 guardaba en la sesión la selección de fábrica
+// vieja (sin completadas) y la pestaña abierta la habría seguido usando tras
+// la actualización. Mismo nombre en home.jsx y admin.jsx.
+const BUSCAR_PREFS_KEY = 'cu_buscar_v2';
 
 const BQ_LIMITE_INICIAL = 50;
 const BQ_LIMITE_PASO = 50;
@@ -144,7 +151,7 @@ function _claveGrupoBQ(c) {
 }
 // La fila que representa al grupo en la lista: la viva. Si hay varias vivas,
 // la iniciada; entre completadas, la más reciente.
-const _ORDEN_REP_BQ = { INICIADO: 0, ASIGNADO: 1, PENDIENTE: 2, COMPLETADO: 3 };
+const _ORDEN_REP_BQ = { INICIADO: 0, ASIGNADO: 1, PENDIENTE: 2, COMPLETADO: 3, CERRADO: 4 };
 function _repDeBQ(filas) {
   let mejor = null;
   for (let i = 0; i < filas.length; i++) {
@@ -177,7 +184,8 @@ function _nGruposBQ(universo, pred) {
 function _vistasBaseBQ(veTodo, hoy) {
   const pm = _iniMesBQ(hoy.getFullYear(), hoy.getMonth() - 1);
   const v = [
-    { id: 'vivo', n: 'Lo vivo', s: {} },
+    { id: 'todo', n: 'Todos los casos', s: {} },
+    { id: 'vivo', n: 'Lo vivo', s: { estados: BUSCAR_ESTADOS_VIVOS.slice() } },
     { id: 'asignar', n: 'Por asignar', s: { estados: ['PENDIENTE'] }, soloTodo: true },
     // Ocupa el lugar de «Completadas sin informe» (2026-10-13): el informe ya
     // no es un faltante. Iniciadas con acta, registro y orden escaneada.
@@ -206,7 +214,8 @@ function _diffBQ(S) {
 }
 
 // ── Estado inicial ────────────────────────────────────────────
-// Orden: enlace (#f=) > preferencia de Inicio (cu_buscar_v1, solo estados).
+// Orden: enlace (#f=) > preferencia de Inicio o Equipo (BUSCAR_PREFS_KEY:
+// estados o visitador).
 function _initSBQ(usuario) {
   const S = filtrosBuscarVacios();
   S.yo = String(usuario && usuario.usuario || '').toUpperCase().trim();
@@ -214,6 +223,11 @@ function _initSBQ(usuario) {
     const prefs = JSON.parse(sessionStorage.getItem(BUSCAR_PREFS_KEY));
     if (prefs && Array.isArray(prefs.filtrosEstado)) {
       S.estados = prefs.filtrosEstado.filter(e => BUSCAR_ESTADOS.indexOf(e) !== -1);
+    }
+    // Administración › Equipo lo escribía y nadie lo leía: Buscar abría sin
+    // el filtro de esa persona.
+    if (prefs && Array.isArray(prefs.filtrosVisitador)) {
+      S.visitador = prefs.filtrosVisitador.filter(Boolean);
     }
   } catch (e) { /* modo privado */ }
   const m = (location.hash || '').match(/(?:^|[#&])f=([^&]+)/);
@@ -284,8 +298,10 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   async function cargar(forzar, silencioso) {
     if (!silencioso) { setCargando(true); setError(''); }
     try {
-      const { datos: all } = await leerVisitas(forzar ? { forzar: true } : undefined);
-      setDatos(all);
+      // Buscar es la única pantalla que suma las NO COMPETENCIA: un radicado
+      // viejo se busca aunque ya no se gestione (salen como «Cerradas sin visita»).
+      const r = await leerVisitas(forzar ? { forzar: true } : undefined);
+      setDatos(r.noCompetencia && r.noCompetencia.length ? r.datos.concat(r.noCompetencia) : r.datos);
     } catch (e) { if (!silencioso) setError(e.message); }
     setCargando(false);
   }
@@ -358,7 +374,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const conteosEstado = useMemoB(() => {
     const base = filtrarBuscar(universo, S, 'estado');
     const contados = new Map();
-    const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0 };
+    const c = { PENDIENTE: 0, ASIGNADO: 0, INICIADO: 0, COMPLETADO: 0, CERRADO: 0 };
     // El caso cuenta en el estado de la fila que lo representa en la lista
     // (_repDeBQ): antes contaba la primera que aparecía, y un caso con la
     // visita 1 completada y la 2 iniciada salía como «Completadas 1».
@@ -867,8 +883,9 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const visibles = lista.slice(0, limite);
   const ocultos = Math.max(0, lista.length - limite);
 
-  // Divider «Completadas» en orden urg: las completadas van al final.
-  let enCompletadas = false;
+  // Divisores en orden urg: lo vivo, luego «Completadas» y al final
+  // «Cerradas sin visita». Guarda el grupo de la fila anterior.
+  let grupoPrevio = null;
 
   // ── Render ──
   return (
@@ -913,8 +930,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           </div>
         </div>
 
-        {/* Estados: lo vivo marcado; las completadas se piden. El conteo es
-            facetado (respeta los demás filtros, ignora la selección). */}
+        {/* Estados: todos marcados de fábrica. El conteo es facetado
+            (respeta los demás filtros, ignora la selección). */}
         <div className="bq-estados">
           {BUSCAR_ESTADOS.map(est => (
             <React.Fragment key={est}>
@@ -1181,11 +1198,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           )}
           {listo && lista.length > 0 && visibles.map((c, i) => {
             const esExacta = i === 0 && S.q && esExactaBuscar(c, S.q);
-            const divisor = orden === 'urg' && c.estado === 'COMPLETADO' && !enCompletadas && i > 0;
-            if (divisor) enCompletadas = true;
+            const grupo = c.estado === 'COMPLETADO' || c.estado === 'CERRADO' ? c.estado : 'VIVO';
+            const divisor = orden === 'urg' && i > 0 && grupo !== 'VIVO' && grupo !== grupoPrevio ? grupo : null;
+            grupoPrevio = grupo;
             return (
               <React.Fragment key={c.clave}>
-                {divisor && <div className="bq-div">Completadas <span>la más reciente primero</span></div>}
+                {divisor === 'COMPLETADO' && <div className="bq-div">Completadas <span>la más reciente primero</span></div>}
+                {divisor === 'CERRADO' && <div className="bq-div">Cerradas sin visita <span>la radicada más reciente primero</span></div>}
                 <FilaBQ key={c.clave} c={c} q={S.q} exacta={esExacta}
                   sel={sel && sel.clave === c.clave} conPanel={conPanel}
                   esAdmin={esAdmin} yo={S.yo} veTodo={veTodo}
@@ -1256,7 +1275,7 @@ function VistaNuevaBQ({ onGuardar, onCancelar }) {
 // ═══════════════════════════════════════════════════════════════
 function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, onContinuar, onVerDatos, onAsignarFila }) {
   const f = c.f;
-  const estCls = { PENDIENTE: 'bq-pend', ASIGNADO: '', INICIADO: 'mv-curso', COMPLETADO: 'mv-hecha' }[c.estado] || '';
+  const estCls = { PENDIENTE: 'bq-pend', ASIGNADO: '', INICIADO: 'mv-curso', COMPLETADO: 'mv-hecha', CERRADO: 'bq-cerr' }[c.estado] || '';
   const m = q ? coincideBuscar(c, q) : '';
 
   // CTA único por estado: Asignar (admin, pendiente), Iniciar o Continuar.
@@ -1315,7 +1334,7 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
               </button>
             : (c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && !conPanel && (
               <span className="vc-dilig">Diligencia {titleCaseNombre(c.vis[0] || '')}</span>)}
-          {!conPanel && c.estado !== 'COMPLETADO' && <BotonMapaVisita f={f} variante="vc" />}
+          {!conPanel && c.estado !== 'COMPLETADO' && c.estado !== 'CERRADO' && <BotonMapaVisita f={f} variante="vc" />}
           {!conPanel && (
             <button type="button" className="vc-btn" onClick={sinPropagar(() => onVerDatos(c))}>Ver datos</button>
           )}
@@ -1353,6 +1372,10 @@ function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
       : <b key="f" className="falta">Falta: {c.faltanCierre.join(' · ')}</b>);
     partes.push(<span key="q">Iniciada por {titleCaseNombre(c.vis[0] || '')}</span>);
     partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>visitada {dias(d || 0)}</b>);
+  } else if (c.estado === 'CERRADO') {
+    // Por qué está cerrada y de cuándo es: lo que se busca aquí son radicados viejos.
+    partes.push(<b key="m">{c.motivoCierre}</b>);
+    if (c.fRad) partes.push(<span key="r">radicado el {formatearFecha(c.fRad)}</span>);
   } else {
     partes.push(<span key="q">{titleCaseNombre(c.vis[0] || '')}{c.vis.length > 1 ? ' +1' : ''}</span>);
     if (c.susp) partes.push(<span key="s">suspensión</span>);
@@ -1380,7 +1403,10 @@ function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
 // ═══════════════════════════════════════════════════════════════
 function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignandoFila,
   onNuevaVisita, onAsignar, onAsignarNuevaVisita, onDesasignar, onCompletar }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  // El estado como lo agrupa Buscar (estadoBuscarDe): «PQR PENDIENTE» es una
+  // pendiente y una fila CERRADO (V2 cerrada por otra vía o NO COMPETENCIA)
+  // no se gestiona.
+  const est = estadoBuscarDe(f);
   const busy = busyFila === f._idx;
   const abierto = asignandoFila === f._idx;
 
@@ -1388,10 +1414,10 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
   // un seguimiento: una visita en curso bloquea crear otra sobre el mismo
   // radicado, y una PENDIENTE no lo habilita (sobre ella va «Asignar»).
   const abierta = todas.find(x => {
-    const e = normalizarEstado(x['ESTADO VISITA'] || '');
+    const e = estadoBuscarDe(x);
     return e === 'ASIGNADO' || e === 'INICIADO';
   });
-  const pendiente = todas.find(x => normalizarEstado(x['ESTADO VISITA'] || '') === 'PENDIENTE');
+  const pendiente = todas.find(x => estadoBuscarDe(x) === 'PENDIENTE');
   const ordenadas = useMemoB(() => numerarVisitasRadicado(todas), [todas]);
   const filaBase = ordenadas.length ? ordenadas[ordenadas.length - 1].f : null;
   const radicadoReal = esRadicadoDeCaso(String(f['RADICADO'] || '').trim().toUpperCase());
@@ -1758,7 +1784,8 @@ function CuandoBQ({ S, parcharS, base, hoy }) {
 }
 
 const BQ_EST_RES = [['PENDIENTE', 'Pendientes', 'var(--brand)'], ['ASIGNADO', 'Asignadas', 'var(--amarillo)'],
-  ['INICIADO', 'Iniciadas', 'var(--azul)'], ['COMPLETADO', 'Completadas', 'var(--verde)']];
+  ['INICIADO', 'Iniciadas', 'var(--azul)'], ['COMPLETADO', 'Completadas', 'var(--verde)'],
+  ['CERRADO', 'Cerradas sin visita', 'var(--ink-4)']];
 
 // Lo filtrado se lee como informe (nota 8): estados, suspensiones, mediana
 // radicado → visita (solo PQR con visita) y reparto por inspector (quien ve todo).
@@ -1803,7 +1830,8 @@ const BQ_EXP_COLS = [
   ['Caso', 'rad', 'Radicado', c => c.rad],
   ['Caso', 'frad', 'Fecha de radicado', c => _fmtFechaBQ(c.fRad)],
   ['Caso', 'tipo', 'Tipo de caso', c => ({ PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado (V2)' })[c.tipo] || c.tipo],
-  ['Caso', 'estado', 'Estado', c => (BQ_EST_RES.find(e => e[0] === c.estado) || [, c.estado])[1].replace(/s$/, '')],
+  ['Caso', 'estado', 'Estado', c => c.estado === 'CERRADO' ? 'Cerrada sin visita (' + c.motivoCierre + ')'
+    : (BQ_EST_RES.find(e => e[0] === c.estado) || [, c.estado])[1].replace(/s$/, '')],
   ['Caso', 'prio', 'Prioridad', c => c.prio],
   ['Caso', 'reit', 'Radicados reiterados', c => (c.reit || []).join(' / ')],
   ['Caso', 'nvis', 'N° de visita', c => c.nvis || ''],

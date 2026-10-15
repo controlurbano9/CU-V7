@@ -592,7 +592,7 @@ const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 
 // sessionStorage al montar, así que se le deja escrito lo que debe traer.
 function _irBuscarConVisitador(nombre, onNavegar) {
   try {
-    sessionStorage.setItem('cu_buscar_v1',
+    sessionStorage.setItem('cu_buscar_v2',
       JSON.stringify({ filtrosVisitador: [String(nombre || '').trim().toUpperCase()] }));
   } catch (e) {}
   onNavegar('buscar');

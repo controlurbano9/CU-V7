@@ -456,12 +456,12 @@ const _primeraCargaVisitas = new Promise(res => { _resolverPrimeraCarga = res; }
 // Es el número donde se escribe al guardar: nunca deducirlo de la posición
 // si el backend filtró filas.
 function _procesarVisitas(filas, nums) {
-  if (!filas || !filas.length) return { headers: [], datos: [] };
+  if (!filas || !filas.length) return { headers: [], datos: [], noCompetencia: [] };
   const headers = filas[0];
   const conNums = Array.isArray(nums) && nums.length === filas.length - 1;
   const jAt = headers.findIndex(h => (h || '').toString().trim().toUpperCase() === 'ATENCION PQR');
   const jEst = headers.findIndex(h => (h || '').toString().trim().toUpperCase() === 'ESTADO VISITA');
-  const datos = filas.slice(1)
+  const todas = filas.slice(1)
     .map((fila, i) => {
       const obj = { _idx: conNums ? nums[i] : i + 2 };
       headers.forEach((h, j) => {
@@ -472,13 +472,14 @@ function _procesarVisitas(filas, nums) {
       return obj;
     })
     .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '')
-    // NO COMPETENCIA fuera de toda la app (decisión del usuario, 2026-09-25).
-    // El backend compacto ya no las manda; esto cubre la hoja entera.
-    .filter(o => jAt < 0 || !_esNoCompetencia(o[jAt]))
     // Fila propia de una PQR marcada como reiterada de otro caso: no es una
     // visita por hacer (mismo criterio que _compactarBdVisitas del backend).
     .filter(o => jEst < 0 || (o[jEst] || '').toUpperCase() !== 'REITERADO');
-  return { headers, datos };
+  // NO COMPETENCIA fuera de la app (decisión del usuario, 2026-09-25), salvo
+  // Buscar: un radicado viejo tiene que encontrarse (2026-10-15). Van aparte,
+  // en `noCompetencia`, y solo Buscar las junta con `datos`.
+  const esNC = o => jAt >= 0 && _esNoCompetencia(o[jAt]);
+  return { headers, datos: todas.filter(o => !esNC(o)), noCompetencia: todas.filter(esNC) };
 }
 
 function _esNoCompetencia(v) {
@@ -617,7 +618,7 @@ function _parchearVisitaLocal(fila, valores, ultimaMod) {
   const datos = previa
     ? base.datos.map(o => (o === previa ? obj : o))
     : base.datos.concat([obj]).sort((a, b) => a._idx - b._idx);
-  _visitasUltimas = { headers, datos };
+  _visitasUltimas = { headers, datos, noCompetencia: base.noCompetencia || [] };
   _hashVisitas = ''; // la copia ya no es la que firmó el servidor
   try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
 }

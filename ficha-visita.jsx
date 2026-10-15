@@ -32,10 +32,15 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     setVerPqr(v => !v);
   };
 
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  const empezada = est === 'INICIADO' || est === 'COMPLETADO';
+  // Estado como lo agrupa Buscar (estadoBuscarDe, utils.js): las variantes de
+  // V2 se pliegan a las de la app y lo cerrado por otra vía o NO COMPETENCIA
+  // es CERRADO — se consulta, no se inicia ni se continúa.
+  const est = estadoBuscarDe(f);
+  const cerrada = est === 'CERRADO';
   const completa = est === 'COMPLETADO';
-  const tono = _ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' };
+  const terminada = completa || cerrada;
+  const empezada = est === 'INICIADO' || terminada;
+  const tono = cerrada ? { cls: '', label: motivoCierreBuscar(f) } : (_ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' });
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
   const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
   // visitadoresBD devuelve el texto de la columna («A / B»), no una lista.
@@ -81,10 +86,14 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
 
   // «Desde cuándo»: pendiente/asignada → días sin iniciar; iniciada → días
   // sin completar (ambos en hábiles, utils.js); ocre, rojo desde el umbral de
-  // demora de las alertas. Completada → la fecha de la visita.
+  // demora de las alertas. Completada → la fecha de la visita. Cerrada sin
+  // visita → la fecha de radicado (contar días de espera no tiene sentido).
   let estadoTxt = '', estadoCls = '';
   if (completa) {
     estadoTxt = 'Completada el ' + (formatearFecha(f['FECHA DE VISITA'] || '') || '—');
+  } else if (cerrada) {
+    const fr = formatearFecha(f['FECHA RADICADO'] || '');
+    estadoTxt = fr ? 'radicado el ' + fr : '';
   } else {
     const dias = est === 'INICIADO' ? diasSinCompletar(f) : diasSinIniciar(f);
     if (dias != null) {
@@ -132,7 +141,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
             </div>
           </div>
           <div className="fv-fija-acc">
-            {!completa && onContinuar && (puedeDiligenciar(f)
+            {!terminada && onContinuar && (puedeDiligenciar(f)
               ? <button type="button" className="vc-btn vc-btn-cta" onClick={() => onContinuar(f._idx, f)}>
                   <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
                 </button>
@@ -150,9 +159,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
         <div>
           {/* Entregables: la carpeta de la visita primero; solo si la visita
               empezó (las reglas del panel: «Falta» / «No se generó»). */}
-          {empezada && (!completa || f['LINK_DRIVE'] || _entregablesMV(f).some(e => e.link)) && (
+          {empezada && (!terminada || f['LINK_DRIVE'] || _entregablesMV(f).some(e => e.link)) && (
             <section className="fv-sec">
-              <h3 className="mv-sub">Entregables{!completa && <small>se generan dentro de la visita</small>}</h3>
+              <h3 className="mv-sub">Entregables{!terminada && <small>se generan dentro de la visita</small>}</h3>
               {f['LINK_DRIVE'] && (
                 <div className="mv-ent">
                   <span className="fv-ico"><Icon.Folder size={12} /></span>
@@ -161,7 +170,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 </div>
               )}
               {/* Completada: solo lo que existe y se puede abrir (decisión del usuario 2026-10-14). */}
-              {_entregablesMV(f).filter(e => !completa || e.link).map(e => (
+              {_entregablesMV(f).filter(e => !terminada || e.link).map(e => (
                 <div className="mv-ent" key={e.n}>
                   <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
                   <span className="mv-ent-n">{e.n}</span>

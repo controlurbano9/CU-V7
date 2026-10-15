@@ -31,9 +31,44 @@ function fila(extra) {
   }, extra);
 }
 
-test('filtrosBuscarVacios arranca con los tres estados vivos', () => {
+test('filtrosBuscarVacios arranca con todos los estados, completadas y cerradas incluidas', () => {
   const S = U.filtrosBuscarVacios();
-  assert.deepEqual(S.estados, ['PENDIENTE', 'ASIGNADO', 'INICIADO']);
+  assert.deepEqual(S.estados, ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO', 'CERRADO']);
+});
+
+test('estadoBuscarDe: estados de V2 y NO COMPETENCIA no se pierden', () => {
+  const e = (estado, at) => U.estadoBuscarDe({ 'ESTADO VISITA': estado, 'ATENCION PQR': at || '' });
+  assert.equal(e('COMPLETADA'), 'COMPLETADO');
+  assert.equal(e('Completado'), 'COMPLETADO');
+  assert.equal(e('PQR PENDIENTE'), 'PENDIENTE');
+  assert.equal(e('PENDIENTES'), 'PENDIENTE');
+  assert.equal(e('PROGRAMADA'), 'PENDIENTE');
+  assert.equal(e('ASIGNADA'), 'ASIGNADO');
+  assert.equal(e('DESCARGADA GESTION'), 'CERRADO');
+  assert.equal(e('PQR CADUCIDAD'), 'CERRADO');
+  assert.equal(e(''), 'CERRADO');
+  // La columna A manda sobre un estado vivo de hace más de 3 años; nunca sobre una completada.
+  assert.equal(e('PENDIENTE', 'NO COMPETENCIA'), 'CERRADO');
+  assert.equal(e('COMPLETADO', 'NO COMPETENCIA'), 'COMPLETADO');
+  assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': 'PENDIENTE', 'ATENCION PQR': 'NO COMPETENCIA' }), 'No competencia');
+  assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': 'DESCARGADA GESTION' }), 'Descargada gestion');
+  assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': '' }), 'Sin estado');
+});
+
+test('un radicado viejo con estado de V2 se encuentra al buscarlo', () => {
+  const viejo = U.prepararCasoBuscar(fila({ _idx: 1, RADICADO: '20221012345', 'FECHA RADICADO': '03/03/2022',
+    'ESTADO VISITA': 'PQR CADUCIDAD', 'ATENCION PQR': 'NO COMPETENCIA' }), null, HOY);
+  const completadaV2 = U.prepararCasoBuscar(fila({ _idx: 2, RADICADO: '20231054321', 'FECHA RADICADO': '05/05/2023',
+    'ESTADO VISITA': 'COMPLETADA' }), null, HOY);
+  const S = U.filtrosBuscarVacios();
+  S.q = '2022101';
+  assert.deepEqual(U.filtrarBuscar([viejo, completadaV2], S).map(c => c.id), [1]);
+  S.q = '20231054321';
+  assert.deepEqual(U.filtrarBuscar([viejo, completadaV2], S).map(c => c.id), [2]);
+  assert.equal(viejo.estado, 'CERRADO');
+  assert.equal(viejo.motivoCierre, 'No competencia');
+  // El inspector también lo ve: es historial, como las completadas.
+  assert.equal(U.universoBuscar([viejo], 'INSPECTOR', 'Ana Pérez').length, 1);
 });
 
 test('prepararCasoBuscar: tipo PQR / OFICIO / V2 y estado PROGRAMADA → PENDIENTE', () => {
@@ -164,17 +199,23 @@ test('prepararCasoBuscar con idxBarrios real: el punto manda sobre «PARIS»', (
   assert.equal(c.comuna, c.pot.comuna);
 });
 
-test('una completada no pasa con los filtros de fábrica; su radicado tecleado completo sí', () => {
-  const pendiente = U.prepararCasoBuscar(fila({}), null, HOY);
-  const completada = U.prepararCasoBuscar(fila({ 'ESTADO VISITA': 'COMPLETADO' }), null, HOY);
+test('una completada pasa con los filtros de fábrica y con texto; sin su chip, solo por radicado completo', () => {
+  const pendiente = U.prepararCasoBuscar(fila({ _idx: 1 }), null, HOY);
+  const completada = U.prepararCasoBuscar(fila({ _idx: 2, 'ESTADO VISITA': 'COMPLETADO' }), null, HOY);
   const casos = [pendiente, completada];
 
+  // De fábrica: las dos, también al buscar por dirección (el caso que se quejaba).
   const S = U.filtrosBuscarVacios();
-  assert.deepEqual(U.filtrarBuscar(casos, S).map(c => c.rad), ['20261041285']);
+  assert.deepEqual(U.filtrarBuscar(casos, S).map(c => c.id), [1, 2]);
+  S.q = 'CL 50 32 10';
+  assert.deepEqual(U.filtrarBuscar(casos, S).map(c => c.id), [1, 2]);
 
-  const Sq = U.filtrosBuscarVacios();
-  Sq.q = '20261041285';
-  assert.equal(U.filtrarBuscar(casos, Sq).length, 2);   // esExactaBuscar deja pasar la completada
+  // Con el chip de completadas desmarcado: fuera, salvo su radicado tecleado completo.
+  const Sv = U.filtrosBuscarVacios();
+  Sv.estados = U.BUSCAR_ESTADOS_VIVOS.slice();
+  assert.deepEqual(U.filtrarBuscar(casos, Sv).map(c => c.id), [1]);
+  Sv.q = '20261041285';
+  assert.equal(U.filtrarBuscar(casos, Sv).length, 2);   // esExactaBuscar deja pasar la completada
 });
 
 test('coincideBuscar: radicado, dirección sin separadores, barrio, orden sin ceros, atiende y reiterado', () => {
@@ -217,7 +258,6 @@ test('filtrarBuscar: rango de fechas por campo vis; sin fecha no pasa', () => {
     U.prepararCasoBuscar(fila({ _idx: 3, 'ESTADO VISITA': 'COMPLETADO' }), null, HOY),   // sin FECHA DE VISITA
   ];
   const S = U.filtrosBuscarVacios();
-  S.estados = U.BUSCAR_ESTADOS.slice();   // se piden las completadas a mano
   S.campo = 'vis'; S.desde = '2026-09-01';
   assert.deepEqual(U.filtrarBuscar(casos, S).map(c => c.id), [2]);
   S.hasta = '2026-09-30';
@@ -288,14 +328,15 @@ test('universoBuscar: inspector ve lo suyo + pendientes + completadas; admin ve 
   assert.equal(U.universoBuscar(casos, 'ADMIN', 'Cualquiera').length, 3);
 });
 
-test('ordenarCasosBuscar «urg»: tier 3 antes que 2 y completadas al final', () => {
+test('ordenarCasosBuscar «urg»: tier 3 antes que 2, completadas y al final las cerradas', () => {
   const casos = [
+    U.prepararCasoBuscar(fila({ _idx: 4, 'ESTADO VISITA': 'DESCARGADA GESTION' }), null, HOY),
     U.prepararCasoBuscar(fila({ _idx: 1, 'ESTADO VISITA': 'COMPLETADO' }), null, HOY),
     U.prepararCasoBuscar(fila({ _idx: 2, 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '24/08/2026' }), null, HOY),   // tier 3
     U.prepararCasoBuscar(fila({ _idx: 3, 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '06/10/2026' }), null, HOY),   // tier 2
   ];
   const l = U.ordenarCasosBuscar(casos, 'urg');
-  assert.deepEqual(l.map(c => c.id), [2, 3, 1]);
+  assert.deepEqual(l.map(c => c.id), [2, 3, 1, 4]);
 });
 
 test('ordenarCasosBuscar «rad»: V2 al final y por fecha de radicado, no por texto', () => {

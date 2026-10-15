@@ -2003,13 +2003,42 @@ function barrioPotDe(idx, fila) {
 // que trabajaba con datos inventados; aquí cada «caso» se arma desde una fila real de
 // BD VISITAS (por nombre de columna, nunca por índice).
 //   prepararCasoBuscar(f, idxBarrios, hoy)   → caso con todo lo derivado, una sola vez por fila
-//   filtrosBuscarVacios()                    → estado inicial (lo vivo: pendiente + asignada + iniciada)
+//   filtrosBuscarVacios()                    → estado inicial (todos los estados, completadas incluidas)
 //   filtrarBuscar(casos, S, excepto)         → casos que pasan; `excepto` deja fuera un grupo
 //                                              (así cada faceta cuenta sus alternativas, no «0»)
 //   conteoFacetaBuscar(casos, S, grupo, fn)  → Map(valor → cuántos verías si lo eliges)
 //   ordenarCasosBuscar(lista, orden, q)      → 'urg' | 'rec' | 'rad' | 'dir' | 'mod'
-var BUSCAR_ESTADOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO'];
+var BUSCAR_ESTADOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO', 'CERRADO'];
 var BUSCAR_ESTADOS_VIVOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO'];
+
+// Estado de una fila tal como la agrupa Buscar (2026-10-15). La BD trae, sobre
+// todo en radicados viejos, estados de V2 que no son ninguno de los cuatro
+// (COMPLETADA, PQR PENDIENTE, DESCARGADA GESTION, PQR CADUCIDAD, OPERATIVO,
+// NO APLICA, vacío…): antes no pasaban el filtro de estado y Buscar no los
+// encontraba nunca. Las variantes se pliegan al estado de la app; lo cerrado
+// por otra vía y lo que la columna A da por «NO COMPETENCIA» (más de 3 años
+// sin completar) es 'CERRADO', «Cerradas sin visita»: se encuentra, pero no se
+// gestiona.
+var _PENDIENTE_BUSCAR = { 'PENDIENTE': 1, 'PENDIENTES': 1, 'PROGRAMADA': 1, 'PQR PENDIENTE': 1, 'PENDIENTE PQR': 1 };
+function esNoCompetenciaFila(f) {
+  return /NO\s+COMPETENCIA/.test(String((f && f['ATENCION PQR']) || '').toUpperCase());
+}
+function estadoBuscarDe(f) {
+  var e = _normEstadoVisitaBD((f && (f['ESTADO VISITA'] || f[13])) || '');
+  if (e === 'COMPLETADO' || e === 'COMPLETADA') return 'COMPLETADO';
+  if (esNoCompetenciaFila(f)) return 'CERRADO';
+  if (_PENDIENTE_BUSCAR[e]) return 'PENDIENTE';
+  if (e === 'ASIGNADO' || e === 'ASIGNADA') return 'ASIGNADO';
+  if (e === 'INICIADO' || e === 'INICIADA') return 'INICIADO';
+  return 'CERRADO';
+}
+// Por qué una fila está «cerrada sin visita», en palabras de la BD.
+function motivoCierreBuscar(f) {
+  if (esNoCompetenciaFila(f)) return 'No competencia';
+  var e = String((f && (f['ESTADO VISITA'] || f[13])) || '').trim();
+  if (!e) return 'Sin estado';
+  return e.charAt(0).toUpperCase() + e.slice(1).toLowerCase();
+}
 // Qué le falta a una visita ya hecha. Solo se exigen en visitas desde este año:
 // antes la app no generaba entregables y todas las viejas saldrían «sin acta».
 // ponytail: año fijo; sacarlo de la hoja de reglas si cambia la fecha de arranque.
@@ -2040,8 +2069,8 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   var ref = hoy instanceof Date ? hoy : new Date();
   var refDia = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
   var c = { id: f._idx, f: f };
-  var est = _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '');
-  c.estado = est === 'PROGRAMADA' ? 'PENDIENTE' : est;
+  c.estado = estadoBuscarDe(f);
+  c.motivoCierre = c.estado === 'CERRADO' ? motivoCierreBuscar(f) : '';
 
   // Radicado y tipo de caso
   c.rad = _colBuscar(f, 'RADICADO');
@@ -2131,10 +2160,12 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   return c;
 }
 
-// Estado inicial: lo vivo. Las completadas se piden a mano (o salen si el texto es un radicado completo).
+// Estado inicial: todos los estados (decisión del usuario 2026-10-15). Antes
+// arrancaba en lo vivo y las completadas había que pedirlas con su chip: al
+// buscar parecía que no existían. El orden «Más urgente» ya las deja al final.
 function filtrosBuscarVacios() {
   return {
-    q: '', estados: BUSCAR_ESTADOS_VIVOS.slice(),
+    q: '', estados: BUSCAR_ESTADOS.slice(),
     comunas: [], barrios: [], veredas: [], rural: false, sinPot: false,
     campo: 'rad', desde: '', hasta: '',            // campo: rad | asig | vis | cierre | cit
     visitador: [], mias: false, yo: '', tipo: [], nvis: [], reit: false, prio: [],
@@ -2249,12 +2280,14 @@ function activosBuscar(S) {
   o.total = o.donde + o.cuando + o.quien + o.que + o.falta;
   return o;
 }
-// El inspector ve lo suyo, las pendientes y las completadas (la regla actual de Buscar).
+// El inspector ve lo suyo, las pendientes y lo terminado (completadas y
+// cerradas sin visita), como el historial que es.
 function universoBuscar(casos, rol, nombre) {
   if (veTodasLasVisitas(rol)) return casos || [];
   var yo = String(nombre || '').toUpperCase().trim();
   return (casos || []).filter(function (c) {
-    return c.estado === 'PENDIENTE' || c.estado === 'COMPLETADO' || (!!yo && c.vis.indexOf(yo) !== -1);
+    return c.estado === 'PENDIENTE' || c.estado === 'COMPLETADO' || c.estado === 'CERRADO' ||
+      (!!yo && c.vis.indexOf(yo) !== -1);
   });
 }
 
@@ -2264,7 +2297,8 @@ function _fechaDeEstadoBuscar(c) {
   return d ? d.getTime() : 0;
 }
 // «Más urgente» es la regla de la Agenda (tier/exceso, ver prepararCasoBuscar): una sola forma de decir
-// qué se atiende primero. Las completadas, al final y por cierre. Un radicado escrito completo, arriba.
+// qué se atiende primero. Las completadas, al final y por cierre; detrás, las cerradas sin visita, la
+// radicada más reciente primero. Un radicado escrito completo, arriba.
 function ordenarCasosBuscar(lista, orden, q) {
   var l = (lista || []).slice();
   var v2 = function (c) { return c.tipo === 'V2' ? 1 : 0; };
@@ -2278,9 +2312,11 @@ function ordenarCasosBuscar(lista, orden, q) {
     case 'dir': l.sort(function (a, b) { return a.dir.localeCompare(b.dir, 'es', { numeric: true }); }); break;
     case 'mod': l.sort(function (a, b) { return b.mod - a.mod; }); break;
     default: l.sort(function (a, b) {
-      var ha = a.estado === 'COMPLETADO', hb = b.estado === 'COMPLETADO';
-      if (ha !== hb) return ha ? 1 : -1;
-      if (ha) return ts(b.fCierre || b.fVis) - ts(a.fCierre || a.fVis);
+      var grupo = function (c) { return c.estado === 'CERRADO' ? 2 : c.estado === 'COMPLETADO' ? 1 : 0; };
+      var ga = grupo(a), gb = grupo(b);
+      if (ga !== gb) return ga - gb;
+      if (ga === 2) return ts(b.fRad) - ts(a.fRad);
+      if (ga === 1) return ts(b.fCierre || b.fVis) - ts(a.fCierre || a.fVis);
       return (b.tier - a.tier) || ((b.exceso || 0) - (a.exceso || 0));
     });
   }
@@ -3110,6 +3146,9 @@ var _cuUtilsExports = {
   // Buscar E5: lógica pura del rediseño
   BUSCAR_ESTADOS: BUSCAR_ESTADOS,
   BUSCAR_ESTADOS_VIVOS: BUSCAR_ESTADOS_VIVOS,
+  estadoBuscarDe: estadoBuscarDe,
+  motivoCierreBuscar: motivoCierreBuscar,
+  esNoCompetenciaFila: esNoCompetenciaFila,
   BUSCAR_FALTAS: BUSCAR_FALTAS,
   BUSCAR_FALTAS_DESDE_ANIO: BUSCAR_FALTAS_DESDE_ANIO,
   BUSCAR_GRUPOS: BUSCAR_GRUPOS,

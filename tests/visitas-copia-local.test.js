@@ -216,7 +216,7 @@ test('mismos values con otras filas omitidas cuenta como cambio', async () => {
   assert.deepEqual(res.datos.map(o => o._idx), [2, 6]);
 });
 
-test('NO COMPETENCIA queda fuera aunque el backend mande la hoja entera', async () => {
+test('NO COMPETENCIA queda fuera de `datos` y aparte en `noCompetencia` (solo para Buscar)', async () => {
   const m = montar();
   const p0 = m.leerVisitas();
   await tic();
@@ -226,4 +226,11 @@ test('NO COMPETENCIA queda fuera aunque el backend mande la hoja entera', async 
   const res = await p0;
   assert.deepEqual(res.datos.map(o => o['RADICADO']), ['R-1']);
   assert.equal(res.datos[0]._idx, 2);
+  // Buscar las encuentra (2026-10-15): van aparte, con su número de fila.
+  assert.deepEqual(res.noCompetencia.map(o => [o['RADICADO'], o._idx]), [['R-2', 3]]);
+  // Un guardado parchado no las pierde.
+  m.invalidarCache('visitas');
+  m.parchear(2, ['R-1', 'INICIADO', ''], '');
+  const res2 = await m.leerVisitas();
+  assert.deepEqual(res2.noCompetencia.map(o => o['RADICADO']), ['R-2']);
 });

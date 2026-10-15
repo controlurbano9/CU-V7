@@ -102,6 +102,9 @@ test('la fila propia marcada REITERADO sale de la respuesta compacta', opts, () 
   const src = fs.readFileSync(BACKEND, 'utf8');
   const compactar = /function _compactarBdVisitas\([^)]*\) \{[\s\S]*?\n\}/.exec(src)[0];
   assert.ok(compactar.includes('_esFilaReiterada('), '_compactarBdVisitas no filtra REITERADO');
+  // Las NO COMPETENCIA sí viajan (2026-10-15): Buscar encuentra radicados
+  // viejos; el cliente las aparta del resto de la app (_procesarVisitas).
+  assert.ok(!compactar.includes('_esNoCompetencia('), '_compactarBdVisitas no debe omitir NO COMPETENCIA');
 });
 
 test('guardar el formulario conserva los reiterados que hay en la hoja', opts, () => {
