@@ -2885,9 +2885,11 @@ function resumenCambios(orig, prop) {
   var escapar = function(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
 
   // Cifras del original que no aparecen en la propuesta (medidas, pisos…).
-  // Se comparan con el decimal unificado y se muestran como las escribió el inspector.
-  var crudos = function(t) { return t.match(/\d+(?:[.,]\d+)?/g) || []; };
-  var norm = function(n) { return n.replace(',', '.'); };
+  // Se comparan solo por sus dígitos («1.500» = «1500», «2,5» = «2.5»: el
+  // punto y la coma van de miles o de decimales según quien escriba) y se
+  // muestran como las escribió el inspector.
+  var crudos = function(t) { return t.match(/\d+(?:[.,]\d+)*/g) || []; };
+  var norm = function(n) { return n.replace(/[.,]/g, ''); };
   var numsProp = crudos(prop).map(norm);
   var vistos = {};
   var perdidas = crudos(orig).filter(function(n) {

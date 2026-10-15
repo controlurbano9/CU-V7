@@ -195,6 +195,14 @@ test('resumenCambios: el caso de Alejandro avisa la salvedad perdida', () => {
   assert.ok(r.find(x => x.tipo === 'forma').texto.includes('«no obstante»'));
 });
 
+test('resumenCambios: el separador de miles o decimales no cuenta como cifra perdida', () => {
+  const { resumenCambios } = require('../utils.js');
+  const pierde = (a, b) => resumenCambios(a, b).some(x => /cifras/.test(x.texto));
+  assert.equal(pierde('El área es de 1.500 m².', 'El área es de 1500 m².'), false);
+  assert.equal(pierde('Muro de 2,5 m de alto.', 'Muro de 2.5 m de alto.'), false);
+  assert.equal(pierde('Muro de 2,5 m de alto.', 'Muro de alto.'), true);
+});
+
 test('resumenCambios: «segundo piso» no cuenta como atribución («según»)', () => {
   const { resumenCambios } = require('../utils.js');
   const r = resumenCambios('Hay una ampliación en el segundo piso.', 'Hay una ampliación en el 2.º piso.');

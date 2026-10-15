@@ -406,7 +406,9 @@ function _conclusionesActaD(dObj) {
 // Barra + renglones; cerca del tope, ámbar; pasado, rojo con qué hacer.
 // `enPanel`: dentro de la revisión el remedio es acortar ahí mismo; fuera,
 // además, revisar (la propuesta se ajusta) o pasar la visita a informe.
-function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme }) {
+// `sinEspacio`: la frase del art. 135 ya llena la celda de conclusiones;
+// «Revisar» no puede proponer nada que quepa, así que no se ofrece.
+function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme, sinEspacio }) {
   const c = capacidadActa(texto, celda);
   const pct = Math.min(100, Math.round(c.renglones / c.max * 100));
   const cerca = c.cabe && c.renglones >= c.max - 2 && c.renglones > 0;
@@ -437,10 +439,24 @@ function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme }) {
           </div>
           {enPanel ? (
             <div style={{ marginTop: 4 }}>Acórtalo antes de aplicar.</div>
+          ) : sinEspacio ? (
+            <div style={{ marginTop: 4 }}>
+              La frase del art. 135 que pone la app ya ocupa toda la casilla: borra tus conclusiones
+              {onUsarInforme ? ' o, si las necesitas, documenta la visita con informe técnico.' : '.'}
+              {onUsarInforme && (
+                <div style={{ marginTop: 6 }}>
+                  <button type="button" className="btn-neutro" onClick={onUsarInforme}
+                    style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Usar informe técnico</button>
+                </div>
+              )}
+            </div>
           ) : (
             <div style={{ marginTop: 4 }}>
-              Puedes acortarlo; o pulsar «Revisar» al final del formulario, que te propone una versión que
-              cabe; o, si necesitas el texto completo, documentar la visita con informe técnico, que no tiene límite.
+              {/* Con el acta ya generada no se puede pasar a informe: no se ofrece. */}
+              {onUsarInforme
+                ? 'Puedes acortarlo; o pulsar «Revisar» al final del formulario, que te propone una versión que ' +
+                  'cabe; o, si necesitas el texto completo, documentar la visita con informe técnico, que no tiene límite.'
+                : 'Puedes acortarlo o pulsar «Revisar» al final del formulario, que te propone una versión que cabe.'}
               {onUsarInforme && (
                 <div style={{ marginTop: 6 }}>
                   <button type="button" className="btn-neutro" onClick={onUsarInforme}
@@ -453,6 +469,12 @@ function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme }) {
       )}
     </div>
   );
+}
+
+// ¿Ya hay acta? En hoja de cálculo o en PDF: hay filas viejas con solo el PDF
+// (mismo criterio que entregablesFaltantes, utils.js; revisión externa 2026-10-15).
+function _actaGeneradaD(dObj) {
+  return !!(dObj.linkXlsxActa || dObj.linkPdfActa);
 }
 
 // Con qué documento se cierra la visita (2026-10-15, decisión del usuario):
@@ -3340,17 +3362,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const maxConc = !esActa ? 0
       : caracteresParaActa('conclusiones',
           jur ? renglonesActa(jur, ACTA_CAPACIDAD.conclusiones.porRenglon) + 1 : 0, parrafos(origConc));
+    // Sin espacio (revisión externa 2026-10-15): con la frase del art. 135
+    // llenando la celda (2 comportamientos, o uno del literal D), 0 caracteres
+    // no es «sin tope»: no se pide conclusión, ninguna cabría.
+    const sinEspacioConc = esActa && maxConc === 0;
     // Las conclusiones se piden siempre, con lo diligenciado: si el inspector
     // no escribió, la propuesta sale de los datos y él la aprueba o la edita.
-    let ia = true, desc = origDesc, conc = origConc;
+    // Cada casilla falla por su lado: si solo falla la de conclusiones, la
+    // descripción conserva su propuesta y el panel avisa (concFallo).
+    let ia = true, desc = origDesc, conc = origConc, concFallo = false;
     try {
       const [tD, tC] = await Promise.all([
         mejorarTexto(origDesc, 'actuacion', chips, maxDesc),
-        mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d)),
+        sinEspacioConc ? Promise.resolve(null)
+          : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
+              .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
       ]);
-      if (!tD || (origConc.trim() && !tC)) throw new Error('respuesta vacía');
+      if (!tD) throw new Error('respuesta vacía');
       desc = tD;
-      conc = tC || origConc;
+      if (tC) conc = tC;
+      else if (tC === '') concFallo = true;
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -3366,6 +3397,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       desc: origDesc, conc: origConc, justif: '',
       elDesc: sinCambio(origDesc, desc) ? 'propio' : null,
       elConc: sinCambio(origConc, conc) ? 'propio' : null,
+      sinEspacioConc, concFallo: ia && concFallo,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -3493,7 +3525,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const set = (k, v) => setRevisionPanel(prev => prev ? Object.assign({}, prev, { [k]: v }) : prev);
     const elegir = (k, elKey, cual, texto) =>
       setRevisionPanel(prev => prev ? Object.assign({}, prev, { [k]: texto, [elKey]: cual }) : prev);
-    const hayConc = !!(p.origConc.trim() || p.iaConc.trim());
+    // Conclusiones vacías y sin propuesta también se muestran si hay algo que
+    // decir: no caben en el acta, o la propuesta falló.
+    const hayConc = !!(p.origConc.trim() || p.iaConc.trim() || p.sinEspacioConc || p.concFallo);
     const esActaP = documentoVisita(d.documento) === 'ACTA';
 
     // Tarjeta con el texto limpio (sin tachar ni resaltar: decisión del
@@ -3545,12 +3579,31 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
             {titulo}
-            {(!hayPropuesta || desdeDatos) && (
+            {(!hayPropuesta || desdeDatos) && !(celda === 'conclusiones' && (p.sinEspacioConc || p.concFallo)) && (
               <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--texto-suave)', marginLeft: 8 }}>
                 {desdeDatos ? 'Propuesta con todo lo diligenciado' : p.ia ? 'Sin cambios propuestos' : 'Tu texto'}
               </span>
             )}
           </div>
+          {celda === 'conclusiones' && p.sinEspacioConc && (
+            <div style={{ fontSize: 12, marginBottom: 8, padding: '8px 10px', borderRadius: 'var(--r-ctl, 8px)',
+              background: 'var(--superficie)', border: '1px solid var(--borde)' }}>
+              La frase del art. 135 que pone la app ocupa toda la casilla de conclusiones del acta: no cabe ninguna
+              conclusión tuya. El acta sale solo con esa frase; si necesitas conclusiones, documenta la visita con
+              informe técnico.
+              {String(p[k] || '').trim() && (
+                <div style={{ marginTop: 6 }}>
+                  <button type="button" className="btn-neutro" onClick={() => set(k, '')}
+                    style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Dejar sin conclusiones</button>
+                </div>
+              )}
+            </div>
+          )}
+          {celda === 'conclusiones' && p.concFallo && (
+            <div style={{ fontSize: 12, marginBottom: 8, color: 'var(--texto)' }}>
+              No se pudo proponer la conclusión (el servicio no respondió). Escribe la tuya o vuelve a revisar en unos minutos.
+            </div>
+          )}
           {esActaP && hayPropuesta && !capOrig.cabe && (
             <div style={{ fontSize: 12, marginBottom: 6, color: capIa.cabe ? 'var(--texto-suave)' : 'var(--rojo)' }}>
               {'Tu texto no cabe en el acta (' + capOrig.renglones + ' de ' + capOrig.max + ' renglones). ' +
@@ -5016,7 +5069,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             fotos={fotosInfo}
             ordenRelevante={_hayOrdenReal(d.orden)}
             ordenEscaneada={!!d.linkOrdenPolicia}
-            tieneActa={!!d.linkXlsxActa}
+            tieneActa={_actaGeneradaD(d)}
             tieneRF={!!d.linkRegistroFotos}
             documento={documentoVisita(d.documento)}
             tieneInforme={!!d.linkDocxInforme}
@@ -5519,7 +5572,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo="Descripción de la situación encontrada"
         estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         {/* Primero el documento: decide si el texto tiene el tope del acta. */}
-        <_DocumentoVisita valor={documentoVisita(d.documento)} bloqueado={!!d.linkXlsxActa}
+        <_DocumentoVisita valor={documentoVisita(d.documento)} bloqueado={_actaGeneradaD(d)}
           onCambiar={v => setCampo('documento', v)} />
         <_Campo label="Situación encontrada" fullWidth>
           <TextAreaNV value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
@@ -5528,7 +5581,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <div style={{ flex: '1 1 280px', minWidth: 0 }}>
             {documentoVisita(d.documento) === 'ACTA' && (
               <_MedidorActa texto={d.actuacion} celda="situacion"
-                onUsarInforme={d.linkXlsxActa ? null : () => setCampo('documento', 'INFORME')} />
+                onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')} />
             )}
           </div>
           {_botonDictar()}
@@ -5727,7 +5780,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         {/* En la celda del acta va primero la frase del art. 135 que arma la app. */}
         {documentoVisita(d.documento) === 'ACTA' && (
           <_MedidorActa texto={_conclusionesActaD(d)} celda="conclusiones"
-            onUsarInforme={d.linkXlsxActa ? null : () => setCampo('documento', 'INFORME')}
+            onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')}
+            sinEspacio={!!_fraseJuridicaActaD(d) && caracteresParaActa('conclusiones',
+              renglonesActa(_fraseJuridicaActaD(d), ACTA_CAPACIDAD.conclusiones.porRenglon) + 1, 1) === 0}
             nota={_fraseJuridicaActaD(d) ? 'La frase del art. 135 que pone la app ocupa ' +
               (renglonesActa(_fraseJuridicaActaD(d), ACTA_CAPACIDAD.conclusiones.porRenglon) +
                (String(d.obsConclusion || '').trim() ? 1 : 0)) + ' de los ' + ACTA_CAPACIDAD.conclusiones.renglones + '.' : ''} />
