@@ -24,12 +24,16 @@ const INFORME_PATH = 'informe/index.html';
 // debajo de ~1200px reales — 900px alcanzaba para el wizard de 1 columna.
 const MIN_DESKTOP = 1200;
 
-// Flag de beta del workspace v2 — opt-in manual (localStorage), sin
-// tocar BD ni Admin todavía. Plan de convivencia: mismo archivo
-// informe/index.html, misma capa de datos, solo cambia ?ui=v2 en la
-// URL. Reversión = borrar la clave o ponerla en '0'.
+// UI del generador: 'legacy' por defecto. El editor con forma de documento
+// ('doc', docs/PLAN_2026-10-15_editor-informe.md) NO llega a los usuarios
+// todavía: solo entra quien ponga a mano localStorage 'cu_informe_ui' =
+// 'doc'. La bandera vieja del beta v2 (cu_informe_v2_beta) se conserva.
 function _uiModeInforme() {
-  try { return localStorage.getItem('cu_informe_v2_beta') === '1' ? 'v2' : 'legacy'; }
+  try {
+    const m = localStorage.getItem('cu_informe_ui');
+    if (m === 'doc' || m === 'v2' || m === 'legacy') return m;
+    return localStorage.getItem('cu_informe_v2_beta') === '1' ? 'v2' : 'legacy';
+  }
   catch (e) { return 'legacy'; }
 }
 

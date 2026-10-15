@@ -1,0 +1,180 @@
+/* ═══════════════════════════════════════════════════════════════
+   editor.css — Editor del F-GGO-43 con forma de documento (ronda 1,
+   docs/PLAN_2026-10-15_editor-informe.md). Clases ed-*.
+   Tokens del propio generador (Inter, café de acción, radios 6/8/12);
+   sin monoespaciada; serif solo en el título de la barra.
+   La hoja se ve como el Word: Arial 14, cuerpo justificado.
+═══════════════════════════════════════════════════════════════ */
+
+/* El asistente queda vivo y oculto: es el almacén de datos del editor
+   (campos, fotos, mapa, select de inspectores). */
+body.modo-doc .shell { display: none; }
+#ed-root { display: block; }
+
+/* ── Barra superior (la oculta body.embebido: el modal ya trae título) ── */
+.ed-top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+  min-height: 60px; padding: 8px 20px; box-sizing: border-box; background: var(--superficie);
+  border-bottom: 1px solid var(--borde); }
+body.embebido .ed-top { display: none; }
+.ed-tit { min-width: 0; }
+.ed-tit b { display: block; font-family: var(--font-serif); font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
+.ed-tit span { display: block; font-size: 12px; color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-top-acc { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+@media (max-width: 899px) { .ed-top-acc .ed-btn-lleno { display: none; } .ed-top { padding: 8px 12px; } }
+
+/* ── Botones (mismo lenguaje de la app: lleno / tinte / neutro) ── */
+.ed-btn { min-height: 44px; padding: 0 18px; border-radius: var(--r); border: 0;
+  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ed-btn-lleno { background: var(--texto); color: var(--superficie); }
+.ed-btn-tinte { background: var(--brand-bg); color: var(--brand-ink); }
+.ed-btn-neutro { background: var(--neutro); color: var(--texto-suave); }
+.ed-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ed-btn-chico { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.ed-ico { width: 32px; height: 32px; border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--texto-3); font-size: 15px; cursor: pointer; }
+.ed-ico:hover { background: var(--neutro); color: var(--texto); }
+@media (hover: none) { .ed-ico { width: 44px; height: 44px; } }
+
+/* ── Disposición: documento | estado ── */
+.ed-shell { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px;
+  max-width: 1180px; margin: 0 auto; padding: 24px 24px 120px; }
+@media (max-width: 1199px) { .ed-shell { grid-template-columns: 1fr; max-width: 860px; padding: 16px 12px 120px; } .ed-rail { display: none; } }
+
+/* ── La hoja: se ve como el Word ── */
+.ed-hoja { background: #fff; color: #111; border-radius: var(--r-md); box-shadow: var(--sombra);
+  padding: 40px 56px 56px; font: 14px/1.55 Arial, Helvetica, sans-serif; }
+@media (max-width: 699px) { .ed-hoja { padding: 20px 16px 32px; font-size: 15px; } }
+.ed-membrete { display: grid; grid-template-columns: 90px 1fr 120px; border: 1px solid #333; margin-bottom: 22px; }
+.ed-membrete > div { display: flex; align-items: center; justify-content: center; padding: 10px; text-align: center; }
+.ed-membrete > div + div { border-left: 1px solid #333; }
+.ed-m-logo { width: 54px; height: 62px; border-radius: 4px; background: #e7e2d8; color: #6b6255;
+  font-size: 10px; font-family: var(--font-sans); display: flex; align-items: center; justify-content: center; }
+.ed-m-tit { font-weight: 700; font-size: 14px; }
+.ed-m-iso { font-size: 10px; color: #555; line-height: 1.5; }
+@media (max-width: 499px) { .ed-membrete { grid-template-columns: 64px 1fr; } .ed-m-iso { display: none; } }
+.ed-dep { text-align: center; font-weight: 700; font-size: 13px; line-height: 1.45; margin: 14px 0 6px; }
+.ed-h { font-weight: 700; text-transform: uppercase; margin: 26px 0 8px; font-size: 14px; }
+
+/* ── Etiqueta de la app sobre cada bloque (no sale en el Word) ── */
+.ed-ui { font-family: var(--font-sans); font-size: 12px; color: var(--texto-3);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 6px; }
+.ed-ui select, .ed-ui input[type="date"] { border: 1px solid var(--borde-med); background: var(--superficie);
+  border-radius: var(--r-sm); padding: 6px 8px; font-family: var(--font-sans); font-size: 12px; min-height: 32px; }
+.ed-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; }
+.ed-chip-ok { background: var(--verde-bg); color: var(--verde-dark); }
+.ed-chip-info { background: var(--azul-bg); color: var(--azul); }
+.ed-chip-neutro { background: var(--neutro); color: var(--texto-suave); }
+.ed-ui-nota { color: var(--texto-3); }
+
+/* ── Texto editable: se ve como el Word, el borde aparece al pasar/editar ── */
+.ed-ed { border-radius: 4px; outline: 1px dashed transparent; outline-offset: 3px; transition: outline-color .15s; }
+.ed-ed:hover { outline-color: rgba(31,27,22,.22); }
+.ed-ed:focus { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
+.ed-ed p { margin: 0 0 10px; text-align: justify; }
+
+/* ── Localización ── */
+.ed-mapa { border: 1px solid #333; min-height: 200px; display: flex; align-items: center; justify-content: center;
+  color: var(--texto-3); font-family: var(--font-sans); font-size: 13px; font-weight: 600; background: var(--fondo); overflow: hidden; }
+.ed-mapa img { width: 100%; max-height: 340px; object-fit: contain; display: block; }
+.ed-pie { text-align: center; font-size: 12px; font-weight: 700; margin: 6px 0 0; }
+
+/* ── Licencia y POT (solo lectura) ── */
+.ed-tabla { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 14px; font-family: var(--font-sans); }
+.ed-tabla th, .ed-tabla td { border: 1px solid #333; padding: 4px 8px; text-align: left; font-weight: 400; }
+.ed-tabla th { width: 48%; background: #f3f0ea; }
+.ed-tabla-pot caption { background: #d9d9d9; border: 1px solid #333; border-bottom: 0; font-weight: 700;
+  padding: 3px; caption-side: top; }
+.ed-nota-bloque { font-family: var(--font-sans); font-size: 13px; color: var(--texto-3);
+  background: var(--fondo); border-radius: var(--r); padding: 10px 12px; }
+
+/* ── Registro fotográfico ── */
+.ed-fotos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 699px) { .ed-fotos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ed-foto { margin: 0; position: relative; }
+.ed-foto-n { position: absolute; top: 4px; left: 4px; z-index: 1; background: rgba(31,27,22,.75); color: #fff;
+  font-family: var(--font-sans); font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; }
+.ed-foto-img { aspect-ratio: 4/3; border: 1px solid #ccc; background: var(--neutro); display: flex;
+  align-items: center; justify-content: center; color: var(--texto-3); font-family: var(--font-sans);
+  font-size: 18px; font-weight: 600; overflow: hidden; }
+.ed-foto-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ed-foto-pie { font-family: var(--font-sans); font-size: 12px; font-weight: 700; text-align: center; margin-top: 4px; }
+.ed-foto-pie:empty::before { content: 'Sin pie — escríbelo'; color: var(--texto-3); font-style: italic; font-weight: 400; }
+.ed-foto-acc { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.ed-foto:hover .ed-foto-acc, .ed-foto:focus-within .ed-foto-acc { opacity: 1; }
+@media (hover: none) { .ed-foto-acc { opacity: 1; } }
+
+/* ── Listas de conclusiones y recomendaciones ── */
+.ed-lista { margin: 0; padding-left: 0; list-style: none; counter-reset: edi; }
+.ed-item { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 4px; align-items: start; padding: 4px 0; counter-increment: edi; }
+.ed-item::before { content: counter(edi) "."; padding-top: 2px; }
+.ed-item .ed-ed { padding: 2px 0; text-align: justify; }
+.ed-item-acc { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; font-family: var(--font-sans); }
+.ed-item:hover .ed-item-acc, .ed-item:focus-within .ed-item-acc { opacity: 1; }
+@media (hover: none) { .ed-item-acc { opacity: 1; } }
+/* Frase de cierre grave: último punto fijo, no editable (decisión 2026-10-14). */
+.ed-item-fijo { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.ed-item-fijo .ed-ed { outline: none; cursor: default; }
+.ed-item-fijo-nota { font-family: var(--font-sans); font-size: 10px; font-weight: 600; color: var(--texto-3);
+  border: 1px solid var(--borde); border-radius: 999px; padding: 1px 7px; margin-top: 4px; white-space: nowrap;
+  cursor: help; }
+.ed-nuevo { animation: ed-brillo 1.2s ease-out; }
+@keyframes ed-brillo { from { background: var(--amarillo-bg); } to { background: transparent; } }
+.ed-vacio { font-family: var(--font-sans); font-size: 13px; color: var(--texto-3); font-style: italic; padding: 6px 0 4px 26px; }
+.ed-agregar { margin: 6px 0 0 26px; min-height: 36px; padding: 0 12px; border: 1px dashed var(--borde-med);
+  border-radius: var(--r-sm); background: transparent; color: var(--brand-ink); font-family: var(--font-sans);
+  font-size: 13px; font-weight: 600; cursor: pointer; }
+.ed-agregar:hover { background: var(--neutro); }
+@media (hover: none) { .ed-agregar { min-height: 44px; } }
+
+/* ── Bandeja de sugerencias: es de la app, no del documento ── */
+.ed-sug { margin: 14px 0 0; padding: 12px; border-radius: var(--r-md); background: var(--fondo); font-family: var(--font-sans); }
+.ed-sug-t { font-size: 13px; font-weight: 600; color: var(--texto-suave); margin-bottom: 8px;
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.ed-sug-t span { font-weight: 400; color: var(--texto-3); font-size: 12px; }
+.ed-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  background: var(--superficie); border-radius: var(--r); padding: 10px 12px; margin-top: 8px; box-shadow: var(--sombra-sm); }
+.ed-card p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; }
+.ed-card-porque { color: var(--texto-3); }
+@media (max-width: 499px) {
+  .ed-card { grid-template-columns: 1fr; }
+  .ed-card .ed-btn, .ed-agregar { min-height: 44px; }   /* piso táctil en campo */
+}
+
+/* ── Firma (usa el select inspector/cargo del asistente, reubicado) ── */
+.ed-firma { margin-top: 36px; }
+.ed-firma > p { margin: 0 0 6px; }
+.ed-firma-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; font-family: var(--font-sans); }
+@media (max-width: 599px) { .ed-firma-cols { grid-template-columns: 1fr; } }
+.ed-firma-col label { display: block; font-size: 11px; color: var(--texto-3); margin-bottom: 4px; }
+.ed-firma-col select { width: 100%; min-height: 44px; border: 1px solid var(--borde-med); border-radius: var(--r-sm);
+  background: var(--superficie); padding: 6px 10px; font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+.ed-firma-col input { width: 100%; min-height: 44px; border: 0; border-top: 1px solid #333; border-radius: 0;
+  background: transparent; text-align: center; font-family: var(--font-sans); font-size: 13px; color: var(--texto-2); }
+
+/* ── Rail de estado (≥1200) ── */
+.ed-rail { position: sticky; top: 84px; align-self: start; font-family: var(--font-sans); }
+body.embebido .ed-rail { top: 24px; }
+.ed-panel { background: var(--superficie); border-radius: var(--r-md); padding: 16px; box-shadow: var(--sombra-sm); }
+.ed-panel h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.ed-est { list-style: none; margin: 0 0 14px; padding: 0; }
+.ed-est li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--borde); font-size: 13px; }
+.ed-est li:last-child { border-bottom: 0; }
+.ed-est small { display: block; color: var(--texto-3); font-size: 12px; }
+.ed-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; }
+.ed-dot.ok { background: var(--verde); }
+.ed-dot.pend { background: var(--amarillo); }
+.ed-dot.no { background: var(--neutro-2); }
+.ed-panel .ed-btn { width: 100%; margin-top: 8px; }
+.ed-nota { font-size: 12px; color: var(--texto-3); margin-top: 8px; }
+
+/* ── Barra inferior (<1200) ── */
+.ed-barra { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--superficie); border-top: 1px solid var(--borde);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); gap: 10px; align-items: center; }
+.ed-barra-txt { font-size: 12px; color: var(--texto-3); min-width: 0; }
+.ed-barra-txt b { display: block; color: var(--texto); font-size: 13px; }
+.ed-barra .ed-btn { margin-left: auto; white-space: nowrap; }
+@media (max-width: 1199px) { .ed-barra { display: flex; } }

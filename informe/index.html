@@ -957,12 +957,15 @@ var _SESION_QS = new URLSearchParams(window.location.search);
 var SESION_USUARIO = _SESION_QS.get('sesionUsuario') || '';
 var SESION_HASH    = _SESION_QS.get('sesionHash') || '';
 
-// UI_MODE: 'v2' (workspace de 4 momentos, beta) o 'legacy' (wizard de 5
-// pasos, sin cambios). Plan de convivencia (auditoría UX 2026-07): mismo
-// archivo, misma capa de datos — informe-modal.jsx pasa ?ui=v2 solo si el
-// inspector activó el flag beta en localStorage. Se decide una sola vez
-// al abrir, nunca cambia a mitad de un informe en curso.
-var UI_MODE = (_SESION_QS.get('ui') === 'v2') ? 'v2' : 'legacy';
+// UI_MODE: 'doc' (editor con forma de documento, en construcción —
+// docs/PLAN_2026-10-15_editor-informe.md), 'v2' (workspace de 4 momentos,
+// beta) o 'legacy' (wizard de 5 pasos, sin cambios). Plan de convivencia
+// (auditoría UX 2026-07): mismo archivo, misma capa de datos —
+// informe-modal.jsx pasa ?ui=… según localStorage (cu_informe_ui y la
+// bandera vieja cu_informe_v2_beta). Se decide una sola vez al abrir,
+// nunca cambia a mitad de un informe en curso.
+var _uiModoQS = _SESION_QS.get('ui');
+var UI_MODE = (_uiModoQS === 'v2' || _uiModoQS === 'doc') ? _uiModoQS : 'legacy';
 function _qsConSesion(extra) {
   var qs = new URLSearchParams(extra || {});
   if (SESION_USUARIO) qs.set('sesionUsuario', SESION_USUARIO);
@@ -2986,7 +2989,14 @@ function _quitarTildesInforme(s) {
     .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
 }
 
-function validarInformeIA(json, ctx) {
+// `opts` (2026-10-15, editor con forma de documento — informe/editor.js):
+//   sinCantidades  no exige mínimos ni máximos de conclusiones/recomendaciones:
+//                  ahí el inspector decide cuántas aplica.
+//   sinCobertura   no exige una conclusión por comportamiento ni el verbo
+//                  rector en las observaciones: sirve para revisar un punto
+//                  suelto (una sugerencia, una corrección) y no el informe entero.
+function validarInformeIA(json, ctx, opts) {
+  opts = opts || {};
   var problemas = [];
   var todoTexto = [json.antecedentes || '', json.observaciones || '']
     .concat(json.conclusiones_items || [])
@@ -3055,7 +3065,7 @@ function validarInformeIA(json, ctx) {
   // del prompt): el informe del 2026-10-07 tenia A4 marcado y ninguna
   // conclusion lo mencionaba.
   var conclusionesNorm = (json.conclusiones_items || []).map(_quitarTildesInforme);
-  Object.keys(autorizados).forEach(function(cod) {
+  if (!opts.sinCobertura) Object.keys(autorizados).forEach(function(cod) {
     var lit = cod.charAt(0).toLowerCase(), num = cod.slice(1);
     var rx = new RegExp('literal\\s+' + lit + '\\b[^]*?numeral\\s+' + num + '\\b');
     var tiene = conclusionesNorm.some(function(c) { return rx.test(c) && c.indexOf('1801') >= 0; });
@@ -3149,17 +3159,18 @@ function validarInformeIA(json, ctx) {
   // "conforme" (sin hallazgos) puede legitimamente tener menos items.
   var conclusiones    = json.conclusiones_items    || [];
   var recomendaciones = json.recomendaciones_items || [];
-  var hayHallazgosOComportamientos = HALLAZGOS_CONFIRMADOS.length > 0 || (ctx.d.comportamientos || []).length > 0;
+  var hayHallazgosOComportamientos = !opts.sinCantidades &&
+    (HALLAZGOS_CONFIRMADOS.length > 0 || (ctx.d.comportamientos || []).length > 0);
   if (hayHallazgosOComportamientos && conclusiones.length < CONCLUSIONES_MIN) {
     problemas.push('Con hallazgos/comportamientos confirmados se esperan al menos ' + CONCLUSIONES_MIN + ' conclusiones (hay ' + conclusiones.length + ').');
   }
-  if (conclusiones.length > CONCLUSIONES_MAX) {
+  if (!opts.sinCantidades && conclusiones.length > CONCLUSIONES_MAX) {
     problemas.push('Demasiadas conclusiones (maximo ' + CONCLUSIONES_MAX + ', hay ' + conclusiones.length + ') — revise si conviene fusionar items del mismo tema.');
   }
   if (hayHallazgosOComportamientos && recomendaciones.length < RECOMENDACIONES_MIN) {
     problemas.push('Con hallazgos/comportamientos confirmados se esperan al menos ' + RECOMENDACIONES_MIN + ' recomendaciones (hay ' + recomendaciones.length + ').');
   }
-  if (recomendaciones.length > RECOMENDACIONES_MAX) {
+  if (!opts.sinCantidades && recomendaciones.length > RECOMENDACIONES_MAX) {
     problemas.push('Demasiadas recomendaciones (maximo ' + RECOMENDACIONES_MAX + ', hay ' + recomendaciones.length + ').');
   }
 
@@ -3175,7 +3186,7 @@ function validarInformeIA(json, ctx) {
   });
   if (comportamientosA.length) {
     var obsNorm = _quitarTildesInforme(json.observaciones || '');
-    if (!VERBO_RECTOR_LITERAL_A.test(obsNorm)) {
+    if (!opts.sinCobertura && !VERBO_RECTOR_LITERAL_A.test(obsNorm)) {
       problemas.push('Hay comportamiento(s) del literal A marcado(s) (' + comportamientosA.join(', ') + ') pero OBSERVACIONES no menciona ninguna conjugacion de parcelar/urbanizar/demoler/intervenir/construir (verbo rector del literal A).');
     }
     comportamientosA.forEach(function(codigo) {
@@ -4887,5 +4898,10 @@ async function subirInformeAlDrive(blob) {
   }
 }
 </script>
+<!-- Editor con forma de documento (ronda 1, docs/PLAN_2026-10-15_editor-informe.md):
+     editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
+     (body.modo-doc) como almacén de datos. -->
+<link rel="stylesheet" href="editor.css">
+<script src="editor.js"></script>
 </body>
 </html>
