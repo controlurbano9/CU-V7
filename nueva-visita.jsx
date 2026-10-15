@@ -1905,7 +1905,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                         {(_ESTADO_PANEL_MV[est] || {}).label || est}
                       </span>
                     </div>
-                    {dir && <div style={{ color: 'var(--texto-suave)' }}>{dir}</div>}
+                    {dir && <div style={{ color: 'var(--texto-suave)' }} title={dir}>{direccionVisible(dir)}</div>}
                     {fecha && <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>Fecha: {fecha}</div>}
                   </div>
 

@@ -147,7 +147,9 @@ function MisVisitasScreen({ usuario, onContinuar }) {
         <div className="home-urg mv-urg" role="status">
           <span>
             <b>{audiencias[0].dias === 0 ? 'Audiencia HOY' : 'Audiencia en ' + _plural(audiencias[0].dias, 'día', 'días')}:</b>{' '}
-            {audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || 'Sin dirección'}
+            <span title={audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || ''}>
+              {direccionVisible(audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || 'Sin dirección')}
+            </span>
             {audiencias[0].f['FECHA CITACION'] && ' · ' + audiencias[0].f['FECHA CITACION']}
             {audiencias.length > 1 && ' · y ' + (audiencias.length - 1) + ' más'}
           </span>

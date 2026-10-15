@@ -455,7 +455,7 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
           <span className="al-estado">{iniciada ? 'Iniciada' : 'Asignada'}</span>
           <span className="al-msg" title={alerta.mensaje}>{motivo}</span>
         </div>
-        <div className="al-dir" title={dir}>{dir}</div>
+        <div className="al-dir" title={dir}>{direccionVisible(dir)}</div>
         <div className="al-meta" title={[f['RADICADO'], meta].filter(Boolean).join(' · ')}>
           <span className="sv-rad">{rad}</span>
           {meta && ' · ' + meta}

@@ -246,7 +246,8 @@ function SemanaCard({ f, movil, onAbrir }) {
   return (
     <div className={'sv-card ' + _svClaseEstado(f)}
       aria-label={dir + ', ' + _svTextoEstado(f)}>
-      <div className="sv-dir">{dir}</div>
+      {/* Coordenada como dirección → «Punto GPS» (title con la original). */}
+      <div className="sv-dir" title={dir}>{direccionVisible(dir)}</div>
       <div className="sv-meta">
         {ubic && <span>{ubic} · </span>}
         {rad && <span className="sv-rad">{rad}</span>}

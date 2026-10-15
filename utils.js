@@ -647,6 +647,16 @@ function puntoDesdeTextoCoord(texto) {
   return { lat: lat, lon: lon };
 }
 
+// Dirección para PINTAR en listas y tarjetas: si el texto es una coordenada
+// dentro de Bello se dice «Punto GPS» (la coordenada cruda no cabe en una
+// fila y no dice nada al inspector; el title conserva el texto original).
+// Solo presentación: búsqueda, Maps y payloads siguen usando la dirección
+// tal cual. No toca ''/null: el texto por defecto lo pone quien llama.
+function direccionVisible(dir) {
+  if (!dir) return dir;
+  return puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir;
+}
+
 // ── Numeración de visitas de un radicado (Buscar) ─────────────
 // Una fila PENDIENTE es la queja sin atender, no una visita: sale con
 // n = null y nunca lleva el rótulo "Visita N de M". Solo ASIGNADO,
@@ -3180,6 +3190,7 @@ var _cuUtilsExports = {
   categoriaLog: categoriaLog,
   describirLog: describirLog,
   puntoDesdeTextoCoord: puntoDesdeTextoCoord,
+  direccionVisible: direccionVisible,
   claveComunaAgenda: claveComunaAgenda,
   validarPinNuevo: validarPinNuevo,
   seccionesFicha: seccionesFicha,

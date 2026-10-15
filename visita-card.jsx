@@ -122,8 +122,8 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
           {/* Dirección primero: es por lo que el inspector reconoce el caso.
               El radicado es el identificador, pero no es lo que se busca al
               barrer la lista con la vista. */}
-          <div className="vc-dir">
-            {f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección'}
+          <div className="vc-dir" title={f['DIRECCION INFRACCION'] || f['DIRECCION'] || ''}>
+            {direccionVisible(f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección')}
           </div>
 
           {/* Línea de identidad, sin etiquetas: radicado · PQR · barrio · comuna

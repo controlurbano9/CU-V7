@@ -290,7 +290,8 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
       <div key={f._idx} className="adm-b-item">
         <div className="adm-b-txt">
           <span className="vc-rad">{f['RADICADO'] || '—'}</span>
-          <div className="adm-b-dir">{f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—'}
+          <div className="adm-b-dir"><span title={f['DIRECCION INFRACCION'] || f['DIRECCION'] || ''}>
+            {direccionVisible(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—')}</span>
             {(f['BARRIO/VEREDA'] || f['BARRIO']) && <span> · {f['BARRIO/VEREDA'] || f['BARRIO']}</span>}</div>
           <div className="adm-b-meta">
             <span className="vc-sep">Orden</span> {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}{' '}
