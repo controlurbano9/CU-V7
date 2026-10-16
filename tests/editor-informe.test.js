@@ -137,6 +137,15 @@ test('dividirPuntos: un punto por párrafo, sin vacíos', () => {
   assert.deepEqual(ed.dividirPuntos(null), []);
 });
 
+// La lista ya numera: «1. Durante…» salía «1. 1. Durante…» (20221031954).
+test('dividirPuntos: quita la numeración que traía la visita', () => {
+  assert.deepEqual(ed.dividirPuntos('1. Durante la visita.\n2) Se midió.\n- Sin licencia.\n10. Décima.'),
+    ['Durante la visita.', 'Se midió.', 'Sin licencia.', 'Décima.']);
+  // Un número que es dato se queda.
+  assert.equal(ed.quitarNumeracion('3 pisos en concreto.'), '3 pisos en concreto.');
+  assert.equal(ed.quitarNumeracion('1.5 m de voladizo.'), '1.5 m de voladizo.');
+});
+
 // ── Ronda 2: sugerencias «Del catálogo» ───────────────────────
 test('catálogo: confirmadas + sugeridas, sin marcadores y con el nombre del hallazgo', () => {
   const cat = [
@@ -259,18 +268,45 @@ test('Generar Word: revisión, validador limpio y cierre grave con comportamient
   const nunca = ed.condicionGenerarWord({ vigente: false, huboRevision: false, problemas: [], requiereCierre: false, tieneCierre: false });
   assert.equal(nunca.ok, false);
   assert.match(nunca.motivo, /Falta la revisión final/);
+  assert.equal(nunca.tipo, 'revision');
   // Revisión vencida por una edición posterior.
   const vencida = ed.condicionGenerarWord(Object.assign({}, limpio, { vigente: false }));
   assert.match(vencida.motivo, /Revisión vencida: vuelve a revisar/);
-  // Vigente pero el validador encontró problemas → bloquea con el primero.
+  // Vigente pero el validador encontró problemas → bloquea con todos.
   const conProblemas = ed.condicionGenerarWord(Object.assign({}, limpio, { problemas: ['p1', 'p2'] }));
   assert.equal(conProblemas.motivo, 'p1');
+  assert.equal(conProblemas.tipo, 'problema');
+  assert.deepEqual(conProblemas.problemas, ['p1', 'p2']);
+  // Problemas y revisión vencida: primero los problemas (corregirlos vence
+  // la revisión; pedir revisar antes obligaba a revisar dos veces).
+  const ambos = ed.condicionGenerarWord(Object.assign({}, limpio, { vigente: false, problemas: ['p1'] }));
+  assert.equal(ambos.tipo, 'problema');
   // Con comportamientos marcados, sin la frase de cierre grave no sale.
   const sinCierre = ed.condicionGenerarWord(Object.assign({}, limpio, { requiereCierre: true }));
   assert.equal(sinCierre.ok, false);
   assert.match(sinCierre.motivo, /frase de cierre grave/);
   const conCierre = ed.condicionGenerarWord(Object.assign({}, limpio, { requiereCierre: true, tieneCierre: true }));
   assert.deepEqual(conCierre, { ok: true, motivo: '' });
+});
+
+// «Ver dónde»: de un problema del validador a su sección, punto y frase.
+test('ubicarProblema: sección, punto y frase citada', () => {
+  assert.deepEqual(ed.ubicarProblema('Las observaciones de campo traen una recomendación ("se recomienda"). Pásala a Recomendaciones o quítala: las observaciones solo cuentan lo que se vio.'),
+    { seccion: 'obs', numero: null, frase: 'se recomienda' });
+  assert.deepEqual(ed.ubicarProblema('Recomendación 2 fija un plazo ("60 dias"): los plazos los da el Inspector de Policía.'),
+    { seccion: 'rec', numero: 2, frase: '60 dias' });
+  assert.deepEqual(ed.ubicarProblema('Conclusiones/recomendaciones tratan un tema que la inspección no resuelve ("linderos").'),
+    { seccion: 'concl-rec', numero: null, frase: 'linderos' });
+  assert.deepEqual(ed.ubicarProblema('La conclusión que cita "A4" no menciona la conducta del literal A: parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.'),
+    { seccion: 'concl', numero: null, frase: 'a4' });
+  // Frase sin sección: se busca en todo el documento.
+  assert.deepEqual(ed.ubicarProblema('Dice "ficha catastral" donde va el código catastral.'),
+    { seccion: null, numero: null, frase: 'ficha catastral' });
+  // Sin frase: la sección que nombra.
+  assert.equal(ed.ubicarProblema('El comportamiento A4 está marcado, pero ninguna conclusión lo cita (literal, numeral y Ley 1801 de 2016).').seccion, 'concl');
+  assert.equal(ed.ubicarProblema('Con comportamientos marcados falta la frase de cierre grave.').seccion, 'concl');
+  assert.equal(ed.ubicarProblema('La licencia estaba vencida a la fecha de la visita: falta la recomendación de abstenerse de ejecutar obras hasta contar con licencia urbanística vigente.').seccion, 'rec');
+  assert.equal(ed.ubicarProblema('Las observaciones de campo no mencionan la conducta del literal A marcado (A4): parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.').seccion, 'obs');
 });
 
 // «¿Requiere licencia?» de la visita → primera sugerencia de Conclusiones.

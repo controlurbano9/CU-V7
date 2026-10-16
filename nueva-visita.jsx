@@ -3604,10 +3604,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         ? { tono: 'var(--texto)', t: 'Cambió el texto, la tipificación o una casilla después de revisar: revisa otra vez antes de generar ' + doc + '.' }
         : { tono: 'var(--texto-suave)', t: 'Sin revisar. Hace falta para generar ' + doc + '.' };
     return (
-      <div style={{
+      <div id="nv-revisar-bloque" style={{
         gridColumn: '1 / -1', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
         padding: '12px 14px', borderRadius: 'var(--r-card, 12px)', background: 'var(--superficie)',
-        border: '1px solid var(--borde)',
+        border: '1px solid var(--borde)', scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
       }}>
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 15 }}>Revisión del texto</div>
@@ -4584,6 +4584,39 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return _evaluarFormulario({ acta: true }).faltan;
   }
 
+  // Aviso de lo que falta para `accion` ('generar el acta', 'regenerar el
+  // acta', 'generar el informe'). La revisión del texto no es un campo: cuando
+  // es lo único que falta se dice qué pasó y se lleva al bloque «Revisión del
+  // texto» (2026-10-16; antes decía «faltan 1 campo(s) por diligenciar:
+  // • Revisar el texto otra vez (…)» y no se entendía qué hacer).
+  async function _avisarFaltantes(faltan, accion) {
+    const esRevision = f => f.seccion === 'Conclusiones y revisión' && /^Revis/.test(f.nombre);
+    const campos = faltan.filter(f => !esRevision(f));
+    const faltaRevisar = faltan.length > campos.length;
+    if (!campos.length) {
+      const vencida = !!d.revision;
+      await appAlert(
+        (vencida
+          ? 'Después de revisar el texto cambiaste la situación encontrada, las conclusiones, la tipificación ' +
+            'o una casilla que la revisión tiene en cuenta (licencia, área, pisos, destinaciones o usos).'
+          : 'El texto de la visita todavía no se ha revisado.') +
+        '\n\nPulsa «Revisar» en «Revisión del texto», al final del formulario, y vuelve a ' + accion + '.',
+        { tono: 'aviso', titulo: vencida ? 'Revisa el texto otra vez' : 'Falta revisar el texto', btnOk: 'Ir a «Revisar»' });
+      const el = document.getElementById('nv-revisar-bloque');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setMostrarPendientes(true); // enciende los puntos ámbar de sección
+    const lista = campos.slice(0, 20).map(f => '• ' + f.nombre + (f.seccion ? ' — ' + f.seccion : '')).join('\n');
+    const extra = campos.length > 20 ? '\n… y ' + (campos.length - 20) + ' más' : '';
+    await appAlert(
+      'Para ' + accion + (campos.length === 1 ? ' falta este dato:' : ' faltan estos ' + campos.length + ' datos:') +
+      '\n\n' + lista + extra +
+      (faltaRevisar ? '\n\nDespués, pulsa «Revisar» al final del formulario.' : '') +
+      '\n\nLas secciones con datos pendientes quedan marcadas con un punto ámbar. Complétalos, guarda y vuelve a intentarlo.',
+      { tono: 'aviso', titulo: 'Faltan datos', btnOk: 'Volver al formulario' });
+  }
+
   // Paso 1 del F-GGO-46: Sheet de CARACTERIZACIÓN.
   // No inserta fotos — para el registro fotográfico usar el botón aparte.
   async function generarActa() {
@@ -4595,15 +4628,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // si falta cualquier dato obligatorio, NO se permite generar.
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
-      setMostrarPendientes(true); // enciende los puntos ámbar de sección
-      const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
-      const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
-      await appAlert(
-        'No se puede generar el acta: faltan ' + faltan.length + ' campo(s) por diligenciar:\n\n' +
-        lista + extra +
-        '\n\nVuelve al formulario, complétalos y guarda antes de generar el acta.',
-        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
-      );
+      await _avisarFaltantes(faltan, 'generar el acta');
       return;
     }
     await _ejecutarGenerarActa(false);
@@ -4619,15 +4644,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     }
     const faltan = _validarAntesDeActa();
     if (faltan.length > 0) {
-      setMostrarPendientes(true); // enciende los puntos ámbar de sección
-      const lista = faltan.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
-      const extra = faltan.length > 20 ? '\n... y ' + (faltan.length - 20) + ' más' : '';
-      await appAlert(
-        'No se puede regenerar el acta: faltan ' + faltan.length + ' campo(s):\n\n' +
-        lista + extra +
-        '\n\nVuelve al formulario, complétalos y guarda antes de regenerar.',
-        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
-      );
+      await _avisarFaltantes(faltan, 'regenerar el acta');
       return;
     }
     const ok = await appConfirm(
@@ -4653,15 +4670,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
     const faltanInf = _evaluarFormulario().faltan;
     if (faltanInf.length > 0) {
-      setMostrarPendientes(true); // enciende los puntos ámbar de sección
-      const lista = faltanInf.slice(0, 20).map(f => '• ' + f.nombre).join('\n');
-      const extra = faltanInf.length > 20 ? '\n... y ' + (faltanInf.length - 20) + ' más' : '';
-      await appAlert(
-        'No se puede generar el informe F-GGO-43: faltan ' + faltanInf.length + ' campo(s) por diligenciar:\n\n' +
-        lista + extra +
-        '\n\nVuelve al formulario, complétalos y guarda antes de generar el informe.',
-        { tono: 'aviso', titulo: 'Datos incompletos', btnOk: 'Volver al formulario' }
-      );
+      await _avisarFaltantes(faltanInf, 'generar el informe');
       return;
     }
     _docOcupadoRef.current = true;
@@ -4762,6 +4771,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // "faltan params obligatorios" en toda visita de oficio.
         radicado: d.esOficio ? radicadoDeOficio(d.radicado, d.orden, d.nVisita) : d.radicado,
         fechaVisita: d.fechaVisita,
+        // Word ya generado: el editor lo deja a mano («Abrir el Word generado»).
+        linkInforme: d.linkDocxInforme,
         direccion: d.direccion,
         barrio: d.barrio,
         comuna: d.comuna,

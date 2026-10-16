@@ -61,9 +61,14 @@ function fraseAntecedentes(d, origen) {
   return partes.join(', ') + ', ' + motivo + '. El objeto de la diligencia fue verificar las condiciones urbanísticas del inmueble.';
 }
 
-// Conclusiones del inspector → un punto por párrafo.
+// Conclusiones del inspector → un punto por párrafo. La numeración que traía
+// el texto de la visita («1. Durante…») se quita: la lista ya numera y el
+// punto salía «1. 1. Durante…» en pantalla y en el Word.
+function quitarNumeracion(s) {
+  return String(s || '').replace(/^\s*(?:\d{1,2}\s*[.)-]|[-•–])\s+/, '').trim();
+}
 function dividirPuntos(texto) {
-  return String(texto || '').split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  return String(texto || '').split(/\n+/).map(quitarNumeracion).filter(Boolean);
 }
 
 // ── Puras: sugerencias «De la visita» (deterministas, sin IA) ────────
@@ -390,14 +395,40 @@ function revisionInformeVigente(rev, informe, huellaFn) {
   return !!(rev && rev.huella && rev.huella === huellaInforme(informe, huellaFn));
 }
 
-// Condición de «Generar Word»: revisión vigente + validador limpio + cierre
-// grave cuando hay comportamientos marcados. `huboRevision` distingue
-// «falta revisar» de «revisión vencida».
+// Condición de «Generar Word»: validador limpio + cierre grave cuando hay
+// comportamientos marcados + revisión vigente. `huboRevision` distingue
+// «falta revisar» de «revisión vencida». `tipo` dice cómo pintarlo:
+// 'problema' es algo del texto que hay que corregir (bloqueo en rojo, con
+// «Ver dónde»); 'revision' solo pide revisar.
+// Los problemas van ANTES que la revisión (2026-10-16): corregirlos cambia el
+// texto y vence la revisión, así que pedir revisar primero obligaba a revisar
+// dos veces.
 function condicionGenerarWord(o) {
-  if (!o.vigente) return { ok: false, motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final' };
-  if ((o.problemas || []).length) return { ok: false, motivo: o.problemas[0] };
-  if (o.requiereCierre && !o.tieneCierre) return { ok: false, motivo: 'con comportamientos marcados falta la frase de cierre grave' };
+  var problemas = (o.problemas || []).slice();
+  if (o.requiereCierre && !o.tieneCierre) problemas.push('Con comportamientos marcados falta la frase de cierre grave.');
+  if (problemas.length) return { ok: false, tipo: 'problema', motivo: problemas[0], problemas: problemas };
+  if (!o.vigente) return { ok: false, tipo: 'revision', motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final' };
   return { ok: true, motivo: '' };
+}
+
+// Dónde buscar en el documento un problema del validador: la sección
+// (antecedentes · obs · concl · rec), el punto si el mensaje lo nombra
+// («Recomendacion 2 usa…») y la frase citada entre comillas tal como la
+// compara el validador (minúscula, sin tildes). Sin pista: seccion null.
+function ubicarProblema(problema) {
+  var p = String(problema || '');
+  var pn = _normTexto(p);
+  var mFrase = /"([^"]+)"/.exec(p);
+  var r = { seccion: null, numero: null, frase: mFrase ? _normTexto(mFrase[1]) : '' };
+  var mRec = /^recomendacion (\d+)\b/.exec(pn);
+  if (mRec) { r.seccion = 'rec'; r.numero = parseInt(mRec[1], 10); return r; }
+  if (/^las observaciones de campo|^observaciones\b/.test(pn)) { r.seccion = 'obs'; return r; }
+  if (/^conclusiones recomendaciones\b/.test(pn)) { r.seccion = 'concl-rec'; return r; }
+  if (/^la conclusion\b/.test(pn)) { r.seccion = 'concl'; return r; }
+  if (r.frase) return r; // se busca en todo el documento
+  if (/\bconclusion/.test(pn) || /cierre grave/.test(pn)) r.seccion = 'concl';
+  else if (/\brecomendacion/.test(pn)) r.seccion = 'rec';
+  return r;
 }
 
 // ── Export (patrón de utils.js) / arranque solo en modo documento ────
@@ -406,6 +437,8 @@ var _export = {
   detectarOrigenAntecedentes: detectarOrigenAntecedentes,
   fraseAntecedentes: fraseAntecedentes,
   dividirPuntos: dividirPuntos,
+  quitarNumeracion: quitarNumeracion,
+  ubicarProblema: ubicarProblema,
   sugerenciasConclusionesDeLaVisita: sugerenciasConclusionesDeLaVisita,
   sugerenciasRequiereLicencia: sugerenciasRequiereLicencia,
   sugerenciasRecomendacionesDeLaVisita: sugerenciasRecomendacionesDeLaVisita,
@@ -488,6 +521,11 @@ if (_borrador) {
 // no se sube nada, para no pisar lo guardado desde otro equipo).
 var _srv = { version: (_borrador && _borrador._srvVersion) || 0, estado: '', hora: '', pendiente: false, cargado: false };
 var _guardadoTxt = '';
+// Lo que no deja generar (_pintarBloqueos): [{ texto, loc: { el, inicio, fin } | null }]
+// y los avisos en línea pintados [{ el, texto, nodo }].
+var _bloqueos = [], _notasBloqueo = [];
+// Word ya generado (_pintarAbrirWord).
+var _linkWord = _linkGoogle(_SESION_QS.get('linkInforme'));
 var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) || [];
 var _fotosPendientes = null, _aplicandoFotos = false;
 var _qgis = { id: '', base64: '', mime: '' }, _qgisSubiendo = false;
@@ -525,6 +563,7 @@ root.innerHTML =
   '<header class="ed-top">' +
     '<div class="ed-tit"><b>Informe de inspección</b><span id="ed-sub"></span></div>' +
     '<div class="ed-top-acc">' +
+      '<a class="ed-btn ed-btn-neutro ed-btn-abrir" id="ed-abrir-top" target="_blank" rel="noopener" hidden>Abrir Word</a>' +
       '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen" disabled>Generar Word</button>' +
     '</div>' +
   '</header>' +
@@ -601,15 +640,17 @@ root.innerHTML =
         '<ul class="ed-est" id="ed-est"></ul>' +
         '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar">Revisar informe</button>' +
         '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-rail" disabled>Generar Word</button>' +
-        '<div class="ed-nota" id="ed-gen-nota"></div>' +
+        '<div class="ed-nota" id="ed-gen-nota" aria-live="polite"></div>' +
+        '<a class="ed-btn ed-btn-neutro ed-btn-abrir" id="ed-abrir" target="_blank" rel="noopener" hidden>Abrir el Word generado</a>' +
       '</div>' +
     '</aside>' +
   '</main>' +
-  '<div class="ed-barra">' +
+  '<div class="ed-barra" id="ed-barra">' +
     '<div class="ed-barra-txt" id="ed-barra-txt"></div>' +
     '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar-movil">Revisar</button>' +
     // <1200 la cabecera oculta sus botones: sin este, en el celular no había cómo generar.
     '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-movil" disabled>Generar Word</button>' +
+    '<a class="ed-btn ed-btn-neutro ed-btn-abrir" id="ed-abrir-movil" target="_blank" rel="noopener" hidden>Abrir Word</a>' +
   '</div>' +
   '<div class="ed-modal" id="ed-modal" hidden></div>';
 document.body.appendChild(root);
@@ -957,7 +998,8 @@ function _refrescarLista(id, textos) {
     if (!li.classList.contains('ed-item-fijo')) li.remove();
   });
   var fijo = ol.querySelector('.ed-item-fijo');
-  textos.forEach(function (t) { ol.insertBefore(_item(t), fijo || null); });
+  // quitarNumeracion también aquí: los borradores guardados antes traen «1. …».
+  textos.forEach(function (t) { ol.insertBefore(_item(quitarNumeracion(t)), fijo || null); });
   _pintarVacio(id);
 }
 
@@ -1170,6 +1212,11 @@ function _pintarEstado() {
   var obs = informe.observaciones;
   var vigente = revisionInformeVigente(_revSello, informe, huellaRevision);
   var hubo = !!_revSello;
+  var cond = _condicionWord();
+  _pintarBloqueos(cond.tipo === 'problema' ? cond.problemas : []);
+  // La sección donde está lo que bloquea se marca en rojo en la lista.
+  var secBloq = {};
+  _bloqueos.forEach(function (b) { var s = b.loc && _seccionDeBloque(b.loc.el); if (s) secBloq[s] = true; });
   var filas = [
     ['ok', 'Antecedentes', 'Armados con los datos de la visita'],
     [obs ? 'ok' : 'pend', 'Observaciones de campo', obs ? 'Texto de la visita, editable' : 'Vacías'],
@@ -1179,17 +1226,200 @@ function _pintarEstado() {
     [vigente ? 'ok' : (hubo ? 'pend' : 'no'), 'Revisión final',
       vigente ? (_revSello.modo === 'LOCAL' ? 'Revisado sin conexión' : 'Vigente')
         : (hubo ? 'Vencida: vuelve a revisar' : 'Pendiente')]
-  ];
+  ].map(function (f) { return secBloq[f[1]] ? ['err', f[1], 'No deja generar el Word'] : f; });
   _el('ed-est').innerHTML = filas.map(function (f) {
     return '<li><span class="ed-dot ' + f[0] + '"></span><div>' + _esc(f[1]) + '<small>' + _esc(f[2]) + '</small></div></li>';
   }).join('');
-  var cond = _condicionWord();
   ['ed-gen', 'ed-gen-rail', 'ed-gen-movil'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
-  _el('ed-gen-nota').textContent = cond.ok ? 'Todo listo para generar.' : ('Falta: ' + cond.motivo + '.');
-  _el('ed-barra-txt').innerHTML = '<b>' + nc + ' conclusiones · ' + nr + ' recomendaciones</b>' +
-    total + ' fotos · ' + (cond.ok ? 'listo para generar' : _esc(cond.motivo)) +
-    (_guardadoTxt ? ' · ' + _esc(_guardadoTxt) : '');
+  _pintarNotaGenerar(cond, hubo);
+  var barra = cond.ok ? 'listo para generar'
+    : (cond.tipo === 'revision' ? _esc(cond.motivo) : '');
+  _el('ed-barra-txt').innerHTML = '<b>' + nc + (nc === 1 ? ' conclusión · ' : ' conclusiones · ') +
+    nr + (nr === 1 ? ' recomendación' : ' recomendaciones') + '</b> ' +
+    total + (total === 1 ? ' foto' : ' fotos') + (barra ? ' · ' + barra : '') +
+    (_guardadoTxt ? ' · ' + _esc(_guardadoTxt) : '') +
+    // <1200 no hay panel: el bloqueo va en su propia línea, con «Ver dónde».
+    (cond.tipo === 'problema'
+      ? '<span class="ed-barra-bloqueo">No se puede generar el Word: ' +
+        (_bloqueos.length === 1 ? 'hay una frase por corregir.' : 'hay ' + _bloqueos.length + ' cosas por corregir.') +
+        (_bloqueos[0] && _bloqueos[0].loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-problema="0">Ver dónde</button>' : '') +
+        '</span>'
+      : '');
 }
+
+// La nota bajo «Generar Word» dice qué falta. Un problema del texto es un
+// BLOQUEO (caja roja con cada problema y su «Ver dónde»); la revisión
+// pendiente es solo una nota. Se reescribe solo si cambió: es aria-live.
+function _pintarNotaGenerar(cond, huboRevision) {
+  var nota = _el('ed-gen-nota');
+  var cls, html;
+  if (cond.ok) {
+    cls = 'ed-nota ed-nota-ok';
+    html = _esc(_linkWord ? 'Todo listo. Generarlo otra vez reemplaza el Word anterior.' : 'Todo listo para generar.');
+  } else if (cond.tipo === 'revision') {
+    cls = 'ed-nota';
+    html = _esc(huboRevision
+      ? 'Cambiaste el informe después de revisarlo: vuelve a usar «Revisar informe».'
+      : 'Falta la revisión final: usa «Revisar informe».');
+  } else {
+    cls = 'ed-nota ed-bloqueo';
+    html = '<b>No se puede generar el Word</b><ul>' + _bloqueos.map(function (b, i) {
+      return '<li>' + _esc(b.texto) +
+        (b.loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-problema="' + i + '">Ver dónde</button>' : '') +
+        '</li>';
+    }).join('') + '</ul>';
+  }
+  if (nota.className !== cls) nota.className = cls;
+  if (nota.innerHTML !== html) nota.innerHTML = html;
+}
+
+// ── Lo que no deja generar: dónde está en el documento ───────────────
+// _bloqueos y _notasBloqueo se declaran arriba: _pintarFotos repinta el
+// estado antes de llegar aquí.
+
+// Minúscula y sin tildes SIN cambiar el largo (a diferencia de _normTexto):
+// una posición en este texto es la misma en el texto del documento.
+function _normMismoLargo(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
+}
+
+// Bloques editables en el orden en que el validador los recibe: las listas
+// sin los puntos vacíos (_textosLista los descarta, y «Recomendacion 2» cuenta así).
+function _bloquesDe(seccion, numero) {
+  function lleno(e) { return e.textContent.trim(); }
+  var concl = Array.prototype.slice.call(document.querySelectorAll('#ed-concl > .ed-item .ed-ed')).filter(lleno);
+  var rec = Array.prototype.slice.call(document.querySelectorAll('#ed-rec > .ed-item .ed-ed')).filter(lleno);
+  if (seccion === 'obs') return [_el('ed-obs')];
+  if (seccion === 'rec') return numero ? rec.slice(numero - 1, numero) : rec;
+  if (seccion === 'concl') return concl;
+  if (seccion === 'concl-rec') return concl.concat(rec);
+  return [_el('ed-antecedentes'), _el('ed-obs')].concat(concl, rec);
+}
+
+function _ubicarEnDocumento(problema) {
+  var u = ubicarProblema(problema);
+  var bloques = _bloquesDe(u.seccion, u.numero);
+  if (u.frase) {
+    // Palabra por palabra: entre ellas, cualquier signo o espacio.
+    var rx = new RegExp(u.frase.split(' ').map(function (w) {
+      return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('[^a-z0-9]+'));
+    for (var i = 0; i < bloques.length; i++) {
+      var m = rx.exec(_normMismoLargo(bloques[i].textContent));
+      if (m) return { el: bloques[i], inicio: m.index, fin: m.index + m[0].length };
+    }
+  }
+  // Sin frase (o no apareció): el punto o la sección entera.
+  if (u.seccion === 'rec' && u.numero && bloques[0]) return { el: bloques[0] };
+  if (u.seccion === 'obs') return { el: _el('ed-obs') };
+  if (u.seccion === 'concl' || u.seccion === 'concl-rec') return { el: _el('ed-concl') };
+  if (u.seccion === 'rec') return { el: _el('ed-rec') };
+  return null;
+}
+
+function _rangoTexto(el, inicio, fin) {
+  var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), n, pos = 0, ini = false;
+  var r = document.createRange();
+  while ((n = w.nextNode())) {
+    var largo = n.nodeValue.length;
+    if (!ini && inicio <= pos + largo) { r.setStart(n, inicio - pos); ini = true; }
+    if (ini && fin <= pos + largo) { r.setEnd(n, fin - pos); return r; }
+    pos += largo;
+  }
+  return null;
+}
+
+function _seccionDeBloque(el) {
+  if (!el) return '';
+  if (el.id === 'ed-antecedentes') return 'Antecedentes';
+  if (el.id === 'ed-obs') return 'Observaciones de campo';
+  if (el.closest('#ed-concl')) return 'Conclusiones';
+  if (el.closest('#ed-rec')) return 'Recomendaciones';
+  return '';
+}
+
+// Marca en el documento lo que bloquea: borde rojo en el bloque, la frase
+// resaltada (CSS Custom Highlight: no toca el texto editable) y un aviso
+// en línea justo debajo, para quien llega bajando por la hoja.
+function _pintarBloqueos(problemas) {
+  document.querySelectorAll('.ed-bloquea').forEach(function (e) { e.classList.remove('ed-bloquea'); });
+  var rangos = [];
+  _bloqueos = (problemas || []).map(function (p) {
+    var loc = _ubicarEnDocumento(p);
+    if (loc && loc.el) {
+      loc.el.classList.add('ed-bloquea');
+      if (loc.inicio != null) {
+        loc.rango = _rangoTexto(loc.el, loc.inicio, loc.fin);
+        if (loc.rango) rangos.push(loc.rango);
+      }
+    }
+    return { texto: p, loc: loc };
+  });
+  try {
+    if (window.CSS && CSS.highlights && typeof Highlight === 'function') {
+      if (rangos.length) {
+        var h = new Highlight();
+        rangos.forEach(function (r) { h.add(r); });
+        CSS.highlights.set('ed-bloqueo', h);
+      } else CSS.highlights.delete('ed-bloqueo');
+    }
+  } catch (e) { /* sin resaltado: quedan el borde y el aviso */ }
+
+  // Avisos en línea: solo se rehacen si cambiaron (se repinta a cada tecla).
+  var deseadas = _bloqueos.filter(function (b) { return b.loc && b.loc.el; })
+    .map(function (b) { return { el: b.loc.el, texto: b.texto }; });
+  var iguales = deseadas.length === _notasBloqueo.length && deseadas.every(function (d, i) {
+    return d.el === _notasBloqueo[i].el && d.texto === _notasBloqueo[i].texto && _notasBloqueo[i].nodo.isConnected;
+  });
+  if (iguales) return;
+  _notasBloqueo.forEach(function (n) { n.nodo.remove(); });
+  _notasBloqueo = deseadas.map(function (d) {
+    var nodo = document.createElement('div');
+    nodo.className = 'ed-bloqueo-linea';
+    nodo.setAttribute('contenteditable', 'false');
+    nodo.innerHTML = '<b>No deja generar el Word.</b> ' + _esc(d.texto);
+    var li = d.el.closest('.ed-item');
+    if (li) li.appendChild(nodo);                       // debajo del punto, dentro de su renglón
+    else d.el.parentNode.insertBefore(nodo, d.el.nextSibling);
+    return { el: d.el, texto: d.texto, nodo: nodo };
+  });
+}
+
+// «Ver dónde»: lleva al bloque y deja la frase seleccionada para corregirla.
+function _irAProblema(i) {
+  var b = _bloqueos[i];
+  var loc = b && _ubicarEnDocumento(b.texto);
+  if (!loc || !loc.el) return;
+  loc.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (loc.inicio != null && loc.el.isContentEditable) {
+    var r = _rangoTexto(loc.el, loc.inicio, loc.fin);
+    if (!r) return;
+    loc.el.focus({ preventScroll: true });
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+}
+
+// ── Word ya generado ──────────────────────────────────────────────────
+// Llega de la visita (?linkInforme=) o de «Generar Word». Viaja en la URL:
+// solo se aceptan enlaces de Google.
+function _linkGoogle(u) {
+  u = String(u || '').trim();
+  return /^https:\/\/(?:docs|drive)\.google\.com\//.test(u) ? u : '';
+}
+function _pintarAbrirWord() {
+  ['ed-abrir', 'ed-abrir-top', 'ed-abrir-movil'].forEach(function (id) {
+    var a = _el(id);
+    if (!a) return;
+    a.hidden = !_linkWord;
+    if (_linkWord) a.href = _linkWord;
+  });
+  _el('ed-barra').classList.toggle('con-abrir', !!_linkWord);
+}
+_pintarAbrirWord();
 _pintarEstado();
 
 // ── Persistencia: este equipo (localStorage) + servidor (por ID_VISITA) ──
@@ -1373,11 +1603,16 @@ function _pintarGuardado() {
   else if (_srv.estado === 'guardando') t = 'Guardando…';
   else if (_srv.estado === 'ok') t = 'Guardado' + (_srv.hora ? ' · ' + _srv.hora : '');
   else if (_srv.estado === 'offline') t = 'Sin conexión: guardado en este equipo';
-  else if (_srv.estado === 'conflicto') t = 'Modificado en otro equipo';
+  else if (_srv.estado === 'conflicto') t = 'Modificado en otro equipo: elige arriba qué versión queda';
   else t = '';
   _guardadoTxt = t;
+  // Un punto de color con el estado (2026-10-16): reemplaza al aviso verde
+  // flotante del asistente (#save-ind), que parpadeaba «Guardado» a cada
+  // tecla en una esquina y en el celular tapaba los botones de la barra.
+  var tono = !V6_CTX.idVisita ? 'no'
+    : ({ ok: 'ok', guardando: 'mov', cargando: 'mov', offline: 'pend', conflicto: 'err' }[_srv.estado] || 'no');
   var el = _el('ed-guardado');
-  if (el) el.textContent = t;
+  if (el) el.innerHTML = t ? '<span class="ed-g-dot ' + tono + '" aria-hidden="true"></span><span>' + _esc(t) + '</span>' : '';
   _pintarEstado();
 }
 
@@ -1600,6 +1835,7 @@ function _esCampoDelDocumento(t) {
 root.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('button') : null;
   if (!b) return;
+  if (b.hasAttribute('data-ed-ir-problema')) { _irAProblema(parseInt(b.getAttribute('data-ed-ir-problema'), 10)); return; }
   if (b.hasAttribute('data-ed-conf')) { _resolverConflicto(b.getAttribute('data-ed-conf')); return; }
   if (b.hasAttribute('data-ed-visita')) { _resolverCambioVisita(b.getAttribute('data-ed-visita')); return; }
   if (b.hasAttribute('data-ed-agregar')) {
@@ -1936,6 +2172,10 @@ async function _generarWord() {
     var resultado = USAR_PLANTILLA_F43
       ? await generarInformeF43ViaPlantilla(tFinal)
       : await _finalizarInformeRenderDocx(tFinal);
+    // El Word queda a mano en el panel («Abrir el Word generado»), no solo en el aviso.
+    _linkWord = _linkGoogle(resultado && resultado.link) || _linkWord;
+    _pintarAbrirWord();
+    _pintarEstado();
     mostrarModalEmision('exito', { link: resultado && resultado.link });
   } catch (e) {
     // Sin mostrarModalEmision('error'): su «Reintentar» llama generarInformeV2()

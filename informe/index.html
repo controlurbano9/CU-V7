@@ -188,6 +188,7 @@ body.embebido .sb-logo{display:none}
   font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .15s;
   letter-spacing:-0.1px;
 }
+a.btn{display:inline-flex; align-items:center; text-decoration:none}
 .btn-p{background:var(--brand-accent); color:#fff}
 .btn-p:hover{background:var(--brand-ink)}
 .btn-p:disabled{opacity:.45; cursor:not-allowed}
@@ -1151,10 +1152,15 @@ function mostrarModalEmision(estado, datos) {
       + '<button class="btn btn-o" onclick="mostrarModalEmision(\'cerrar\')">Cerrar</button>'
       + '</div>';
   } else if (estado === 'exito') {
+    // «Abrir el informe» es la acción principal: antes era un enlace pequeño
+    // y, cerrado el aviso, no había cómo abrirlo sin salir del generador
+    // (ahora también queda en el panel del editor).
     html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:10px;color:var(--verde-dark)">✓ Informe generado</div>'
-      + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">Guardado en Drive. Puedes descargarlo o seguir editando.</div>'
-      + (datos.link ? '<a href="' + datos.link + '" target="_blank" style="color:var(--brand-accent);font-size:13px">Ver archivo en Drive</a><br><br>' : '')
-      + '<button class="btn btn-p" onclick="mostrarModalEmision(\'cerrar\')">Cerrar</button>';
+      + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">Quedó en la carpeta de la visita en Drive. Si lo generas otra vez, el nuevo reemplaza a este.</div>'
+      + '<div style="display:flex;gap:10px;flex-wrap:wrap">'
+      + (datos.link ? '<a class="btn btn-p" href="' + datos.link + '" target="_blank" rel="noopener" onclick="mostrarModalEmision(\'cerrar\')">Abrir el informe</a>' : '')
+      + '<button class="' + (datos.link ? 'btn btn-o' : 'btn btn-p') + '" onclick="mostrarModalEmision(\'cerrar\')">Seguir editando</button>'
+      + '</div>';
   }
   caja.innerHTML = html;
   modal.classList.add('visible');
@@ -2866,8 +2872,14 @@ var PLAZO_EN_RECOMENDACION = /\b(?:\d+|sesenta|treinta|noventa)\s*\(?\d*\)?\s*(?
 var TEMA_FUERA_DE_ALCANCE = /\b(?:linderos?|invasion|invadid[oa]s?|invadio|titularidad|levantamiento topografico)\b/;
 // Hecho negativo absoluto sobre la licencia (no verificable en una visita).
 var LICENCIA_NEGATIVA_ABSOLUTA = /\b(?:no|ninguno|ninguna)\b[^.]{0,40}\b(?:cuenta|cuentan|tiene|tienen|posee|poseen)\s+(?:con\s+)?(?:la\s+|una\s+)?licencia\b/;
-// Conclusion o recomendacion metida en las observaciones.
-var JUICIO_EN_OBSERVACIONES = /\b(?:se recomienda|recomienda|permite concluir|se concluye|en consecuencia)\b/;
+// Conclusion o recomendacion metida en las observaciones: solo las formas con
+// que el informe concluye o recomienda por su cuenta (2026-10-16). Salieron
+// "en consecuencia", que tambien une hechos ("la puerta estaba cerrada; en
+// consecuencia, no se pudo ingresar"), y "recomienda" suelto, que atrapaba lo
+// que alguien dijo ("el ingeniero le recomienda..."): los dos bloqueaban el
+// Word con un texto ya revisado en la visita. "Se le recomendo" es lo que paso
+// en la visita (un hecho) y tampoco entra.
+var JUICIO_EN_OBSERVACIONES = /\b(?:se recomienda|se concluye que|permiten? concluir|se puede concluir|en conclusion)\b/;
 // 'sancion' va por RAIZ a proposito: cubre sancionar/sancion/sanciones/
 // sancionatorias, que es como se colaban en la practica ("considerar la
 // remision del caso para que se apliquen las medidas sancionatorias" pasaba
@@ -3003,6 +3015,16 @@ function _registrarBorradorRechazado(tglobalFinal, ctx, problemas) {
   } catch (e) { console.warn('_registrarBorradorRechazado fallo:', e.message); }
 }
 
+// Comportamientos del art. 135 con la numeración de la ley (la de los .comp-ac):
+// literal A 1-4, C 9-12, D 13-24.
+function _esCodigoArt135(c) {
+  var m = /^([ACD])(\d{1,2})$/.exec(c || '');
+  if (!m) return false;
+  var n = parseInt(m[2], 10);
+  return (m[1] === 'A' && n >= 1 && n <= 4) || (m[1] === 'C' && n >= 9 && n <= 12) ||
+    (m[1] === 'D' && n >= 13 && n <= 24);
+}
+
 function _quitarTildesInforme(s) {
   return (s || '').toString().toLowerCase()
     .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
@@ -3032,18 +3054,18 @@ function validarInformeIA(json, ctx, opts) {
   CERTEZA_SOBRE_CALIFICACION_INFORME.forEach(function(rx) {
     var m = rx.exec(todoNorm);
     if (m) {
-      problemas.push('Da por probada una calificacion juridica ("' + m[0] + '") — describa el hecho observado; '
-        + 'calificar si hay infraccion corresponde al Inspector, no a esta seccion tecnica.');
+      problemas.push('Da por probada una calificación jurídica ("' + m[0] + '"): describe el hecho observado; '
+        + 'calificar si hay infracción le corresponde al Inspector.');
     }
   });
   FRASES_NORMATIVA_VAGA_INFORME.forEach(function(f) {
     if (todoNorm.indexOf(_quitarTildesInforme(f)) >= 0) {
-      problemas.push('Cita la norma de forma generica: "' + f + '" (debe citar la norma especifica o nada).');
+      problemas.push('Cita la norma de forma genérica ("' + f + '"): cita la norma específica o ninguna.');
     }
   });
   TEXTO_PLANTILLA_FILTRADO_INFORME.forEach(function(t) {
     if (todoNorm.indexOf(t) >= 0) {
-      problemas.push('Quedo texto de plantilla sin reemplazar: "' + t + '...".');
+      problemas.push('Quedó texto de plantilla sin reemplazar: "' + t + '...".');
     }
   });
   // Marcador del catalogo sin sustituir (ej. "[AREA]"): conclusion_sugerida
@@ -3053,7 +3075,7 @@ function validarInformeIA(json, ctx, opts) {
   // porque el marcador va en mayusculas y todoNorm ya esta en minuscula.
   var marcadorSuelto = todoTexto.match(/\[[A-ZÁÉÍÓÚÑ_][A-ZÁÉÍÓÚÑ_ ]*\]/);
   if (marcadorSuelto) {
-    problemas.push('Quedo un marcador sin sustituir: "' + marcadorSuelto[0] + '".');
+    problemas.push('Quedó un marcador sin sustituir: "' + marcadorSuelto[0] + '".');
   }
   // (2026-10-14) Ya no se prohibe la palabra "numeral": la conclusion
   // juridica cita "literal A ..., numeral 4 ..." completo, como los informes
@@ -3077,8 +3099,14 @@ function validarInformeIA(json, ctx, opts) {
   var rxCitaCompleta = /literal\s+([ABCD])\b[^.;]{0,400}?numeral\s+(\d{1,2})\b/gi, mc;
   var textoCitasNorm = _quitarTildesInforme(textoSinPoligonos);
   while ((mc = rxCitaCompleta.exec(textoCitasNorm))) citados[mc[1].toUpperCase() + parseInt(mc[2], 10)] = true;
+  // Solo cuenta lo que existe en el art. 135 (2026-10-16, radicado
+  // 20261078122): «C2» bloqueaba el Word como «comportamiento no marcado» y no
+  // existe (el literal C va del 9 al 12). Un código así en el texto es otra
+  // cosa: el eje de un plano («columna C2»), un polígono o una dirección.
   Object.keys(citados).forEach(function(c) {
-    if (!autorizados[c]) problemas.push('Cita el comportamiento "' + c + '" que el inspector no marco.');
+    if (_esCodigoArt135(c) && !autorizados[c]) {
+      problemas.push('Cita el comportamiento ' + c + ' del artículo 135 ("' + c + '"), que no está marcado en la visita: márcalo en la visita o quita la cita.');
+    }
   });
 
   // Cada comportamiento marcado debe tener su conclusion juridica (punto 4.d
@@ -3089,24 +3117,31 @@ function validarInformeIA(json, ctx, opts) {
     var lit = cod.charAt(0).toLowerCase(), num = cod.slice(1);
     var rx = new RegExp('literal\\s+' + lit + '\\b[^]*?numeral\\s+' + num + '\\b');
     var tiene = conclusionesNorm.some(function(c) { return rx.test(c) && c.indexOf('1801') >= 0; });
-    if (!tiene) problemas.push('El comportamiento ' + cod + ' esta marcado pero ninguna conclusion lo cita (literal, numeral y Ley 1801 de 2016).');
+    if (!tiene) problemas.push('El comportamiento ' + cod + ' está marcado, pero ninguna conclusión lo cita (literal, numeral y Ley 1801 de 2016).');
   });
 
   // Hecho negativo absoluto sobre la licencia, en cualquier seccion.
   var mNeg = LICENCIA_NEGATIVA_ABSOLUTA.exec(todoNorm);
-  if (mNeg) problemas.push('Afirma un hecho negativo sobre la licencia ("' + mNeg[0] + '") — use "no se aporto ni exhibio licencia".');
+  if (mNeg) problemas.push('Afirma un hecho negativo sobre la licencia ("' + mNeg[0] + '"): escribe "no se aportó ni exhibió licencia".');
 
   // El dato del wizard es el codigo catastral (30 digitos), no la ficha.
-  if (/\bficha catastral\b/.test(todoNorm)) problemas.push('Llama "ficha catastral" al codigo catastral.');
+  if (/\bficha catastral\b/.test(todoNorm)) problemas.push('Dice "ficha catastral" donde va el código catastral.');
 
   // Observaciones solo describen.
+  // El mensaje lo lee el inspector en el editor (no solo el registro de
+  // rechazos): dice que frase es y a que seccion va.
   var mJuicio = JUICIO_EN_OBSERVACIONES.exec(_quitarTildesInforme(json.observaciones || ''));
-  if (mJuicio) problemas.push('OBSERVACIONES incluye una conclusion o recomendacion ("' + mJuicio[0] + '") — va en su seccion.');
+  if (mJuicio) {
+    var esRecomendacion = mJuicio[0].indexOf('recomienda') >= 0;
+    problemas.push('Las observaciones de campo traen una ' + (esRecomendacion ? 'recomendación' : 'conclusión')
+      + ' ("' + mJuicio[0] + '"). Pásala a ' + (esRecomendacion ? 'Recomendaciones' : 'Conclusiones')
+      + ' o quítala: las observaciones solo cuentan lo que se vio.');
+  }
 
   // Linderos / invasion / titularidad fuera de conclusiones y recomendaciones.
   (json.conclusiones_items || []).concat(json.recomendaciones_items || []).forEach(function(item) {
     var mF = TEMA_FUERA_DE_ALCANCE.exec(_quitarTildesInforme(item));
-    if (mF) problemas.push('Conclusiones/recomendaciones tratan un tema que la inspeccion no resuelve ("' + mF[0] + '").');
+    if (mF) problemas.push('Conclusiones/recomendaciones tratan un tema que la inspección no resuelve ("' + mF[0] + '").');
   });
 
   // Verbos administrativos/sancionatorios prohibidos (esas son decisiones
@@ -3116,17 +3151,17 @@ function validarInformeIA(json, ctx, opts) {
   (json.recomendaciones_items || []).forEach(function(item, i) {
     var norm = _quitarTildesInforme(item);
     VERBOS_PROHIBIDOS_RECOMENDACION.forEach(function(v) {
-      if (norm.indexOf(v) >= 0) problemas.push('Recomendacion ' + (i + 1) + ' usa un verbo que no corresponde al arquitecto: "' + v + '".');
+      if (norm.indexOf(v) >= 0) problemas.push('Recomendación ' + (i + 1) + ' usa un verbo que le corresponde al Inspector, no al informe: "' + v + '".');
     });
     var mTent = RECOMENDACION_TENTATIVA.exec(norm);
-    if (mTent) problemas.push('Recomendacion ' + (i + 1) + ' es tentativa ("' + mTent[0] + '") — debe indicar la accion directa.');
+    if (mTent) problemas.push('Recomendación ' + (i + 1) + ' es tentativa ("' + mTent[0] + '"): di la acción directa.');
     var mPlazo = PLAZO_EN_RECOMENDACION.exec(norm);
-    if (mPlazo) problemas.push('Recomendacion ' + (i + 1) + ' fija un plazo ("' + mPlazo[0] + '") — los plazos los concede el Inspector de Policia.');
+    if (mPlazo) problemas.push('Recomendación ' + (i + 1) + ' fija un plazo ("' + mPlazo[0] + '"): los plazos los da el Inspector de Policía.');
     // 'remisi' cubre remision/remisiones, que esquivaban el indexOf de
     // 'remitir'. Sigue siendo condicional a "autoridad competente": remitir
     // nombrando una entidad con competencia distinta si esta permitido.
     if (/remit|remisi/.test(norm) && norm.indexOf('autoridad competente') >= 0) {
-      problemas.push('Recomendacion ' + (i + 1) + ' remite "a la autoridad competente" de forma generica — debe nombrar una entidad con competencia distinta (ambiental, movilidad, curaduria, etc.), nunca de vuelta al mismo Inspector que ya tiene el caso.');
+      problemas.push('Recomendación ' + (i + 1) + ' remite "a la autoridad competente" sin nombrarla: nombra la entidad con otra competencia (ambiental, movilidad, curaduría…), nunca el mismo Inspector que ya tiene el caso.');
     }
   });
 
@@ -3137,7 +3172,7 @@ function validarInformeIA(json, ctx, opts) {
     (json.recomendaciones_items || []).forEach(function(item, i) {
       // reconoc\w*: también «reconocimientos» y «reconocer la edificación».
       var mCorr = /\b(?:demol\w*|restitu\w*|reconoc\w*)/.exec(_quitarTildesInforme(item));
-      if (mCorr) problemas.push('Recomendacion ' + (i + 1) + ' pide "' + mCorr[0] + '" y no hay ningun comportamiento marcado que la sostenga.');
+      if (mCorr) problemas.push('Recomendación ' + (i + 1) + ' pide "' + mCorr[0] + '" y no hay ningún comportamiento marcado que la sostenga.');
     });
   }
   // Sin licencia aportada, nada esta "amparado" ni "aprobado" por ella (el
@@ -3152,13 +3187,13 @@ function validarInformeIA(json, ctx, opts) {
       var antes = todoNorm.slice(Math.max(0, mAmp.index - 60), mAmp.index);
       var negada = /\b(?:no|ninguna?|ningun|ni|sin|tampoco|nada)\b[^.;]*$/.test(antes);
       problemas.push(negada
-        ? 'Afirma un hecho negativo sobre la licencia ("' + mAmp[0] + '") — use "no se aporto ni exhibio licencia".'
-        : 'Dice "' + mAmp[0] + '" y no se aporto licencia: nada de lo construido consta como aprobado.');
+        ? 'Afirma un hecho negativo sobre la licencia ("' + mAmp[0] + '"): escribe "no se aportó ni exhibió licencia".'
+        : 'Dice "' + mAmp[0] + '" y no se aportó licencia: nada de lo construido consta como aprobado.');
     }
   }
   // Razonamiento interno del prompt que no va en el informe.
   if (/carga de acreditar/.test(todoNorm)) {
-    problemas.push('Copio una nota interna ("la carga de acreditarla en quien construye"): no va en el informe.');
+    problemas.push('Trae una nota interna ("carga de acreditar"): no va en el informe.');
   }
 
   // Licencia vencida: la recomendacion permanente debe pedir abstenerse hasta
@@ -3170,7 +3205,7 @@ function validarInformeIA(json, ctx, opts) {
       return r.indexOf('abstener') >= 0 && r.indexOf('vigente') >= 0;
     });
     if (!pideVigente) {
-      problemas.push('La licencia estaba vencida a la fecha de visita: falta la recomendacion de abstenerse de ejecutar obras hasta contar con licencia urbanistica vigente.');
+      problemas.push('La licencia estaba vencida a la fecha de la visita: falta la recomendación de abstenerse de ejecutar obras hasta contar con licencia urbanística vigente.');
     }
   }
 
@@ -3207,7 +3242,7 @@ function validarInformeIA(json, ctx, opts) {
   if (comportamientosA.length) {
     var obsNorm = _quitarTildesInforme(json.observaciones || '');
     if (!opts.sinCobertura && !VERBO_RECTOR_LITERAL_A.test(obsNorm)) {
-      problemas.push('Hay comportamiento(s) del literal A marcado(s) (' + comportamientosA.join(', ') + ') pero OBSERVACIONES no menciona ninguna conjugacion de parcelar/urbanizar/demoler/intervenir/construir (verbo rector del literal A).');
+      problemas.push('Las observaciones de campo no mencionan la conducta del literal A marcado (' + comportamientosA.join(', ') + '): parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
     }
     comportamientosA.forEach(function(codigo) {
       var rxCita = new RegExp('\\b' + codigo + '\\b|literal\\s+a\\b[^]*?numeral\\s+' + codigo.slice(1) + '\\b');
@@ -3215,7 +3250,7 @@ function validarInformeIA(json, ctx, opts) {
         return rxCita.test(c) || rxCita.test(_quitarTildesInforme(c));
       });
       if (conclusionQueCita && !VERBO_RECTOR_LITERAL_A.test(_quitarTildesInforme(conclusionQueCita))) {
-        problemas.push('La conclusion que cita "' + codigo + '" no menciona ninguna conjugacion de parcelar/urbanizar/demoler/intervenir/construir (verbo rector del literal A).');
+        problemas.push('La conclusión que cita "' + codigo + '" no menciona la conducta del literal A: parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
       }
     });
   }
@@ -4943,7 +4978,7 @@ async function subirInformeAlDrive(blob) {
 <!-- Editor con forma de documento (ronda 1, docs/PLAN_2026-10-15_editor-informe.md):
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
-<link rel="stylesheet" href="editor.css?v=7">
-<script src="editor.js?v=10"></script>
+<link rel="stylesheet" href="editor.css?v=8">
+<script src="editor.js?v=11"></script>
 </body>
 </html>

@@ -169,6 +169,34 @@ body.embebido .ed-rail { top: 24px; }
 .ed-dot.no { background: var(--neutro-2); }
 .ed-panel .ed-btn { width: 100%; margin-top: 8px; }
 .ed-nota { font-size: 12px; color: var(--texto-3); margin-top: 8px; }
+.ed-nota-ok { color: var(--verde-dark); }
+
+/* ── Lo que no deja generar el Word (2026-10-16): antes era una nota gris
+   «Falta: …» bajo el botón deshabilitado y no se notaba que bloqueaba. ── */
+.ed-dot.err { background: var(--rojo); }
+.ed-bloqueo { padding: 10px 12px; border-radius: var(--r); background: #fdeceb; color: var(--texto);
+  font-size: 13px; line-height: 1.45; }
+.ed-bloqueo b { display: block; color: var(--rojo); font-size: 13px; margin-bottom: 4px; }
+.ed-bloqueo ul { list-style: none; margin: 0; padding: 0; }
+.ed-bloqueo li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(31,27,22,.1); }
+.ed-bloqueo-ir { display: inline-flex; align-items: center; min-height: 32px; margin-top: 4px; padding: 0 10px;
+  border: 0; border-radius: var(--r-sm); background: var(--superficie); color: var(--texto);
+  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: var(--sombra-sm); }
+@media (hover: none) { .ed-bloqueo-ir { min-height: 44px; } }
+/* En el documento: borde rojo en el bloque, la frase resaltada y el aviso debajo. */
+.ed-ed.ed-bloquea:not(:focus) { outline: 2px solid var(--rojo); outline-offset: 3px; }
+::highlight(ed-bloqueo) { background-color: #f6c9c3; }
+.ed-bloqueo-linea { font-family: var(--font-sans); font-size: 12.5px; line-height: 1.45; text-align: left;
+  color: var(--texto); background: #fdeceb; border-radius: var(--r-sm); padding: 6px 10px; margin: 10px 0 0; }
+.ed-bloqueo-linea b { color: var(--rojo); }
+.ed-item .ed-bloqueo-linea { grid-column: 2 / -1; margin-top: 4px; }
+
+/* ── Abrir el Word ya generado ── */
+a.ed-btn-abrir { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  text-decoration: none; }
+a.ed-btn-abrir[hidden] { display: none; }
+/* <1200 ya está en la barra inferior. */
+@media (max-width: 1199px) { .ed-top-acc .ed-btn-abrir { display: none; } }
 
 /* ── Bandeja de sugerencias: estado de la «Propuesta» (ronda 2) ── */
 .ed-sug-estado { font-size: 12.5px; color: var(--texto-3); display: flex; align-items: center; gap: 8px;
@@ -193,7 +221,19 @@ body.embebido .ed-rail { top: 24px; }
 @media (max-width: 699px) { .ed-aviso { margin: 10px 12px 0; } }
 /* Tabla del art. 135 (del asistente): en el teléfono se desplaza dentro de su caja. */
 #ed-art135 { max-width: 100%; overflow-x: auto; }
-.ed-guardado { font-size: 12px; color: var(--texto-3); margin: -4px 0 10px; min-height: 16px; }
+.ed-guardado { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texto-3);
+  margin: -4px 0 10px; min-height: 16px; }
+/* Estado del guardado: punto de color + texto (el color solo no basta). */
+.ed-g-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--neutro-2); }
+.ed-g-dot.ok { background: var(--verde); }
+.ed-g-dot.pend { background: var(--amarillo); }
+.ed-g-dot.err { background: var(--rojo); }
+.ed-g-dot.mov { animation: ed-g-pulso .9s ease-in-out infinite alternate; }
+@keyframes ed-g-pulso { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ed-g-dot.mov { animation: none; } }
+/* El aviso verde flotante del asistente sobra en el editor: el estado va en
+   el panel (≥1200) y en la barra (<1200), donde además tapaba los botones. */
+body.modo-doc #save-ind { display: none !important; }
 
 /* ── Panel de revisión final (ronda 2) ── */
 .ed-modal { position: fixed; inset: 0; z-index: 60; background: rgba(31,27,22,.45);
@@ -243,6 +283,10 @@ body.embebido .ed-rail { top: 24px; }
 .ed-barra-txt { font-size: 12px; color: var(--texto-3); min-width: 0; flex: 1 1 100%; }
 .ed-barra-txt b { display: inline; color: var(--texto); font-size: 13px; margin-right: 6px; }
 .ed-barra .ed-btn { white-space: nowrap; flex: 1 1 0; }
+/* Con Word generado son tres botones: más angostos para caber a 360. */
+.ed-barra.con-abrir .ed-btn { padding: 0 10px; }
+.ed-barra-bloqueo { display: block; margin-top: 4px; color: var(--rojo); font-size: 13px; font-weight: 600; }
+.ed-barra-bloqueo .ed-bloqueo-ir { margin: 0 0 0 6px; background: #fdeceb; box-shadow: none; }
 @media (max-width: 1199px) { .ed-barra { display: flex; } }
 /* Justificado en una columna de teléfono abre huecos entre palabras; el Word
    conserva su formato, esto es solo la pantalla. */
