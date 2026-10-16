@@ -493,10 +493,24 @@ function selloInicialSecciones(informe, origen) {
 
 // Quita las preguntas que ya fueron respondidas en una revisión anterior
 // (Jaccard ≥ 0,5 con la pregunta de alguna respuesta guardada).
+// Dos preguntas son «la misma» si comparten las palabras con contenido (más de
+// 3 letras): con todas las palabras, «¿El muro está en el antejardín?» y «¿El
+// muro está en el retiro?» daban 0,71 y la segunda se perdía como repetida.
+function preguntaParecida(a, b) {
+  function palabras(s) {
+    var set = {};
+    _normTexto(s).split(' ').forEach(function (w) { if (w.length > 3) set[w] = true; });
+    return Object.keys(set);
+  }
+  var A = palabras(a), B = palabras(b);
+  if (!A.length || !B.length) return false;
+  var inter = A.filter(function (w) { return B.indexOf(w) >= 0; }).length;
+  return inter / (A.length + B.length - inter) >= 0.6;
+}
 function filtrarPreguntasRepetidas(preguntas, revResp) {
   return (preguntas || []).filter(function (p) {
     return !(revResp || []).some(function (r) {
-      return r && (r.respuesta || '').toString().trim() && jaccardPalabras(p.pregunta, r.pregunta) >= 0.5;
+      return r && (r.respuesta || '').toString().trim() && preguntaParecida(p.pregunta, r.pregunta);
     });
   });
 }
@@ -509,7 +523,7 @@ function acumularRespuestas(revResp, nuevas) {
     if (!n || !(n.respuesta || '').toString().trim()) return;
     var idx = -1;
     for (var i = 0; i < out.length; i++) {
-      if (jaccardPalabras(n.pregunta, out[i].pregunta) >= 0.5) { idx = i; break; }
+      if (preguntaParecida(n.pregunta, out[i].pregunta)) { idx = i; break; }
     }
     if (idx >= 0) out[idx] = n; else out.push(n);
   });

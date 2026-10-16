@@ -419,7 +419,7 @@ test('selloInicialSecciones: hereda lo revisado en la visita', () => {
   assert.deepEqual(Object.keys(sello).sort(), ['antecedentes', 'conclusiones', 'observaciones', 'recomendaciones']);
 });
 
-test('filtrarPreguntasRepetidas: fuera las ya respondidas (Jaccard ≥ 0,5)', () => {
+test('filtrarPreguntasRepetidas: fuera las ya respondidas (palabras con contenido ≥ 0,6)', () => {
   const previas = [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '75 m2' }];
   const preguntas = [
     { pregunta: '¿Cual es el área en contravención de la visita?' },   // misma pregunta, sin tildes
@@ -431,10 +431,13 @@ test('filtrarPreguntasRepetidas: fuera las ya respondidas (Jaccard ≥ 0,5)', ()
   // Respuesta vacía guardada no cuenta.
   assert.equal(ed.filtrarPreguntasRepetidas(preguntas, [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '' }]).length, 2);
   assert.equal(ed.filtrarPreguntasRepetidas(preguntas, []).length, 2);
+  // Comparten «el», «está», «en»: no son la misma pregunta.
+  assert.equal(ed.filtrarPreguntasRepetidas([{ pregunta: '¿El muro está en el retiro?' }],
+    [{ pregunta: '¿El muro está en el antejardín?', respuesta: 'Sí' }]).length, 1);
 });
 
 test('acumularRespuestas: reemplaza la parecida y recorta a 20', () => {
-  let out = ed.acumularRespuestas([], [{ pregunta: '¿El área?', respuesta: '75 m2' }]);
+  let out = ed.acumularRespuestas([], [{ pregunta: '¿Cuál es el área?', respuesta: '75 m2' }]);
   assert.equal(out.length, 1);
   // La misma pregunta respondida de nuevo reemplaza; una nueva se suma.
   out = ed.acumularRespuestas(out, [
