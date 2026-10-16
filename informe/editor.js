@@ -528,7 +528,8 @@ root.innerHTML =
   '<div class="ed-barra">' +
     '<div class="ed-barra-txt" id="ed-barra-txt"></div>' +
     '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar-movil">Revisar</button>' +
-    '<button type="button" class="ed-btn ed-btn-neutro" id="ed-anterior-movil">Generador anterior</button>' +
+    // <1200 la cabecera oculta sus botones: sin este, en el celular no había cómo generar.
+    '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-movil" disabled>Generar Word</button>' +
   '</div>' +
   '<div class="ed-modal" id="ed-modal" hidden></div>';
 document.body.appendChild(root);
@@ -1040,7 +1041,7 @@ function _pintarEstado() {
     return '<li><span class="ed-dot ' + f[0] + '"></span><div>' + _esc(f[1]) + '<small>' + _esc(f[2]) + '</small></div></li>';
   }).join('');
   var cond = _condicionWord();
-  ['ed-gen', 'ed-gen-rail'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
+  ['ed-gen', 'ed-gen-rail', 'ed-gen-movil'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
   _el('ed-gen-nota').textContent = cond.ok ? 'Todo listo para generar.' : ('Falta: ' + cond.motivo + '.');
   _el('ed-barra-txt').innerHTML = '<b>' + nc + ' conclusiones · ' + nr + ' recomendaciones</b>' +
     total + ' fotos · ' + (cond.ok ? 'listo para generar' : _esc(cond.motivo));
@@ -1129,7 +1130,7 @@ root.addEventListener('click', function (e) {
     liA.querySelector('.ed-ed').focus();
   } else if (b.hasAttribute('data-ed-repropuesta')) {
     _cargarPropuesta(true);
-  } else if (b.id === 'ed-gen' || b.id === 'ed-gen-rail' || b.hasAttribute('data-ed-gen-reintentar')) {
+  } else if (b.id === 'ed-gen' || b.id === 'ed-gen-rail' || b.id === 'ed-gen-movil' || b.hasAttribute('data-ed-gen-reintentar')) {
     _generarWord();
   } else if (b.id === 'ed-revisar' || b.id === 'ed-revisar-movil') {
     _abrirRevision();
@@ -1437,6 +1438,5 @@ function _usarGeneradorAnterior() {
   window.location.href = window.location.pathname + '?' + p.toString();
 }
 _el('ed-anterior').addEventListener('click', _usarGeneradorAnterior);
-_el('ed-anterior-movil').addEventListener('click', _usarGeneradorAnterior);
 
 })();
