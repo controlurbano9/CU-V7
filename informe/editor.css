@@ -170,6 +170,60 @@ body.embebido .ed-rail { top: 24px; }
 .ed-panel .ed-btn { width: 100%; margin-top: 8px; }
 .ed-nota { font-size: 12px; color: var(--texto-3); margin-top: 8px; }
 
+/* ── Bandeja de sugerencias: estado de la «Propuesta» (ronda 2) ── */
+.ed-sug-estado { font-size: 12.5px; color: var(--texto-3); display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; }
+.ed-sug-estado .ed-btn { min-height: 32px; }
+
+/* ── Banner de error de «Generar Word» (el modal de emisión no sirve: su
+   «Reintentar» llama a la IA y pisaría el documento editado) ── */
+.ed-error { display: flex; align-items: center; gap: 12px; margin: 12px 24px 0; padding: 10px 14px;
+  background: #fdeceb; color: var(--texto); border-radius: var(--r-md); font-family: var(--font-sans);
+  font-size: 13px; }
+.ed-error[hidden] { display: none; }
+.ed-error .ed-btn { margin-left: auto; white-space: nowrap; }
+@media (max-width: 699px) { .ed-error { margin: 10px 12px 0; } }
+
+/* ── Panel de revisión final (ronda 2) ── */
+.ed-modal { position: fixed; inset: 0; z-index: 60; background: rgba(31,27,22,.45);
+  display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow: auto; }
+.ed-modal[hidden] { display: none; }
+.ed-modal-caja { background: var(--superficie); border-radius: var(--r-md); box-shadow: var(--sombra);
+  max-width: 720px; width: 100%; font-family: var(--font-sans); }
+.ed-modal-cab { display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+  border-bottom: 1px solid var(--borde); }
+.ed-modal-cab b { font-size: 15px; font-weight: 600; }
+.ed-modal-cab .ed-ico { margin-left: auto; }
+.ed-modal-cuerpo { padding: 16px 18px; max-height: 62vh; overflow: auto; }
+.ed-modal-pie { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 18px;
+  border-top: 1px solid var(--borde); flex-wrap: wrap; }
+.ed-rev-estado { font-size: 13.5px; color: var(--texto-3); margin: 0; }
+.ed-rev-ok { font-size: 13.5px; color: var(--verde-dark); font-weight: 600; margin: 0; }
+.ed-rev-err { font-size: 13.5px; color: var(--rojo); font-weight: 600; margin: 0; }
+.ed-crit h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+.ed-crit h3:first-child { margin-top: 0; }
+.ed-crit ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: var(--texto-2); }
+.ed-pregs { margin-top: 14px; }
+.ed-preg { padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--r); margin-top: 8px; }
+.ed-preg p { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
+.ed-preg label { display: block; font-size: 13px; padding: 4px 0; font-weight: 400; }
+.ed-preg-ob { font-size: 11px; font-weight: 600; color: var(--brand-ink); background: var(--brand-bg);
+  border-radius: 999px; padding: 1px 8px; vertical-align: 1px; }
+.ed-preg-otra { width: 100%; margin-top: 4px; border: 1px solid var(--borde-med); border-radius: var(--r-sm);
+  padding: 8px 10px; font-family: inherit; font-size: 13px; min-height: 36px; background: var(--superficie); }
+.ed-cambio { border: 1px solid var(--borde); border-radius: var(--r); padding: 10px 12px; margin-top: 10px; }
+.ed-cambio-cab { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--texto-3); }
+.ed-cambio-cab label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  font-weight: 600; color: var(--texto); }
+.ed-cambio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+@media (max-width: 699px) { .ed-cambio-cols { grid-template-columns: 1fr; } }
+.ed-cambio h4 { margin: 0 0 4px; font-size: 11px; color: var(--texto-3); text-transform: uppercase; }
+.ed-cambio p { margin: 0; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
+.ed-qc { font-size: 12px; color: var(--texto-3); margin-top: 8px; }
+.ed-qc b { color: var(--texto-suave); }
+.ed-aviso-casilla { margin-top: 8px; font-size: 12.5px; color: var(--texto);
+  background: var(--amarillo-bg, #fdf6e3); border-radius: var(--r-sm); padding: 6px 10px; }
+
 /* ── Barra inferior (<1200) ── */
 .ed-barra { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
   background: var(--superficie); border-top: 1px solid var(--borde);
