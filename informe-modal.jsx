@@ -24,21 +24,6 @@ const INFORME_PATH = 'informe/index.html';
 // debajo de ~1200px reales — 900px alcanzaba para el wizard de 1 columna.
 const MIN_DESKTOP = 1200;
 
-// UI del generador: 'legacy' por defecto. El editor con forma de documento
-// ('doc', docs/PLAN_2026-10-15_editor-informe.md) es el modo por defecto
-// desde el 2026-10-15 (decisión del usuario). localStorage 'cu_informe_ui'
-// = 'legacy' | 'v2' lo anula; la bandera vieja del beta v2
-// (cu_informe_v2_beta) se conserva. Dentro del editor, «Usar el generador
-// anterior» abre el asistente sin recordarlo.
-function _uiModeInforme() {
-  try {
-    const m = localStorage.getItem('cu_informe_ui');
-    if (m === 'doc' || m === 'v2' || m === 'legacy') return m;
-    return localStorage.getItem('cu_informe_v2_beta') === '1' ? 'v2' : 'doc';
-  }
-  catch (e) { return 'doc'; }
-}
-
 let _pushInforme = null; // bridge con el host (idéntico al patrón de modal.jsx)
 
 function InformeModalHost() {
@@ -181,8 +166,9 @@ window.abrirInformeF43 = function(params) {
   const paramsConSesion = (s && s.usuario && s.hash)
     ? Object.assign({ sesionUsuario: s.usuario, sesionHash: s.hash }, params || {})
     : (params || {});
-  // Beta workspace v2 (opt-in localStorage) — ver _uiModeInforme().
-  paramsConSesion.ui = _uiModeInforme();
+  // Único modo desde el 2026-10-15 (decisión del usuario): el editor con
+  // forma de documento. El generador también lo fija por su cuenta.
+  paramsConSesion.ui = 'doc';
 
   const esDesktop = window.innerWidth >= MIN_DESKTOP;
   if (_pushInforme && esDesktop) {

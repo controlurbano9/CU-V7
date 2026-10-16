@@ -496,7 +496,6 @@ root.innerHTML =
   '<header class="ed-top">' +
     '<div class="ed-tit"><b>Informe de inspección</b><span id="ed-sub"></span></div>' +
     '<div class="ed-top-acc">' +
-      '<button type="button" class="ed-btn ed-btn-neutro" id="ed-anterior">Usar el generador anterior</button>' +
       '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen" disabled>Generar Word</button>' +
     '</div>' +
   '</header>' +
@@ -1474,14 +1473,5 @@ async function _generarWord() {
     _pintarErrorGenerar(e.message || 'error desconocido');
   }
 }
-
-// ── «Usar el generador anterior»: recarga con ui=legacy (sin recordar) ──
-function _usarGeneradorAnterior() {
-  _guardarEditor();
-  var p = new URLSearchParams(window.location.search);
-  p.set('ui', 'legacy');
-  window.location.href = window.location.pathname + '?' + p.toString();
-}
-_el('ed-anterior').addEventListener('click', _usarGeneradorAnterior);
 
 })();

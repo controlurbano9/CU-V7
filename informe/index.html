@@ -962,15 +962,12 @@ var _SESION_QS = new URLSearchParams(window.location.search);
 var SESION_USUARIO = _SESION_QS.get('sesionUsuario') || '';
 var SESION_HASH    = _SESION_QS.get('sesionHash') || '';
 
-// UI_MODE: 'doc' (editor con forma de documento, en construcción —
-// docs/PLAN_2026-10-15_editor-informe.md), 'v2' (workspace de 4 momentos,
-// beta) o 'legacy' (wizard de 5 pasos, sin cambios). Plan de convivencia
-// (auditoría UX 2026-07): mismo archivo, misma capa de datos —
-// informe-modal.jsx pasa ?ui=… según localStorage (cu_informe_ui y la
-// bandera vieja cu_informe_v2_beta). Se decide una sola vez al abrir,
-// nunca cambia a mitad de un informe en curso.
-var _uiModoQS = _SESION_QS.get('ui');
-var UI_MODE = (_uiModoQS === 'v2' || _uiModoQS === 'doc') ? _uiModoQS : 'legacy';
+// UI_MODE: siempre 'doc' desde el 2026-10-15 (decisión del usuario: solo el
+// editor con forma de documento, docs/PLAN_2026-10-15_editor-informe.md).
+// El asistente de 5 pasos ('legacy') y el workspace 'v2' ya no se abren: su
+// DOM sigue en la página, oculto, porque el editor lo usa como almacén de
+// datos (campos, fotos, mapa, firma). Se ignora ?ui= de la URL.
+var UI_MODE = 'doc';
 function _qsConSesion(extra) {
   var qs = new URLSearchParams(extra || {});
   if (SESION_USUARIO) qs.set('sesionUsuario', SESION_USUARIO);
@@ -4947,6 +4944,6 @@ async function subirInformeAlDrive(blob) {
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
 <link rel="stylesheet" href="editor.css?v=5">
-<script src="editor.js?v=7"></script>
+<script src="editor.js?v=8"></script>
 </body>
 </html>
