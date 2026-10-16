@@ -282,12 +282,30 @@ function _informeParaMensaje(informe) {
   });
 }
 
+// Bloques opcionales de los mensajes de revisión por secciones (2026-10-16):
+// con `secciones`, la IA solo crítica lo que cambió; con `respuestasPrevias`,
+// no vuelve a preguntar lo ya respondido.
+function _bloqueSecciones(opts) {
+  if (!opts || !opts.secciones || !opts.secciones.length) return '';
+  return 'Revisa SOLO estas secciones: ' + opts.secciones.map(function (s) { return NOMBRES_SECCION[s] || s; }).join(', ')
+    + '; las demás van como contexto, no las critiques ni propongas cambios en ellas.\n\n';
+}
+function _bloqueRespuestasPrevias(opts) {
+  if (!opts || !opts.respuestasPrevias || !opts.respuestasPrevias.length) return '';
+  var resp = opts.respuestasPrevias.filter(function (r) { return r && (r.respuesta || '').toString().trim(); })
+    .map(function (r) { return { pregunta: r.pregunta || '', respuesta: String(r.respuesta).trim() }; });
+  if (!resp.length) return '';
+  return 'RESPUESTAS YA DADAS POR EL INSPECTOR (no vuelvas a preguntar esto):\n' + JSON.stringify(resp) + '\n\n';
+}
+
 // Mensaje 1: crítica + preguntas. Devuelve bien/falta/no_coincide/forma/preguntas.
-function armarMensajeCritica(informe, d) {
+function armarMensajeCritica(informe, d, opts) {
   return 'Eres el revisor técnico de la Inspección N.° 9 de Control Urbano de Bello. Revisa el borrador '
     + 'del informe F-GGO-43 contra los datos de la visita y devuelve SOLO JSON válido, sin texto previo ni markdown.\n\n'
     + 'DATOS DE LA VISITA (única fuente de hechos): ' + _datosVisitaParaRevision(d) + '\n\n'
     + 'INFORME COMPLETO EN REVISIÓN:\n' + _informeParaMensaje(informe) + '\n\n'
+    + _bloqueSecciones(opts)
+    + _bloqueRespuestasPrevias(opts)
     + 'JSON exacto requerido:\n'
     + '{"bien":[],"falta":[],"no_coincide":[],"forma":[],"preguntas":[{"pregunta":"","opciones":["",""],"obligatoria":false}]}\n\n'
     + 'REGLAS:\n'
@@ -304,13 +322,15 @@ function armarMensajeCritica(informe, d) {
 }
 
 // Mensaje 2: correcciones. Solo lo que cambia, con informe + respuestas + datos.
-function armarMensajeCorrecciones(informe, d, critica, respuestas) {
+function armarMensajeCorrecciones(informe, d, critica, respuestas, opts) {
   var resp = (respuestas || []).filter(function (r) { return r && (r.respuesta || '').toString().trim(); })
     .map(function (r) { return { pregunta: r.pregunta || '', respuesta: String(r.respuesta).trim() }; });
   return 'Eres el corrector técnico de la Inspección N.° 9 de Control Urbano de Bello. Corrige el borrador '
     + 'del informe F-GGO-43 con base en la revisión y las respuestas del inspector, y devuelve SOLO JSON válido.\n\n'
     + 'DATOS DE LA VISITA: ' + _datosVisitaParaRevision(d) + '\n\n'
     + 'INFORME COMPLETO (actual):\n' + _informeParaMensaje(informe) + '\n\n'
+    + _bloqueSecciones(opts)
+    + _bloqueRespuestasPrevias(opts)
     + 'REVISIÓN (crítica previa):\n' + JSON.stringify(critica || {}) + '\n\n'
     + (resp.length ? 'RESPUESTAS DEL INSPECTOR (hechos suyos, misma validez que los DATOS):\n' + JSON.stringify(resp) + '\n\n' : '')
     + 'JSON exacto requerido:\n'
@@ -328,14 +348,20 @@ function armarMensajeCorrecciones(informe, d, critica, respuestas) {
 
 // Cambios de la revisión → lista con el original al que reemplazan. Fuera los
 // que no cambian nada y los que apuntan a un punto que no existe en la hoja.
-function normalizarCambios(cambios, informe) {
+// Con `secciones` (revisión parcial), fuera también los de otra sección.
+function normalizarCambios(cambios, informe, secciones) {
   informe = informe || {};
+  // La IA usa los nombres singulares del JSON; el sello, los plurales de A.
+  var mapaSeccion = { antecedentes: 'antecedentes', observaciones: 'observaciones',
+    conclusion: 'conclusiones', recomendacion: 'recomendaciones' };
+  var permitidas = secciones ? secciones.map(function (s) { return mapaSeccion[s] || s; }) : null;
   var out = [];
   (cambios || []).forEach(function (c) {
     if (!c) return;
     var sec = String(c.seccion || '').trim().toLowerCase();
     var texto = String(c.texto || '').trim();
     if (!texto) return;
+    if (permitidas && permitidas.indexOf(mapaSeccion[sec] || sec) < 0) return;
     var numero = parseInt(c.numero, 10) || 1;
     var original;
     if (sec === 'antecedentes') original = String(informe.antecedentes || '');
@@ -392,7 +418,102 @@ function huellaInforme(informe, huellaFn) {
 }
 
 function revisionInformeVigente(rev, informe, huellaFn) {
-  return !!(rev && rev.huella && rev.huella === huellaInforme(informe, huellaFn));
+  return seccionesCambiadas(rev, informe, huellaFn).length === 0;
+}
+
+// ── Puras: revisión por secciones (2026-10-16) ──────────────────────
+// La revisión ya no es una huella única de todo el informe: cada sección
+// guarda la huella de su texto la última vez que se revisó. Lo que no
+// cambió no se vuelve a revisar (decisión del usuario).
+
+var SECCIONES_REVISION = ['antecedentes', 'observaciones', 'conclusiones', 'recomendaciones'];
+var NOMBRES_SECCION = {
+  antecedentes: 'Antecedentes', observaciones: 'Observaciones',
+  conclusiones: 'Conclusiones', recomendaciones: 'Recomendaciones'
+};
+
+// FNV-1a propio (mismo algoritmo que huellaRevision de utils.js) para no
+// depender de utils.js en node. Una sección vacía tiene la huella de ''.
+function _hashSeccion(s) {
+  var h = 0x811c9dc5;
+  s = String(s || '');
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16);
+}
+
+function huellasSecciones(informe) {
+  var inf = informe || {};
+  return {
+    antecedentes: _hashSeccion(_normTexto(inf.antecedentes || '')),
+    observaciones: _hashSeccion(_normTexto(inf.observaciones || '')),
+    conclusiones: _hashSeccion((inf.conclusiones_items || []).map(_normTexto).filter(Boolean).join('\n')),
+    recomendaciones: _hashSeccion((inf.recomendaciones_items || []).map(_normTexto).filter(Boolean).join('\n'))
+  };
+}
+
+// Secciones cuya huella en el sello falta o difiere. Sin sello: las 4.
+// Sello viejo (solo huella completa): la comparación de hoy — vigente → [],
+// vencido → las 4.
+function seccionesCambiadas(rev, informe, huellaFn) {
+  if (!rev) return SECCIONES_REVISION.slice();
+  if (!rev.secciones) {
+    return (rev.huella && rev.huella === huellaInforme(informe, huellaFn))
+      ? [] : SECCIONES_REVISION.slice();
+  }
+  var actuales = huellasSecciones(informe);
+  return SECCIONES_REVISION.filter(function (s) { return rev.secciones[s] !== actuales[s]; });
+}
+
+// Sello inicial (C): hereda la revisión de la visita. Devuelve el objeto
+// `secciones` SOLO con las que nacen revisadas (las demás quedan pendientes).
+// origen = { observaciones, conclusiones: [puntos], antecedentes, aprobadas: [frases] }.
+function selloInicialSecciones(informe, origen) {
+  var inf = informe || {};
+  origen = origen || {};
+  var actuales = huellasSecciones(inf);
+  var aprobadas = (origen.aprobadas || []).map(_normTexto).filter(Boolean);
+  function igual(texto, origenTexto) {
+    if (!String(texto || '').trim()) return true; // vacía nace revisada
+    return _normTexto(texto) === _normTexto(origenTexto || '');
+  }
+  function todosAprobados(items, extra) {
+    var normas = (extra || []).map(_normTexto).filter(Boolean).concat(aprobadas);
+    return (items || []).every(function (t) {
+      if (!String(t || '').trim()) return true;
+      return normas.indexOf(_normTexto(t)) >= 0;
+    });
+  }
+  var out = {};
+  if (igual(inf.observaciones, origen.observaciones)) out.observaciones = actuales.observaciones;
+  if (igual(inf.antecedentes, origen.antecedentes)) out.antecedentes = actuales.antecedentes;
+  if (todosAprobados(inf.conclusiones_items, origen.conclusiones)) out.conclusiones = actuales.conclusiones;
+  if (todosAprobados(inf.recomendaciones_items, [])) out.recomendaciones = actuales.recomendaciones;
+  return out;
+}
+
+// Quita las preguntas que ya fueron respondidas en una revisión anterior
+// (Jaccard ≥ 0,5 con la pregunta de alguna respuesta guardada).
+function filtrarPreguntasRepetidas(preguntas, revResp) {
+  return (preguntas || []).filter(function (p) {
+    return !(revResp || []).some(function (r) {
+      return r && (r.respuesta || '').toString().trim() && jaccardPalabras(p.pregunta, r.pregunta) >= 0.5;
+    });
+  });
+}
+
+// Acumula respuestas entre revisiones: una nueva reemplaza a la guardada si
+// le preguntan lo mismo (Jaccard ≥ 0,5). Tope 20, las más recientes.
+function acumularRespuestas(revResp, nuevas) {
+  var out = (revResp || []).slice();
+  (nuevas || []).forEach(function (n) {
+    if (!n || !(n.respuesta || '').toString().trim()) return;
+    var idx = -1;
+    for (var i = 0; i < out.length; i++) {
+      if (jaccardPalabras(n.pregunta, out[i].pregunta) >= 0.5) { idx = i; break; }
+    }
+    if (idx >= 0) out[idx] = n; else out.push(n);
+  });
+  return out.length > 20 ? out.slice(out.length - 20) : out;
 }
 
 // Condición de «Generar Word»: validador limpio + cierre grave cuando hay
@@ -453,7 +574,13 @@ var _export = {
   avisoCasillaVisita: avisoCasillaVisita,
   huellaInforme: huellaInforme,
   revisionInformeVigente: revisionInformeVigente,
-  condicionGenerarWord: condicionGenerarWord
+  condicionGenerarWord: condicionGenerarWord,
+  SECCIONES_REVISION: SECCIONES_REVISION,
+  huellasSecciones: huellasSecciones,
+  seccionesCambiadas: seccionesCambiadas,
+  selloInicialSecciones: selloInicialSecciones,
+  filtrarPreguntasRepetidas: filtrarPreguntasRepetidas,
+  acumularRespuestas: acumularRespuestas
 };
 if (typeof module !== 'undefined' && module.exports) { module.exports = _export; return; }
 if (typeof document === 'undefined' || typeof UI_MODE === 'undefined' || UI_MODE !== 'doc') return;
@@ -506,14 +633,17 @@ var _d = _ctx.d;
 // antecedentes salían sin número y un OFICIO-… nunca se detectaba como oficio.
 _d.radicado = _d.radicado || V6_CTX.radicado || '';
 
-var _borrador = null, _propuesta = null, _revSello = null;
+var _borrador = null, _propuesta = null, _revSello = null, _revResp = [];
 try { _borrador = JSON.parse(localStorage.getItem(_claveEditor()) || 'null'); } catch (e) {}
 if (!_borrador || !_borrador._ts || !_borrador.antecedentes) _borrador = null;
 // Ronda 2: la última «Propuesta» (para no volver a pedirla) y el sello de la
-// revisión (huella del informe; cualquier edición posterior la vence).
+// revisión (por secciones: heredado de la visita o de la última revisión;
+// lo que no cambió no se vuelve a revisar). `_revResp`: respuestas dadas a
+// las preguntas de revisiones anteriores, para no repetirlas.
 if (_borrador) {
   _propuesta = _borrador.propuesta || null;
   _revSello = _borrador.rev || null;
+  _revResp = Array.isArray(_borrador.revResp) ? _borrador.revResp : [];
 }
 
 // Borrador en el servidor (2026-10-15, [SEC:BorradorInforme] del backend):
@@ -1040,6 +1170,28 @@ _refrescarLista('ed-concl', (_borrador && _borrador.concl) || dividirPuntos(V6_C
 _refrescarLista('ed-rec', (_borrador && _borrador.rec) || []);
 _pintarCierreFijo();
 
+// ── Sello inicial: hereda la revisión de la visita (2026-10-16) ──────
+// Sin borrador que traiga un sello propio, las secciones que nacen iguales a
+// lo que la visita ya revisó (observaciones, conclusiones, antecedentes
+// armados con sus datos y las frases deterministas) nacen revisadas. Las
+// demás quedan pendientes hasta la primera «Revisar». No se guarda solo por
+// esto: viaja con el siguiente cambio del inspector.
+if (!_revSello) {
+  var _dVisita = recolectarDatosWizard().d;
+  _revSello = {
+    secciones: selloInicialSecciones(_informeActual(), {
+      observaciones: _SESION_QS.get('observaciones') || '',
+      conclusiones: dividirPuntos(V6_CTX.conclusionesInspector),
+      antecedentes: fraseAntecedentes(_dVisita, detectarOrigenAntecedentes(_dVisita)),
+      // Frases deterministas: REC_* y las conclusiones «De la visita».
+      aprobadas: sugerenciasConclusionesDeLaVisita(_dVisita, _citaArt135).map(function (s) { return s.texto; })
+        .concat(sugerenciasRecomendacionesDeLaVisita(_dVisita).map(function (s) { return s.texto; }))
+    }),
+    modo: 'VISITA',
+    fecha: new Date().toISOString().slice(0, 10)
+  };
+}
+
 // ── Sugerencias: «De la visita» + «Del catálogo» + «Propuesta» ───────
 function _sugerenciasActuales(idLista) {
   var d = recolectarDatosWizard().d;
@@ -1215,7 +1367,8 @@ function _pintarEstado() {
   var nr = informe.recomendaciones_items.length;
   var total = _fotosAsistentes().length, conPie = _nFotosConPie();
   var obs = informe.observaciones;
-  var vigente = revisionInformeVigente(_revSello, informe, huellaRevision);
+  var cambiadas = seccionesCambiadas(_revSello, informe, huellaRevision);
+  var vigente = cambiadas.length === 0;
   var hubo = !!_revSello;
   var cond = _condicionWord();
   _pintarBloqueos(cond.tipo === 'problema' ? cond.problemas : []);
@@ -1223,34 +1376,56 @@ function _pintarEstado() {
   // La sección donde está lo que bloquea se marca en rojo en la lista.
   var secBloq = {};
   _bloqueos.forEach(function (b) { var s = b.loc && _seccionDeBloque(b.loc.el); if (s) secBloq[s] = true; });
+  var txtRevision;
+  if (vigente) {
+    txtRevision = _revSello.modo === 'LOCAL' ? 'Revisado sin conexión'
+      : (_revSello.modo === 'VISITA' ? 'Revisado en la visita' : 'Vigente');
+  } else if (hubo) {
+    txtRevision = 'Cambió: ' + cambiadas.map(function (s) { return NOMBRES_SECCION[s] || s; }).join(', ');
+  } else {
+    txtRevision = 'Pendiente';
+  }
   var filas = [
     ['ok', 'Antecedentes', 'Armados con los datos de la visita'],
     [obs ? 'ok' : 'pend', 'Observaciones de campo', obs ? 'Texto de la visita, editable' : 'Vacías'],
     [total && conPie === total ? 'ok' : (total ? 'pend' : 'no'), 'Registro fotográfico', total ? (total + ' fotos · ' + conPie + ' con pie') : 'Sin fotos'],
     [nc ? 'ok' : 'pend', 'Conclusiones', nc ? (nc + ' en el informe') : 'Ninguna todavía'],
     [nr ? 'ok' : 'pend', 'Recomendaciones', nr ? (nr + ' en el informe') : 'Ninguna todavía'],
-    [vigente ? 'ok' : (hubo ? 'pend' : 'no'), 'Revisión final',
-      vigente ? (_revSello.modo === 'LOCAL' ? 'Revisado sin conexión' : 'Vigente')
-        : (hubo ? 'Vencida: vuelve a revisar' : 'Pendiente')]
+    [vigente ? 'ok' : (hubo ? 'pend' : 'no'), 'Revisión final', txtRevision]
   ].map(function (f) { return secBloq[f[1]] ? ['err', f[1], 'No deja generar el Word'] : f; });
   _el('ed-est').innerHTML = filas.map(function (f) {
     return '<li><span class="ed-dot ' + f[0] + '"></span><div>' + _esc(f[1]) + '<small>' + _esc(f[2]) + '</small></div></li>';
   }).join('');
   ['ed-gen', 'ed-gen-rail', 'ed-gen-movil'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
+  // «Revisar lo que cambió» solo si hay sello y queda una parte por revisar;
+  // si no cambió nada, el botón sigue habilitado como hoy.
+  ['ed-revisar', 'ed-revisar-movil'].forEach(function (id) {
+    var b = _el(id);
+    if (b) b.textContent = (hubo && cambiadas.length && cambiadas.length < SECCIONES_REVISION.length)
+      ? 'Revisar lo que cambió' : 'Revisar informe';
+  });
   _pintarNotaGenerar(cond, hubo);
   var barra = cond.ok ? 'listo para generar'
     : (cond.tipo === 'revision' ? _esc(cond.motivo) : '');
+  var nAvisos = (cond.avisos || []).length;
+  var txtAvisos = nAvisos ? nAvisos + (nAvisos === 1 ? ' aviso' : ' avisos') + ' de redacción' : '';
   _el('ed-barra-txt').innerHTML = '<b>' + nc + (nc === 1 ? ' conclusión · ' : ' conclusiones · ') +
     nr + (nr === 1 ? ' recomendación' : ' recomendaciones') + '</b> ' +
     total + (total === 1 ? ' foto' : ' fotos') + (barra ? ' · ' + barra : '') +
     (_guardadoTxt ? ' · ' + _esc(_guardadoTxt) : '') +
-    // <1200 no hay panel: el bloqueo va en su propia línea, con «Ver dónde».
+    // <1200 no hay panel: el bloqueo va en su propia línea, con «Ver dónde»;
+    // sin bloqueo, los avisos de redacción (D, 2026-10-16).
     (cond.tipo === 'problema'
       ? '<span class="ed-barra-bloqueo">No se puede generar el Word: ' +
         (_bloqueos.length === 1 ? 'hay una frase por corregir.' : 'hay ' + _bloqueos.length + ' cosas por corregir.') +
         (_bloqueos[0] && _bloqueos[0].loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-problema="0">Ver dónde</button>' : '') +
+        (txtAvisos ? ' · ' + txtAvisos : '') +
         '</span>'
-      : '');
+      : (nAvisos
+        ? '<span class="ed-barra-aviso">Revisa la redacción: ' + nAvisos + (nAvisos === 1 ? ' aviso.' : ' avisos.') +
+          (_avisos[0] && _avisos[0].loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-aviso="0">Ver dónde</button>' : '') +
+          '</span>'
+        : ''));
 }
 
 // La nota bajo «Generar Word» dice qué falta. Un problema del texto es un
@@ -1502,6 +1677,7 @@ function _snapshotEditor() {
     rec: _textosLista('ed-rec'),
     propuesta: _propuesta || null,
     rev: _revSello || null,
+    revResp: _revResp,
     fechaInforme: gv('fechaInforme'),
     fechaEjec: gv('fechaEjec'),
     vigencia: gv('vigenciaLic'),
@@ -1529,7 +1705,11 @@ function _aplicarSnapshot(s) {
   if (s.concl) _refrescarLista('ed-concl', s.concl);
   if (s.rec) _refrescarLista('ed-rec', s.rec);
   _propuesta = s.propuesta || _propuesta;
-  _revSello = s.rev || null;
+  // El sello heredado de la visita (modo VISITA) se conserva aunque el
+  // borrador que llega no traiga `rev` (los viejos no lo tienen): lo que no
+  // cambió sigue revisado por la visita.
+  _revSello = s.rev || (_revSello && _revSello.modo === 'VISITA' ? _revSello : null);
+  if (Array.isArray(s.revResp)) _revResp = s.revResp;
   if (s.fechaInforme) {
     _ponerValor('fechaInforme', s.fechaInforme);
     _el('ed-fecha').value = s.fechaInforme;
@@ -1962,10 +2142,15 @@ function _cerrarPanelRevision() {
   m.innerHTML = '';
 }
 
-// La revisión queda vigente con una huella del informe; cualquier edición
-// posterior la vence (la comparación de huella en _pintarEstado).
+// La revisión queda vigente con la huella de cada sección; cualquier edición
+// posterior vence la de su sección (la comparación en _pintarEstado). La
+// huella completa se conserva por compatibilidad con los borradores viejos.
 function _sellarRevision(modo) {
-  _revSello = { huella: huellaInforme(_informeActual(), huellaRevision), modo: modo, fecha: new Date().toISOString().slice(0, 10) };
+  _revSello = {
+    huella: huellaInforme(_informeActual(), huellaRevision),
+    secciones: huellasSecciones(_informeActual()),
+    modo: modo, fecha: new Date().toISOString().slice(0, 10)
+  };
   _guardarEditor();
   _pintarEstado();
 }
@@ -1974,10 +2159,19 @@ function _abrirRevision() {
   if (_revPanel) return;
   _guardarEditor(); // #obs al día antes de mandar el informe
   _revPanel = {};
+  // Revisión por secciones (2026-10-16): con sello y cambios parciales, la
+  // IA solo crítica lo que cambió y no repite preguntas ya respondidas.
+  var opts = {};
+  if (_revSello) {
+    var cambiadas = seccionesCambiadas(_revSello, _informeActual(), huellaRevision);
+    if (cambiadas.length && cambiadas.length < SECCIONES_REVISION.length) opts.secciones = cambiadas;
+    if (_revResp.length) opts.respuestasPrevias = _revResp;
+  }
+  _revPanel.opts = opts;
   _modalRevision(_cabModal('Revisión del informe') +
     '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Revisando el informe…</p></div>' +
     '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-cerrar>Cancelar</button></div>');
-  pedirJsonIA(armarMensajeCritica(_informeActual(), recolectarDatosWizard().d)).then(function (ia) {
+  pedirJsonIA(armarMensajeCritica(_informeActual(), recolectarDatosWizard().d, opts)).then(function (ia) {
     if (!_revPanel) return; // cerró mientras llegaba
     if (!ia.ok) return _criticaLocal();
     var c = ia.json || {};
@@ -1991,6 +2185,7 @@ function _abrirRevision() {
         obligatoria: !!p.obligatoria
       } : null;
     }).filter(function (p) { return p && p.pregunta; });
+    preguntas = filtrarPreguntasRepetidas(preguntas, opts.respuestasPrevias || _revResp);
     _revPanel.critica = {
       bien: arr(c.bien), falta: arr(c.falta), no_coincide: arr(c.no_coincide),
       forma: arr(c.forma).slice(0, 4), preguntas: preguntas
@@ -2075,10 +2270,13 @@ function _continuarRevision() {
   _revPanel.respuestas = _revPanel.critica.preguntas.map(function (p, i) {
     return { pregunta: p.pregunta, respuesta: _respuestaPregunta(i) };
   }).filter(function (r) { return r.respuesta; });
+  // Las respuestas se acumulan entre revisiones: no se vuelven a pedir.
+  _revResp = acumularRespuestas(_revResp, _revPanel.respuestas);
+  var opts = _revPanel.opts || {};
   _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
     '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Preparando correcciones…</p></div>' +
     '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-cerrar>Cancelar</button></div>');
-  pedirJsonIA(armarMensajeCorrecciones(_informeActual(), recolectarDatosWizard().d, _revPanel.critica, _revPanel.respuestas)).then(function (ia) {
+  pedirJsonIA(armarMensajeCorrecciones(_informeActual(), recolectarDatosWizard().d, _revPanel.critica, _revPanel.respuestas, opts)).then(function (ia) {
     if (!_revPanel) return;
     if (!ia.ok) {
       _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
@@ -2088,7 +2286,7 @@ function _continuarRevision() {
       return;
     }
     var cambios = filtrarCambiosRevision(
-      normalizarCambios((ia.json || {}).cambios, _informeActual()),
+      normalizarCambios((ia.json || {}).cambios, _informeActual(), opts.secciones),
       recolectarDatosWizard(), validarInformeIA);
     if (!cambios.length) {
       _sellarRevision('IA');

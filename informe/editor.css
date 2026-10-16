@@ -182,7 +182,7 @@ body.embebido .ed-rail { top: 24px; }
 .ed-bloqueo-ir { display: inline-flex; align-items: center; min-height: 32px; margin-top: 4px; padding: 0 10px;
   border: 0; border-radius: var(--r-sm); background: var(--superficie); color: var(--texto);
   font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: var(--sombra-sm); }
-@media (hover: none) { .ed-bloqueo-ir { min-height: 44px; } }
+@media (pointer: coarse) { .ed-bloqueo-ir { min-height: 44px; } }
 /* En el documento: borde rojo en el bloque, la frase resaltada y el aviso debajo. */
 .ed-ed.ed-bloquea:not(:focus) { outline: 2px solid var(--rojo); outline-offset: 3px; }
 ::highlight(ed-bloqueo) { background-color: #f6c9c3; }
@@ -293,6 +293,10 @@ body.modo-doc #save-ind { display: none !important; }
 .ed-barra.con-abrir .ed-btn { padding: 0 10px; }
 .ed-barra-bloqueo { display: block; margin-top: 4px; color: var(--rojo); font-size: 13px; font-weight: 600; }
 .ed-barra-bloqueo .ed-bloqueo-ir { margin: 0 0 0 6px; background: #fdeceb; box-shadow: none; }
+/* Avisos de redacción en la barra (<1200, sin bloqueo): ámbar como .ed-nota-avisos. */
+.ed-barra-aviso { display: block; margin-top: 4px; color: var(--texto); font-size: 13px; font-weight: 600;
+  background: var(--amarillo-bg, #faf1dd); border-radius: var(--r-sm); padding: 4px 8px; }
+.ed-barra-aviso .ed-bloqueo-ir { margin: 0 0 0 6px; box-shadow: none; }
 @media (max-width: 1199px) { .ed-barra { display: flex; } }
 /* Justificado en una columna de teléfono abre huecos entre palabras; el Word
    conserva su formato, esto es solo la pantalla. */

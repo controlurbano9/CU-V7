@@ -340,3 +340,160 @@ test('no requiere licencia: no sugiere «No fue aportada…»', () => {
   const s = ed.sugerenciasConclusionesDeLaVisita({ requiere_licencia: 'NO', requiere_detalle: 'Reparación locativa', sin_licencia: true });
   assert.ok(!s.some(x => /No fue aportada/.test(x.texto)));
 });
+
+// ── Revisión por secciones (2026-10-16): lo que no cambió no se revisa ──
+const INFORME_SECC = {
+  antecedentes: 'El 22 de abril de 2026 se realizó diligencia de inspección ocular…',
+  observaciones: 'Se observó una ampliación en concreto en el tercer piso.',
+  conclusiones_items: ['Las obras corresponden a ampliación y requieren licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7).'],
+  recomendaciones_items: ['Abstenerse de ejecutar obras que requieran licencia urbanística sin haberla obtenido.']
+};
+
+test('huellasSecciones: tilde o coma no cambia la huella, una palabra sí', () => {
+  const h = ed.huellasSecciones(INFORME_SECC);
+  // Tilde y coma: _normTexto las ignora.
+  const conTilde = Object.assign({}, INFORME_SECC, { observaciones: 'Se observó una ampliación en concreto, en el tercer piso.' });
+  assert.deepEqual(ed.huellasSecciones(conTilde), h);
+  // Una palabra más en un punto: cambia la huella de su sección, no las demás.
+  const conPalabra = Object.assign({}, INFORME_SECC,
+    { conclusiones_items: INFORME_SECC.conclusiones_items.concat('Otra conclusión distinta.') });
+  const h2 = ed.huellasSecciones(conPalabra);
+  assert.notEqual(h2.conclusiones, h.conclusiones);
+  assert.equal(h2.observaciones, h.observaciones);
+  assert.equal(h2.antecedentes, h.antecedentes);
+  // Sección vacía: huella estable (la de '').
+  const vacia = ed.huellasSecciones({ antecedentes: '', observaciones: '', conclusiones_items: [], recomendaciones_items: [] });
+  assert.deepEqual(ed.huellasSecciones({}), vacia);
+});
+
+test('seccionesCambiadas: sello nuevo solo la tocada; viejo vigente/vencido; sin sello', () => {
+  const h = ed.huellasSecciones(INFORME_SECC);
+  // Sello nuevo: solo cambia la sección editada.
+  const sello = { secciones: h, modo: 'IA', fecha: '2026-10-16' };
+  const editado = Object.assign({}, INFORME_SECC, { conclusiones_items: ['Editada.'] });
+  assert.deepEqual(ed.seccionesCambiadas(sello, editado), ['conclusiones']);
+  assert.deepEqual(ed.seccionesCambiadas(sello, INFORME_SECC), []);
+  // Falta una sección en el sello (nació sin revisar): siempre cuenta como cambiada.
+  const parcial = { secciones: { antecedentes: h.antecedentes }, modo: 'VISITA' };
+  assert.deepEqual(ed.seccionesCambiadas(parcial, INFORME_SECC),
+    ['observaciones', 'conclusiones', 'recomendaciones']);
+  // Sello viejo (sin secciones): la comparación de hoy por huella completa.
+  const huellaVieja = ed.huellaInforme(INFORME_SECC, huellaFake);
+  assert.deepEqual(ed.seccionesCambiadas({ huella: huellaVieja }, INFORME_SECC, huellaFake), []);
+  assert.deepEqual(ed.seccionesCambiadas({ huella: huellaVieja }, editado, huellaFake), ed.SECCIONES_REVISION);
+  // Sin sello: las 4.
+  assert.deepEqual(ed.seccionesCambiadas(null, INFORME_SECC), ed.SECCIONES_REVISION);
+  // revisionInformeVigente es «sin secciones cambiadas».
+  assert.ok(ed.revisionInformeVigente(sello, INFORME_SECC));
+  assert.ok(!ed.revisionInformeVigente(sello, editado));
+});
+
+test('selloInicialSecciones: hereda lo revisado en la visita', () => {
+  const rec = ed.sugerenciasRecomendacionesDeLaVisita(BASE); // la preventiva (REC_*)
+  const conclVisita = ed.sugerenciasConclusionesDeLaVisita(Object.assign({}, BASE, { sin_infraccion: true }), cita);
+  const origen = {
+    observaciones: INFORME_SECC.observaciones,
+    conclusiones: ['Conclusión escrita por el inspector en la visita.'],
+    antecedentes: INFORME_SECC.antecedentes,
+    aprobadas: conclVisita.map(s => s.texto).concat(rec.map(s => s.texto))
+  };
+  // Todo nace de la visita → las 4 revisadas (y vigentes).
+  const deLaVisita = Object.assign({}, INFORME_SECC, { conclusiones_items: origen.conclusiones, recomendaciones_items: [rec[0].texto] });
+  let sello = ed.selloInicialSecciones(deLaVisita, origen);
+  assert.deepEqual(Object.keys(sello).sort(), ['antecedentes', 'conclusiones', 'observaciones', 'recomendaciones']);
+  assert.deepEqual(ed.seccionesCambiadas({ secciones: sello }, deLaVisita), []);
+  // Conclusión aprobada (sugerencia «De la visita») también nace revisada.
+  sello = ed.selloInicialSecciones(Object.assign({}, INFORME_SECC, { conclusiones_items: [conclVisita[0].texto] }), origen);
+  assert.ok(sello.conclusiones);
+  // Conclusión extra no aprobada → no; y recomendación REC_* → sí.
+  sello = ed.selloInicialSecciones(INFORME_SECC, origen);
+  assert.ok(!sello.conclusiones);
+  assert.ok(sello.recomendaciones);
+  assert.ok(sello.observaciones);
+  // Observaciones editadas → no; antecedentes cambiados → no.
+  sello = ed.selloInicialSecciones(Object.assign({}, INFORME_SECC, { observaciones: 'Editado.', antecedentes: 'Otro.' }), origen);
+  assert.ok(!sello.observaciones);
+  assert.ok(!sello.antecedentes);
+  // Sección vacía nace revisada.
+  sello = ed.selloInicialSecciones({ antecedentes: '', observaciones: '', conclusiones_items: [], recomendaciones_items: [] }, {});
+  assert.deepEqual(Object.keys(sello).sort(), ['antecedentes', 'conclusiones', 'observaciones', 'recomendaciones']);
+});
+
+test('filtrarPreguntasRepetidas: fuera las ya respondidas (Jaccard ≥ 0,5)', () => {
+  const previas = [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '75 m2' }];
+  const preguntas = [
+    { pregunta: '¿Cual es el área en contravención de la visita?' },   // misma pregunta, sin tildes
+    { pregunta: '¿Quién es el propietario del inmueble?' }
+  ];
+  const out = ed.filtrarPreguntasRepetidas(preguntas, previas);
+  assert.equal(out.length, 1);
+  assert.match(out[0].pregunta, /propietario/);
+  // Respuesta vacía guardada no cuenta.
+  assert.equal(ed.filtrarPreguntasRepetidas(preguntas, [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '' }]).length, 2);
+  assert.equal(ed.filtrarPreguntasRepetidas(preguntas, []).length, 2);
+});
+
+test('acumularRespuestas: reemplaza la parecida y recorta a 20', () => {
+  let out = ed.acumularRespuestas([], [{ pregunta: '¿El área?', respuesta: '75 m2' }]);
+  assert.equal(out.length, 1);
+  // La misma pregunta respondida de nuevo reemplaza; una nueva se suma.
+  out = ed.acumularRespuestas(out, [
+    { pregunta: '¿Cual es el área?', respuesta: '80 m2' },
+    { pregunta: '¿El propietario?', respuesta: 'Juan' },
+    { pregunta: '¿Vacía?', respuesta: '   ' }
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].respuesta, '80 m2');
+  assert.equal(out[1].respuesta, 'Juan');
+  // Tope 20: se quedan las más recientes. (Preguntas bien distintas entre sí:
+  // «pregunta 5» y «pregunta 6» dan Jaccard 1/3, bajo el umbral.)
+  const muchas = [];
+  for (let i = 0; i < 25; i++) muchas.push({ pregunta: '¿Q' + i + '?', respuesta: 'r' + i });
+  out = ed.acumularRespuestas(out, muchas);
+  assert.equal(out.length, 20);
+  assert.equal(out[0].pregunta, '¿Q5?');
+  assert.equal(out[19].pregunta, '¿Q24?');
+});
+
+test('armarMensajeCritica con opts: secciones y respuestas previas; sin opts idéntico a hoy', () => {
+  const sinOpts = ed.armarMensajeCritica(INFORME_R2, BASE);
+  assert.equal(ed.armarMensajeCritica(INFORME_R2, BASE, undefined), sinOpts);
+  assert.equal(ed.armarMensajeCritica(INFORME_R2, BASE, {}), sinOpts);
+  const opts = {
+    secciones: ['observaciones', 'conclusiones'],
+    respuestasPrevias: [{ pregunta: '¿El área?', respuesta: '75 m2' }]
+  };
+  const msg = ed.armarMensajeCritica(INFORME_R2, BASE, opts);
+  assert.match(msg, /Revisa SOLO estas secciones: Observaciones, Conclusiones; las demás van como contexto, no las critiques ni propongas cambios en ellas/);
+  assert.match(msg, /RESPUESTAS YA DADAS POR EL INSPECTOR \(no vuelvas a preguntar esto\)/);
+  assert.ok(msg.includes('75 m2'));
+});
+
+test('armarMensajeCorrecciones con opts: mismos bloques; sin opts idéntico a hoy', () => {
+  const critica = { bien: [], falta: [], no_coincide: [], forma: [], preguntas: [] };
+  const sinOpts = ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, []);
+  assert.equal(ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], undefined), sinOpts);
+  assert.equal(ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], {}), sinOpts);
+  const msg = ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], {
+    secciones: ['conclusiones'],
+    respuestasPrevias: [{ pregunta: '¿El área?', respuesta: '75 m2' }]
+  });
+  assert.match(msg, /Revisa SOLO estas secciones: Conclusiones/);
+  assert.match(msg, /RESPUESTAS YA DADAS POR EL INSPECTOR/);
+});
+
+test('normalizarCambios con secciones: fuera los cambios de secciones no revisadas', () => {
+  const cambios = [
+    { seccion: 'observaciones', numero: 1, texto: 'Observaciones corregidas.' },
+    { seccion: 'conclusion', numero: 1, texto: 'Conclusión corregida.' },
+    { seccion: 'antecedentes', numero: 1, texto: 'Antecedentes corregidos.' }
+  ];
+  // Nombres del sello (plurales) y de la IA (singular): ambos mapean.
+  let out = ed.normalizarCambios(cambios, INFORME_R2, ['conclusiones']);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].seccion, 'conclusion');
+  out = ed.normalizarCambios(cambios, INFORME_R2, ['observaciones', 'antecedentes']);
+  assert.equal(out.length, 2);
+  // Sin secciones: como hoy.
+  assert.equal(ed.normalizarCambios(cambios, INFORME_R2).length, 3);
+});
