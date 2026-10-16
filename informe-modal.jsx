@@ -25,16 +25,18 @@ const INFORME_PATH = 'informe/index.html';
 const MIN_DESKTOP = 1200;
 
 // UI del generador: 'legacy' por defecto. El editor con forma de documento
-// ('doc', docs/PLAN_2026-10-15_editor-informe.md) NO llega a los usuarios
-// todavía: solo entra quien ponga a mano localStorage 'cu_informe_ui' =
-// 'doc'. La bandera vieja del beta v2 (cu_informe_v2_beta) se conserva.
+// ('doc', docs/PLAN_2026-10-15_editor-informe.md) es el modo por defecto
+// desde el 2026-10-15 (decisión del usuario). localStorage 'cu_informe_ui'
+// = 'legacy' | 'v2' lo anula; la bandera vieja del beta v2
+// (cu_informe_v2_beta) se conserva. Dentro del editor, «Usar el generador
+// anterior» abre el asistente sin recordarlo.
 function _uiModeInforme() {
   try {
     const m = localStorage.getItem('cu_informe_ui');
     if (m === 'doc' || m === 'v2' || m === 'legacy') return m;
-    return localStorage.getItem('cu_informe_v2_beta') === '1' ? 'v2' : 'legacy';
+    return localStorage.getItem('cu_informe_v2_beta') === '1' ? 'v2' : 'doc';
   }
-  catch (e) { return 'legacy'; }
+  catch (e) { return 'doc'; }
 }
 
 let _pushInforme = null; // bridge con el host (idéntico al patrón de modal.jsx)
