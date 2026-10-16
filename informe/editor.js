@@ -482,11 +482,40 @@ if (_borrador) {
   _revSello = _borrador.rev || null;
 }
 
-// El mapa del generador se repinta aquí envolviendo setLocPreview.
+// Borrador en el servidor (2026-10-15, [SEC:BorradorInforme] del backend):
+// lo diligenciado no se pierde al cambiar de equipo. `version` es la última
+// guardada que conoce este equipo; `cargado` = ya se leyó el servidor (antes
+// no se sube nada, para no pisar lo guardado desde otro equipo).
+var _srv = { version: (_borrador && _borrador._srvVersion) || 0, estado: '', hora: '', pendiente: false, cargado: false };
+var _guardadoTxt = '';
+var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) || [];
+var _fotosPendientes = null, _aplicandoFotos = false;
+var _qgis = { id: '', base64: '', mime: '' }, _qgisSubiendo = false;
+// Huella de lo que trajo la visita: si cambia después de empezar el informe, se avisa.
+var _huellaVisitaActual = _hashTexto(['observaciones', 'conclusiones', 'infraccion', 'areas', 'seAportoLicencia',
+  'requiereLicencia', 'requiereDetalle'].map(function (k) { return _SESION_QS.get(k) || ''; }).join('\u0001'));
+var _baseVisita = (_borrador && _borrador.baseVisita) || _huellaVisitaActual;
+function _hashTexto(s) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16);
+}
+
+// El mapa del generador se repinta aquí envolviendo setLocPreview. La captura
+// QGIS guardada manda sobre el mapa automático que se genera al abrir.
 var _setLocPreviewOrig = window.setLocPreview;
 window.setLocPreview = function (dataUrl, fuenteLabel) {
+  if (!dataUrl && !locImg.fuente && _qgis.id) {
+    // «Volver al mapa automático»: se olvida la captura.
+    _qgis = { id: '', base64: '', mime: '' };
+    _programarGuardar();
+  } else if (_qgis.id && _qgis.base64 && locImg.fuente !== 'qgis') {
+    _ponerQgis();
+    return;
+  }
   _setLocPreviewOrig(dataUrl, fuenteLabel);
   _pintarMapa();
+  if (locImg.fuente === 'qgis' && locImg.base64 && locImg.base64 !== _qgis.base64) _subirQgis();
 };
 
 // ── Contenedor ───────────────────────────────────────────────────────
@@ -500,6 +529,8 @@ root.innerHTML =
     '</div>' +
   '</header>' +
   '<div class="ed-error" id="ed-error" hidden></div>' +
+  '<div class="ed-aviso" id="ed-aviso" hidden></div>' +
+  '<div class="ed-aviso" id="ed-aviso-visita" hidden></div>' +
   '<main class="ed-shell">' +
     '<article class="ed-hoja" aria-label="Informe F-GGO-43">' +
       '<div class="ed-membrete">' +
@@ -526,6 +557,7 @@ root.innerHTML =
       '<div class="ed-h">Localización.</div>' +
       '<div class="ed-mapa" id="ed-mapa">Generando mapa…</div>' +
       '<div class="ed-pie" id="ed-mapa-pie"></div>' +
+      '<div class="ed-ui" id="ed-mapa-acc"></div>' +
 
       '<div class="ed-h">Observaciones de campo.</div>' +
       '<div class="ed-ui"><span class="ed-chip ed-chip-ok">✓ Revisado en la visita</span><span class="ed-ui-nota">Sin límite de largo. Lo que cambies aquí se revisa al final.</span></div>' +
@@ -534,6 +566,9 @@ root.innerHTML =
       '<div class="ed-h">Resumen de lo aprobado por curaduría.</div>' +
       '<div class="ed-ui"><span class="ed-chip ed-chip-neutro">Solo lectura · se corrige en la visita</span></div>' +
       '<div id="ed-licencia"></div>' +
+
+      '<div class="ed-h">Verificación de obligaciones — art. 135, literales C y D.</div>' +
+      '<div id="ed-art135"></div>' +
 
       '<div class="ed-h">Registro fotográfico.</div>' +
       '<div class="ed-ui"><span class="ed-chip ed-chip-neutro" id="ed-fotos-n"></span><span class="ed-ui-nota">Los pies son los del registro; edítalos, quita o reordena.</span></div>' +
@@ -562,6 +597,7 @@ root.innerHTML =
     '<aside class="ed-rail" aria-label="Estado del informe">' +
       '<div class="ed-panel">' +
         '<h2>Estado del informe</h2>' +
+        '<div class="ed-guardado" id="ed-guardado" aria-live="polite"></div>' +
         '<ul class="ed-est" id="ed-est"></ul>' +
         '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar">Revisar informe</button>' +
         '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-rail" disabled>Generar Word</button>' +
@@ -609,12 +645,21 @@ document.body.appendChild(root);
 })();
 
 // ── Antecedentes ─────────────────────────────────────────────────────
+// El origen también marca la casilla interna «diligencia decretada en
+// audiencia»: la leen el prompt, el validador y la revisión (d.es_diligencia).
+function _sincronizarDiligencia(origen) {
+  var ch = _el('esDiligencia');
+  if (ch) ch.checked = (origen === 'diligencia');
+  _d.es_diligencia = (origen === 'diligencia');
+}
 (function () {
   var origenInicial = (_borrador && _borrador.origen) || detectarOrigenAntecedentes(_d);
   _el('ed-origen').value = origenInicial;
+  _sincronizarDiligencia(origenInicial);
   _el('ed-antecedentes').textContent = (_borrador && _borrador.antecedentes) || fraseAntecedentes(_d, origenInicial);
   // Cambiar el origen re-arma la frase («cambia el origen», plan).
   _el('ed-origen').addEventListener('change', function () {
+    _sincronizarDiligencia(_el('ed-origen').value);
     _el('ed-antecedentes').textContent = fraseAntecedentes(_d, _el('ed-origen').value);
     _programarGuardar();
     _el('ed-antecedentes').focus();
@@ -641,6 +686,16 @@ function _pintarMapa() {
   }
 }
 _pintarMapa();
+
+// Captura QGIS: el botón y «Volver al mapa automático» del asistente.
+(function () {
+  var acc = _el('ed-mapa-acc');
+  var input = _el('input-loc-qgis'), restaurar = _el('btn-loc-restaurar');
+  if (!acc || !input) return;
+  var lab = input.closest('label');
+  if (lab) { lab.textContent = 'Reemplazar por captura QGIS'; lab.appendChild(input); acc.appendChild(lab); }
+  if (restaurar) acc.appendChild(restaurar);
+})();
 
 // ── Licencia y POT: lo de la visita en solo lectura ──────────────────
 // Solo dos campos editables, que la visita no captura: fecha de ejecutoria
@@ -724,6 +779,39 @@ function _pintarLicencia(d) {
 }
 _pintarLicencia(_d);
 
+// ── Verificación art. 135, literales C y D (bloque opcional del Word) ──
+// Se trae al documento la casilla y la tabla del asistente (mismos ids:
+// la generación del Word las sigue leyendo). Al activarla, las filas de los
+// comportamientos C/D marcados en la visita arrancan en «No cumple».
+var ART135_FILAS = ['C9', 'C10', 'C11', 'C12', 'D13', 'D14', 'D15', 'D16', 'D17', 'D18',
+  'D19', 'D20', 'D21', 'D22', 'D23', 'D24'];
+function _filasArt135() {
+  return Array.prototype.filter.call(document.querySelectorAll('#art-table tbody tr'), function (tr) {
+    return !tr.classList.contains('cbrow');
+  });
+}
+(function () {
+  var caja = _el('ed-art135');
+  var chk = _el('incluirArt'), tabla = _el('art-table');
+  if (!caja || !chk || !tabla) return;
+  caja.innerHTML = '<div class="ed-ui"><span class="ed-ui-nota">Solo en proyectos que lo necesiten, ' +
+    'especialmente de más de 2.000 m².</span></div>';
+  caja.appendChild(chk.closest('label') || chk);
+  caja.appendChild(tabla);
+  chk.addEventListener('change', function () {
+    if (!chk.checked) return;
+    var marcados = {};
+    (recolectarDatosWizard().d.comportamientos || []).forEach(function (c) {
+      var m = /^([CD])(\d{1,2})/.exec(c);
+      if (m) marcados[m[1] + parseInt(m[2], 10)] = true;
+    });
+    _filasArt135().forEach(function (tr, i) {
+      var c = tr.querySelector('.sel-c'), nc = tr.querySelector('.sel-nc');
+      if (marcados[ART135_FILAS[i]] && c && nc && !c.value && !nc.value) nc.value = 'Si';
+    });
+  });
+})();
+
 (function () {
   var pot = [
     ['Clasificación general del suelo', _d.clasificacion],
@@ -733,12 +821,20 @@ _pintarLicencia(_d);
     ['Suelo de protección o amenaza', _d.proteccion]
   ].filter(function (f) { return (f[1] || '').toString().trim(); });
   var html = '<div class="ed-sololectura"><p>Acorde con lo establecido en el Plan de Ordenamiento Territorial Acuerdo 033 de 2009, la ubicación del predio posee la siguiente normatividad:</p></div>';
-  if (pot.length) {
+  // Completa desde la visita: solo lectura. Si falta algún dato (visita sin
+  // GPS o sin consulta POT), se escriben aquí con los campos del asistente.
+  var editable = pot.length < 5;
+  if (pot.length && !editable) {
     html += '<table class="ed-tabla ed-tabla-pot"><caption>CONSULTA NORMA DEL PREDIO SEGÚN POT</caption>' +
       pot.map(function (f) { return '<tr><th>' + _esc(f[0]) + '</th><td>' + _esc(f[1]) + '</td></tr>'; }).join('') + '</table>';
   }
+  if (editable) {
+    html += '<div class="ed-nota-bloque">La visita no trajo la norma POT completa: complétala aquí.</div><div id="ed-pot-campos"></div>';
+  }
   html += '<div class="ed-sololectura"><p>' + _esc(_construirConclusionIntro(_d)) + '</p></div>';
   _el('ed-concl-cab').innerHTML = html;
+  var campos = editable && document.querySelector('#card-pot .fg');
+  if (campos) _el('ed-pot-campos').appendChild(campos);
 })();
 
 // ── Registro fotográfico: espejo de #fotos-list ──────────────────────
@@ -756,6 +852,9 @@ function _nFotosConPie() {
 function _pintarFotos() {
   var grid = _el('ed-fotos');
   if (!grid) return;
+  // Las fotos llegan de Drive después de abrir: el orden, los pies y las
+  // quitadas del borrador se aplican apenas están.
+  if (_fotosPendientes && !_aplicandoFotos && _fotosAsistentes().length) { _aplicarFotos(_fotosPendientes); return; }
   grid.innerHTML = '';
   var tarjetas = _fotosAsistentes();
   Array.prototype.forEach.call(tarjetas, function (div, i) {
@@ -1088,13 +1187,141 @@ function _pintarEstado() {
   ['ed-gen', 'ed-gen-rail', 'ed-gen-movil'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
   _el('ed-gen-nota').textContent = cond.ok ? 'Todo listo para generar.' : ('Falta: ' + cond.motivo + '.');
   _el('ed-barra-txt').innerHTML = '<b>' + nc + ' conclusiones · ' + nr + ' recomendaciones</b>' +
-    total + ' fotos · ' + (cond.ok ? 'listo para generar' : _esc(cond.motivo));
+    total + ' fotos · ' + (cond.ok ? 'listo para generar' : _esc(cond.motivo)) +
+    (_guardadoTxt ? ' · ' + _esc(_guardadoTxt) : '');
 }
 _pintarEstado();
 
-// ── Persistencia (localStorage fggo43_editor_<fila>) ─────────────────
+// ── Persistencia: este equipo (localStorage) + servidor (por ID_VISITA) ──
+// Se guarda TODO lo que el inspector toca en el informe, no solo los textos:
+// fechas, vigencia, firma, tabla del art. 135, POT escrita a mano, fotos
+// (orden, pies, quitadas) y la captura QGIS (en Drive; aquí solo su id).
+var POT_IDS = ['clasificacion', 'poligUso', 'poligTrat', 'franja', 'proteccion'];
+
+function _fidDe(divId) { return (_el('fid-' + divId) || {}).value || ''; }
+
+function _estadoFotos() {
+  var orden = [], pies = {};
+  Array.prototype.forEach.call(_fotosAsistentes(), function (div) {
+    var fid = _fidDe(div.id);
+    if (!fid) return;
+    orden.push(fid);
+    pies[fid] = (_el('desc-' + div.id) || {}).value || '';
+  });
+  return { orden: orden, quitadas: _fotosQuitadas.slice(), pies: pies };
+}
+
+function _aplicarFotos(f) {
+  if (!f) return;
+  if (!_fotosAsistentes().length) { _fotosPendientes = f; return; }
+  _aplicandoFotos = true;
+  var porFid = {};
+  Array.prototype.forEach.call(_fotosAsistentes(), function (div) { var fid = _fidDe(div.id); if (fid) porFid[fid] = div; });
+  _fotosQuitadas = (f.quitadas || []).slice();
+  _fotosQuitadas.forEach(function (fid) { if (porFid[fid]) { porFid[fid].remove(); delete porFid[fid]; } });
+  // Primero las del borrador en su orden; después las que se subieron luego.
+  var lista = _el('fotos-list');
+  var enOrden = (f.orden || []).filter(function (fid) { return porFid[fid]; });
+  Object.keys(porFid).forEach(function (fid) { if (enOrden.indexOf(fid) < 0) enOrden.push(fid); });
+  enOrden.forEach(function (fid) {
+    lista.appendChild(porFid[fid]);
+    var desc = _el('desc-' + porFid[fid].id);
+    if (desc && f.pies && typeof f.pies[fid] === 'string') desc.value = f.pies[fid];
+  });
+  _fotosPendientes = null;
+  _aplicandoFotos = false;
+  _pintarFotos();
+}
+
+function _artEstado() {
+  return {
+    incluir: !!(_el('incluirArt') || {}).checked,
+    filas: _filasArt135().map(function (tr) {
+      return [(tr.querySelector('.sel-c') || {}).value || '', (tr.querySelector('.sel-nc') || {}).value || '',
+              (tr.querySelector('.obs-inp') || {}).value || ''];
+    })
+  };
+}
+
+function _snapshotEditor() {
+  var pot = {};
+  POT_IDS.forEach(function (id) { pot[id] = gv(id); });
+  return {
+    _ts: Date.now(),
+    baseVisita: _baseVisita,
+    origen: _el('ed-origen').value,
+    antecedentes: _el('ed-antecedentes').textContent,
+    obs: _el('ed-obs').textContent,
+    concl: _textosLista('ed-concl'),
+    rec: _textosLista('ed-rec'),
+    propuesta: _propuesta || null,
+    rev: _revSello || null,
+    fechaInforme: gv('fechaInforme'),
+    fechaEjec: gv('fechaEjec'),
+    vigencia: gv('vigenciaLic'),
+    inspector: gv('inspector'),
+    cargo: gv('cargo'),
+    art: _artEstado(),
+    pot: pot,
+    fotos: _fotosPendientes || _estadoFotos(),
+    qgisId: _qgis.id
+  };
+}
+
+function _ponerValor(id, v) {
+  var el = _el(id);
+  if (el && typeof v === 'string') el.value = v;
+}
+
+// Lo inverso de _snapshotEditor: deja el documento y el asistente oculto como
+// estaban al guardar (al abrir, o al traer la versión de otro equipo).
+function _aplicarSnapshot(s) {
+  if (!s) return;
+  if (s.origen) { _el('ed-origen').value = s.origen; _sincronizarDiligencia(s.origen); }
+  if (typeof s.antecedentes === 'string' && s.antecedentes) _el('ed-antecedentes').textContent = s.antecedentes;
+  if (typeof s.obs === 'string') _el('ed-obs').textContent = s.obs;
+  if (s.concl) _refrescarLista('ed-concl', s.concl);
+  if (s.rec) _refrescarLista('ed-rec', s.rec);
+  _propuesta = s.propuesta || _propuesta;
+  _revSello = s.rev || null;
+  if (s.fechaInforme) {
+    _ponerValor('fechaInforme', s.fechaInforme);
+    _el('ed-fecha').value = s.fechaInforme;
+    _el('ed-fecha-linea').textContent = 'Bello, ' + fmtFecha(s.fechaInforme);
+  }
+  if (typeof s.fechaEjec === 'string') _ponerValor('fechaEjec', s.fechaEjec);
+  if (typeof s.vigencia === 'string') { _ponerValor('vigenciaLic', s.vigencia); (_el('vigenciaLic') || {}).dataset && (_el('vigenciaLic').dataset.auto = ''); }
+  _pintarLicencia(recolectarDatosWizard().d);
+  if (s.inspector) {
+    var sel = _el('inspector');
+    // Las opciones llegan después (cargarInspectoresDesdeBD): data-prefill las elige al llegar.
+    if (sel) { sel.dataset.prefill = s.inspector; sel.value = s.inspector; }
+  }
+  if (typeof s.cargo === 'string' && s.cargo) _ponerValor('cargo', s.cargo);
+  if (s.art) {
+    var chk = _el('incluirArt');
+    if (chk) { chk.checked = !!s.art.incluir; toggleArt(chk); }
+    _filasArt135().forEach(function (tr, i) {
+      var f = (s.art.filas || [])[i];
+      if (!f) return;
+      var c = tr.querySelector('.sel-c'), nc = tr.querySelector('.sel-nc'), o = tr.querySelector('.obs-inp');
+      if (c) c.value = f[0]; if (nc) nc.value = f[1]; if (o) o.value = f[2];
+    });
+  }
+  if (s.pot) POT_IDS.forEach(function (id) { if (s.pot[id]) _ponerValor(id, s.pot[id]); });
+  if (s.fotos) _aplicarFotos(s.fotos);
+  if (s.qgisId) _restaurarQgis(s.qgisId);
+  if (s.baseVisita) _baseVisita = s.baseVisita;
+  _pintarCierreFijo();
+  _pintarSugerencias();
+  _pintarEstado();
+}
+
 var _tGuardar = null;
-function _guardarEditor() {
+// `opts.desdeServidor`: copia local de lo que vino del servidor (no hay nada
+// que subir). Si no, hay cambios del inspector: se suben en ~3 s.
+function _guardarEditor(opts) {
+  opts = opts || {};
   // El asistente oculto sigue siendo el almacén: #obs al día antes de guardar
   // (y antes de generar: de ahí salen prompt, validador y Word).
   var obsAsistente = _el('obs');
@@ -1102,25 +1329,253 @@ function _guardarEditor() {
     obsAsistente.value = _el('ed-obs').textContent;
     guardar && guardar();
   }
-  try {
-    localStorage.setItem(_claveEditor(), JSON.stringify({
-      _ts: Date.now(),
-      origen: _el('ed-origen').value,
-      antecedentes: _el('ed-antecedentes').textContent,
-      obs: _el('ed-obs').textContent,
-      concl: _textosLista('ed-concl'),
-      rec: _textosLista('ed-rec'),
-      propuesta: _propuesta || null,
-      rev: _revSello || null
-    }));
-  } catch (e) { /* sin espacio: seguir editando igual */ }
+  var s = _snapshotEditor();
+  s._srvVersion = _srv.version;
+  s._sinSubir = !opts.desdeServidor;
+  try { localStorage.setItem(_claveEditor(), JSON.stringify(s)); } catch (e) { /* sin espacio: seguir igual */ }
+  if (!opts.desdeServidor) {
+    _srv.pendiente = true;
+    _programarSubida();
+  }
 }
 function _programarGuardar() {
+  _srv.pendiente = true; // hay cambios, aunque el guardado local espere 400 ms
   clearTimeout(_tGuardar);
   _tGuardar = setTimeout(_guardarEditor, 400);
   _pintarEstado();
 }
-window.addEventListener('beforeunload', _guardarEditor);
+
+// ── Servidor ──────────────────────────────────────────────────────────
+function _postWebhook(obj, keepalive) {
+  return fetch(WH, {
+    method: 'POST', keepalive: !!keepalive,
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: JSON.stringify(_bodyConSesion(obj))
+  }).then(function (r) { return r.json(); });
+}
+
+function _horaCorta(d) {
+  return (d || new Date()).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+}
+// El servidor manda «dd/MM/yyyy HH:mm:ss»: misma forma que la hora local.
+function _horaServidor(txt) {
+  var m = /(\d{1,2}):(\d{2})/.exec(String(txt || ''));
+  if (!m) return '';
+  var d = new Date();
+  d.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+  return _horaCorta(d);
+}
+
+function _pintarGuardado() {
+  var t;
+  if (!V6_CTX.idVisita) t = 'Guardado solo en este equipo';
+  else if (_srv.estado === 'cargando') t = 'Trayendo lo guardado…';
+  else if (_srv.estado === 'guardando') t = 'Guardando…';
+  else if (_srv.estado === 'ok') t = 'Guardado' + (_srv.hora ? ' · ' + _srv.hora : '');
+  else if (_srv.estado === 'offline') t = 'Sin conexión: guardado en este equipo';
+  else if (_srv.estado === 'conflicto') t = 'Modificado en otro equipo';
+  else t = '';
+  _guardadoTxt = t;
+  var el = _el('ed-guardado');
+  if (el) el.textContent = t;
+  _pintarEstado();
+}
+
+var _tSubir = null, _subiendo = false;
+function _programarSubida() {
+  clearTimeout(_tSubir);
+  _tSubir = setTimeout(function () { _subirBorrador(false); }, 3000);
+}
+
+function _jsonParaServidor() {
+  var s = _snapshotEditor();
+  var j = JSON.stringify(s);
+  // Una celda admite 50.000 caracteres: la «Propuesta» se vuelve a pedir.
+  if (j.length > 44000) { s.propuesta = null; j = JSON.stringify(s); }
+  return j;
+}
+
+function _marcarLocalSubido() {
+  try {
+    var s = JSON.parse(localStorage.getItem(_claveEditor()) || 'null');
+    if (!s) return;
+    s._sinSubir = false;
+    s._srvVersion = _srv.version;
+    localStorage.setItem(_claveEditor(), JSON.stringify(s));
+  } catch (e) {}
+}
+
+function _subirBorrador(forzar, keepalive) {
+  if (!V6_CTX.idVisita) { _pintarGuardado(); return; }
+  if (!_srv.cargado) return; // aún no se leyó el servidor: no pisar lo de otro equipo
+  if (_subiendo && !keepalive) { _programarSubida(); return; }
+  _subiendo = true;
+  _srv.estado = 'guardando';
+  _pintarGuardado();
+  return _postWebhook({
+    accion: 'guardarBorradorInforme', idVisita: V6_CTX.idVisita, radicado: V6_CTX.radicado || '',
+    borrador: _jsonParaServidor(), versionBase: _srv.version, forzar: !!forzar
+  }, keepalive).then(function (r) {
+    _subiendo = false;
+    if (r && r.ok) {
+      _srv.version = r.version;
+      _srv.pendiente = false;
+      _srv.estado = 'ok';
+      _srv.hora = _horaCorta();
+      _marcarLocalSubido();
+    } else if (r && r.conflicto) {
+      _srv.estado = 'conflicto';
+      _mostrarConflicto(r);
+    } else {
+      _srv.estado = 'offline'; // error del servidor: se reintenta
+    }
+    _pintarGuardado();
+  }).catch(function () {
+    _subiendo = false;
+    _srv.estado = 'offline';
+    _pintarGuardado();
+  });
+}
+
+function _cargarServidor() {
+  if (!V6_CTX.idVisita) { _pintarGuardado(); return; }
+  _srv.estado = 'cargando';
+  _pintarGuardado();
+  _postWebhook({ accion: 'leerBorradorInforme', idVisita: V6_CTX.idVisita }).then(function (r) {
+    if (!r || !r.ok) throw new Error((r && r.error) || 'sin respuesta');
+    _srv.cargado = true;
+    var remoto = null;
+    try { remoto = r.borrador ? JSON.parse(r.borrador) : null; } catch (e) {}
+    var local = null;
+    try { local = JSON.parse(localStorage.getItem(_claveEditor()) || 'null'); } catch (e) {}
+    var verLocal = (local && local._srvVersion) || 0;
+    if (remoto && !(local && local._sinSubir)) {
+      // Lo del servidor es lo último: se trae (incluye lo hecho en otro equipo).
+      _srv.version = r.version;
+      _aplicarSnapshot(remoto);
+      _guardarEditor({ desdeServidor: true });
+      _srv.pendiente = false;
+      _srv.estado = 'ok';
+      _srv.hora = _horaServidor(r.actualizado);
+      _revisarCambioVisita();
+    } else if (remoto && verLocal !== r.version) {
+      // Cambios sin subir en este equipo Y alguien guardó en otro: decide el inspector.
+      _srv.version = verLocal;
+      _srv.estado = 'conflicto';
+      _mostrarConflicto({ version: r.version, actualizado: r.actualizado, usuario: r.usuario, borrador: r.borrador });
+    } else {
+      // Sin borrador en el servidor, o este equipo va adelante sobre la misma versión.
+      _srv.version = r.version || 0;
+      if (local && local._sinSubir) _subirBorrador(false);
+      else _srv.estado = remoto ? 'ok' : '';
+    }
+    _pintarGuardado();
+  }).catch(function () {
+    _srv.estado = 'offline';
+    _pintarGuardado();
+  });
+}
+
+function _mostrarConflicto(r) {
+  var aviso = _el('ed-aviso');
+  aviso._conflicto = r;
+  aviso.hidden = false;
+  aviso.innerHTML = '<span>Este informe se modificó en otro equipo' +
+    (r.usuario ? ' (' + _esc(r.usuario) + ')' : '') + (r.actualizado ? ', ' + _esc(r.actualizado) : '') + '.</span>' +
+    '<button type="button" class="ed-btn ed-btn-tinte ed-btn-chico" data-ed-conf="traer">Traer esa versión</button>' +
+    '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-conf="mia">Quedarme con la mía</button>';
+}
+
+function _resolverConflicto(opcion) {
+  var aviso = _el('ed-aviso');
+  var r = aviso._conflicto || {};
+  aviso.hidden = true;
+  aviso.innerHTML = '';
+  if (opcion === 'traer') {
+    var remoto = null;
+    try { remoto = r.borrador ? JSON.parse(r.borrador) : null; } catch (e) {}
+    _srv.version = r.version || _srv.version;
+    _srv.pendiente = false;
+    if (remoto) _aplicarSnapshot(remoto);
+    _guardarEditor({ desdeServidor: true });
+    _srv.estado = 'ok';
+    _srv.hora = _horaServidor(r.actualizado);
+    _pintarGuardado();
+  } else {
+    _srv.version = r.version || _srv.version;
+    _subirBorrador(true);
+  }
+}
+
+// ── La visita cambió después de empezar el informe ─────────────────────
+function _revisarCambioVisita() {
+  var caja = _el('ed-aviso-visita');
+  if (!caja) return;
+  if (_baseVisita === _huellaVisitaActual) { caja.hidden = true; return; }
+  caja.hidden = false;
+  caja.innerHTML = '<span>La visita cambió desde que empezaste el informe (descripción, conclusiones o datos).</span>' +
+    '<button type="button" class="ed-btn ed-btn-tinte ed-btn-chico" data-ed-visita="traer">Traer observaciones y conclusiones de la visita</button>' +
+    '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-visita="mio">Conservar lo mío</button>';
+}
+
+function _resolverCambioVisita(opcion) {
+  if (opcion === 'traer') {
+    _el('ed-obs').textContent = _SESION_QS.get('observaciones') || '';
+    _refrescarLista('ed-concl', dividirPuntos(V6_CTX.conclusionesInspector));
+    _pintarCierreFijo();
+    _pintarSugerencias();
+  }
+  _baseVisita = _huellaVisitaActual;
+  _el('ed-aviso-visita').hidden = true;
+  _guardarEditor();
+  _pintarEstado();
+}
+
+// ── Captura QGIS en Drive ─────────────────────────────────────────────
+function _ponerQgis() {
+  locImg.fuente = 'qgis';
+  locImg.base64 = _qgis.base64;
+  locImg.mimeType = _qgis.mime;
+  locImg.fuenteLabel = 'Captura propia (QGIS)';
+  _setLocPreviewOrig('data:' + _qgis.mime + ';base64,' + _qgis.base64, locImg.fuenteLabel);
+  _pintarMapa();
+}
+
+function _restaurarQgis(id) {
+  if (!id || _qgis.id === id) return;
+  fetch(WH + '?' + _qsConSesion({ accion: 'obtenerFotoBase64', fileId: id }).toString())
+    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r || !r.ok || !r.base64) return;
+      _qgis = { id: id, base64: r.base64, mime: r.mime || 'image/jpeg' };
+      _ponerQgis();
+    }).catch(function () {});
+}
+
+function _subirQgis() {
+  if (!V6_CTX.idCarpeta || _qgisSubiendo) return; // sin carpeta: queda solo en este equipo
+  var b64 = locImg.base64, mime = locImg.mimeType || 'image/png';
+  _qgisSubiendo = true;
+  _postWebhook({ accion: 'guardarImagenLocalizacion', idCarpeta: V6_CTX.idCarpeta, base64: b64, mimeType: mime })
+    .then(function (r) {
+      _qgisSubiendo = false;
+      if (r && r.ok) { _qgis = { id: r.fileId, base64: b64, mime: mime }; _programarGuardar(); }
+    }).catch(function () { _qgisSubiendo = false; });
+}
+
+window.addEventListener('beforeunload', function () {
+  if (!_srv.pendiente) return; // sin cambios: nada que guardar ni subir
+  clearTimeout(_tGuardar);
+  _guardarEditor();
+  if (_srv.cargado) _subirBorrador(false, true);
+});
+window.addEventListener('online', function () {
+  if (!_srv.cargado) _cargarServidor();
+  else if (_srv.pendiente) _subirBorrador(false);
+});
+setInterval(function () {
+  if (_srv.cargado && _srv.pendiente && _srv.estado === 'offline') _subirBorrador(false);
+}, 30000);
 
 // ── Eventos ──────────────────────────────────────────────────────────
 root.addEventListener('input', function (e) {
@@ -1130,11 +1585,23 @@ root.addEventListener('input', function (e) {
     if (e.target.id === 'ed-obs') _programarPropuesta();
   }
   if (e.target.hasAttribute && e.target.hasAttribute('data-ed-preg-otra')) _validarPaso1();
+  // Campos de texto del asistente traídos al documento (observaciones de la
+  // tabla del art. 135, POT escrita a mano, cargo): también se guardan.
+  if (_esCampoDelDocumento(e.target) && !(e.target.classList && e.target.classList.contains('ed-ed'))) _programarGuardar();
 });
+// Selects, casillas y fechas (firma, vigencia, ejecutoria, tabla del art. 135, POT).
+root.addEventListener('change', function (e) {
+  if (_esCampoDelDocumento(e.target)) _programarGuardar();
+});
+function _esCampoDelDocumento(t) {
+  return !!(t && t.closest && t.closest('.ed-hoja') && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName));
+}
 
 root.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('button') : null;
   if (!b) return;
+  if (b.hasAttribute('data-ed-conf')) { _resolverConflicto(b.getAttribute('data-ed-conf')); return; }
+  if (b.hasAttribute('data-ed-visita')) { _resolverCambioVisita(b.getAttribute('data-ed-visita')); return; }
   if (b.hasAttribute('data-ed-agregar')) {
     var ol = _el(b.getAttribute('data-ed-agregar'));
     var li = _item('', true);
@@ -1158,8 +1625,12 @@ root.addEventListener('click', function (e) {
     _programarGuardar();
   } else if (b.getAttribute('data-ed-foto')) {
     var divId = b.getAttribute('data-ed-foto'), dirF = b.getAttribute('data-ed-dir');
-    if (dirF === 'quitar') _el(divId).remove(); // el MutationObserver repinta
-    else moverFoto(divId, dirF);
+    if (dirF === 'quitar') {
+      var fidQ = _fidDe(divId);
+      if (fidQ && _fotosQuitadas.indexOf(fidQ) < 0) _fotosQuitadas.push(fidQ);
+      _el(divId).remove(); // el MutationObserver repinta
+    } else moverFoto(divId, dirF);
+    _programarGuardar();
   } else if (b.getAttribute('data-ed-aplicar')) {
     var idLista = b.getAttribute('data-ed-aplicar');
     var caja = _el('ed-sug-' + idLista.slice(3));
@@ -1473,5 +1944,12 @@ async function _generarWord() {
     _pintarErrorGenerar(e.message || 'error desconocido');
   }
 }
+
+// ── Arranque del borrador ─────────────────────────────────────────────
+// 1) lo de este equipo (al instante, también sin señal); 2) aviso si la
+// visita cambió; 3) el servidor decide si hay algo más nuevo de otro equipo.
+if (_borrador) _aplicarSnapshot(_borrador);
+_revisarCambioVisita();
+_cargarServidor();
 
 })();
