@@ -628,25 +628,30 @@ body.v2-mode .v2-autosave{display:inline-flex}
         </div>
         <div class="f ff"><label>Tipo de tramite (puede seleccionar varios)</label>
           <div id="tipo-tramite-checks" class="mod-chk-wrap">
-            <label><input type="checkbox" class="tt-chk" value="Licencia de construccion" onchange="toggleModalidades()"> Licencia de construccion</label>
+            <label><input type="checkbox" class="tt-chk" value="Licencia de construcción" onchange="toggleModalidades()"> Licencia de construcción</label>
             <label><input type="checkbox" class="tt-chk" value="Reconocimiento" onchange="toggleModalidades()"> Reconocimiento</label>
-            <label><input type="checkbox" class="tt-chk" value="Modificacion de licencia" onchange="toggleModalidades()"> Modificacion de licencia</label>
-            <label><input type="checkbox" class="tt-chk" value="Licencia de urbanizacion" onchange="toggleModalidades()"> Licencia de urbanizacion</label>
+            <label><input type="checkbox" class="tt-chk" value="Modificación de licencia" onchange="toggleModalidades()"> Modificación de licencia</label>
+            <label><input type="checkbox" class="tt-chk" value="Licencia de urbanización" onchange="toggleModalidades()"> Licencia de urbanización</label>
+            <label><input type="checkbox" class="tt-chk" value="Licencia de parcelación" onchange="toggleModalidades()"> Licencia de parcelación</label>
+            <label><input type="checkbox" class="tt-chk" value="Licencia de subdivisión" onchange="toggleModalidades()"> Licencia de subdivisión</label>
           </div>
         </div>
         <div class="f ff hidden" id="modalidad-wrap"><label>Modalidad (puede seleccionar varias)</label>
           <div id="modalidad-checks" class="mod-chk-wrap">
             <label><input type="checkbox" class="mod-chk" value="Obra nueva"> Obra nueva</label>
-            <label><input type="checkbox" class="mod-chk" value="Ampliacion"> Ampliacion</label>
-            <label><input type="checkbox" class="mod-chk" value="Modificacion"> Modificacion</label>
-            <label><input type="checkbox" class="mod-chk" value="Demolicion total"> Demolicion total</label>
-            <label><input type="checkbox" class="mod-chk" value="Demolicion parcial"> Demolicion parcial</label>
+            <label><input type="checkbox" class="mod-chk" value="Ampliación"> Ampliación</label>
+            <label><input type="checkbox" class="mod-chk" value="Adecuación"> Adecuación</label>
+            <label><input type="checkbox" class="mod-chk" value="Modificación"> Modificación</label>
+            <label><input type="checkbox" class="mod-chk" value="Restauración"> Restauración</label>
+            <label><input type="checkbox" class="mod-chk" value="Reforzamiento estructural"> Reforzamiento estructural</label>
+            <label><input type="checkbox" class="mod-chk" value="Demolición total"> Demolición total</label>
+            <label><input type="checkbox" class="mod-chk" value="Demolición parcial"> Demolición parcial</label>
             <label><input type="checkbox" class="mod-chk" value="Cerramiento"> Cerramiento</label>
           </div>
         </div>
         <div class="f"><label>Titular de la licencia</label><input type="text" id="titular" placeholder="Nombre completo"></div>
         <div class="f"><label>N de pisos aprobados</label><input type="number" id="pisos" min="1" max="60" placeholder="3"></div>
-        <div class="f"><label>Area aprobada (m2)</label><input type="number" id="areaApro" placeholder="245.50"></div>
+        <div class="f"><label>Area aprobada (m2)</label><input type="text" id="areaApro" placeholder="245.50 o Vivienda 80, comercio 40"></div>
         <div class="f"><label>Sistema estructural aprobado</label>
           <select id="sist">
             <option value="">Seleccione</option>
@@ -937,7 +942,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=128"></script>
+<script src="../utils.js?v=129"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -991,15 +996,17 @@ function autoComuna(sel) {
   }
   guardar && guardar();
 }
-// Mostrar el bloque de modalidades solo si "Licencia de construccion" está marcado
+// Mostrar el bloque de modalidades si hay algún trámite marcado. Antes solo
+// con «Licencia de construcción», pero desde la visita cualquier trámite
+// puede viajar con modalidad (p. ej. «Reconocimiento — Ampliación») y el
+// checkbox quedaba marcado pero invisible.
 function toggleModalidades() {
   var wrap = document.getElementById('modalidad-wrap');
   if (!wrap) return;
-  var lic = document.querySelector('.tt-chk[value="Licencia de construccion"]');
-  var mostrar = !!(lic && lic.checked);
+  var mostrar = !!document.querySelector('.tt-chk:checked');
   wrap.classList.toggle('hidden', !mostrar);
   if (!mostrar) {
-    // Limpiar modalidades si el tipo de trámite ya no las requiere
+    // Limpiar modalidades si ya no hay trámite que las requiera
     document.querySelectorAll('.mod-chk').forEach(function(cb) { cb.checked = false; });
   }
 }
@@ -2435,7 +2442,7 @@ function recolectarDatosWizard() {
   document.querySelectorAll('.mod-chk:checked').forEach(function(c) { mods.push(c.value); });
   document.querySelectorAll('.comp-ac:checked').forEach(function(c) { comps.push(c.value); });
   var tipoTramiteStr = tts.join(', ') || 'No especificado';
-  var modalidadStr   = mods.join(', ') || (tts.indexOf('Licencia de construccion') >= 0 ? 'No especificada' : 'No aplica');
+  var modalidadStr   = mods.join(', ') || (tts.length ? 'No especificada' : 'No aplica');
   var d = {
     fecha_visita:gv('fechaVisita'), fecha_informe:gv('fechaInforme'),
     inspector:gv('inspector'), cargo:gv('cargo'),
@@ -4520,7 +4527,13 @@ var V6_CTX = {
   lat: null,
   lon: null,
   conclusionesInspector: '',
-  sinInfraccion: false
+  sinInfraccion: false,
+  // Licencia que llegó de la visita (2026-10-15): '' (no respondió) | 'SI' | 'NO',
+  // fecha de EXPEDICIÓN (no es la ejecutoria) y observaciones de la licencia
+  // que en modo doc no se pegan en #obs (las lee el editor).
+  seAportoLicencia: '',
+  fechaExpedicion: '',
+  obsLicencia: ''
 };
 var locImg = { fuente: null, base64: '', mimeType: 'image/png', fuenteLabel: '', precisionLabel: '', generadoEn: '' };
 
@@ -4779,12 +4792,18 @@ function prefillDesdeURL() {
   // ── Licencia (paso 2) ──────────────────────────────────────
   // SE APORTO LICENCIA = "NO" → marcar checkbox sinLic
   var aporto = (p.get('seAportoLicencia') || '').toString().trim().toUpperCase();
+  V6_CTX.seAportoLicencia = (aporto === 'NO' || aporto === 'NO SE APORTO' || aporto === 'SI') ? aporto : '';
+  // La fecha que trae la visita es la de EXPEDICIÓN: no es la ejecutoria (esa
+  // se escribe en el informe) ni dispara la sugerencia de vigencia.
+  V6_CTX.fechaExpedicion = _aISOdate(p.get('fechaExpedicion'));
   if (aporto === 'NO' || aporto === 'NO SE APORTO') {
     var cb = document.getElementById('sinLic');
     if (cb) { cb.checked = true; toggleSinLic(cb); }
   } else {
     if (p.get('numRes'))    document.getElementById('numRes').value    = p.get('numRes');
-    if (p.get('fechaEjec')) { document.getElementById('fechaEjec').value = p.get('fechaEjec'); sugerirVigenciaLic(); }
+    if (p.get('titular'))   document.getElementById('titular').value   = p.get('titular');
+    if (p.get('areaApro'))  document.getElementById('areaApro').value  = p.get('areaApro');
+    if (p.get('curaduria')) setSelectByText('curaduria', p.get('curaduria'));
     if (p.get('pisos'))     document.getElementById('pisos').value     = p.get('pisos');
     if (p.get('dest'))      document.getElementById('dest').value      = p.get('dest');
     if (p.get('cubierta'))  document.getElementById('cubierta').value  = p.get('cubierta');
@@ -4810,12 +4829,16 @@ function prefillDesdeURL() {
       }
     }
 
-    // Observación de licencia (BD col AQ) → contexto extra al final de obs
+    // Observación de licencia (BD col AQ). En modo doc no se pega en #obs:
+    // la guarda el editor del informe en su cuadro de curaduría.
     var obsLic = p.get('obsLicencia');
     if (obsLic) {
-      var obsEl = document.getElementById('obs');
-      if (obsEl && !obsEl.value) {
-        obsEl.value = '[Obs. licencia desde BD]: ' + obsLic + '\n\n';
+      V6_CTX.obsLicencia = obsLic;
+      if (UI_MODE !== 'doc') {
+        var obsEl = document.getElementById('obs');
+        if (obsEl && !obsEl.value) {
+          obsEl.value = '[Obs. licencia desde BD]: ' + obsLic + '\n\n';
+        }
       }
     }
   }

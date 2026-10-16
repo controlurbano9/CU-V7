@@ -1121,6 +1121,9 @@ async function guardarVisita(payload) {
   // DOCUMENTO_VISITA ('ACTA' | 'INFORME'): con qué documento se cierra la
   // visita. Por nombre, como los dos de arriba; sin el campo no se toca.
   if (payload.documentoVisita) body.documentoVisita = payload.documentoVisita;
+  // LICENCIA_TITULAR / _AREA_APROBADA / _CURADURIA: las escribe por nombre
+  // el backend; '' borra, clave ausente no se toca.
+  if (payload.licenciaExtra) body.licenciaExtra = payload.licenciaExtra;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');

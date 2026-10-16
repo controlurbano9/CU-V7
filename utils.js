@@ -3236,6 +3236,75 @@ function revisarTextoLocal(e) {
   return senales;
 }
 
+// ── Licencia: catálogo común visita ↔ informe F-GGO-43 ──────────
+// La visita los guarda como un solo texto en la columna AL
+// («TIPO Y MODALIDAD LICENCIA»): "Trámite 1, Trámite 2 — Modalidad 1".
+// Antes era un select de una sola opción y lo que no casaba con las
+// listas del informe se perdía en silencio en su prefill.
+var LICENCIA_TRAMITES = [
+  'Licencia de construcción',
+  'Reconocimiento',
+  'Modificación de licencia',
+  'Licencia de urbanización',
+  'Licencia de parcelación',
+  'Licencia de subdivisión',
+];
+var LICENCIA_MODALIDADES = [
+  'Obra nueva',
+  'Ampliación',
+  'Adecuación',
+  'Modificación',
+  'Restauración',
+  'Reforzamiento estructural',
+  'Demolición total',
+  'Demolición parcial',
+  'Cerramiento',
+];
+
+// Normaliza sin tildes ni mayúsculas para comparar contra el catálogo.
+function _normCatalogoLic(s) {
+  return (s || '').toString().toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// Texto de la columna AL → { tramites, modalidades, otros }. Lee también
+// los valores viejos del select de una sola opción. Lo que no casa con el
+// catálogo (p. ej. el viejo «Demolición» sin total/parcial) va a `otros`
+// sin adivinar, para no perder datos al volver a guardar.
+function parsearTipoModalidad(texto) {
+  var out = { tramites: [], modalidades: [], otros: [] };
+  var t = (texto || '').toString().trim();
+  if (!t) return out;
+  var tramNorm = {}, modNorm = {};
+  LICENCIA_TRAMITES.forEach(function (o) { tramNorm[_normCatalogoLic(o)] = o; });
+  LICENCIA_MODALIDADES.forEach(function (o) { modNorm[_normCatalogoLic(o)] = o; });
+  t.split(/\s*—\s*|\s+-\s+/).forEach(function (lado) {
+    lado.split(/\s*,\s*/).forEach(function (tok) {
+      var n = _normCatalogoLic(tok);
+      if (!n) return;
+      var valor = tramNorm[n] || modNorm[n] || tok.trim();
+      var grupo = tramNorm[n] ? out.tramites : (modNorm[n] ? out.modalidades : out.otros);
+      // Sin duplicados: el mismo token no se apila dos veces.
+      if (grupo.indexOf(valor) < 0) grupo.push(valor);
+    });
+  });
+  return out;
+}
+
+// { tramites, modalidades, otros } → texto de la columna AL. Los `otros`
+// van al final de las modalidades para no perder datos. Sin modalidades
+// (ni otros) no va el «—».
+function formatearTipoModalidad(o) {
+  o = o || {};
+  var mods = (o.modalidades || []).concat(o.otros || []);
+  var partes = [];
+  if ((o.tramites || []).length) partes.push(o.tramites.join(', '));
+  if (mods.length) partes.push(mods.join(', '));
+  return partes.join(' — ');
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   ART135_LITERALES: ART135_LITERALES,
@@ -3379,6 +3448,10 @@ var _cuUtilsExports = {
   claveComunaAgenda: claveComunaAgenda,
   validarPinNuevo: validarPinNuevo,
   seccionesFicha: seccionesFicha,
+  LICENCIA_TRAMITES: LICENCIA_TRAMITES,
+  LICENCIA_MODALIDADES: LICENCIA_MODALIDADES,
+  parsearTipoModalidad: parsearTipoModalidad,
+  formatearTipoModalidad: formatearTipoModalidad,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

@@ -267,21 +267,6 @@ const SISTEMA_ESTRUCTURAL_OPCIONES = [
   'Mampostería confinada',
 ];
 
-// ── Catálogo: Tipo y modalidad licencia (select) ──────────────
-const TIPO_MODALIDAD_OPCIONES = [
-  'Licencia de construcción — Obra nueva',
-  'Licencia de construcción — Ampliación',
-  'Licencia de construcción — Adecuación',
-  'Licencia de construcción — Modificación',
-  'Licencia de construcción — Restauración',
-  'Licencia de construcción — Reforzamiento estructural',
-  'Licencia de construcción — Demolición',
-  'Licencia de construcción — Cerramiento',
-  'Licencia de urbanización',
-  'Licencia de parcelación',
-  'Licencia de subdivisión',
-];
-
 // ── Catálogo: Cubierta licencia (select) ──────────────────────
 const CUBIERTA_LICENCIA_OPCIONES = [
   'Cubierta en techo',
@@ -534,6 +519,24 @@ function _revisionParaGuardar(dObj) {
   return out;
 }
 
+// Titular, área aprobada y curaduría viajan fuera del payload posicional
+// (el backend las escribe por nombre en LICENCIA_TITULAR/_AREA_APROBADA/
+// _CURADURIA). Con licencia SI van los valores (aunque estén vacíos: ''
+// borra); con NO se borran; sin responder, undefined → el backend no toca.
+function _licenciaExtraParaGuardar(dObj) {
+  if (dObj.licenciaAportada === 'SI') {
+    return {
+      titular: dObj.licTitular || '',
+      areaAprobada: dObj.licAreaAprobada || '',
+      curaduria: dObj.licCuraduria || '',
+    };
+  }
+  if (dObj.licenciaAportada === 'NO') {
+    return { titular: '', areaAprobada: '', curaduria: '' };
+  }
+  return undefined;
+}
+
 // ── Estado inicial (en blanco o prefill) ───────────────────────
 function _estadoInicial(datosIniciales) {
   const d = datosIniciales || {};
@@ -610,6 +613,11 @@ function _estadoInicial(datosIniciales) {
     cubierta:        d['CUBIERTA LICENCIA']   || '',
     sistema:         d['SISTEMA ESTRUCTURAL'] || d['SISTEMA ESTRUCT'] || '',
     obsLicencia:     d['OBS LICENCIA']        || '',
+    // Titular, área aprobada y curaduría: columnas propias (licenciaExtra),
+    // el payload posicional no las toca.
+    licTitular:      d['LICENCIA_TITULAR'] || '',
+    licAreaAprobada: d['LICENCIA_AREA_APROBADA'] || '',
+    licCuraduria:    d['LICENCIA_CURADURIA'] || '',
     // Descripción + conclusiones
     actuacion:       _partsAct[0] || '',
     obsConclusion:   _partsAct[1] || '',
@@ -2792,7 +2800,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -3021,6 +3029,40 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
 
   // Helper para actualizar un campo del form
   function setCampo(k, v) { setD(prev => ({ ...prev, [k]: v })); }
+
+  // Chips de licencia («Tipo de trámite» / «Modalidad»): el estado sigue
+  // siendo el texto d.tipoLicencia (columna AL); cada toggle parsea, cambia
+  // su grupo y vuelve a formatear (parsearTipoModalidad/formatearTipoModalidad,
+  // utils.js). Los valores que no casan con el catálogo se muestran abajo
+  // como «Valor anterior» para que el inspector los corrija, pero no se pierden.
+  function _chipsLicencia(grupo) {
+    const lic = parsearTipoModalidad(d.tipoLicencia);
+    const opciones = grupo === 'tramites' ? LICENCIA_TRAMITES : LICENCIA_MODALIDADES;
+    const activos = lic[grupo] || [];
+    return (
+      <div>
+        <div className="chips">
+          {opciones.map(o => (
+            <button key={o} type="button"
+              className={'chip' + (activos.indexOf(o) >= 0 ? ' activo' : '')}
+              onClick={() => {
+                const nuevos = activos.indexOf(o) >= 0
+                  ? activos.filter(a => a !== o)
+                  : [...activos, o];
+                setCampo('tipoLicencia', formatearTipoModalidad({ ...lic, [grupo]: nuevos }));
+              }}>
+              {o}
+            </button>
+          ))}
+        </div>
+        {lic.otros.length > 0 && (
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--texto-3)' }}>
+            Valor anterior: {lic.otros.join(', ')}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Lista dinámica de visitadores (cargada desde USUARIOS vía endpoint).
   // Si falla la carga (sin red o primer arranque sin cache), usa el fallback.
@@ -4173,7 +4215,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
@@ -4387,8 +4429,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     req(d.licenciaAportada, '¿Se aportó licencia? (SI/NO)');
     if (d.licenciaAportada === 'SI') {
       req(d.licencia, 'N° de licencia');
-      req(d.fechaLicencia, 'Fecha de licencia');
-      req(d.tipoLicencia, 'Tipo y modalidad de licencia');
+      req(d.fechaLicencia, 'Fecha de expedición de la licencia');
+      // Al menos un trámite (las modalidades son opcionales: la licencia de
+      // urbanización, p. ej., no lleva ninguna).
+      req(parsearTipoModalidad(d.tipoLicencia).tramites.length, 'Tipo de trámite de la licencia');
       req(d.pisos, 'Pisos aprobados');
       req(d.destinaciones, 'Destinaciones de licencia');
       req(d.cubierta, 'Cubierta de licencia');
@@ -4649,8 +4693,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         cargo: usuario?.cargo || '',
         seAportoLicencia: d.licenciaAportada,
         numRes:           d.licencia,
-        fechaEjec:        d.fechaLicencia,
+        // La fecha que pide la visita es la de EXPEDICIÓN; la ejecutoria se
+        // escribe en el informe. Antes viajaba como fechaEjec y el generador
+        // la presentaba como «Fecha de ejecutoria».
+        fechaExpedicion:  d.fechaLicencia,
         tipoModalidad:    d.tipoLicencia,
+        titular:          d.licTitular,
+        areaApro:         d.licAreaAprobada,
+        curaduria:        d.licCuraduria,
         pisos:            d.pisos,
         dest:             d.destinaciones,
         cubierta:         d.cubierta,
@@ -5524,18 +5574,24 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             <_Campo label="N° Licencia">
               <_Input mono value={d.licencia} onChange={v => setCampo('licencia', v)} />
             </_Campo>
-            <_Campo label="Fecha de la licencia">
+            <_Campo label="Fecha de expedición">
               <_Input type="date" value={d.fechaLicencia}
                 onChange={v => setCampo('fechaLicencia', v)} />
             </_Campo>
-            <_Campo label="Tipo y modalidad" fullWidth>
-              <select className="input-campo" value={d.tipoLicencia}
-                onChange={e => setCampo('tipoLicencia', e.target.value)}>
-                <option value="">Seleccionar tipo...</option>
-                {TIPO_MODALIDAD_OPCIONES.map(o => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
+            <_Campo label="Tipo de trámite" fullWidth>
+              {_chipsLicencia('tramites')}
+            </_Campo>
+            <_Campo label="Modalidad" fullWidth>
+              {_chipsLicencia('modalidades')}
+            </_Campo>
+            <_Campo label="Titular de la licencia">
+              <_Input value={d.licTitular} onChange={v => setCampo('licTitular', v)} />
+            </_Campo>
+            <_Campo label="Área aprobada (m²)">
+              <_Input mono value={d.licAreaAprobada} onChange={v => setCampo('licAreaAprobada', v)} />
+            </_Campo>
+            <_Campo label="Curaduría urbana">
+              <_Input value={d.licCuraduria} onChange={v => setCampo('licCuraduria', v)} />
             </_Campo>
             <_Campo label="Pisos aprobados">
               <_Input mono value={d.pisos} onChange={v => setCampo('pisos', v)} />

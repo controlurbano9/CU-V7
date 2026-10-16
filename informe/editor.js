@@ -397,17 +397,36 @@ function _pintarMapa() {
 }
 _pintarMapa();
 
-// ── Licencia y POT: solo lectura ─────────────────────────────────────
+// ── Licencia y POT: lo de la visita en solo lectura ──────────────────
+// Solo dos campos editables, que la visita no captura: fecha de ejecutoria
+// y vigencia (enlazados a los #fechaEjec / #vigenciaLic del asistente
+// oculto, que son los que alimentan sugerencias y Word).
+function _fechaEjecISO() {
+  var v = String(gv('fechaEjec') || '').trim();
+  var m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(v);
+  if (m) return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+}
+
 function _pintarLicencia(d) {
   var el = _el('ed-licencia');
-  if (d.sin_licencia) {
+  var aporto = V6_CTX.seAportoLicencia;
+  if (!aporto) {
+    el.innerHTML = '<div class="ed-nota-bloque">La visita no dice si se aportó licencia. Corrígelo en la visita y vuelve a abrir el informe.</div>';
+    return;
+  }
+  if (aporto === 'NO' || d.sin_licencia) {
     el.innerHTML = '<div class="ed-nota-bloque">No se aportó licencia: este cuadro no va en el informe.</div>';
     return;
   }
+  var tts = [], mods = [];
+  document.querySelectorAll('.tt-chk:checked').forEach(function (c) { tts.push(c.value); });
+  document.querySelectorAll('.mod-chk:checked').forEach(function (c) { mods.push(c.value); });
   var filas = [
     ['N.º de resolución', d.num_res],
-    ['Fecha de ejecutoria', d.fecha_ejec],
-    ['Vigencia a la fecha de visita', d.estado_licencia === 'VENCIDA' ? 'Vencida' : (d.estado_licencia === 'VIGENTE' ? 'Vigente' : 'Sin verificar')],
+    ['Fecha de expedición', V6_CTX.fechaExpedicion ? _fechaCorta(V6_CTX.fechaExpedicion) : ''],
+    ['Tipo de trámite', tts.join(', ')],
+    ['Modalidad', mods.join(', ')],
     ['Titular', d.titular],
     ['Pisos aprobados', d.pisos],
     ['Área aprobada (m²)', d.area_apro],
@@ -416,11 +435,47 @@ function _pintarLicencia(d) {
     ['Cubierta aprobada', d.cubierta],
     ['Curaduría', d.curaduria]
   ].filter(function (f) { return (f[1] || '').toString().trim(); });
-  el.innerHTML = filas.length
+  if ((V6_CTX.obsLicencia || '').trim()) {
+    filas.push(['Observaciones de la licencia', V6_CTX.obsLicencia.trim()]);
+  }
+  var html = filas.length
     ? '<table class="ed-tabla">' + filas.map(function (f) {
         return '<tr><th>' + _esc(f[0]) + '</th><td>' + _esc(f[1]) + '</td></tr>';
       }).join('') + '</table>'
-    : '<div class="ed-nota-bloque">Sin datos de licencia en la visita.</div>';
+    : '';
+  html +=
+    '<div class="ed-ui"><label for="ed-lic-fejec">Fecha de ejecutoria</label>' +
+      '<input type="date" id="ed-lic-fejec"><span class="ed-ui-nota">La visita trae la fecha de expedición; la ejecutoria se escribe aquí.</span></div>' +
+    '<div class="ed-ui"><label for="ed-lic-vig">Vigencia a la fecha de la visita</label>' +
+      '<select id="ed-lic-vig"><option value="">Sin verificar</option><option value="VIGENTE">Vigente</option><option value="VENCIDA">Vencida</option></select></div>';
+  var faltan = [];
+  if (!V6_CTX.fechaExpedicion) faltan.push('fecha de expedición');
+  if (!tts.length) faltan.push('tipo de trámite');
+  if (!(d.titular || '').toString().trim()) faltan.push('titular');
+  if (!(d.area_apro || '').toString().trim()) faltan.push('área aprobada');
+  if (!(d.curaduria || '').toString().trim()) faltan.push('curaduría');
+  if (faltan.length) {
+    html += '<div class="ed-nota-bloque">Falta en la visita: ' + _esc(faltan.join(', ')) + '. Corrígelo en la visita y vuelve a abrir el informe.</div>';
+  }
+  el.innerHTML = html;
+
+  var fe = _el('ed-lic-fejec');
+  fe.value = _fechaEjecISO();
+  fe.addEventListener('change', function () {
+    var p = fe.value.split('-');
+    _el('fechaEjec').value = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : '';
+    sugerirVigenciaLic();
+    _el('ed-lic-vig').value = gv('vigenciaLic') || '';
+    _pintarSugerencias();
+  });
+  var vg = _el('ed-lic-vig');
+  vg.value = gv('vigenciaLic') || '';
+  vg.addEventListener('change', function () {
+    var sel = _el('vigenciaLic');
+    sel.value = vg.value;
+    sel.dataset.auto = '';
+    _pintarSugerencias();
+  });
 }
 _pintarLicencia(_d);
 
