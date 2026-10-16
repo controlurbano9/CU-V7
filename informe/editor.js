@@ -1191,7 +1191,10 @@ _pintarCierreFijo();
 // demás quedan pendientes hasta la primera «Revisar». No se guarda solo por
 // esto: viaja con el siguiente cambio del inspector.
 if (!_revSello) {
-  var _dVisita = recolectarDatosWizard().d;
+  // `_d`, no recolectarDatosWizard() de nuevo: trae el radicado parchado con el
+  // que se armaron los antecedentes; sin él la frase no coincidía y
+  // «Antecedentes» nacía vencida (QA GLM 2026-10-16).
+  var _dVisita = _d;
   _revSello = {
     secciones: selloInicialSecciones(_informeActual(), {
       observaciones: _SESION_QS.get('observaciones') || '',
