@@ -943,7 +943,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=130"></script>
+<script src="../utils.js?v=131"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -3037,9 +3037,15 @@ function _quitarTildesInforme(s) {
 //   sinCobertura   no exige una conclusión por comportamiento ni el verbo
 //                  rector en las observaciones: sirve para revisar un punto
 //                  suelto (una sugerencia, una corrección) y no el informe entero.
+// `avisos`: reglas de redacción que daban falsos positivos con texto correcto
+// («La obra no tiene licencia», «se verificó la ficha catastral»…). Avisan
+// pero NO bloquean «Generar Word» (decisión del usuario 2026-10-16): lo de
+// fondo (palabras prohibidas, cobertura, linderos, plazos…) sigue en
+// `problemas`.
 function validarInformeIA(json, ctx, opts) {
   opts = opts || {};
   var problemas = [];
+  var avisos = [];
   var todoTexto = [json.antecedentes || '', json.observaciones || '']
     .concat(json.conclusiones_items || [])
     .concat(json.recomendaciones_items || [])
@@ -3060,7 +3066,7 @@ function validarInformeIA(json, ctx, opts) {
   });
   FRASES_NORMATIVA_VAGA_INFORME.forEach(function(f) {
     if (todoNorm.indexOf(_quitarTildesInforme(f)) >= 0) {
-      problemas.push('Cita la norma de forma genérica ("' + f + '"): cita la norma específica o ninguna.');
+      avisos.push('Cita la norma de forma genérica ("' + f + '"): cita la norma específica o ninguna.');
     }
   });
   TEXTO_PLANTILLA_FILTRADO_INFORME.forEach(function(t) {
@@ -3122,10 +3128,10 @@ function validarInformeIA(json, ctx, opts) {
 
   // Hecho negativo absoluto sobre la licencia, en cualquier seccion.
   var mNeg = LICENCIA_NEGATIVA_ABSOLUTA.exec(todoNorm);
-  if (mNeg) problemas.push('Afirma un hecho negativo sobre la licencia ("' + mNeg[0] + '"): escribe "no se aportó ni exhibió licencia".');
+  if (mNeg) avisos.push('Afirma un hecho negativo sobre la licencia ("' + mNeg[0] + '"): escribe "no se aportó ni exhibió licencia".');
 
   // El dato del wizard es el codigo catastral (30 digitos), no la ficha.
-  if (/\bficha catastral\b/.test(todoNorm)) problemas.push('Dice "ficha catastral" donde va el código catastral.');
+  if (/\bficha catastral\b/.test(todoNorm)) avisos.push('Dice "ficha catastral" donde va el código catastral.');
 
   // Observaciones solo describen.
   // El mensaje lo lee el inspector en el editor (no solo el registro de
@@ -3133,7 +3139,7 @@ function validarInformeIA(json, ctx, opts) {
   var mJuicio = JUICIO_EN_OBSERVACIONES.exec(_quitarTildesInforme(json.observaciones || ''));
   if (mJuicio) {
     var esRecomendacion = mJuicio[0].indexOf('recomienda') >= 0;
-    problemas.push('Las observaciones de campo traen una ' + (esRecomendacion ? 'recomendación' : 'conclusión')
+    avisos.push('Las observaciones de campo traen una ' + (esRecomendacion ? 'recomendación' : 'conclusión')
       + ' ("' + mJuicio[0] + '"). Pásala a ' + (esRecomendacion ? 'Recomendaciones' : 'Conclusiones')
       + ' o quítala: las observaciones solo cuentan lo que se vio.');
   }
@@ -3154,7 +3160,7 @@ function validarInformeIA(json, ctx, opts) {
       if (norm.indexOf(v) >= 0) problemas.push('Recomendación ' + (i + 1) + ' usa un verbo que le corresponde al Inspector, no al informe: "' + v + '".');
     });
     var mTent = RECOMENDACION_TENTATIVA.exec(norm);
-    if (mTent) problemas.push('Recomendación ' + (i + 1) + ' es tentativa ("' + mTent[0] + '"): di la acción directa.');
+    if (mTent) avisos.push('Recomendación ' + (i + 1) + ' es tentativa ("' + mTent[0] + '"): di la acción directa.');
     var mPlazo = PLAZO_EN_RECOMENDACION.exec(norm);
     if (mPlazo) problemas.push('Recomendación ' + (i + 1) + ' fija un plazo ("' + mPlazo[0] + '"): los plazos los da el Inspector de Policía.');
     // 'remisi' cubre remision/remisiones, que esquivaban el indexOf de
@@ -3186,14 +3192,14 @@ function validarInformeIA(json, ctx, opts) {
       // 2026-10-15; antes decía lo contrario de lo que el texto decía).
       var antes = todoNorm.slice(Math.max(0, mAmp.index - 60), mAmp.index);
       var negada = /\b(?:no|ninguna?|ningun|ni|sin|tampoco|nada)\b[^.;]*$/.test(antes);
-      problemas.push(negada
+      (negada ? avisos : problemas).push(negada
         ? 'Afirma un hecho negativo sobre la licencia ("' + mAmp[0] + '"): escribe "no se aportó ni exhibió licencia".'
         : 'Dice "' + mAmp[0] + '" y no se aportó licencia: nada de lo construido consta como aprobado.');
     }
   }
   // Razonamiento interno del prompt que no va en el informe.
   if (/carga de acreditar/.test(todoNorm)) {
-    problemas.push('Trae una nota interna ("carga de acreditar"): no va en el informe.');
+    avisos.push('Trae una nota interna ("carga de acreditar"): no va en el informe.');
   }
 
   // Licencia vencida: la recomendacion permanente debe pedir abstenerse hasta
@@ -3242,7 +3248,7 @@ function validarInformeIA(json, ctx, opts) {
   if (comportamientosA.length) {
     var obsNorm = _quitarTildesInforme(json.observaciones || '');
     if (!opts.sinCobertura && !VERBO_RECTOR_LITERAL_A.test(obsNorm)) {
-      problemas.push('Las observaciones de campo no mencionan la conducta del literal A marcado (' + comportamientosA.join(', ') + '): parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
+      avisos.push('Las observaciones de campo no mencionan la conducta del literal A marcado (' + comportamientosA.join(', ') + '): parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
     }
     comportamientosA.forEach(function(codigo) {
       var rxCita = new RegExp('\\b' + codigo + '\\b|literal\\s+a\\b[^]*?numeral\\s+' + codigo.slice(1) + '\\b');
@@ -3250,12 +3256,12 @@ function validarInformeIA(json, ctx, opts) {
         return rxCita.test(c) || rxCita.test(_quitarTildesInforme(c));
       });
       if (conclusionQueCita && !VERBO_RECTOR_LITERAL_A.test(_quitarTildesInforme(conclusionQueCita))) {
-        problemas.push('La conclusión que cita "' + codigo + '" no menciona la conducta del literal A: parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
+        avisos.push('La conclusión que cita "' + codigo + '" no menciona la conducta del literal A: parcelar, urbanizar, demoler, intervenir o construir, en cualquier forma del verbo.');
       }
     });
   }
 
-  return { ok: problemas.length === 0, problemas: problemas };
+  return { ok: problemas.length === 0, problemas: problemas, avisos: avisos };
 }
 
 // ── Pedir JSON a la IA (webhook → DeepSeek → Claude) ────────────────────────
@@ -4978,7 +4984,7 @@ async function subirInformeAlDrive(blob) {
 <!-- Editor con forma de documento (ronda 1, docs/PLAN_2026-10-15_editor-informe.md):
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
-<link rel="stylesheet" href="editor.css?v=8">
-<script src="editor.js?v=11"></script>
+<link rel="stylesheet" href="editor.css?v=9">
+<script src="editor.js?v=12"></script>
 </body>
 </html>

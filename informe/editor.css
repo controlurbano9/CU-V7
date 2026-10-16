@@ -191,6 +191,14 @@ body.embebido .ed-rail { top: 24px; }
 .ed-bloqueo-linea b { color: var(--rojo); }
 .ed-item .ed-bloqueo-linea { grid-column: 2 / -1; margin-top: 4px; }
 
+/* ── Avisos de redacción (2026-10-16): no impiden generar el Word, van en
+   ámbar debajo de la nota (del bloqueo o de «todo listo»). ── */
+.ed-nota-avisos { padding: 10px 12px; border-radius: var(--r); background: var(--amarillo-bg, #faf1dd);
+  color: var(--texto); font-size: 13px; line-height: 1.45; margin-top: 8px; }
+.ed-nota-avisos b { display: block; color: var(--amarillo); font-size: 13px; margin-bottom: 4px; }
+.ed-nota-avisos ul { list-style: none; margin: 0; padding: 0; }
+.ed-nota-avisos li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(31,27,22,.1); }
+
 /* ── Abrir el Word ya generado ── */
 a.ed-btn-abrir { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   text-decoration: none; }
@@ -258,8 +266,6 @@ body.modo-doc #save-ind { display: none !important; }
 .ed-preg { padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--r); margin-top: 8px; }
 .ed-preg p { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
 .ed-preg label { display: block; font-size: 13px; padding: 4px 0; font-weight: 400; }
-.ed-preg-ob { font-size: 11px; font-weight: 600; color: var(--brand-ink); background: var(--brand-bg);
-  border-radius: 999px; padding: 1px 8px; vertical-align: 1px; }
 .ed-preg-otra { width: 100%; margin-top: 4px; border: 1px solid var(--borde-med); border-radius: var(--r-sm);
   padding: 8px 10px; font-family: inherit; font-size: 13px; min-height: 36px; background: var(--superficie); }
 .ed-cambio { border: 1px solid var(--borde); border-radius: var(--r); padding: 10px 12px; margin-top: 10px; }

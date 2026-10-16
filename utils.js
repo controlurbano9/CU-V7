@@ -3087,7 +3087,7 @@ function _comportamientosCitados(texto, poligono) {
 // 2026-10-15: a Alejandro se le pidió justificar el largo de la propuesta
 // de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
-var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance'];
+var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b'];
 function revisarTextoLocal(e) {
   e = e || {};
   var senales = [];
@@ -3179,8 +3179,8 @@ function revisarTextoLocal(e) {
 
   // R06 / R06b: el antejardín, según lo que diga el texto. Construir o
   // intervenir ahí es A3; materiales o escombros, D13 (decisión del usuario).
-  // Por texto la detección se equivoca (fase 0: 5 de 7), así que aquí
-  // pregunta; con el catálogo en el acta (fase 2) pasa a bloquear.
+  // Son aviso (no piden justificación) porque la detección por texto falla
+  // 5 de 7 (fase 0); con el catálogo en el acta (fase 2) pasará a bloquear.
   var oracionesAnte = _sinTildesRev(todo).split(/[.;\n]+/).filter(function(s) {
     return /antejardin/.test(s) && !/intencion|pretende|quiere|planea|proyecta/.test(s);
   });

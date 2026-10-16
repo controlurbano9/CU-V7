@@ -263,7 +263,7 @@ test('huella de la revisión: se vence con cualquier edición', () => {
 // ── Ronda 2: condición de «Generar Word» ──────────────────────
 test('Generar Word: revisión, validador limpio y cierre grave con comportamientos', () => {
   const limpio = { vigente: true, huboRevision: true, problemas: [], requiereCierre: false, tieneCierre: false };
-  assert.deepEqual(ed.condicionGenerarWord(limpio), { ok: true, motivo: '' });
+  assert.deepEqual(ed.condicionGenerarWord(limpio), { ok: true, motivo: '', avisos: [] });
   // Nunca revisado.
   const nunca = ed.condicionGenerarWord({ vigente: false, huboRevision: false, problemas: [], requiereCierre: false, tieneCierre: false });
   assert.equal(nunca.ok, false);
@@ -286,7 +286,15 @@ test('Generar Word: revisión, validador limpio y cierre grave con comportamient
   assert.equal(sinCierre.ok, false);
   assert.match(sinCierre.motivo, /frase de cierre grave/);
   const conCierre = ed.condicionGenerarWord(Object.assign({}, limpio, { requiereCierre: true, tieneCierre: true }));
-  assert.deepEqual(conCierre, { ok: true, motivo: '' });
+  assert.deepEqual(conCierre, { ok: true, motivo: '', avisos: [] });
+  // Avisos de redacción (2026-10-16): viajan tal cual y NO bloquean.
+  const conAvisos = ed.condicionGenerarWord(Object.assign({}, limpio, { avisos: ['a1'] }));
+  assert.equal(conAvisos.ok, true);
+  assert.deepEqual(conAvisos.avisos, ['a1']);
+  const problemaYAviso = ed.condicionGenerarWord(Object.assign({}, limpio, { problemas: ['p1'], avisos: ['a1'] }));
+  assert.equal(problemaYAviso.ok, false);
+  assert.equal(problemaYAviso.tipo, 'problema');
+  assert.deepEqual(problemaYAviso.avisos, ['a1']);
 });
 
 // «Ver dónde»: de un problema del validador a su sección, punto y frase.

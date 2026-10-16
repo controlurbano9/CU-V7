@@ -125,7 +125,8 @@ test('chequeo local: cada señal dice si es de coherencia o de forma', () => {
     infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true,
   });
   const tipo = id => s.find(x => x.id === id).tipo;
-  assert.equal(tipo('R06'), 'coherencia');
+  assert.equal(tipo('R06'), 'forma');
+  assert.equal(tipo('R06b'), 'forma');
   assert.equal(tipo('area'), 'coherencia');
   assert.equal(tipo('alcance'), 'forma');
   assert.equal(tipo('traslado'), 'forma');

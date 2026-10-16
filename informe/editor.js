@@ -402,13 +402,14 @@ function revisionInformeVigente(rev, informe, huellaFn) {
 // «Ver dónde»); 'revision' solo pide revisar.
 // Los problemas van ANTES que la revisión (2026-10-16): corregirlos cambia el
 // texto y vence la revisión, así que pedir revisar primero obligaba a revisar
-// dos veces.
+// dos veces. `avisos` (redacción) viajan tal cual: se pintan pero no bloquean.
 function condicionGenerarWord(o) {
   var problemas = (o.problemas || []).slice();
+  var avisos = (o.avisos || []).slice();
   if (o.requiereCierre && !o.tieneCierre) problemas.push('Con comportamientos marcados falta la frase de cierre grave.');
-  if (problemas.length) return { ok: false, tipo: 'problema', motivo: problemas[0], problemas: problemas };
-  if (!o.vigente) return { ok: false, tipo: 'revision', motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final' };
-  return { ok: true, motivo: '' };
+  if (problemas.length) return { ok: false, tipo: 'problema', motivo: problemas[0], problemas: problemas, avisos: avisos };
+  if (!o.vigente) return { ok: false, tipo: 'revision', motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final', avisos: avisos };
+  return { ok: true, motivo: '', avisos: avisos };
 }
 
 // Dónde buscar en el documento un problema del validador: la sección
@@ -524,6 +525,9 @@ var _guardadoTxt = '';
 // Lo que no deja generar (_pintarBloqueos): [{ texto, loc: { el, inicio, fin } | null }]
 // y los avisos en línea pintados [{ el, texto, nodo }].
 var _bloqueos = [], _notasBloqueo = [];
+// Avisos de redacción (no bloquean): mismo formato que _bloqueos, solo para
+// el «Ver dónde» de la nota bajo «Generar Word».
+var _avisos = [];
 // Word ya generado (_pintarAbrirWord).
 var _linkWord = _linkGoogle(_SESION_QS.get('linkInforme'));
 var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) || [];
@@ -599,7 +603,7 @@ root.innerHTML =
       '<div class="ed-ui" id="ed-mapa-acc"></div>' +
 
       '<div class="ed-h">Observaciones de campo.</div>' +
-      '<div class="ed-ui"><span class="ed-chip ed-chip-ok">✓ Revisado en la visita</span><span class="ed-ui-nota">Sin límite de largo. Lo que cambies aquí se revisa al final.</span></div>' +
+      '<div class="ed-ui"><span class="ed-ui-nota">Sin límite de largo. Lo que cambies aquí se revisa al final.</span></div>' +
       '<div class="ed-ed" contenteditable="true" id="ed-obs"></div>' +
 
       '<div class="ed-h">Resumen de lo aprobado por curaduría.</div>' +
@@ -1192,11 +1196,12 @@ function _tFinalDesdeDocumento() {
 
 function _condicionWord() {
   var informe = _informeActual();
-  var problemas = validarInformeIA(_tFinalDesdeDocumento(), recolectarDatosWizard(), { sinCantidades: true }).problemas;
+  var validacion = validarInformeIA(_tFinalDesdeDocumento(), recolectarDatosWizard(), { sinCantidades: true });
   return condicionGenerarWord({
     vigente: revisionInformeVigente(_revSello, informe, huellaRevision),
     huboRevision: !!_revSello,
-    problemas: problemas,
+    problemas: validacion.problemas,
+    avisos: validacion.avisos,
     requiereCierre: _requiereCierreGrave(),
     // El cierre está en la hoja si existe el punto fijo o uno igual del inspector.
     tieneCierre: !!_el('ed-concl').querySelector('.ed-item-fijo') ||
@@ -1214,6 +1219,7 @@ function _pintarEstado() {
   var hubo = !!_revSello;
   var cond = _condicionWord();
   _pintarBloqueos(cond.tipo === 'problema' ? cond.problemas : []);
+  _avisos = (cond.avisos || []).map(function (t) { return { texto: t, loc: _ubicarEnDocumento(t) }; });
   // La sección donde está lo que bloquea se marca en rojo en la lista.
   var secBloq = {};
   _bloqueos.forEach(function (b) { var s = b.loc && _seccionDeBloque(b.loc.el); if (s) secBloq[s] = true; });
@@ -1249,7 +1255,8 @@ function _pintarEstado() {
 
 // La nota bajo «Generar Word» dice qué falta. Un problema del texto es un
 // BLOQUEO (caja roja con cada problema y su «Ver dónde»); la revisión
-// pendiente es solo una nota. Se reescribe solo si cambió: es aria-live.
+// pendiente es solo una nota. Los avisos de redacción van debajo, en ámbar:
+// no impiden generar (2026-10-16). Se reescribe solo si cambió: es aria-live.
 function _pintarNotaGenerar(cond, huboRevision) {
   var nota = _el('ed-gen-nota');
   var cls, html;
@@ -1268,6 +1275,14 @@ function _pintarNotaGenerar(cond, huboRevision) {
         (b.loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-problema="' + i + '">Ver dónde</button>' : '') +
         '</li>';
     }).join('') + '</ul>';
+  }
+  if (cond.avisos && cond.avisos.length) {
+    html += '<div class="ed-nota-avisos"><b>Revisa la redacción (no impide generar)</b><ul>' +
+      cond.avisos.map(function (t, i) {
+        return '<li>' + _esc(t) +
+          (_avisos[i] && _avisos[i].loc ? ' <button type="button" class="ed-bloqueo-ir" data-ed-ir-aviso="' + i + '">Ver dónde</button>' : '') +
+          '</li>';
+      }).join('') + '</ul></div>';
   }
   if (nota.className !== cls) nota.className = cls;
   if (nota.innerHTML !== html) nota.innerHTML = html;
@@ -1388,8 +1403,9 @@ function _pintarBloqueos(problemas) {
 }
 
 // «Ver dónde»: lleva al bloque y deja la frase seleccionada para corregirla.
-function _irAProblema(i) {
-  var b = _bloqueos[i];
+// Sirve para bloqueos y avisos (misma lógica, distinta lista).
+function _irAProblema(i, lista) {
+  var b = (lista || _bloqueos)[i];
   var loc = b && _ubicarEnDocumento(b.texto);
   if (!loc || !loc.el) return;
   loc.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1819,7 +1835,6 @@ root.addEventListener('input', function (e) {
     _programarGuardar();
     if (e.target.id === 'ed-obs') _programarPropuesta();
   }
-  if (e.target.hasAttribute && e.target.hasAttribute('data-ed-preg-otra')) _validarPaso1();
   // Campos de texto del asistente traídos al documento (observaciones de la
   // tabla del art. 135, POT escrita a mano, cargo): también se guardan.
   if (_esCampoDelDocumento(e.target) && !(e.target.classList && e.target.classList.contains('ed-ed'))) _programarGuardar();
@@ -1836,6 +1851,7 @@ root.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('button') : null;
   if (!b) return;
   if (b.hasAttribute('data-ed-ir-problema')) { _irAProblema(parseInt(b.getAttribute('data-ed-ir-problema'), 10)); return; }
+  if (b.hasAttribute('data-ed-ir-aviso')) { _irAProblema(parseInt(b.getAttribute('data-ed-ir-aviso'), 10), _avisos); return; }
   if (b.hasAttribute('data-ed-conf')) { _resolverConflicto(b.getAttribute('data-ed-conf')); return; }
   if (b.hasAttribute('data-ed-visita')) { _resolverCambioVisita(b.getAttribute('data-ed-visita')); return; }
   if (b.hasAttribute('data-ed-agregar')) {
@@ -1897,9 +1913,8 @@ root.addEventListener('click', function (e) {
   }
 });
 
-// Radios de preguntas obligatorias y casillas de cambios (panel de revisión).
+// Radios de preguntas y casillas de cambios (panel de revisión).
 root.addEventListener('change', function (e) {
-  if (e.target.name && e.target.name.indexOf('ed-preg-') === 0) _validarPaso1();
   if (e.target.hasAttribute && e.target.hasAttribute('data-ed-cambio')) {
     var btn = document.querySelector('[data-ed-rev-aplicar]');
     if (btn) btn.disabled = !document.querySelectorAll('[data-ed-cambio]:checked').length;
@@ -2013,14 +2028,8 @@ function _respuestaPregunta(i) {
   return p ? (p.opciones[parseInt(sel.value, 10)] || '') : '';
 }
 
-// Las preguntas obligatorias deben responderse para poder continuar.
-function _validarPaso1() {
-  if (!_revPanel || !_revPanel.critica) return;
-  var falta = _revPanel.critica.preguntas.some(function (p, i) { return p.obligatoria && !_respuestaPregunta(i); });
-  var btn = document.querySelector('[data-ed-rev-continuar]');
-  if (btn) btn.disabled = falta;
-}
-
+// Las preguntas de la revisión son opcionales (2026-10-16): «Continuar»
+// siempre está habilitado.
 function _pintarPaso1() {
   var cr = _revPanel.critica;
   var grupos = [
@@ -2046,8 +2055,7 @@ function _pintarPaso1() {
     '</div>';
   if (cr.preguntas.length) {
     html += '<div class="ed-pregs">' + cr.preguntas.map(function (p, i) {
-      return '<div class="ed-preg"><p>' + _esc(p.pregunta) +
-        (p.obligatoria ? ' <span class="ed-preg-ob">obligatoria</span>' : '') + '</p>' +
+      return '<div class="ed-preg"><p>' + _esc(p.pregunta) + '</p>' +
         p.opciones.map(function (o, j) {
           return '<label><input type="radio" name="ed-preg-' + i + '" value="' + j + '"> ' + _esc(o) + '</label>';
         }).join('') +
@@ -2057,8 +2065,7 @@ function _pintarPaso1() {
     }).join('') + '</div>';
   }
   html += '</div>' +
-    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-continuar' +
-    (cr.preguntas.some(function (p) { return p.obligatoria; }) ? ' disabled' : '') + '>Continuar</button></div>';
+    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-continuar>Continuar</button></div>';
   _modalRevision(html);
 }
 
