@@ -233,6 +233,9 @@ _purgarBorradoresEditor();
 
 var _ctx = recolectarDatosWizard();
 var _d = _ctx.d;
+// recolectarDatosWizard() no trae el radicado (vive en V6_CTX): sin esto los
+// antecedentes salían sin número y un OFICIO-… nunca se detectaba como oficio.
+_d.radicado = _d.radicado || V6_CTX.radicado || '';
 
 var _borrador = null;
 try { _borrador = JSON.parse(localStorage.getItem(_claveEditor()) || 'null'); } catch (e) {}
