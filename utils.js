@@ -3233,6 +3233,15 @@ function revisarTextoLocal(e) {
     add('R13', 'area', 'Usos actuales: ' + usosNo.join(', ').toLowerCase() + '. Si el uso no está permitido en el polígono' +
       (e.poligono ? ' ' + e.poligono : '') + ', marca C11; si lo está, dilo en la justificación.');
   }
+
+  // R14 / R15 (2026-10-15): «¿Las obras requieren licencia?» contra A4.
+  var req = String(e.requiereLicencia || '').trim().toUpperCase();
+  if (req === 'SI' && String(e.licenciaAportada || '').trim().toUpperCase() === 'NO' && !tiene('A4')) {
+    add('R14', 'area', 'Las obras requieren licencia y no se aportó, pero no está marcado A4 (sin licencia o caducada).');
+  }
+  if (req === 'NO' && tiene('A4')) {
+    add('R15', 'area', 'Dice que las obras no requieren licencia y está marcado A4 (sin licencia): una de las dos sobra.');
+  }
   return senales;
 }
 
@@ -3303,6 +3312,95 @@ function formatearTipoModalidad(o) {
   if ((o.tramites || []).length) partes.push(o.tramites.join(', '));
   if (mods.length) partes.push(mods.join(', '));
   return partes.join(' — ');
+}
+
+// ── ¿Las obras requieren licencia? (2026-10-15, decisión del usuario) ──
+// Reemplaza en pantalla a «¿Reparación locativa?»: la reparación locativa es
+// uno de los motivos del NO. Se guarda en REQUIERE_LICENCIA (SI | NO | NO SE
+// PUDO DETERMINAR) y REQUIERE_LICENCIA_DETALLE (modalidades exigibles, motivos
+// del NO separados por « | », o por qué no se pudo determinar). La columna AA
+// (REPARACION LOCATIVA) se sigue llenando derivada: la leen el acta y R04/R05.
+var REQUIERE_INDETERMINADO = 'NO SE PUDO DETERMINAR';
+var MOTIVOS_NO_REQUIERE = [
+  'Reparación locativa',
+  'Mantenimiento o cambio de acabados',
+  'Obra amparada por licencia o reconocimiento anterior',
+  'Otro',
+];
+
+function _respuestaRequiere(v) {
+  var n = _normCatalogoLic(v);
+  if (n === 'si') return 'SI';
+  if (n === 'no') return 'NO';
+  if (n === _normCatalogoLic(REQUIERE_INDETERMINADO)) return REQUIERE_INDETERMINADO;
+  return '';
+}
+
+// { respuesta, modalidades, motivos, otro, motivoIndeterminado } → columnas.
+function formatearRequiereLicencia(o) {
+  o = o || {};
+  var r = _respuestaRequiere(o.respuesta);
+  var detalle = '';
+  if (r === 'SI') detalle = (o.modalidades || []).join(', ');
+  else if (r === 'NO') {
+    detalle = (o.motivos || []).map(function (m) {
+      return m === 'Otro' ? 'Otro: ' + String(o.otro || '').trim() : m;
+    }).join(' | ');
+  } else if (r === REQUIERE_INDETERMINADO) detalle = String(o.motivoIndeterminado || '').trim();
+  return { requiere: r, detalle: detalle };
+}
+
+// Columnas → objeto de pantalla. Visitas anteriores a la pregunta: con la
+// AA vieja en SI se lee como NO por reparación locativa.
+function parsearRequiereLicencia(requiere, detalle, repLocativaVieja) {
+  var out = { respuesta: _respuestaRequiere(requiere), modalidades: [], motivos: [], otro: '', motivoIndeterminado: '' };
+  var t = String(detalle || '').trim();
+  if (out.respuesta === 'SI') {
+    var modNorm = {};
+    LICENCIA_MODALIDADES.forEach(function (m) { modNorm[_normCatalogoLic(m)] = m; });
+    t.split(/\s*,\s*/).forEach(function (tok) {
+      var m = modNorm[_normCatalogoLic(tok)];
+      if (m && out.modalidades.indexOf(m) < 0) out.modalidades.push(m);
+    });
+  } else if (out.respuesta === 'NO') {
+    t.split(/\s*\|\s*/).forEach(function (tok) {
+      if (!tok) return;
+      if (/^otro\s*:/i.test(tok)) {
+        if (out.motivos.indexOf('Otro') < 0) out.motivos.push('Otro');
+        out.otro = tok.replace(/^otro\s*:\s*/i, '');
+        return;
+      }
+      var m = MOTIVOS_NO_REQUIERE.filter(function (x) { return _normCatalogoLic(x) === _normCatalogoLic(tok); })[0];
+      if (m && out.motivos.indexOf(m) < 0) out.motivos.push(m);
+    });
+  } else if (out.respuesta === REQUIERE_INDETERMINADO) {
+    out.motivoIndeterminado = t;
+  } else if (_normCatalogoLic(repLocativaVieja) === 'si') {
+    out.respuesta = 'NO';
+    out.motivos = ['Reparación locativa'];
+  }
+  return out;
+}
+
+// Valor de la columna AA a partir de la respuesta.
+function repLocativaDesdeRequiere(o) {
+  if (!o || !o.respuesta) return '';
+  return (o.respuesta === 'NO' && (o.motivos || []).indexOf('Reparación locativa') >= 0) ? 'SI' : 'NO';
+}
+
+// Faltantes para el acta/informe (nombres como los muestra el formulario).
+function faltantesRequiereLicencia(o) {
+  o = o || {};
+  if (!o.respuesta) return ['¿Las obras requieren licencia?'];
+  if (o.respuesta === 'SI' && !(o.modalidades || []).length) return ['Modalidad que exige la licencia'];
+  if (o.respuesta === 'NO') {
+    if (!(o.motivos || []).length) return ['Por qué no requieren licencia'];
+    if (o.motivos.indexOf('Otro') >= 0 && !String(o.otro || '').trim()) return ['Motivo «Otro» de por qué no requieren licencia'];
+  }
+  if (o.respuesta === REQUIERE_INDETERMINADO && !String(o.motivoIndeterminado || '').trim()) {
+    return ['Por qué no se pudo determinar si requieren licencia'];
+  }
+  return [];
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
@@ -3452,6 +3550,12 @@ var _cuUtilsExports = {
   LICENCIA_MODALIDADES: LICENCIA_MODALIDADES,
   parsearTipoModalidad: parsearTipoModalidad,
   formatearTipoModalidad: formatearTipoModalidad,
+  REQUIERE_INDETERMINADO: REQUIERE_INDETERMINADO,
+  MOTIVOS_NO_REQUIERE: MOTIVOS_NO_REQUIERE,
+  formatearRequiereLicencia: formatearRequiereLicencia,
+  parsearRequiereLicencia: parsearRequiereLicencia,
+  repLocativaDesdeRequiere: repLocativaDesdeRequiere,
+  faltantesRequiereLicencia: faltantesRequiereLicencia,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,

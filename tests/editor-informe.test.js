@@ -272,3 +272,27 @@ test('Generar Word: revisión, validador limpio y cierre grave con comportamient
   const conCierre = ed.condicionGenerarWord(Object.assign({}, limpio, { requiereCierre: true, tieneCierre: true }));
   assert.deepEqual(conCierre, { ok: true, motivo: '' });
 });
+
+// «¿Requiere licencia?» de la visita → primera sugerencia de Conclusiones.
+test('requiere licencia: SI, NO por motivo y no se pudo determinar', () => {
+  const ed = require('../informe/editor.js');
+  const si = ed.sugerenciasRequiereLicencia({ requiere_licencia: 'SI', requiere_detalle: 'Ampliación, Modificación' });
+  assert.equal(si.length, 1);
+  assert.match(si[0].texto, /^Las obras corresponden a ampliación y modificación y requieren licencia de construcción en esas modalidades \(Decreto 1077 de 2015, art\. 2\.2\.6\.1\.1\.7\)\.$/);
+  const no = ed.sugerenciasRequiereLicencia({ requiere_licencia: 'NO', requiere_detalle: 'Reparación locativa | Otro: cambio de una puerta' });
+  assert.equal(no.length, 2);
+  assert.match(no[0].texto, /2\.2\.6\.1\.1\.10/);
+  assert.equal(no[1].texto, 'Las obras observadas no requieren licencia urbanística: cambio de una puerta.');
+  const ind = ed.sugerenciasRequiereLicencia({ requiere_licencia: 'NO SE PUDO DETERMINAR', requiere_detalle: 'no se tuvo acceso.' });
+  assert.equal(ind[0].texto, 'No se pudo determinar si las obras requieren licencia urbanística: no se tuvo acceso.');
+  assert.deepEqual(ed.sugerenciasRequiereLicencia({}), []);
+  // Va primero entre las conclusiones «De la visita».
+  const todas = ed.sugerenciasConclusionesDeLaVisita({ requiere_licencia: 'SI', requiere_detalle: 'Ampliación', sin_licencia: true });
+  assert.match(todas[0].texto, /requieren licencia/);
+});
+
+test('no requiere licencia: no sugiere «No fue aportada…»', () => {
+  const ed = require('../informe/editor.js');
+  const s = ed.sugerenciasConclusionesDeLaVisita({ requiere_licencia: 'NO', requiere_detalle: 'Reparación locativa', sin_licencia: true });
+  assert.ok(!s.some(x => /No fue aportada/.test(x.texto)));
+});

@@ -942,7 +942,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=129"></script>
+<script src="../utils.js?v=130"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -2472,7 +2472,8 @@ function recolectarDatosWizard() {
     conclusiones_inspector: V6_CTX.conclusionesInspector || '',
     sin_infraccion: !!V6_CTX.sinInfraccion && !comps.length,
     clasificacion:gv('clasificacion'), polig_uso:gv('poligUso'),
-    polig_trat:gv('poligTrat'), franja:gv('franja'), proteccion:gv('proteccion')
+    polig_trat:gv('poligTrat'), franja:gv('franja'), proteccion:gv('proteccion'),
+    requiere_licencia: V6_CTX.requiereLicencia || '', requiere_detalle: V6_CTX.requiereDetalle || ''
   };
   var fotoDescs = [];
   document.querySelectorAll('#fotos-list > div[id^="foto-"]').forEach(function(div) {
@@ -2712,6 +2713,7 @@ async function construirPromptF43(ctx) {
         : 'si no hay comportamientos marcados, no cites el art. 135; ')
     + '(b) Decreto 1077 de 2015: art. 2.2.6.1.1.7 (licencia de construccion y sus modalidades: obra nueva, ampliacion, '
     + 'adecuacion, modificacion, restauracion, reforzamiento estructural, demolicion, reconstruccion, cerramiento), '
+    + 'art. 2.2.6.1.1.10 (reparaciones locativas, que no requieren licencia), '
     + 'arts. 2.2.6.4.1.1 y siguientes (reconocimiento de edificaciones) y art. 2.2.6.4.2.2 (requisitos del '
     + 'reconocimiento, incluido el peritaje tecnico); '
     + '(c) Reglamento Colombiano de Construccion Sismo Resistente NSR-10 (Ley 400 de 1997); '
@@ -2727,6 +2729,20 @@ async function construirPromptF43(ctx) {
     + '1077 de 2015, art. 2.2.6.1.1.7). Si las CONCLUSIONES DEL INSPECTOR dicen que las obras no requieren licencia '
     + '(mantenimiento, cambio de acabados o de redes), no las llames adecuacion, ampliacion ni modificacion, que son '
     + 'modalidades de licencia: describelas como el inspector. Agrupa las obras en un solo item, nombrandolas brevemente.\n'
+    // 2026-10-15: si la visita trae «¿Requiere licencia?», es un hecho del
+    // inspector y manda sobre la deduccion de arriba.
+    + (d.requiere_licencia === 'SI'
+        ? '  a-bis) DATOS.requiere_licencia = SI (dato del inspector, no lo infieras): las obras requieren licencia de '
+          + 'construccion en la(s) modalidad(es) de DATOS.requiere_detalle (Decreto 1077 de 2015, art. 2.2.6.1.1.7). '
+          + 'Usa esas modalidades, no otras.\n'
+        : d.requiere_licencia === 'NO'
+        ? '  a-bis) DATOS.requiere_licencia = NO (dato del inspector, no lo infieras): di que las obras no requieren '
+          + 'licencia urbanistica y por que, segun DATOS.requiere_detalle. Si el motivo es "Reparacion locativa", '
+          + 'cita el art. 2.2.6.1.1.10 del Decreto 1077 de 2015. No las llames con nombres de modalidades de licencia.\n'
+        : d.requiere_licencia === 'NO SE PUDO DETERMINAR'
+        ? '  a-bis) DATOS.requiere_licencia = NO SE PUDO DETERMINAR: dilo con el motivo de DATOS.requiere_detalle, sin '
+          + 'afirmar ni negar que las obras requieren licencia.\n'
+        : '')
     + '  b) La situacion de la licencia frente a esas obras, segun la NOTA LICENCIA (no aportada; vencida; o aportada y en '
     + 'que difiere lo ejecutado de lo aprobado).\n'
     + '  c) Solo si hay un comportamiento del literal A marcado: que el predio es apto para estas actuaciones segun la '
@@ -4533,7 +4549,11 @@ var V6_CTX = {
   // que en modo doc no se pegan en #obs (las lee el editor).
   seAportoLicencia: '',
   fechaExpedicion: '',
-  obsLicencia: ''
+  obsLicencia: '',
+  // ¿Las obras requieren licencia? (2026-10-15): SI | NO | NO SE PUDO
+  // DETERMINAR y su detalle. Hecho del inspector: el prompt no lo deduce.
+  requiereLicencia: '',
+  requiereDetalle: ''
 };
 var locImg = { fuente: null, base64: '', mimeType: 'image/png', fuenteLabel: '', precisionLabel: '', generadoEn: '' };
 
@@ -4796,6 +4816,8 @@ function prefillDesdeURL() {
   // La fecha que trae la visita es la de EXPEDICIÓN: no es la ejecutoria (esa
   // se escribe en el informe) ni dispara la sugerencia de vigencia.
   V6_CTX.fechaExpedicion = _aISOdate(p.get('fechaExpedicion'));
+  V6_CTX.requiereLicencia = (p.get('requiereLicencia') || '').trim().toUpperCase();
+  V6_CTX.requiereDetalle  = (p.get('requiereDetalle') || '').trim();
   if (aporto === 'NO' || aporto === 'NO SE APORTO') {
     var cb = document.getElementById('sinLic');
     if (cb) { cb.checked = true; toggleSinLic(cb); }
@@ -4925,6 +4947,6 @@ async function subirInformeAlDrive(blob) {
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
 <link rel="stylesheet" href="editor.css?v=5">
-<script src="editor.js?v=5"></script>
+<script src="editor.js?v=7"></script>
 </body>
 </html>

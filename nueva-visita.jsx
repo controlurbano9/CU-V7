@@ -496,7 +496,10 @@ function _contextoVisitaD(dObj) {
     linea('Tipificación', _infraccionSoloCatalogo(dObj.infraccion)),
     linea('Área en contravención', _areaTexto(dObj)),
     linea('Estado de la obra', dObj.estadoObra),
-    linea('¿Reparación locativa?', dObj.repLocativa),
+    linea('¿Las obras requieren licencia?', (function () {
+      const g = formatearRequiereLicencia(dObj.reqLicencia);
+      return g.requiere ? g.requiere + (g.detalle ? ' (' + g.detalle + ')' : '') : '';
+    })()),
     linea('¿Se aportó licencia?', lic),
     linea('Altura en pisos', dObj.alturaPisos),
     linea('Destinaciones actuales', dObj.destActuales),
@@ -523,18 +526,24 @@ function _revisionParaGuardar(dObj) {
 // (el backend las escribe por nombre en LICENCIA_TITULAR/_AREA_APROBADA/
 // _CURADURIA). Con licencia SI van los valores (aunque estén vacíos: ''
 // borra); con NO se borran; sin responder, undefined → el backend no toca.
+// «¿Requiere licencia?» viaja siempre que esté respondida, se aporte o no
+// licencia (REQUIERE_LICENCIA / _DETALLE).
 function _licenciaExtraParaGuardar(dObj) {
+  let out;
   if (dObj.licenciaAportada === 'SI') {
-    return {
+    out = {
       titular: dObj.licTitular || '',
       areaAprobada: dObj.licAreaAprobada || '',
       curaduria: dObj.licCuraduria || '',
     };
+  } else if (dObj.licenciaAportada === 'NO') {
+    out = { titular: '', areaAprobada: '', curaduria: '' };
   }
-  if (dObj.licenciaAportada === 'NO') {
-    return { titular: '', areaAprobada: '', curaduria: '' };
+  const req = formatearRequiereLicencia(dObj.reqLicencia);
+  if (req.requiere) {
+    out = Object.assign(out || {}, { requiere: req.requiere, requiereDetalle: req.detalle });
   }
-  return undefined;
+  return out;
 }
 
 // ── Estado inicial (en blanco o prefill) ───────────────────────
@@ -588,6 +597,9 @@ function _estadoInicial(datosIniciales) {
     // Características
     estadoObra:     d['ESTADO OBRA']          || '',
     repLocativa:    d['REPARACION LOCATIVA']  || '',
+    // «¿Las obras requieren licencia?» (utils.js). Visitas viejas: la AA en SI
+    // se lee como NO por reparación locativa.
+    reqLicencia:    parsearRequiereLicencia(d['REQUIERE_LICENCIA'], d['REQUIERE_LICENCIA_DETALLE'], d['REPARACION LOCATIVA']),
     habitado:       d['HABITADO']             || '',
     alturaPisos:    d['ALTURA EN PISOS']      || '',
     destActuales:   d['N° DESTINACIONES ACTUALES'] || d['N DESTINACIONES ACTUALES'] || '',
@@ -3045,12 +3057,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           {opciones.map(o => (
             <button key={o} type="button"
               className={'chip' + (activos.indexOf(o) >= 0 ? ' activo' : '')}
-              onClick={() => {
-                const nuevos = activos.indexOf(o) >= 0
-                  ? activos.filter(a => a !== o)
-                  : [...activos, o];
-                setCampo('tipoLicencia', formatearTipoModalidad({ ...lic, [grupo]: nuevos }));
-              }}>
+              onClick={() => setD(prev => {
+                // Sobre el estado actual: dos toques seguidos no se pisan.
+                const l = parsearTipoModalidad(prev.tipoLicencia);
+                const act = l[grupo] || [];
+                const nuevos = act.indexOf(o) >= 0 ? act.filter(a => a !== o) : [...act, o];
+                return { ...prev, tipoLicencia: formatearTipoModalidad({ ...l, [grupo]: nuevos }) };
+              })}>
               {o}
             </button>
           ))}
@@ -3061,6 +3074,69 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </div>
         )}
       </div>
+    );
+  }
+
+  // «¿Las obras requieren licencia?»: cada cambio recalcula la AA
+  // (REPARACION LOCATIVA), que siguen leyendo el acta (L25) y R04/R05.
+  // `patch` puede ser función del estado actual: dos toques seguidos en los
+  // chips no se pisan (cada uno parte de lo que dejó el anterior).
+  function _setReqLic(patch) {
+    setD(prev => {
+      const base = { modalidades: [], motivos: [], otro: '', motivoIndeterminado: '', ...(prev.reqLicencia || {}) };
+      const r = { ...base, ...(typeof patch === 'function' ? patch(base) : patch) };
+      return { ...prev, reqLicencia: r, repLocativa: repLocativaDesdeRequiere(r) };
+    });
+  }
+  function _chipsReqLic(opciones, campo) {
+    const activos = (d.reqLicencia || {})[campo] || [];
+    return (
+      <div className="chips">
+        {opciones.map(o => (
+          <button key={o} type="button"
+            className={'chip' + (activos.indexOf(o) >= 0 ? ' activo' : '')}
+            onClick={() => _setReqLic(r => {
+              const act = r[campo] || [];
+              return { [campo]: act.indexOf(o) >= 0 ? act.filter(a => a !== o) : [...act, o] };
+            })}>
+            {o}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  function _preguntaRequiereLicencia() {
+    const r = d.reqLicencia || {};
+    return (
+      <>
+        <_Campo label="¿Las obras requieren licencia?" fullWidth>
+          <_Radio value={r.respuesta === REQUIERE_INDETERMINADO ? 'No se pudo determinar' : r.respuesta}
+            onChange={v => _setReqLic({ respuesta: v === 'No se pudo determinar' ? REQUIERE_INDETERMINADO : v })}
+            opciones={['SI', 'NO', 'No se pudo determinar']} />
+        </_Campo>
+        {r.respuesta === 'SI' && (
+          <_Campo label="Modalidad que exige" fullWidth>
+            {_chipsReqLic(LICENCIA_MODALIDADES, 'modalidades')}
+          </_Campo>
+        )}
+        {r.respuesta === 'NO' && (
+          <>
+            <_Campo label="¿Por qué no la requieren?" fullWidth>
+              {_chipsReqLic(MOTIVOS_NO_REQUIERE, 'motivos')}
+            </_Campo>
+            {(r.motivos || []).indexOf('Otro') >= 0 && (
+              <_Campo label="Otro motivo" fullWidth>
+                <_Input value={r.otro || ''} onChange={v => _setReqLic({ otro: v })} />
+              </_Campo>
+            )}
+          </>
+        )}
+        {r.respuesta === REQUIERE_INDETERMINADO && (
+          <_Campo label="¿Por qué no se pudo determinar?" fullWidth>
+            <_Input value={r.motivoIndeterminado || ''} onChange={v => _setReqLic({ motivoIndeterminado: v })} />
+          </_Campo>
+        )}
+      </>
     );
   }
 
@@ -3456,6 +3532,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       infraccion: _infraccionSoloCatalogo(d.infraccion), poligono: d.poligono,
       area: d.area, areaNoAplica: d.areaNoAplica, areaNoMedible: d.areaNoMedible,
       repLocativa: d.repLocativa, licenciaAportada: d.licenciaAportada,
+      requiereLicencia: (d.reqLicencia || {}).respuesta,
       alturaPisos: d.alturaPisos, pisos: d.pisos, destActuales: d.destActuales,
       destinaciones: d.destinaciones, usos: d.usos,
     });
@@ -4426,6 +4503,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
 
     sec = 'Verificación documental';
     // Verificación documental
+    faltantesRequiereLicencia(d.reqLicencia).forEach(function(f) { req(false, f); });
     req(d.licenciaAportada, '¿Se aportó licencia? (SI/NO)');
     if (d.licenciaAportada === 'SI') {
       req(d.licencia, 'N° de licencia');
@@ -4701,6 +4779,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         titular:          d.licTitular,
         areaApro:         d.licAreaAprobada,
         curaduria:        d.licCuraduria,
+        // ¿Las obras requieren licencia? — hecho del inspector: el informe ya
+        // no lo deduce de la descripción.
+        requiereLicencia: formatearRequiereLicencia(d.reqLicencia).requiere,
+        requiereDetalle:  formatearRequiereLicencia(d.reqLicencia).detalle,
         pisos:            d.pisos,
         dest:             d.destinaciones,
         cubierta:         d.cubierta,
@@ -5514,10 +5596,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Radio value={d.estadoObra} onChange={v => setCampo('estadoObra', v)}
             opciones={['En proceso / iniciada', 'Terminada']} />
         </_Campo>
-        <_Campo label="¿Reparación locativa?">
-          <_Radio value={d.repLocativa} onChange={v => setCampo('repLocativa', v)}
-            opciones={['SI', 'NO']} />
-        </_Campo>
         <_Campo label="¿Habitado?">
           <_Radio value={d.habitado} onChange={v => setCampo('habitado', v)}
             opciones={['SI', 'NO']} />
@@ -5565,6 +5643,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 5. VERIFICACIÓN DOCUMENTAL ──────────────────────── */}
       <_Seccion titulo="Verificación documental"
         estado={estadosSeccion["Verificación documental"]} color="cafe">
+        {_preguntaRequiereLicencia()}
         <_Campo label="¿Se aportó licencia?" fullWidth>
           <_Radio value={d.licenciaAportada} onChange={v => setCampo('licenciaAportada', v)}
             opciones={['SI', 'NO']} />

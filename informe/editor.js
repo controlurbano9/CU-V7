@@ -78,9 +78,50 @@ function _estadoAreaVisita(d) {
 
 // CONCLUSIONES. citaArt135: (literal, numeral) → 'literal A «…», numeral 4 «…»'
 // (inyectada para que esto siga siendo puro y testeable desde node).
+// «¿Las obras requieren licencia?» de la visita → frases fijas (2026-10-15).
+// Van primero: es lo primero que determina la conclusión (regla 4a del prompt).
+var FRASES_NO_REQUIERE = {
+  'Reparación locativa': 'Las obras observadas corresponden a reparaciones locativas, que no requieren licencia urbanística (Decreto 1077 de 2015, art. 2.2.6.1.1.10).',
+  'Mantenimiento o cambio de acabados': 'Las obras observadas corresponden a mantenimiento o cambio de acabados, que no requieren licencia urbanística.',
+  'Obra amparada por licencia o reconocimiento anterior': 'Las obras observadas se encuentran amparadas por una licencia o un reconocimiento anterior.'
+};
+function _unirConY(lista) {
+  if (lista.length < 2) return lista.join('');
+  return lista.slice(0, -1).join(', ') + ' y ' + lista[lista.length - 1];
+}
+function sugerenciasRequiereLicencia(d) {
+  var r = String(d.requiere_licencia || '').trim().toUpperCase();
+  var det = String(d.requiere_detalle || '').trim();
+  if (r === 'SI') {
+    var mods = det.split(/\s*,\s*/).filter(Boolean).map(function (m) { return m.toLowerCase(); });
+    if (!mods.length) return [];
+    return [{
+      texto: 'Las obras corresponden a ' + _unirConY(mods) + ' y requieren licencia de construcción en ' +
+        (mods.length > 1 ? 'esas modalidades' : 'esa modalidad') + ' (Decreto 1077 de 2015, art. 2.2.6.1.1.7).',
+      motivo: '¿Requiere licencia? SI'
+    }];
+  }
+  if (r === 'NO') {
+    return det.split(/\s*\|\s*/).filter(Boolean).map(function (m) {
+      var otro = /^otro\s*:\s*/i.test(m);
+      var texto = otro
+        ? 'Las obras observadas no requieren licencia urbanística: ' + m.replace(/^otro\s*:\s*/i, '').replace(/\.?\s*$/, '') + '.'
+        : FRASES_NO_REQUIERE[m];
+      return texto ? { texto: texto, motivo: '¿Requiere licencia? NO' } : null;
+    }).filter(Boolean);
+  }
+  if (r === 'NO SE PUDO DETERMINAR' && det) {
+    return [{
+      texto: 'No se pudo determinar si las obras requieren licencia urbanística: ' + det.replace(/\.?\s*$/, '') + '.',
+      motivo: '¿Requiere licencia? No se pudo determinar'
+    }];
+  }
+  return [];
+}
+
 function sugerenciasConclusionesDeLaVisita(d, citaArt135) {
   citaArt135 = citaArt135 || function () { return ''; };
-  var out = [];
+  var out = sugerenciasRequiereLicencia(d);
   if (d.sin_infraccion) {
     out.push({
       texto: 'Las obras observadas no constituyen un comportamiento contrario a la integridad urbanística según el artículo 135 de la Ley 1801 de 2016.',
@@ -96,7 +137,9 @@ function sugerenciasConclusionesDeLaVisita(d, citaArt135) {
       motivo: 'Comportamiento marcado en la visita (' + m[1] + parseInt(m[2], 10) + ')'
     });
   });
-  if (d.sin_licencia || d.estado_licencia === 'SIN_LICENCIA') {
+  // Si las obras no requieren licencia, decir que no se aportó sobra.
+  var noRequiere = String(d.requiere_licencia || '').trim().toUpperCase() === 'NO';
+  if ((d.sin_licencia || d.estado_licencia === 'SIN_LICENCIA') && !noRequiere) {
     out.push({
       texto: 'No fue aportada ni exhibida documentación urbanística que acredite licencia de construcción.',
       motivo: '¿Se aportó licencia? NO'
@@ -219,6 +262,7 @@ function _datosVisitaParaRevision(d) {
     cubierta: d.cubierta, curaduria: d.curaduria, areas: d.areas,
     comportamientos: d.comportamientos, sin_infraccion: d.sin_infraccion,
     conclusiones_inspector: d.conclusiones_inspector, clasificacion: d.clasificacion,
+    requiere_licencia: d.requiere_licencia, requiere_detalle: d.requiere_detalle,
     polig_uso: d.polig_uso, polig_trat: d.polig_trat, franja: d.franja, proteccion: d.proteccion
   });
 }
@@ -363,6 +407,7 @@ var _export = {
   fraseAntecedentes: fraseAntecedentes,
   dividirPuntos: dividirPuntos,
   sugerenciasConclusionesDeLaVisita: sugerenciasConclusionesDeLaVisita,
+  sugerenciasRequiereLicencia: sugerenciasRequiereLicencia,
   sugerenciasRecomendacionesDeLaVisita: sugerenciasRecomendacionesDeLaVisita,
   jaccardPalabras: jaccardPalabras,
   quitarDuplicados: quitarDuplicados,
