@@ -275,48 +275,8 @@ const CUBIERTA_LICENCIA_OPCIONES = [
 ];
 
 // ── Catálogo: Tipo de contravención (chips multi-select por literal) ──
-const CONTRAVENCION_GRUPOS = [
-  { literal: 'Literal A', opciones: [
-    { val: 'A1: Áreas protegidas', l: 'A1: Áreas protegidas' },
-    { val: 'A2: Diferente a lo aprobado', l: 'A2: Diferente a lo aprobado' },
-    { val: 'A3: Bienes uso público (Antejardín)', l: 'A3: Bienes uso público (Antejardín)' },
-    { val: 'A4: Sin licencia o caducada', l: 'A4: Sin licencia o caducada' },
-  ]},
-  { literal: 'Literal C', opciones: [
-    { val: 'C9: Uso distinto licencia', l: 'C9: Uso distinto licencia' },
-    { val: 'C10: Ubicación incorrecta', l: 'C10: Ubicación incorrecta' },
-    { val: 'C11: Usos suelo prohibidos', l: 'C11: Usos suelo prohibidos' },
-    { val: 'C12: Destinación no autorizada', l: 'C12: Destinación no autorizada' },
-  ]},
-  { literal: 'Literal D', opciones: [
-    { val: 'D13: Materiales en vía', l: 'D13: Materiales en vía' },
-    { val: 'D14: Sanitarios provisionales', l: 'D14: Sanitarios provisionales' },
-    { val: 'D15: Protecciones seguridad', l: 'D15: Protecciones seguridad' },
-    { val: 'D16: Llantas sucias', l: 'D16: Llantas sucias' },
-    { val: 'D17: Residuos inmediatos', l: 'D17: Residuos inmediatos' },
-    { val: 'D18: Retiro escombros', l: 'D18: Retiro escombros' },
-    { val: 'D19: Seguridad personal', l: 'D19: Seguridad personal' },
-    { val: 'D20: Emisión partículas', l: 'D20: Emisión partículas' },
-    { val: 'D21: Contaminación agua', l: 'D21: Contaminación agua' },
-    { val: 'D22: Reparar daños públicos', l: 'D22: Reparar daños públicos' },
-    { val: 'D23: Reparar daños vecinos', l: 'D23: Reparar daños vecinos' },
-    { val: 'D24: Horario restringido', l: 'D24: Horario restringido' },
-  ]},
-];
-const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
-
-// Deja en TIPO DE INFRACCION solo lo que es un chip del catálogo. Filas
-// migradas de V2 o editadas a mano traen textos como "#9,11 Y 12" que no se
-// pintan como chip: el inspector no los ve, no los puede quitar, y aun así
-// salían en el acta y el informe. Lo que llega a los documentos tiene que ser
-// exactamente lo que está marcado en pantalla.
-const _CONTRAVENCION_VALIDAS = new Set(
-  CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(CONTRAVENCION_ESPECIAL)
-);
-function _infraccionSoloCatalogo(v) {
-  return String(v || '').split(' | ').map(s => s.trim())
-    .filter(s => _CONTRAVENCION_VALIDAS.has(s)).join(' | ');
-}
+// CONTRAVENCION_GRUPOS, CONTRAVENCION_ESPECIAL y _infraccionSoloCatalogo
+// viven en utils.js: el tablero (hallazgosTablero) lee el mismo catálogo.
 
 // Genera un id único para identificar el borrador local de un formulario
 // en blanco (sin radicado/orden/fila aún). Antes se usaba la clave

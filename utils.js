@@ -2345,6 +2345,416 @@ function ordenarCasosBuscar(lista, orden, q) {
   return l;
 }
 
+// ── Catálogo: Tipo de contravención (mudado de nueva-visita.jsx, E7) ──
+// Los chips del formulario y el tablero (hallazgosTablero) leen el mismo
+// catálogo: una sola definición para que lo marcado en pantalla, lo que va
+// al acta/informe y lo que cuenta el tablero no puedan divergir.
+const CONTRAVENCION_GRUPOS = [
+  { literal: 'Literal A', opciones: [
+    { val: 'A1: Áreas protegidas', l: 'A1: Áreas protegidas' },
+    { val: 'A2: Diferente a lo aprobado', l: 'A2: Diferente a lo aprobado' },
+    { val: 'A3: Bienes uso público (Antejardín)', l: 'A3: Bienes uso público (Antejardín)' },
+    { val: 'A4: Sin licencia o caducada', l: 'A4: Sin licencia o caducada' },
+  ]},
+  { literal: 'Literal C', opciones: [
+    { val: 'C9: Uso distinto licencia', l: 'C9: Uso distinto licencia' },
+    { val: 'C10: Ubicación incorrecta', l: 'C10: Ubicación incorrecta' },
+    { val: 'C11: Usos suelo prohibidos', l: 'C11: Usos suelo prohibidos' },
+    { val: 'C12: Destinación no autorizada', l: 'C12: Destinación no autorizada' },
+  ]},
+  { literal: 'Literal D', opciones: [
+    { val: 'D13: Materiales en vía', l: 'D13: Materiales en vía' },
+    { val: 'D14: Sanitarios provisionales', l: 'D14: Sanitarios provisionales' },
+    { val: 'D15: Protecciones seguridad', l: 'D15: Protecciones seguridad' },
+    { val: 'D16: Llantas sucias', l: 'D16: Llantas sucias' },
+    { val: 'D17: Residuos inmediatos', l: 'D17: Residuos inmediatos' },
+    { val: 'D18: Retiro escombros', l: 'D18: Retiro escombros' },
+    { val: 'D19: Seguridad personal', l: 'D19: Seguridad personal' },
+    { val: 'D20: Emisión partículas', l: 'D20: Emisión partículas' },
+    { val: 'D21: Contaminación agua', l: 'D21: Contaminación agua' },
+    { val: 'D22: Reparar daños públicos', l: 'D22: Reparar daños públicos' },
+    { val: 'D23: Reparar daños vecinos', l: 'D23: Reparar daños vecinos' },
+    { val: 'D24: Horario restringido', l: 'D24: Horario restringido' },
+  ]},
+];
+const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
+
+// Deja en TIPO DE INFRACCION solo lo que es un chip del catálogo. Filas
+// migradas de V2 o editadas a mano traen textos como "#9,11 Y 12" que no se
+// pintan como chip: el inspector no los ve, no los puede quitar, y aun así
+// salían en el acta y el informe. Lo que llega a los documentos tiene que ser
+// exactamente lo que está marcado en pantalla.
+const _CONTRAVENCION_VALIDAS = new Set(
+  CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(CONTRAVENCION_ESPECIAL)
+);
+function _infraccionSoloCatalogo(v) {
+  return String(v || '').split(' | ').map(s => s.trim())
+    .filter(s => _CONTRAVENCION_VALIDAS.has(s)).join(' | ');
+}
+
+// ── Tablero territorial (E7): lógica pura (2026-10-16) ────────
+// Especificación: docs/ESPEC_E7_tablero.md §3-§4. La pantalla (tablero.jsx,
+// parte 2) solo pinta; toda la regla vive aquí y se prueba en
+// tests/tablero.test.js. Referencia de comportamiento: la maqueta
+// herramientas/tablero/propuesta-tablero.html.
+// Estados plegados a una letra (§3): PENDIENTE/PROGRAMADA → P, ASIGNADO → A,
+// INICIADO → I, COMPLETADO → C, lo demás → X «Cerrada sin visita».
+// estadoBuscarDe ya pliega las variantes de V2 (COMPLETADA, PQR PENDIENTE…)
+// y NO COMPETENCIA, que de todos modos no llega en la lectura compacta.
+var TB_ESTADO_LETRA = { PENDIENTE: 'P', ASIGNADO: 'A', INICIADO: 'I', COMPLETADO: 'C' };
+function _tbVivo(est) { return est === 'P' || est === 'A' || est === 'I'; }
+
+// Bitmask de entregables (§3, mismo orden que la maqueta): acta 1, RF 2,
+// informe 4, orden escaneada 8, vigilancia 16, PDF de la PQR 32.
+function _tbEnt(f) {
+  var e = 0;
+  if (f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA']) e |= 1;
+  if (f['LINK_REGISTRO_FOTOS']) e |= 2;
+  if (f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43']) e |= 4;
+  if (f['LINK_ORDEN_POLICIA']) e |= 8;
+  if (f['LINK_SOLICITUD_VIGILANCIA'] || f['LINK_SOLICITUD_PDF']) e |= 16;
+  if (linkPdfRadicado(f)) e |= 32;
+  return e;
+}
+
+function _tbDiasEntre(desde, hasta) {
+  if (!desde || !hasta) return null;
+  return Math.round((new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())
+    - new Date(desde.getFullYear(), desde.getMonth(), desde.getDate())) / 86400000);
+}
+
+// Mediana de números (ignora null/vacío); null si no hay datos.
+function _tbMediana(vals) {
+  var v = (vals || []).filter(function (x) { return x != null; })
+    .sort(function (a, b) { return a - b; });
+  if (!v.length) return null;
+  var m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : Math.round((v[m - 1] + v[m]) / 2);
+}
+
+function _tbRef(hoy) {
+  return hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+}
+
+// Fila preparada (§3): todo lo derivado, una vez por versión de datos.
+// Además de las columnas del spec lleva `f` (la fila cruda: la ficha de la
+// visita y entregablesFaltantes la leen), `dir`, `rural`, `vereda` e
+// `infTxt` (el texto bruto de TIPO DE INFRACCION, para separar en
+// hallazgosTablero lo «sin dato» de lo que es texto libre de V2).
+function prepararFilaTablero(f, idxBarrios, hoy) {
+  var barrioTxt = String((f['BARRIO/VEREDA'] || f['BARRIO']) || '').trim();
+  var rural = claveComunaAgenda(f['COMUNA']) === 'RURAL' || /^VDA\.?/i.test(barrioTxt);
+  var com = rural ? '12' : claveComunaAgenda(f['COMUNA']);
+  var lat = normalizarCoord(f['LATITUD'], 'lat');
+  var lon = normalizarCoord(f['LONGITUD'], 'lon');
+  var bar = '', fuenteBar = null, conflictoM = null;
+  if (idxBarrios && !rural) {
+    var pot = barrioPotDe(idxBarrios, { lat: lat, lon: lon, barrio: barrioTxt, comuna: com });
+    bar = pot.barrio || '';
+    fuenteBar = pot.fuente;
+    conflictoM = pot.conflictoM;
+    if (pot.fuente === 'punto' && pot.comuna) com = pot.comuna;   // decisión 2026-10-07
+  }
+  var est = TB_ESTADO_LETRA[estadoBuscarDe(f)] || 'X';
+  var fr = parsearFecha(f['FECHA RADICADO'] || '');
+  var fa = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
+  var fv = parsearFecha(f['FECHA DE VISITA'] || '');
+  var susp = String(f['SUSPENSION DE LA OBRA'] || '').trim().toUpperCase();
+  var prio = parseInt(String(f['PRIORIDAD'] == null ? '' : f['PRIORIDAD']).trim(), 10);
+  return {
+    id: f._idx, f: f,
+    rad: String(f['RADICADO'] || '').trim(),
+    est: est,
+    fr: fr, fa: fa, fv: fv,
+    // La espera se cuenta desde el radicado, vivos y cerrados por otra vía;
+    // un radicado futuro no espera negativo.
+    edad: fr ? Math.max(0, _tbDiasEntre(fr, _tbRef(hoy))) : null,
+    aVisita: (est === 'C' && fv && fr && fv >= fr) ? _tbDiasEntre(fr, fv) : null,
+    com: com, bar: bar, fuenteBar: fuenteBar, conflictoM: conflictoM,
+    rural: rural,
+    vereda: rural ? barrioTxt.replace(/^VDA\.?\s*/i, '').trim() : '',
+    dir: String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim(),
+    lat: lat, lon: lon,
+    ins: primerVisitador(visitadoresBD(f)),
+    inf: _infraccionSoloCatalogo(f['TIPO DE INFRACCION']).split(' | ').filter(Boolean),
+    infTxt: String(f['TIPO DE INFRACCION'] || '').trim(),
+    susp: susp === 'SI' ? 'SI' : (susp === 'NO' ? 'NO' : ''),
+    orden: ordenPoliciaDe(f),
+    lic: String(f['SE APORTO LICENCIA'] || '').trim().toUpperCase(),
+    obra: String(f['ESTADO OBRA'] || '').trim().toUpperCase(),
+    prio: isNaN(prio) ? null : prio,
+    ent: _tbEnt(f),
+  };
+}
+
+// Aplica periodo (sobre `dim`: 'fr' radicado | 'fv' visita), comuna, barrio,
+// inspector y estados. `sin` excluye esa dimensión — es lo que deja a cada
+// vista/faceta mostrar sus alternativas (convención de la maqueta: quitar
+// 'com' libera comuna Y barrio). `desde`/`hasta` del periodo viajan en ms
+// (por el hash de la URL) o como Date. `hoy` inyectable para los periodos
+// relativos ('90', 'anio').
+function filtrarTablero(filas, S, sin, hoy) {
+  var ex = sin == null ? [] : (Array.isArray(sin) ? sin : [sin]);
+  var rg = null;
+  if (ex.indexOf('per') === -1) {
+    var ref = _tbRef(hoy);
+    if (S.desde != null || S.hasta != null) rg = [S.desde, S.hasta];
+    else if (S.per === '2025') rg = [new Date(2025, 0, 1).getTime(), +ref];
+    else if (S.per === 'anio') rg = [new Date(ref.getFullYear(), 0, 1).getTime(), +ref];
+    else if (S.per === '90') rg = [new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - 90).getTime(), +ref];
+  }
+  return (filas || []).filter(function (f) {
+    if (rg && ex.indexOf('per') === -1) {
+      var d = S.dim === 'fv' ? f.fv : f.fr;
+      if (!d) return false;
+      if (rg[0] != null && d.getTime() < rg[0]) return false;
+      if (rg[1] != null && d.getTime() > rg[1]) return false;
+    }
+    if (ex.indexOf('com') === -1) {
+      if (S.com && f.com !== S.com) return false;
+      if (S.bar != null && f.bar !== S.bar) return false;
+    }
+    if (ex.indexOf('ins') === -1 && S.ins && f.ins !== S.ins) return false;
+    if (ex.indexOf('est') === -1 && S.est && S.est.length && S.est.indexOf(f.est) === -1) return false;
+    return true;
+  });
+}
+
+// Indicadores de la cabecera. Cada uno define su propio universo: quien llama
+// pasa la base SIN filtro de estado (igual que la maqueta, `filtrar('est')`).
+function kpisTablero(filas, hoy) {
+  var base = filas || [];
+  var vivos = base.filter(function (f) { return _tbVivo(f.est); });
+  var sinAsignar = vivos.filter(function (f) { return f.est === 'P'; }).length;
+  var viejos = vivos.filter(function (f) { return f.edad != null && f.edad > 30; });
+  var comp = base.filter(function (f) { return f.aVisita != null; });
+  var ref = _tbRef(hoy);
+  // Serie de 12 meses: mediana radicado → visita por mes de FECHA DE VISITA.
+  var serieMedVisita = [];
+  for (var i = 11; i >= 0; i--) {
+    var d = new Date(ref.getFullYear(), ref.getMonth() - i, 1);
+    serieMedVisita.push(_tbMediana(comp.filter(function (f) {
+      return f.fv.getFullYear() === d.getFullYear() && f.fv.getMonth() === d.getMonth();
+    }).map(function (f) { return f.aVisita; })));
+  }
+  var cs = base.filter(function (f) { return f.est === 'C' && f.fv; });
+  var ant = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+  var csAnt = cs.filter(function (f) {
+    return f.fv.getFullYear() === ant.getFullYear() && f.fv.getMonth() === ant.getMonth();
+  });
+  // Suspensión SI + orden real (ordenPoliciaDe ya descarta 'N/A') + sin
+  // oficio de vigilancia + visita iniciada o completada + radicado desde 2025.
+  var sinVig = base.filter(function (f) {
+    return f.susp === 'SI' && f.orden && !(f.ent & 16) && (f.est === 'I' || f.est === 'C') &&
+      f.fr && f.fr >= new Date(2025, 0, 1);
+  });
+  return {
+    vivos: vivos.length,
+    sinAsignar: sinAsignar,
+    mas30: viejos.length,
+    medEspera: _tbMediana(viejos.map(function (f) { return f.edad; })),
+    medVisita: _tbMediana(comp.map(function (f) { return f.aVisita; })),
+    serieMedVisita: serieMedVisita,
+    visitadasMes: cs.filter(function (f) {
+      return f.fv.getFullYear() === ref.getFullYear() && f.fv.getMonth() === ref.getMonth();
+    }).length,
+    visitadasMesAntAFecha: csAnt.filter(function (f) { return f.fv.getDate() <= ref.getDate(); }).length,
+    visitadasMesAnt: csAnt.length,
+    ordenesSinVigilancia: sinVig.length,
+  };
+}
+
+// Map(area → valor) para pintar el mapa. Métricas: 'vivos', 'mas30',
+// 'medVisita'. En 'bar' quedan fuera las filas sin barrio POT («Sin barrio
+// POT» vive en Calidad del dato).
+function agregarPorArea(filas, area, metrica) {
+  var g = new Map();
+  (filas || []).forEach(function (f) {
+    var k = area === 'bar' ? f.bar : f.com;
+    if (!k) return;
+    var o = g.get(k);
+    if (!o) { o = { vivos: 0, mas30: 0, aVis: [] }; g.set(k, o); }
+    if (_tbVivo(f.est)) {
+      o.vivos++;
+      if (f.edad != null && f.edad > 30) o.mas30++;
+    }
+    if (f.aVisita != null) o.aVis.push(f.aVisita);
+  });
+  var out = new Map();
+  g.forEach(function (v, k) {
+    out.set(k, metrica === 'mas30' ? v.mas30
+      : metrica === 'medVisita' ? _tbMediana(v.aVis)
+      : v.vivos);
+  });
+  return out;
+}
+
+// 5 tramos iguales sobre un máximo redondeado a paso entero (maqueta §escala).
+// colorDe(v) → 0 = color neutro (sin dato o cero), 1..5 = tramo de la rampa.
+function escalaMapa(valores) {
+  var max = 1;
+  (valores || []).forEach(function (v) { if (v != null && v > max) max = v; });
+  var paso = max <= 5 ? 1 : Math.ceil(max / 5);
+  return {
+    cortes: [paso, 2 * paso, 3 * paso, 4 * paso],
+    max: paso * 5,
+    colorDe: function (v) {
+      if (v == null || v === 0) return 0;
+      return Math.min(5, Math.floor((v - 1) / paso) + 1);
+    },
+  };
+}
+
+// Barrios con más casos vivos: primero por los rezagados (+30 días), luego
+// por vivos. «Sin barrio POT» no entra (vive en Calidad del dato); las
+// veredas rurales sí, agrupadas por su nombre escrito (§3).
+function rankingBarrios(filas, n) {
+  var g = new Map();
+  (filas || []).forEach(function (f) {
+    if (!_tbVivo(f.est) || !f.bar) return;
+    var o = g.get(f.bar);
+    if (!o) { o = { nombre: f.bar, com: f.com, vivos: 0, mas30: 0 }; g.set(f.bar, o); }
+    o.vivos++;
+    if (f.edad != null && f.edad > 30) o.mas30++;
+  });
+  return Array.from(g.values())
+    .sort(function (a, b) { return b.mas30 - a.mas30 || b.vivos - a.vivos; })
+    .slice(0, n == null ? Infinity : n);
+}
+
+// Radicadas (por fr) y visitadas (C con fv) por mes, en un solo eje.
+// `mes` es 'YYYY-MM'. Rango inclusivo desde/hasta (Date o texto).
+function serieMensual(filas, desde, hasta) {
+  var d0 = desde instanceof Date ? desde : parsearFecha(desde);
+  var d1 = hasta instanceof Date ? hasta : parsearFecha(hasta);
+  var out = [];
+  if (!d0 || !d1) return out;
+  var a = d0.getFullYear(), m = d0.getMonth();
+  while (true) {
+    var rad = 0, vis = 0;
+    (filas || []).forEach(function (f) {
+      if (f.fr && f.fr.getFullYear() === a && f.fr.getMonth() === m) rad++;
+      if (f.est === 'C' && f.fv && f.fv.getFullYear() === a && f.fv.getMonth() === m) vis++;
+    });
+    out.push({ mes: a + '-' + String(m + 1).padStart(2, '0'), radicadas: rad, visitadas: vis });
+    if (a === d1.getFullYear() && m === d1.getMonth()) break;
+    m++; if (m > 11) { m = 0; a++; }
+  }
+  return out;
+}
+
+// Recorrido del caso: medianas de cada tramo con su n. En asignación → visita
+// se excluye fa == fv: la tomaron sin asignar y el payload copió la fecha de
+// visita (no es una asignación real). En radicado → asignación, fa < fr es
+// dato sucio y no cuenta.
+function recorridoTablero(filas) {
+  var base = filas || [];
+  var comp = base.filter(function (f) { return f.est === 'C'; });
+  var radAsig = comp.filter(function (f) { return f.fa && f.fr && f.fa >= f.fr; });
+  var asigVis = comp.filter(function (f) { return f.fa && f.fv && f.fv > f.fa; });
+  var radVis = comp.filter(function (f) { return f.aVisita != null; });
+  return {
+    radAsig: { med: _tbMediana(radAsig.map(function (f) { return _tbDiasEntre(f.fr, f.fa); })), n: radAsig.length },
+    asigVis: { med: _tbMediana(asigVis.map(function (f) { return _tbDiasEntre(f.fa, f.fv); })), n: asigVis.length },
+    radVis: { med: _tbMediana(radVis.map(function (f) { return f.aVisita; })), n: radVis.length },
+    detenidas: ['P', 'A', 'I'].map(function (est) {
+      var fs = base.filter(function (f) { return f.est === est; });
+      return { est: est, n: fs.length, medEdad: _tbMediana(fs.map(function (f) { return f.edad; })) };
+    }),
+  };
+}
+
+// Carga por inspector. NO es un ranking: orden por carga actual (enCurso =
+// asignadas + iniciadas, como la maqueta), «Otros» siempre al final.
+// `activos` = nombres de listarInspectoresActivos(): lo que no calce va a
+// «Otros» (sin la lista, se agrupa solo por el nombre de la fila). Las
+// iniciadas con entregablesFaltantes van en conFaltantes (filas preparadas,
+// para el cajón de lista). Quien solo tiene pendientes no entra: no tiene
+// carga ni visitas.
+function equipoTablero(filas, activos) {
+  var set = activos && activos.length
+    ? new Set(activos.map(function (a) { return String(a).toUpperCase().trim(); })) : null;
+  var g = new Map();
+  (filas || []).forEach(function (f) {
+    var k = f.ins && (!set || set.has(f.ins.toUpperCase())) ? f.ins : 'Otros';
+    var o = g.get(k);
+    if (!o) { o = { ins: k, enCurso: 0, visitadas: 0, aVis: [], conFaltantes: [] }; g.set(k, o); }
+    if (f.est === 'A' || f.est === 'I') o.enCurso++;
+    if (f.est === 'C') o.visitadas++;
+    if (f.aVisita != null) o.aVis.push(f.aVisita);
+    if (f.est === 'I' && entregablesFaltantes(f.f).length > 0) o.conFaltantes.push(f);
+  });
+  var out = [];
+  g.forEach(function (o) {
+    if (!o.enCurso && !o.visitadas) return;
+    o.medVisita = _tbMediana(o.aVis);
+    delete o.aVis;
+    out.push(o);
+  });
+  out.sort(function (a, b) {
+    var oa = a.ins === 'Otros', ob = b.ins === 'Otros';
+    if (oa !== ob) return oa ? 1 : -1;
+    return b.enCurso - a.enCurso || b.visitadas - a.visitadas;
+  });
+  return out;
+}
+
+// Qué se encuentra en las visitas iniciadas y completadas (universo de la
+// maqueta). porTipo cuenta chips por literal (A1..A4), «No se evidencia
+// infracción» como NO y el texto libre de V2 como X; sinDato es la celda
+// vacía. Cada porcentaje lleva su n (el denominador: solo filas con dato).
+function hallazgosTablero(filas) {
+  var base = (filas || []).filter(function (f) { return f.est === 'I' || f.est === 'C'; });
+  var porTipo = { A1: 0, A2: 0, A3: 0, A4: 0, NO: 0, X: 0 };
+  var sinDato = 0;
+  base.forEach(function (f) {
+    if (!f.infTxt) { sinDato++; return; }
+    if (!f.inf.length) { porTipo.X++; return; }        // texto libre de V2
+    f.inf.forEach(function (chip) {
+      var m = /^(A[1-4]):/.exec(chip);
+      if (m) porTipo[m[1]]++;
+      else if (chip === CONTRAVENCION_ESPECIAL) porTipo.NO++;
+      else porTipo.X++;
+    });
+  });
+  var pct = function (num, den) { return den ? Math.round(100 * num / den) : null; };
+  var num = function (pred) { return base.filter(pred).length; };
+  return {
+    porTipo: porTipo,
+    sinDato: sinDato,
+    pctSusp: { pct: pct(num(function (f) { return f.susp === 'SI'; }), num(function (f) { return f.susp; })), n: num(function (f) { return f.susp; }) },
+    pctLic: { pct: pct(num(function (f) { return f.lic === 'SI'; }), num(function (f) { return f.lic; })), n: num(function (f) { return f.lic; }) },
+    pctObraProceso: { pct: pct(num(function (f) { return f.obra.indexOf('PROCESO') !== -1; }), num(function (f) { return f.obra; })), n: num(function (f) { return f.obra; }) },
+  };
+}
+
+// Calidad del dato (§4): vivos sin coordenadas · vivos sin barrio POT · vivos
+// sin comuna · punto a ≥ 1 km del barrio escrito · vivos desde 2025 sin PDF
+// de la PQR · completadas sin inspector · completadas sin fecha de visita.
+// «Sin barrio POT» no cuenta a las rurales: la vereda no tiene barrio POT.
+function calidadTablero(filas) {
+  var base = filas || [];
+  var viv = base.filter(function (f) { return _tbVivo(f.est); });
+  return [
+    { id: 'sinCoord', titulo: 'Vivos sin coordenadas',
+      filas: viv.filter(function (f) { return f.lat == null || f.lon == null; }) },
+    { id: 'sinBarrio', titulo: 'Vivos sin barrio POT',
+      filas: viv.filter(function (f) { return !f.bar && !f.rural; }) },
+    { id: 'sinComuna', titulo: 'Vivos sin comuna',
+      filas: viv.filter(function (f) { return !f.com; }) },
+    { id: 'conflicto', titulo: 'Punto a más de 1 km del barrio escrito',
+      filas: base.filter(function (f) { return f.conflictoM != null && f.conflictoM >= UMBRAL_REVISAR_BARRIO_M; }) },
+    { id: 'sinPdfPqr', titulo: 'Vivos desde 2025 sin PDF de la PQR',
+      filas: viv.filter(function (f) {
+        return f.fr && f.fr >= new Date(2025, 0, 1) && !(f.ent & 32) && /^\d{11}$/.test(f.rad);
+      }) },
+    { id: 'sinInspector', titulo: 'Completadas sin inspector',
+      filas: base.filter(function (f) { return f.est === 'C' && !f.ins; }) },
+    { id: 'sinFechaVisita', titulo: 'Completadas sin fecha de visita',
+      filas: base.filter(function (f) { return f.est === 'C' && !f.fv; }) },
+  ];
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -3556,6 +3966,21 @@ var _cuUtilsExports = {
   parsearRequiereLicencia: parsearRequiereLicencia,
   repLocativaDesdeRequiere: repLocativaDesdeRequiere,
   faltantesRequiereLicencia: faltantesRequiereLicencia,
+  // Tablero territorial (E7): lógica pura
+  prepararFilaTablero: prepararFilaTablero,
+  filtrarTablero: filtrarTablero,
+  kpisTablero: kpisTablero,
+  agregarPorArea: agregarPorArea,
+  escalaMapa: escalaMapa,
+  rankingBarrios: rankingBarrios,
+  serieMensual: serieMensual,
+  recorridoTablero: recorridoTablero,
+  equipoTablero: equipoTablero,
+  hallazgosTablero: hallazgosTablero,
+  calidadTablero: calidadTablero,
+  CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
+  CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
+  _infraccionSoloCatalogo: _infraccionSoloCatalogo,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
