@@ -3508,7 +3508,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       ]);
       if (pedirDesc && !tD) throw new Error('respuesta vacía');
       if (pedirDesc) desc = tD;
-      if (pedirConc) { if (tC) conc = tC; else concFallo = true; }
+      // null = sin espacio en el acta (no se pidió); '' = la IA falló.
+      if (pedirConc) { if (tC) conc = tC; else if (tC === '') concFallo = true; }
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -3557,7 +3558,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // revisada (aunque luego la editara). Si no, se conserva el modo del
     // sello anterior —los campos no revisados ya estaban revisados con él—;
     // sin sello anterior, PROPIO. Sin propuesta de la IA → LOCAL.
-    const modo = !p.ia ? 'LOCAL'
+    // Solo cambiaron los datos: no se llamó a la IA a propósito, no es LOCAL.
+    const modo = p.soloDatos ? (p.modoPrevio || 'PROPIO')
+      : !p.ia ? 'LOCAL'
       : (p.elDesc === 'ia' || p.elConc === 'ia') ? 'IA'
       : (p.modoPrevio || 'PROPIO');
     setCampo('actuacion', p.desc);
