@@ -3558,8 +3558,19 @@ var EXPRESIONES_IA = [
   { rx: '\\bel suscrito\\b' },
   { rx: '\\bse permite informar\\b' },
   { rx: '\\ben atencion a lo anteriormente expuesto\\b' },
-  { rx: '\\bobjeto de la presente\\b' }
+  { rx: '\\bobjeto de la presente\\b' },
+  // Relleno de texto generado (2026-10-17, el prompt también lo prohíbe).
+  { rx: '\\bse deja constancia de\\b' },
+  { rx: '\\ba que haya lugar\\b' },
+  { rx: '\\ben terminos generales\\b' },
+  { rx: '\\bcon posterioridad a\\b' },
+  // Traslado genérico y categoría que no es de la ley (el prompt las prohíbe).
+  { rx: '\\bdependencias correspondientes\\b' },
+  { rx: '\\bafectacion publica\\b' }
 ];
+// Esta lista viaja también al backend (apps_script_unificado.js), que la usa
+// para nombrarle a la IA las expresiones de cada texto: la copia la escribe
+// herramientas/probar-mejora-texto/sincronizar.js. No editar allá a mano.
 
 // ¿Empieza oración en `i`? Inicio del texto o justo tras «.», «;», «:» o
 // salto de línea (solo espacios entre el separador y `i`).
