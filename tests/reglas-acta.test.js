@@ -1,10 +1,9 @@
 // Fase 1 de docs/PROPUESTA_2026-10-14_coherencia-acta.md: reglas que
 // bloquean el acta (reglasBloqueoActa), las que piden justificación
-// (revisarTextoLocal) y la conclusión jurídica que arma la app
-// (conclusionJuridicaActa). Casos sacados de la línea base del 2026-10-14.
+// (revisarTextoLocal). Casos sacados de la línea base del 2026-10-14.
 const test = require('node:test');
 const assert = require('node:assert');
-const { reglasBloqueoActa, revisarTextoLocal, conclusionJuridicaActa, citaArt135 } = require('../utils.js');
+const { reglasBloqueoActa, revisarTextoLocal } = require('../utils.js');
 
 const ids = s => s.map(x => x.id).sort();
 const A3 = 'A3: Bienes uso público (Antejardín)';
@@ -93,17 +92,4 @@ test('R13: uso comercial o industrial sin C11/C12', () => {
   }), []);
 });
 
-// ── Conclusión jurídica ──────────────────────────────────────
-test('conclusionJuridicaActa: una frase por comportamiento, con el área', () => {
-  const t = conclusionJuridicaActa(A3, { valor: '16' });
-  assert.equal(t,
-    'Los hechos descritos constituyen un comportamiento contrario a la integridad urbanística según el artículo 135, ' +
-    citaArt135('A', 3) + ', de la Ley 1801 de 2016.\nÁrea en contravención: 16 m².');
-  assert.equal(conclusionJuridicaActa(A3 + ' | D13: Materiales en vía', { noMedible: true }).split('\n').length, 3);
-  assert.match(conclusionJuridicaActa(A3, { noMedible: true }), /no se pudo medir\.$/);
-});
 
-test('conclusionJuridicaActa: sin comportamiento no hay frase', () => {
-  assert.equal(conclusionJuridicaActa('No se evidencia infracción', { valor: '' }), '');
-  assert.equal(conclusionJuridicaActa('', {}), '');
-});

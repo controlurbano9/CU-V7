@@ -353,31 +353,50 @@ function _senalesCoherenciaD(dObj) {
 // Desde 2026-10-17: si solo cambiaron los datos y el chequeo local no ve
 // contradicciones, sigue vigente (6.º argumento de revisionVigente).
 function _revisionVigenteD(dObj) {
+  // Con informe técnico la conclusión no se revisa aquí (va al informe): que
+  // haya cambiado no vence la revisión. Sellos viejos sin partes: huella entera.
+  if (documentoVisita(dObj.documento) !== 'ACTA' && dObj.revision && dObj.revision.partes) {
+    const c = partesCambiadas(dObj.revision, dObj.actuacion, dObj.obsConclusion,
+      _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj)).filter(k => k !== 'conc');
+    return !c.length || (c.length === 1 && c[0] === 'datos' && _senalesCoherenciaD(dObj).length === 0);
+  }
   return revisionVigente(dObj.revision, dObj.actuacion, dObj.obsConclusion,
     _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj),
     _senalesCoherenciaD(dObj).length === 0);
 }
-// Lo que va en la celda de conclusiones del acta (A38): la frase jurídica que
-// arma la app desde los chips y debajo el texto del inspector. Lo usan el
-// payload del acta y el contador de capacidad, que tienen que medir lo mismo.
-function _fraseJuridicaActaD(dObj) {
-  return conclusionJuridicaActa(_infraccionSoloCatalogo(dObj.infraccion),
-    { valor: dObj.areaNoAplica ? '' : dObj.area, noMedible: dObj.areaNoMedible });
-}
+// Lo que va en la celda de conclusiones del acta (A38): solo el texto del
+// inspector. El comportamiento (F36) y el área (F37) tienen casilla propia;
+// la frase del art. 135 que iba aquí los repetía y se comía 3 de los 5
+// renglones (decisión del usuario 2026-10-17). El informe F-43 la conserva.
 function _conclusionesActaD(dObj) {
-  return [_fraseJuridicaActaD(dObj), dObj.obsConclusion || '']
-    .filter(s => String(s).trim()).join('\n\n');
+  return dObj.obsConclusion || '';
+}
+
+// Secciones del formulario donde está cada dato de una señal de coherencia
+// (revisarTextoLocal, utils.js): el panel de revisión ofrece «Ir a…». Las que
+// hablan del propio texto no llevan: ese texto se corrige en el panel.
+var SECCIONES_SENAL = {
+  R05: ['Verificación documental', 'Tipificación y medidas'],
+  R07: ['Tipificación y medidas'],
+  R08: ['Verificación documental', 'Tipificación y medidas'],
+  R12: ['Características de la edificación', 'Verificación documental'],
+  R13: ['Características de la edificación', 'Tipificación y medidas'],
+  R14: ['Verificación documental', 'Tipificación y medidas'],
+  R15: ['Verificación documental', 'Tipificación y medidas'],
+  area: ['Tipificación y medidas'],
+};
+function _irASeccion(titulo) {
+  var el = document.querySelector('[data-seccion="' + titulo + '"]');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Medidor bajo la descripción y las conclusiones: cuánto del espacio de la
 // celda del acta ocupa el texto (capacidadActa, utils.js). La celda no crece
 // y el PDF corta lo que no cabe sin avisar (8 actas cortadas, 2026-10-15).
-// Barra + renglones; cerca del tope, ámbar; pasado, rojo con qué hacer.
-// `enPanel`: dentro de la revisión el remedio es acortar ahí mismo; fuera,
-// además, revisar (la propuesta se ajusta) o pasar la visita a informe.
-// `sinEspacio`: la frase del art. 135 ya llena la celda de conclusiones;
-// «Revisar» no puede proponer nada que quepa, así que no se ofrece.
-function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme, sinEspacio }) {
+// Barra + renglones; cerca del tope, ámbar; pasado, rojo con qué hacer
+// (revisar, que ajusta la propuesta, o pasar la visita a informe). Dentro del
+// panel de revisión va el medidor compacto de cada tarjeta.
+function _MedidorActa({ texto, celda, onUsarInforme }) {
   const c = capacidadActa(texto, celda);
   const pct = Math.min(100, Math.round(c.renglones / c.max * 100));
   const cerca = c.cabe && c.renglones >= c.max - 2 && c.renglones > 0;
@@ -397,7 +416,7 @@ function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme, sinEspacio }
       </div>
       {c.cabe ? (
         <div style={{ marginTop: 4, color: cerca ? 'var(--texto)' : 'var(--texto-suave)' }}>
-          {(c.caracteres > 0 ? 'Caben ≈ ' + n + ' caracteres más.' : 'Está justo en el límite.') + (nota ? ' ' + nota : '')}
+          {c.caracteres > 0 ? 'Caben ≈ ' + n + ' caracteres más.' : 'Está justo en el límite.'}
         </div>
       ) : (
         <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 'var(--r-ctl, 8px)', background: 'var(--rojo-bg)', color: 'var(--texto)' }}>
@@ -406,21 +425,7 @@ function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme, sinEspacio }
             El acta tiene {c.max} renglones para {nombre} y este texto ocupa {c.renglones}: lo que sobra
             (≈ {n} caracteres) no saldría en el PDF.
           </div>
-          {enPanel ? (
-            <div style={{ marginTop: 4 }}>Acórtalo antes de aplicar.</div>
-          ) : sinEspacio ? (
-            <div style={{ marginTop: 4 }}>
-              La frase del art. 135 que pone la app ya ocupa toda la casilla: borra tus conclusiones
-              {onUsarInforme ? ' o, si las necesitas, documenta la visita con informe técnico.' : '.'}
-              {onUsarInforme && (
-                <div style={{ marginTop: 6 }}>
-                  <button type="button" className="btn-neutro" onClick={onUsarInforme}
-                    style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Usar informe técnico</button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 4 }}>
               {/* Con el acta ya generada no se puede pasar a informe: no se ofrece. */}
               {onUsarInforme
                 ? 'Puedes acortarlo; o pulsar «Revisar» al final del formulario, que te propone una versión que ' +
@@ -432,8 +437,7 @@ function _MedidorActa({ texto, celda, nota, enPanel, onUsarInforme, sinEspacio }
                     style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Usar informe técnico</button>
                 </div>
               )}
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -829,7 +833,7 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
 // `accion`: botón opcional a la derecha de la cabecera (p. ej. «Consultar»).
 function _Seccion({ titulo, color, estado, accion, children }) {
   return (
-    <div className="form-seccion">
+    <div className="form-seccion" data-seccion={titulo}>
       <div className="form-seccion-cabecera">
         <span className={'form-seccion-titulo titulo-' + (color || 'azul')}>{titulo}</span>
         {estado === 'ok' && (
@@ -3446,9 +3450,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // desde el sello. Nada vencido → ya está revisada, no se llama a la IA.
     // Excepción: revisado pero no cabe en el acta (se selló antes del tope) —
     // hay que volver a pedir la propuesta condensada aunque nada cambiara.
-    const cambiadas = partesCambiadas(d.revision, d.actuacion, d.obsConclusion,
-      _infraccionSoloCatalogo(d.infraccion), camposRevision(d));
+    // Con informe técnico las conclusiones se escriben en el generador del
+    // informe (decisión del usuario 2026-10-17): no se revisan ni se proponen.
     const esActaPre = documentoVisita(d.documento) === 'ACTA';
+    const cambiadas = partesCambiadas(d.revision, d.actuacion, d.obsConclusion,
+      _infraccionSoloCatalogo(d.infraccion), camposRevision(d)).filter(c => esActaPre || c !== 'conc');
     const noCabePre = esActaPre && (!capacidadActa(d.actuacion, 'situacion').cabe ||
       !capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe);
     if (!noCabePre && (!cambiadas.length ||
@@ -3477,20 +3483,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const origDesc = d.actuacion || '';
     const origConc = d.obsConclusion || '';
     // Topes del acta (2026-10-15), solo si la visita va a acta: la descripción
-    // se condensa si no cabe; las conclusiones siempre van con lo que queda en
-    // su celda tras la frase del art. 135 y su línea vacía. Con informe, sin tope.
+    // se condensa si no cabe; las conclusiones siempre van con el tope de su
+    // celda. Con informe, sin tope.
     const esActa = esActaPre;
     const parrafos = t => String(t).split(/\n+/).filter(s => s.trim()).length;
     const maxDesc = !esActa || capacidadActa(origDesc, 'situacion').cabe ? 0
       : caracteresParaActa('situacion', 0, parrafos(origDesc));
-    const jur = _fraseJuridicaActaD(d);
-    const maxConc = !esActa ? 0
-      : caracteresParaActa('conclusiones',
-          jur ? renglonesActa(jur, ACTA_CAPACIDAD.conclusiones.porRenglon) + 1 : 0, parrafos(origConc));
-    // Sin espacio (revisión externa 2026-10-15): con la frase del art. 135
-    // llenando la celda (2 comportamientos, o uno del literal D), 0 caracteres
-    // no es «sin tope»: no se pide conclusión, ninguna cabría.
-    const sinEspacioConc = pedirConc && esActa && maxConc === 0;
+    const maxConc = !esActa ? 0 : caracteresParaActa('conclusiones', 0, parrafos(origConc));
     // El campo que no cambió no se manda a la IA: se revisa solo lo que
     // cambió (regla 2026-10-17). Las conclusiones se piden siempre que toca,
     // con lo diligenciado: si el inspector no escribió, la propuesta sale de
@@ -3502,14 +3501,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const [tD, tC] = await Promise.all([
         pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
-          : sinEspacioConc ? Promise.resolve(null)
           : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
       ]);
       if (pedirDesc && !tD) throw new Error('respuesta vacía');
       if (pedirDesc) desc = tD;
-      // null = sin espacio en el acta (no se pidió); '' = la IA falló.
-      if (pedirConc) { if (tC) conc = tC; else if (tC === '') concFallo = true; }
+      // '' = la IA falló.
+      if (pedirConc) { if (tC) conc = tC; else concFallo = true; }
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -3527,10 +3525,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       elConc: sinCambio(origConc, conc) ? 'propio' : null,
       cambioDesc: pedirDesc, cambioConc: pedirConc, soloDatos,
       modoPrevio: d.revision && d.revision.modo,
-      sinEspacioConc, concFallo: ia && concFallo,
+      concFallo: ia && concFallo,
       // Si la propuesta se pidió con tope del acta (maxDesc/maxConc > 0):
       // resumenCambios lo cuenta como «se condensa».
-      condensaDesc: maxDesc > 0, condensaConc: maxConc > 0,
+      // Las conclusiones siempre llevan tope: «se condensa» solo si el texto
+      // del inspector no cabía (si no, salía también sobre una propuesta hecha
+      // desde cero).
+      condensaDesc: maxDesc > 0, condensaConc: esActa && !capacidadActa(origConc, 'conclusiones').cabe,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -3626,10 +3627,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         border: '1px solid var(--borde)', scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
       }}>
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Revisión del texto</div>
+          {/* Con informe el título de la sección ya lo dice. */}
+          {esActa && <div style={{ fontWeight: 600, fontSize: 15 }}>Revisión del texto</div>}
           <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 2 }}>
-            Revisa la situación encontrada y las conclusiones con todo lo diligenciado. Te propone una versión de cada
-            una —y la conclusión, si no escribiste— y tú eliges.
+            {esActa
+              ? 'Revisa la situación encontrada y las conclusiones con todo lo diligenciado. Te propone una versión de cada una —y la conclusión, si no escribiste— y tú eliges.'
+              : 'Revisa la situación encontrada con todo lo diligenciado. Te propone una versión y tú eliges. Las conclusiones se escriben en el informe.'}
           </div>
           <div role="status" style={{ fontSize: 12, marginTop: 6, color: estado.tono, fontWeight: vigente ? 600 : 400 }}>
             {estado.t}
@@ -3654,203 +3657,214 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!p) return null;
     const senales = _senalesPanel(p);
     const coherencia = _senalesCoherencia(senales);
-    const forma = senales.filter(s => s.tipo === 'forma');
+    // Las de forma hablan del texto propio: solo con «Usar mi texto» elegido
+    // (antes de elegir repetían lo que el resumen de la propuesta ya explica).
+    const forma = senales.filter(s => s.tipo === 'forma' &&
+      (s.donde === 'conclusion' ? revisionPanel.elConc : revisionPanel.elDesc) === 'propio');
     const justifOk = !coherencia.length || (p.justif || '').trim().length >= 20;
     const elegidas = !!(p.elDesc && p.elConc);
     const set = (k, v) => setRevisionPanel(prev => prev ? Object.assign({}, prev, { [k]: v }) : prev);
     const elegir = (k, elKey, cual, texto) =>
       setRevisionPanel(prev => prev ? Object.assign({}, prev, { [k]: texto, [elKey]: cual }) : prev);
     // Conclusiones vacías y sin propuesta también se muestran si hay algo que
-    // decir: no caben en el acta, o la propuesta falló.
-    const hayConc = !!(p.origConc.trim() || p.iaConc.trim() || p.sinEspacioConc || p.concFallo);
+    // decir: la propuesta falló.
     const esActaP = documentoVisita(d.documento) === 'ACTA';
+    // Con informe técnico no hay casilla de conclusiones que revisar.
+    const hayConc = esActaP && !!(p.origConc.trim() || p.iaConc.trim() || p.concFallo);
 
-    // Tarjeta con el texto. En «Tu texto», las expresiones de IA van tachadas
-    // (decisión del usuario 2026-10-17, reemplaza la de 2026-10-15 de no
-    // tachar): solo se nota, no bloquea nada y el texto guardado no cambia.
-    // La de la propuesta lleva debajo 1-2 motivos de lo que hace
-    // (resumenCambios, utils.js), con lo perdido primero.
-    function tarjeta(titulo, cual, texto, elegida, onElegir, resumen) {
-      const vacio = !String(texto || '').trim();
-      // Texto con las expresiones de IA en <del> (solo lectura de pantalla:
-      // aria-label anticipa qué es lo tachado).
-      const tachado = t => {
-        const expr = expresionesIA(t);
-        if (!expr.length) return String(t || '');
-        const partes = [];
-        let pos = 0;
-        expr.forEach((x, i) => {
-          if (x.inicio > pos) partes.push(t.slice(pos, x.inicio));
-          partes.push(<del key={i} aria-label={'expresión de IA: ' + t.slice(x.inicio, x.fin)}
-            style={{ color: 'var(--texto-suave)', textDecorationThickness: '1px' }}>{t.slice(x.inicio, x.fin)}</del>);
-          pos = x.fin;
-        });
-        if (pos < t.length) partes.push(t.slice(pos));
-        return partes;
-      };
-      const exprIA = cual === 'propio' && !vacio ? expresionesIA(texto) : [];
+    // Rediseño 2026-10-17 (maqueta propuesta-revision.html, aprobada): pasos
+    // con su estado arriba, la tarjeta elegida se vuelve el editor en su sitio
+    // (antes salía un tercer cuadro con el mismo texto) y la otra se pliega; el
+    // espacio del acta va en el pie de cada tarjeta para comparar las dos.
+    // En «Tu texto», las expresiones de IA van tachadas (decisión del usuario
+    // 2026-10-17): solo se nota, no bloquea nada y el texto guardado no cambia.
+    const tachado = t => {
+      const expr = expresionesIA(t);
+      if (!expr.length) return String(t || '');
+      const partes = [];
+      let pos = 0;
+      expr.forEach((x, i) => {
+        if (x.inicio > pos) partes.push(t.slice(pos, x.inicio));
+        partes.push(<del key={i} aria-label={'expresión de IA: ' + t.slice(x.inicio, x.fin)}>{t.slice(x.inicio, x.fin)}</del>);
+        pos = x.fin;
+      });
+      if (pos < t.length) partes.push(t.slice(pos));
+      return partes;
+    };
+
+    function medidor(texto, celda) {
+      if (!esActaP) return null;
+      const c = capacidadActa(texto, celda);
+      const pct = Math.min(100, Math.round(c.renglones / c.max * 100));
+      const cerca = c.cabe && c.renglones >= c.max - 2 && c.renglones > 0;
       return (
-        <div style={{
-          background: 'var(--superficie)', borderRadius: 'var(--r-ctl, 8px)', padding: 12,
-          outline: elegida ? '2px solid var(--brand)' : 'none', display: 'flex', flexDirection: 'column', gap: 8,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>{titulo}</div>
-            <button type="button" onClick={onElegir} aria-pressed={elegida}
-              className={elegida ? 'btn-principal secundario' : 'btn-neutro'}
-              style={{ minHeight: 44, fontSize: 13, padding: '8px 14px', margin: '0 0 0 auto' }}>
-              {elegida ? '✓ Elegido' : (cual === 'ia' ? 'Usar la propuesta' : (vacio ? 'Escribir la mía' : 'Usar mi texto'))}
-            </button>
-          </div>
-          <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto',
-            color: vacio ? 'var(--texto-suave)' : undefined, fontStyle: vacio ? 'italic' : undefined }}>
-            {vacio ? 'No escribiste conclusiones.' : (cual === 'propio' ? tachado(texto) : texto)}
-          </div>
-          {exprIA.length > 0 && (
-            <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
-              Lo tachado son expresiones típicas de textos generados por IA.
-            </div>
-          )}
-          {resumen && resumen.length > 0 && (
-            <div style={{ fontSize: 12, borderTop: '1px solid var(--borde)', paddingTop: 8 }}>
-              {resumen.map((r, i) => (
-                <div key={i} style={{ marginBottom: 2, color: r.tipo === 'pierde' ? 'var(--rojo)' : 'var(--texto-suave)',
-                  fontWeight: r.tipo === 'pierde' ? 600 : 400 }}>{r.texto}</div>
-              ))}
-            </div>
+        <div className={'rv-acta' + (!c.cabe ? ' no' : cerca ? ' cerca' : '')} role="status">
+          <span className="rv-barra" aria-hidden="true"><i style={{ width: pct + '%' }} /></span>
+          <span>{c.renglones} de {c.max} renglones del acta</span>
+          {!c.cabe && (
+            <span className="rv-acta-no">
+              No cabe: sobran ≈ {Math.abs(c.caracteres).toLocaleString('es-CO')} caracteres, que no saldrían en el PDF. Acórtalo antes de aplicar.
+            </span>
           )}
         </div>
       );
     }
 
-    function bloque(titulo, k, elKey, orig, ia, celda, cambio, condensa) {
+    // Una opción. Elegida → editor; la otra queda al lado, del mismo tamaño,
+    // para seguir comparando (decisión del usuario 2026-10-17), y solo su botón
+    // la recupera (un toque en la tarjeta perdería lo editado).
+    function tarjeta(k, elKey, cual, texto, celda, resumen, avisos) {
+      const el = p[elKey];
+      const elegida = el === cual;
+      const plegada = !!el && !elegida;
+      const vacio = !String(texto || '').trim();
+      const usar = plegada ? 'Usar este'
+        : cual === 'ia' ? 'Usar la propuesta' : (vacio ? 'Escribir la mía' : 'Usar mi texto');
+      const exprIA = cual === 'propio' && !vacio && !elegida ? expresionesIA(texto) : [];
+      return (
+        <article className={'rv-op' + (elegida ? ' elegida' : '') + (plegada ? ' plegada' : '')}>
+          <div className="rv-op-cab">
+            <strong>{cual === 'ia' ? 'Propuesta' : 'Tu texto'}</strong>
+            {elegida
+              ? <span className="rv-elegida">✓ Queda este</span>
+              : <button type="button" className="rv-usar" onClick={() => elegir(k, elKey, cual, texto)}>{usar}</button>}
+          </div>
+          {resumen && resumen.length > 0 && (
+            <ul className="rv-cambia">
+              {resumen.map((r, i) => <li key={i} className={r.tipo === 'pierde' ? 'pierde' : ''}>{r.texto}</li>)}
+            </ul>
+          )}
+          {elegida ? (
+            <TextAreaNV className="rv-txt" autoAlto rows={3} value={p[k]} onChange={v => set(k, v)}
+              aria-label={(celda === 'conclusiones' ? 'Conclusiones' : 'Situación encontrada') + ': texto que queda'}
+              placeholder={celda === 'conclusiones' ? 'Escribe la conclusión de la visita y la recomendación.' : ''} />
+          ) : (
+            <div className="rv-txt">
+              {vacio
+                ? <span className="rv-vacio">{celda === 'conclusiones' ? 'No escribiste conclusiones.' : 'Sin texto.'}</span>
+                : (cual === 'propio' ? tachado(texto) : texto)}
+            </div>
+          )}
+          {exprIA.length > 0 && <div className="rv-nota">Lo tachado son expresiones típicas de textos generados por IA.</div>}
+          {elegida && avisos.map(s => <div key={s.id + s.donde} className="rv-forma">{s.mensaje}</div>)}
+          {medidor(elegida ? p[k] : texto, celda)}
+        </article>
+      );
+    }
+
+    function bloque(id, titulo, k, elKey, orig, ia, celda, cambio, condensa) {
       const el = p[elKey];
       const hayPropuesta = p.ia && _normTextoUI(ia) !== _normTextoUI(orig);
       const desdeDatos = celda === 'conclusiones' && !orig.trim() && hayPropuesta;
-      // Lo que el medidor mide: en conclusiones, con la frase del art. 135 delante.
-      const enActaDe = t => celda === 'conclusiones' ? _conclusionesActaD(Object.assign({}, d, { obsConclusion: t })) : t;
-      const capOrig = capacidadActa(enActaDe(orig), celda);
-      const capIa = capacidadActa(enActaDe(ia), celda);
+      const sub = desdeDatos ? 'No escribiste: la propuesta sale de lo diligenciado'
+        : hayPropuesta || (celda === 'conclusiones' && p.concFallo) ? ''
+        : !cambio && d.revision ? 'Sin cambios desde la última revisión'
+        : p.ia ? 'Sin cambios propuestos' : '';
+      // Las de forma hablan del texto propio: solo bajo «Tu texto» elegido.
+      const avisos = forma.filter(s => (s.donde === 'conclusion') === (celda === 'conclusiones'));
+      const capOrig = capacidadActa(orig, celda);
+      const capIa = capacidadActa(ia, celda);
       return (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
-            {titulo}
-            {(!hayPropuesta || desdeDatos) && !(celda === 'conclusiones' && (p.sinEspacioConc || p.concFallo)) && (
-              <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--texto-suave)', marginLeft: 8 }}>
-                {desdeDatos ? 'Propuesta con todo lo diligenciado'
-                  : !cambio && d.revision ? 'Sin cambios desde la última revisión'
-                  : p.ia ? 'Sin cambios propuestos' : 'Tu texto'}
-              </span>
-            )}
-          </div>
-          {celda === 'conclusiones' && p.sinEspacioConc && (
-            <div style={{ fontSize: 12, marginBottom: 8, padding: '8px 10px', borderRadius: 'var(--r-ctl, 8px)',
-              background: 'var(--superficie)', border: '1px solid var(--borde)' }}>
-              La frase del art. 135 que pone la app ocupa toda la casilla de conclusiones del acta: no cabe ninguna
-              conclusión tuya. El acta sale solo con esa frase; si necesitas conclusiones, documenta la visita con
-              informe técnico.
-              {String(p[k] || '').trim() && (
-                <div style={{ marginTop: 6 }}>
-                  <button type="button" className="btn-neutro" onClick={() => set(k, '')}
-                    style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Dejar sin conclusiones</button>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="rv-bloque" id={id}>
+          <div className="rv-btit"><h3>{titulo}</h3>{sub && <span>{sub}</span>}</div>
           {celda === 'conclusiones' && p.concFallo && (
-            <div style={{ fontSize: 12, marginBottom: 8, color: 'var(--texto)' }}>
-              No se pudo proponer la conclusión (el servicio no respondió). Escribe la tuya o vuelve a revisar en unos minutos.
-            </div>
+            <p className="rv-aviso">No se pudo proponer la conclusión (el servicio no respondió). Escribe la tuya o vuelve a revisar en unos minutos.</p>
           )}
-          {esActaP && hayPropuesta && !capOrig.cabe && (
-            <div style={{ fontSize: 12, marginBottom: 6, color: capIa.cabe ? 'var(--texto-suave)' : 'var(--rojo)' }}>
-              {'Tu texto no cabe en el acta (' + capOrig.renglones + ' de ' + capOrig.max + ' renglones). ' +
-               (capIa.cabe ? 'La propuesta está ajustada para que quepa (' + capIa.renglones + ' de ' + capIa.max + ').'
-                           : 'La propuesta tampoco cabe: acórtala antes de aplicar.')}
-            </div>
+          {esActaP && hayPropuesta && !el && !capOrig.cabe && (
+            <p className={'rv-aviso' + (capIa.cabe ? '' : ' no')}>
+              {'Tu texto no cabe en el acta. ' + (capIa.cabe ? 'La propuesta está ajustada para que quepa.' : 'La propuesta tampoco cabe: acórtala antes de aplicar.')}
+            </p>
           )}
-          {hayPropuesta && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginBottom: 8 }}>
-              {tarjeta('Tu texto', 'propio', orig, el === 'propio', () => elegir(k, elKey, 'propio', orig))}
-              {tarjeta('Propuesta', 'ia', ia, el === 'ia', () => elegir(k, elKey, 'ia', ia), resumenCambios(orig, ia, { condensa }))}
-            </div>
-          )}
-          {el ? (
-            <>
-              {hayPropuesta && (
-                <div style={{ fontSize: 12, color: 'var(--texto-suave)', margin: '4px 0' }}>
-                  Texto que queda en el formulario (puedes editarlo):
-                </div>
-              )}
-              <textarea className="input-campo" rows={6} value={p[k]}
-                onChange={e => set(k, e.target.value)}
-                style={{ background: 'var(--superficie)' }} />
-              {esActaP && <_MedidorActa texto={enActaDe(p[k])} celda={celda} enPanel />}
-            </>
-          ) : (
-            <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
-              {desdeDatos ? 'Usa la propuesta o escribe la tuya para seguir.' : 'Elige uno de los dos textos para seguir.'}
-            </div>
-          )}
+          <div className={'rv-ops' + (!hayPropuesta ? ' sola' : '')}>
+            {tarjeta(k, elKey, 'propio', orig, celda, null, avisos)}
+            {hayPropuesta && tarjeta(k, elKey, 'ia', ia, celda, resumenCambios(orig, ia, { condensa }), [])}
+          </div>
         </div>
       );
     }
 
-    const pendiente = !elegidas ? 'Elige un texto en cada casilla.'
-      : !justifOk ? 'Escribe la justificación (mínimo 20 caracteres).' : '';
+    const nDatos = coherencia.length;
+    const etiquetaDatos = nDatos > 1 ? nDatos + ' datos no cuadran' : '1 dato no cuadra';
+    const irA = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    const pasos = [
+      { id: 'rv-b-sit', l: 'Situación encontrada', ok: !!p.elDesc },
+      hayConc && { id: 'rv-b-con', l: 'Conclusiones', ok: !!p.elConc },
+      nDatos > 0 && { id: 'rv-b-dat', l: justifOk ? 'Datos explicados' : etiquetaDatos, ok: justifOk, mal: !justifOk },
+    ].filter(Boolean);
+    const falta = [
+      !p.elDesc && 'elegir la situación encontrada',
+      !p.elConc && 'elegir las conclusiones',
+      !justifOk && ((p.justif || '').trim() ? 'explicar por qué (mínimo 20 caracteres)' : 'resolver ' + (nDatos > 1 ? nDatos + ' datos' : '1 dato')),
+    ].filter(Boolean);
+    const dejar = !!(p.dejar || (p.justif || '').trim());
     return (
-      <div id="nv-revision" style={{
-        gridColumn: '1 / -1', marginTop: 12, padding: 16, scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
-        background: 'var(--brand-bg)', borderRadius: 'var(--r-card, 12px)',
-      }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>Revisión del texto</div>
-        <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 12 }}>
-          {p.ia
-            ? 'Compara tu texto con la propuesta y elige cuál queda. Lo elegido se puede editar.'
-            : p.soloDatos
-            ? 'Los textos no cambiaron desde la última revisión: solo queda por explicar por qué cuadran con las casillas.'
-            : 'No hubo propuesta (el servicio no respondió): la revisión se cierra solo con el chequeo de la app.'}
-        </div>
-        {bloque('Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion', p.cambioDesc !== false, p.condensaDesc)}
-        {hayConc && bloque('Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones', p.cambioConc !== false, p.condensaConc)}
-        {coherencia.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--rojo)' }}>
-              {coherencia.length > 1 ? 'Hay ' + coherencia.length + ' cosas que no cuadran' : 'Hay algo que no cuadra'} entre el texto y las casillas
-            </div>
-            <ul style={{ margin: '0 0 8px 18px', padding: 0, fontSize: 13 }}>
-              {coherencia.map(s => <li key={s.id + s.donde} style={{ marginBottom: 4 }}>{s.mensaje}</li>)}
-            </ul>
-            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 6 }}>
-              Corrígelo en el texto o en la casilla, o explica por qué el acta sale así. La justificación no va en
-              el acta: queda en el registro de la visita.
-            </div>
-            <textarea className="input-campo" rows={3} value={p.justif}
-              placeholder="Ej.: El antejardín es privado según la escritura que mostró el propietario; por eso no se marca A3."
-              onChange={e => set('justif', e.target.value)}
-              style={{ background: 'var(--superficie)' }} />
+      <section id="nv-revision" className="rv" aria-label="Revisión del texto">
+        <header className="rv-cab">
+          <div>
+            {/* Con informe el título de la sección ya lo dice. */}
+            {esActaP && <h2>Revisión del texto</h2>}
+            <p>
+              {p.ia
+                ? 'Elige en cada casilla qué texto queda. El que elijas se puede editar aquí mismo.'
+                : p.soloDatos
+                ? 'Los textos no cambiaron desde la última revisión: solo queda explicar por qué cuadran con las casillas.'
+                : 'No hubo propuesta (el servicio no respondió): la revisión se cierra solo con el chequeo de la app.'}
+            </p>
           </div>
-        )}
-        {forma.length > 0 && (
-          <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--texto-suave)' }}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Sugerencias de redacción (no obligan)</div>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {forma.map(s => <li key={s.id + s.donde} style={{ marginBottom: 2 }}>{s.mensaje}</li>)}
-            </ul>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={cerrarRevision} disabled={!elegidas || !justifOk}
-            className="btn-principal secundario" style={{ margin: 0, fontSize: 13, padding: '8px 18px', minHeight: 44 }}>
-            Aplicar
-          </button>
-          <button type="button" onClick={() => setRevisionPanel(null)} className="btn-neutro"
-            style={{ fontSize: 13, padding: '9px 16px', minHeight: 44 }}>Cancelar</button>
-          {pendiente && (
-            <span style={{ fontSize: 12, color: 'var(--texto-suave)', marginLeft: 'auto' }}>{pendiente}</span>
+          {pasos.length > 1 && (
+            <ol className="rv-pasos" aria-label="Pasos de la revisión">
+              {pasos.map(s => (
+                <li key={s.id}>
+                  <button type="button" className={s.ok ? 'ok' : s.mal ? 'mal' : ''} onClick={() => irA(s.id)}>{s.l}</button>
+                </li>
+              ))}
+            </ol>
           )}
-        </div>
-      </div>
+        </header>
+        {bloque('rv-b-sit', 'Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion', p.cambioDesc !== false, p.condensaDesc)}
+        {hayConc && bloque('rv-b-con', 'Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones', p.cambioConc !== false, p.condensaConc)}
+        {nDatos > 0 && (
+          <div className="rv-bloque" id="rv-b-dat">
+            <div className="rv-btit">
+              <h3>{nDatos > 1 ? nDatos + ' datos no cuadran entre sí' : 'Un dato no cuadra con otro'}</h3>
+              <span>Corrige uno de los dos, o déjalo así y explica por qué</span>
+            </div>
+            <ul className="rv-datos">
+              {coherencia.map(s => (
+                <li key={s.id + s.donde}>
+                  <p>{s.mensaje}</p>
+                  {(SECCIONES_SENAL[s.id] || []).length > 0 && (
+                    <div className="rv-ir-fila">
+                      {SECCIONES_SENAL[s.id].map(sec => (
+                        <button key={sec} type="button" className="rv-ir" onClick={() => _irASeccion(sec)}>Ir a {sec}</button>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {!dejar ? (
+              <button type="button" className="rv-dejar" onClick={() => set('dejar', true)}>Dejarlo así</button>
+            ) : (
+              <div className="rv-justif">
+                <label htmlFor="rv-justif">Por qué el acta sale así</label>
+                <TextAreaNV id="rv-justif" className="rv-justif-txt" autoAlto rows={2} value={p.justif} onChange={v => set('justif', v)}
+                  placeholder="Ej.: La losa nueva requiere licencia; el resto es reparación locativa." />
+                <p>No va en el acta: queda en el registro de la visita. Mínimo 20 caracteres.</p>
+              </div>
+            )}
+          </div>
+        )}
+        <footer className="rv-pie">
+          <span className="rv-falta">
+            {falta.length
+              ? <>Falta: {falta.map((f, i) => <React.Fragment key={f}>{i > 0 && ' · '}<b>{f}</b></React.Fragment>)}</>
+              : 'Todo listo.'}
+          </span>
+          <button type="button" className="rv-cancelar" onClick={() => setRevisionPanel(null)}>Cancelar</button>
+          <button type="button" className="rv-aplicar" onClick={cerrarRevision} disabled={!elegidas || !justifOk}>Aplicar revisión</button>
+        </footer>
+      </section>
     );
   }
 
@@ -4441,9 +4455,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       retiroQuebrada: d.quebrada,
       infraccion:     _infraccionSoloCatalogo(d.infraccion),
       area:           _areaTexto(d),
-      // A38: la frase jurídica que arma la app desde los chips (una por
-      // comportamiento, con la cita literal del art. 135) y debajo el texto
-      // revisado del inspector. Solo en el acta: en BD queda lo del inspector.
+      // A38: el texto revisado del inspector (comportamiento y área van en F36/F37).
       obsConclusion:  _conclusionesActaD(d),
       // Citación
       orden:          (d.orden && String(d.orden).trim()) ? d.orden : 'N/A',
@@ -4643,7 +4655,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           : 'El texto de la visita todavía no se ha revisado.') +
         '\n\nPulsa «Revisar» en «Revisión del texto», al final del formulario, y vuelve a ' + accion + '.',
         { tono: 'aviso', titulo: vencida ? 'Revisa el texto otra vez' : 'Falta revisar el texto', btnOk: 'Ir a «Revisar»' });
-      const el = document.getElementById('nv-revisar-bloque');
+      const el = document.getElementById('nv-revisar-bloque') || document.getElementById('nv-revision');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -5959,24 +5971,24 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 10. OBSERVACIONES Y CONCLUSIONES (al final) ───────── */}
       {/* Sin indicador a propósito: no declara obligatorios, un check aquí
           sería mentira y un ámbar, peor. No llevar `estado`. */}
-      <_Seccion titulo="Conclusiones y revisión" color="gris">
-        <_Campo label="Conclusiones" fullWidth>
-          <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={4} autoAlto
-            placeholder="Opcional. Si la dejas vacía, «Revisar» te propone una con todo lo diligenciado." />
-        </_Campo>
-        {/* En la celda del acta va primero la frase del art. 135 que arma la app. */}
+      {/* Con informe técnico las conclusiones se escriben en el generador del
+          informe (decisión del usuario 2026-10-17): la casilla no sale. Un texto
+          que ya existiera se conserva y llega al informe, donde se edita; aquí
+          no se puede tocar, así que no vence la revisión. */}
+      <_Seccion titulo={documentoVisita(d.documento) === 'ACTA' ? 'Conclusiones y revisión' : 'Revisión del texto'} color="gris">
+        {documentoVisita(d.documento) === 'ACTA' && (
+          <_Campo label="Conclusiones" fullWidth>
+            <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={4} autoAlto
+              placeholder="Opcional. Si la dejas vacía, «Revisar» te propone una con todo lo diligenciado." />
+          </_Campo>
+        )}
         {documentoVisita(d.documento) === 'ACTA' && (
           <_MedidorActa texto={_conclusionesActaD(d)} celda="conclusiones"
-            onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')}
-            sinEspacio={!!_fraseJuridicaActaD(d) && caracteresParaActa('conclusiones',
-              renglonesActa(_fraseJuridicaActaD(d), ACTA_CAPACIDAD.conclusiones.porRenglon) + 1, 1) === 0}
-            nota={_fraseJuridicaActaD(d) ? 'La frase del art. 135 que pone la app ocupa ' +
-              (renglonesActa(_fraseJuridicaActaD(d), ACTA_CAPACIDAD.conclusiones.porRenglon) +
-               (String(d.obsConclusion || '').trim() ? 1 : 0)) + ' de los ' + ACTA_CAPACIDAD.conclusiones.renglones + '.' : ''} />
+            onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')} />
         )}
         {/* Un solo «Revisar» para todo, al final: ya está todo diligenciado. */}
-        {_bloqueRevision()}
-        {_panelRevision()}
+        {/* Abierta, la revisión ocupa el sitio del bloque: un solo «Revisión del texto». */}
+        {revisionPanel ? _panelRevision() : _bloqueRevision()}
       </_Seccion>
 
       {/* El botón de guardar ya no vive aquí: pasó a la barra fija inferior

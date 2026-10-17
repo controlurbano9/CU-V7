@@ -3202,27 +3202,6 @@ function comportamientosParaIA(infraccion) {
   return out;
 }
 
-// ── Conclusión jurídica del acta (capa 4) ─────────────────────
-// docs/PROPUESTA_2026-10-14_coherencia-acta.md: la casilla «Conclusiones»
-// (A38) arranca con la misma frase del informe F-43, una por comportamiento
-// marcado, y debajo va el texto del inspector. Sale de los chips: para
-// cambiarla se cambian los chips, no el texto (decisión del usuario).
-// Con «No se evidencia infracción» o sin nada marcado no hay frase.
-// `area`: { valor: '16' | '', noMedible: bool }.
-function conclusionJuridicaActa(infraccion, area) {
-  var lista = comportamientosParaIA(infraccion);
-  if (!lista.length || lista[0] === 'NINGUNO') return '';
-  var frases = lista.map(function(c) {
-    return 'Los hechos descritos constituyen un comportamiento contrario a la integridad urbanística ' +
-      'según el artículo 135, ' + c.split(' — ').slice(1).join(' — ') + ', de la Ley 1801 de 2016.';
-  });
-  var a = area || {};
-  var valor = String(a.valor || '').trim();
-  if (valor) frases.push('Área en contravención: ' + valor + (/m/i.test(valor) ? '' : ' m²') + '.');
-  else if (a.noMedible) frases.push('Área en contravención: no se pudo medir.');
-  return frases.join('\n');
-}
-
 // ── Capacidad de las celdas del acta F-GGO-46 ─────────────────
 // La celda no crece: lo que no cabe no sale en el PDF, y nadie se entera.
 // Medido el 2026-10-15 en PDF reales: la situación (A30) se cortó en el
@@ -3253,9 +3232,8 @@ function capacidadActa(texto, celda) {
 }
 
 // Largo al que «Revisar» condensa un texto que no cabe en su celda.
-// `ocupados`: renglones que ya usa otra cosa (en conclusiones, la frase del
-// art. 135 y su línea vacía). Cada párrafo después del primero cuesta una
-// línea vacía y un renglón a medias; 10 % de margen por el ajuste de
+// `ocupados`: renglones que ya usa otra cosa en la celda. Cada párrafo
+// después del primero cuesta una línea vacía y un renglón a medias; 10 % de margen por el ajuste de
 // palabras. 0 = no queda espacio.
 function caracteresParaActa(celda, ocupados, parrafos) {
   var c = ACTA_CAPACIDAD[celda] || ACTA_CAPACIDAD.situacion;
@@ -3397,7 +3375,7 @@ function reglasBloqueoActa(e) {
   // R04: una reparación locativa no requiere licencia; no puede ser a la vez
   // construir o intervenir (literal A).
   if (si(e.repLocativa) && literalA) {
-    add('R04', '¿Reparación locativa? dice SI y hay un comportamiento del literal A (construir o intervenir): una de las dos sobra.');
+    add('R04', 'En Verificación documental, las obras no requieren licencia por ser reparación locativa, y en Tipificación hay un comportamiento del literal A (construir o intervenir): una de las dos sobra.');
   }
   // R09: A2, C9 y C10 comparan contra una licencia aportada (sin excepción).
   var contraLicencia = ['A2', 'C9', 'C10'].filter(function(c) { return cod[c]; });
@@ -3741,7 +3719,7 @@ function revisarTextoLocal(e) {
 
   // R05: una reparación locativa no agrega área.
   if (si(e.repLocativa) && num(e.area) > 0 && !e.areaNoAplica) {
-    add('R05', 'area', '¿Reparación locativa? dice SI y hay ' + String(e.area).trim() + ' m² en contravención: una reparación locativa no agrega área.');
+    add('R05', 'area', 'En Verificación documental, las obras no requieren licencia por ser reparación locativa, y en Tipificación hay ' + String(e.area).trim() + ' m² en contravención: una reparación locativa no agrega área.');
   }
 
   // R06 / R06b: el antejardín, según lo que diga el texto. Construir o
@@ -3804,10 +3782,10 @@ function revisarTextoLocal(e) {
   // R14 / R15 (2026-10-15): «¿Las obras requieren licencia?» contra A4.
   var req = String(e.requiereLicencia || '').trim().toUpperCase();
   if (req === 'SI' && String(e.licenciaAportada || '').trim().toUpperCase() === 'NO' && !tiene('A4')) {
-    add('R14', 'area', 'Las obras requieren licencia y no se aportó, pero no está marcado A4 (sin licencia o caducada).');
+    add('R14', 'area', 'En Verificación documental: «¿Las obras requieren licencia?» = SI y «¿Se aportó licencia?» = NO, pero en Tipificación no está marcado A4 (sin licencia o caducada).');
   }
   if (req === 'NO' && tiene('A4')) {
-    add('R15', 'area', 'Dice que las obras no requieren licencia y está marcado A4 (sin licencia): una de las dos sobra.');
+    add('R15', 'area', 'En Verificación documental, «¿Las obras requieren licencia?» = NO, y en Tipificación está marcado A4 (sin licencia): una de las dos sobra.');
   }
   return senales;
 }
@@ -3976,7 +3954,6 @@ var _cuUtilsExports = {
   ART135_TEXTO: ART135_TEXTO,
   citaArt135: citaArt135,
   comportamientosParaIA: comportamientosParaIA,
-  conclusionJuridicaActa: conclusionJuridicaActa,
   reglasBloqueoActa: reglasBloqueoActa,
   camposRevision: camposRevision,
   huellaRevision: huellaRevision,

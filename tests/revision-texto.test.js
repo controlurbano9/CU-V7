@@ -160,14 +160,13 @@ test('capacidadActa: renglones por párrafo y líneas vacías', () => {
   assert.equal(capacidadActa('x'.repeat(1501), 'situacion').cabe, true);
 });
 
-test('capacidadActa: las conclusiones cuentan la frase del art. 135', () => {
-  const { capacidadActa, conclusionJuridicaActa } = require('../utils.js');
-  const jur = conclusionJuridicaActa('A4: Sin licencia o caducada', { valor: '', noMedible: true });
-  // Fila 1698 (20191038116): frase + área ocupan 3 renglones, la línea vacía
-  // uno, y la conclusión del inspector (296 caracteres) ya no cabe entera.
-  const conc = 'x'.repeat(296);
-  assert.equal(capacidadActa([jur, conc].join('\n\n'), 'conclusiones').cabe, false);
-  assert.equal(capacidadActa([jur, 'x'.repeat(140)].join('\n\n'), 'conclusiones').cabe, true);
+test('capacidadActa: las conclusiones tienen sus 5 renglones (sin frase del art. 135)', () => {
+  const { capacidadActa } = require('../utils.js');
+  // Fila 1698 (20191038116): la conclusión de 296 caracteres que antes no
+  // cabía tras la frase del art. 135 ahora cabe en 2 renglones.
+  assert.equal(capacidadActa('x'.repeat(296), 'conclusiones').renglones, 2);
+  assert.equal(capacidadActa('x'.repeat(5 * 152), 'conclusiones').cabe, true);
+  assert.equal(capacidadActa('x'.repeat(5 * 152 + 1), 'conclusiones').cabe, false);
 });
 
 test('caracteresParaActa: lo que cabe según párrafos y lo ya ocupado', () => {
