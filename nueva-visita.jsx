@@ -344,6 +344,21 @@ function _senalesTextoD(dObj) {
 function _senalesCoherenciaD(dObj) {
   return _senalesTextoD(dObj).filter(s => s.tipo !== 'forma');
 }
+// Claves de las señales de coherencia, para recordar cuáles ya justificó el
+// inspector al sellar.
+function _clavesSenalesD(dObj) {
+  return _senalesCoherenciaD(dObj).map(s => s.id + '|' + s.donde);
+}
+// ¿Se puede sellar sin preguntar nada? Sin contradicciones, o con las mismas
+// que ya se justificaron en el sello anterior (2026-10-17: volver a pedir la
+// justificación de lo ya explicado es un paso que sobra).
+function _senalesYaJustificadasD(dObj) {
+  const claves = _clavesSenalesD(dObj);
+  if (!claves.length) return true;
+  const previas = dObj.revision && dObj.revision.senales;
+  return String(dObj.revisionJustif || '').trim().length >= 20 && Array.isArray(previas) &&
+    claves.every(c => previas.indexOf(c) >= 0);
+}
 
 // Lo que viaja a REVISION_DESCRIPCION al guardar: la revisión solo si sigue
 // vigente (una vencida no se borra de la hoja: el cliente la compara por
@@ -3447,11 +3462,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       huella: huellaRevision(d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
       partes: partesRevision(d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
       textos: { desc: d.actuacion, conc: d.obsConclusion },
+      senales: _clavesSenalesD(d),
       fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
         '/' + hoy.getFullYear(),
       nombre: '',
     });
-    setCampo('revisionJustif', '');
+    // La justificación ya dada se conserva si las contradicciones siguen.
+    setCampo('revisionJustif', _clavesSenalesD(d).length ? d.revisionJustif : '');
   }
 
   // ── Revisión obligatoria del texto (antes «Mejorar texto») ──────────
@@ -3500,9 +3517,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (pedirConc && cambioMenorRevision(previos.conc, d.obsConclusion) &&
           (!esActaPre || capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe)) pedirConc = false;
     }
-    // Nada que pedir y sin contradicciones: se sella en silencio, sin abrir
-    // el panel ni llamar a la IA.
-    if (!pedirDesc && !pedirConc && _senalesCoherenciaD(d).length === 0) {
+    // Nada que pedir y sin contradicciones nuevas: se sella en silencio, sin
+    // abrir el panel ni llamar a la IA.
+    if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d)) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
     }
@@ -3561,7 +3578,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (ia && pedirConc && !aportaConc) conc = origConc;
     // Ninguna casilla aporta y sin contradicciones: sellar en silencio con el
     // modo que tocaría (modoPrevio || 'PROPIO') y no abrir el panel.
-    if (ia && !aportaDesc && !aportaConc && !concFallo && _senalesCoherenciaD(d).length === 0) {
+    if (ia && !aportaDesc && !aportaConc && !concFallo && _senalesYaJustificadasD(d)) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       setBusyMe(false);
       return;
@@ -3629,6 +3646,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // que guarda `_revisionParaGuardar` es solo modo + huella): permiten
       // detectar el retoque menor la próxima vez.
       textos: { desc: p.desc, conc: p.conc },
+      // Las contradicciones que quedan justificadas con este sello.
+      senales: senales.map(s => s.id + '|' + s.donde),
       fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
         '/' + hoy.getFullYear(),
       nombre: '',
