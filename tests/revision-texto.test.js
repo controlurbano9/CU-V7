@@ -210,3 +210,74 @@ test('resumenCambios: «segundo piso» no cuenta como atribución («según»)',
   assert.equal(r.some(x => /salvedades/.test(x.texto)), false);
   assert.deepEqual(resumenCambios('Igual.', 'Igual.'), []);
 });
+
+// ── 2026-10-17: revisión por campo (una coma, tilde o mayúscula no la vencen) ──
+const { partesRevision, huellaParaBD, partesCambiadas, _normTextoSuave } = require('../utils.js');
+
+test('_normTextoSuave: coma, tilde, mayúscula y signo no cambian; una palabra sí; la ñ se conserva', () => {
+  const n = _normTextoSuave;
+  assert.equal(n('Muro de 16 m2, según el acta.'), n('muro de 16 m2 segun el acta'));
+  assert.equal(n('La obra —según el inspector— no tiene licencia.'), n('la obra segun el inspector no tiene licencia'));
+  assert.notEqual(n('El muro es nuevo.'), n('El muro es viejo.'));
+  assert.equal(n('daño'), 'daño');
+  assert.notEqual(n('daño'), n('dano'));
+  assert.equal(n('  varios    saltos \n de línea '), 'varios saltos de linea');
+});
+
+test('partesRevision: cada parte con su huella de 8 hex y por separado', () => {
+  const p1 = partesRevision('El muro, de 2 m.', 'Retirar la cubierta.', 'A3: Bienes uso público (Antejardín)', 'NO||16');
+  ['desc', 'conc', 'datos'].forEach(k => assert.match(p1[k], /^[0-9a-f]{8}$/));
+  // Coma, tilde y mayúscula no mueven la huella de su parte.
+  const p2 = partesRevision('el muro de 2 m', 'RETIRAR LA CUBIERTA!', 'A3: Bienes uso público (Antejardín)', 'NO||16');
+  assert.equal(p1.desc, p2.desc);
+  assert.equal(p1.conc, p2.conc);
+  assert.equal(p1.datos, p2.datos);
+  // Cada parte cambia sola.
+  assert.notEqual(p1.desc, partesRevision('Otro texto', 'Retirar la cubierta.', 'A3: Bienes uso público (Antejardín)', 'NO||16').desc);
+  assert.notEqual(p1.datos, partesRevision('El muro, de 2 m.', 'Retirar la cubierta.', 'A3: Bienes uso público (Antejardín)', 'NO||20').datos);
+});
+
+test('huellaParaBD ↔ leerSelloRevision: ida y vuelta; el formato viejo se lee sin partes', () => {
+  const rev = { modo: 'IA', huella: 'aaaaaaaa', partes: { desc: 'bbbbbbbb', conc: 'cccccccc', datos: 'dddddddd' } };
+  const enBD = huellaParaBD(rev);
+  assert.equal(enBD, 'aaaaaaaa.bbbbbbbb.cccccccc.dddddddd');
+  const sello = leerSelloRevision('IA · ' + enBD + ' · 14/10/2026 · NOMBRE');
+  assert.deepEqual(sello,
+    { modo: 'IA', huella: 'aaaaaaaa', partes: { desc: 'bbbbbbbb', conc: 'cccccccc', datos: 'dddddddd' },
+      fecha: '14/10/2026', nombre: 'NOMBRE' });
+  assert.equal(huellaParaBD(leerSelloRevision(sello.modo + ' · ' + enBD + ' ·  · ')), enBD);
+  // Formato viejo (solo huella): sin partes y huellaParaBD lo devuelve tal cual.
+  const viejo = leerSelloRevision('IA · abcdef01 · 14/10/2026 · NOMBRE');
+  assert.deepEqual(viejo, { modo: 'IA', huella: 'abcdef01', fecha: '14/10/2026', nombre: 'NOMBRE' });
+  assert.equal(huellaParaBD(viejo), 'abcdef01');
+  // Sello mal armado (grupos de más o de menos) no se lee.
+  assert.equal(leerSelloRevision('IA · aaaaaaaa.bbbbbbbb · 14/10/2026 · NOMBRE'), null);
+  assert.equal(leerSelloRevision('IA · aaaaaaaz.bbbbbbbb.cccccccc.dddddddd · 14/10/2026'), null);
+});
+
+test('partesCambiadas: sello nuevo → solo la parte tocada; viejo vigente → []; viejo vencido y sin sello → las tres', () => {
+  const infr = 'A3: Bienes uso público (Antejardín)', campos = 'NO||16';
+  const rev = { modo: 'IA', huella: 'aaaaaaaa', partes: partesRevision('El muro.', 'Retirar la cubierta.', infr, campos) };
+  assert.deepEqual(partesCambiadas(rev, 'El muro.', 'Retirar la cubierta.', infr, campos), []);
+  // Coma y mayúscula no cuentan como cambio.
+  assert.deepEqual(partesCambiadas(rev, '¡EL MURO!', 'Retirar la cubierta…', infr, campos), []);
+  assert.deepEqual(partesCambiadas(rev, 'Otro texto.', 'Retirar la cubierta.', infr, campos), ['desc']);
+  assert.deepEqual(partesCambiadas(rev, 'El muro.', 'Otra conclusión.', infr, campos), ['conc']);
+  assert.deepEqual(partesCambiadas(rev, 'El muro.', 'Retirar la cubierta.', 'D13: Materiales en vía', campos), ['datos']);
+  assert.deepEqual(partesCambiadas(rev, 'Otro texto.', 'Retirar la cubierta.', 'D13: Materiales en vía', campos), ['desc', 'datos']);
+  // Sin sello → las tres.
+  assert.deepEqual(partesCambiadas(null, 'a', 'b', '', ''), ['desc', 'conc', 'datos']);
+  // Sello viejo (sin partes): la comparación de siempre.
+  const hviejo = huellaRevision('a', 'b', '', campos);
+  assert.deepEqual(partesCambiadas({ modo: 'IA', huella: hviejo }, 'a', 'b', '', campos), []);
+  assert.deepEqual(partesCambiadas({ modo: 'IA', huella: hviejo }, 'a', 'otra', '', campos), ['desc', 'conc', 'datos']);
+});
+
+test('revisionVigente: datos solos siguen vigentes solo sin señales de coherencia', () => {
+  const rev = { modo: 'IA', huella: 'aaaaaaaa', partes: partesRevision('a', 'b', 'A3: Bienes uso público (Antejardín)', 'c') };
+  assert.equal(revisionVigente(rev, 'a', 'b', 'A3: Bienes uso público (Antejardín)', 'c'), true);       // nada cambió
+  assert.equal(revisionVigente(rev, 'a', 'b', 'D13: Materiales en vía', 'c'), false);                    // datos, sin 6.º argumento
+  assert.equal(revisionVigente(rev, 'a', 'b', 'D13: Materiales en vía', 'c', true), true);               // datos, sin señales
+  assert.equal(revisionVigente(rev, 'a', 'b', 'D13: Materiales en vía', 'c', false), false);             // datos, con señales
+  assert.equal(revisionVigente(rev, 'otra', 'b', 'A3: Bienes uso público (Antejardín)', 'c', true), false); // desc: el 6.º no salva
+});

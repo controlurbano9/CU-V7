@@ -3421,9 +3421,7 @@ function camposRevision(d) {
 // FNV-1a de 32 bits en hexadecimal (8 caracteres). No es criptográfica: solo
 // distingue «el texto que se revisó» de «otro texto».
 // `campos` = camposRevision(d); vacío en las llamadas que no lo usan.
-function huellaRevision(actuacion, conclusion, infraccion, campos) {
-  var s = _normTextoRevision(actuacion) + '\u0001' + _normTextoRevision(conclusion) +
-    '\u0001' + _normChipsRevision(infraccion) + (campos ? '\u0001' + campos : '');
+function _fnv8(s) {
   var h = 0x811c9dc5;
   for (var i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -3431,20 +3429,78 @@ function huellaRevision(actuacion, conclusion, infraccion, campos) {
   }
   return ('0000000' + h.toString(16)).slice(-8);
 }
+function huellaRevision(actuacion, conclusion, infraccion, campos) {
+  var s = _normTextoRevision(actuacion) + '\u0001' + _normTextoRevision(conclusion) +
+    '\u0001' + _normChipsRevision(infraccion) + (campos ? '\u0001' + campos : '');
+  return _fnv8(s);
+}
 
-// Columna REVISION_DESCRIPCION: 'IA · 1a2b3c4d · 14/10/2026 · NOMBRE'.
+// ── Revisión por campo (2026-10-17) ─────────────────────────────
+// La huella única vencía la revisión por una coma, una tilde o un chip que no
+// toca el texto. Ahora cada parte (descripción, conclusiones, datos) lleva su
+// propia huella, calculada sobre texto «suave»: minúscula, sin tildes, signos
+// fuera y espacios colapsados. La ñ se conserva (NFD la descompondría).
+function _normTextoSuave(s) {
+  return String(s == null ? '' : s).toLowerCase()
+    .replace(/ñ/g, '\u0001').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\u0001/g, 'ñ')
+    .replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function partesRevision(actuacion, conclusion, infraccion, campos) {
+  return {
+    desc: _fnv8(_normTextoSuave(actuacion)),
+    conc: _fnv8(_normTextoSuave(conclusion)),
+    datos: _fnv8(_normChipsRevision(infraccion) + '|' + (campos || '')),
+  };
+}
+// Lo que va en la celda: el sello extendido solo si hay partes (los sellos
+// viejos siguen escribiéndose como hoy).
+function huellaParaBD(rev) {
+  if (!rev) return '';
+  if (!rev.partes) return rev.huella;
+  return rev.huella + '.' + rev.partes.desc + '.' + rev.partes.conc + '.' + rev.partes.datos;
+}
+// Qué partes cambiaron desde el sello. Sello viejo (sin partes): la
+// comparación de siempre — vigente → [], vencido → las tres (revisión
+// completa, como hoy). Sin sello → las tres.
+function partesCambiadas(rev, actuacion, conclusion, infraccion, campos) {
+  var TODAS = ['desc', 'conc', 'datos'];
+  if (!rev || !rev.huella) return TODAS;
+  if (!rev.partes) {
+    return rev.huella === huellaRevision(actuacion, conclusion, infraccion, campos) ? [] : TODAS;
+  }
+  var ahora = partesRevision(actuacion, conclusion, infraccion, campos);
+  return TODAS.filter(function(k) { return rev.partes[k] !== ahora[k]; });
+}
+
+// Columna REVISION_DESCRIPCION: 'IA · 1a2b3c4d · 14/10/2026 · NOMBRE' o, con
+// partes, 'IA · 1a2b3c4d.desc.conc.datos · 14/10/2026 · NOMBRE'.
 // MODO = IA (usó la versión de la IA) | PROPIO (conservó su texto) | LOCAL
 // (la IA no respondió y se cerró solo con el chequeo local).
 var MODOS_REVISION = ['IA', 'PROPIO', 'LOCAL'];
 function leerSelloRevision(valor) {
   var partes = String(valor || '').split('·').map(function(p) { return p.trim(); });
   var modo = (partes[0] || '').toUpperCase();
-  if (MODOS_REVISION.indexOf(modo) < 0 || !/^[0-9a-f]{8}$/.test(partes[1] || '')) return null;
-  return { modo: modo, huella: partes[1], fecha: partes[2] || '', nombre: partes[3] || '' };
+  if (MODOS_REVISION.indexOf(modo) < 0) return null;
+  var grupos = (partes[1] || '').split('.');
+  if ((grupos.length !== 1 && grupos.length !== 4) ||
+      grupos.some(function(g) { return !/^[0-9a-f]{8}$/.test(g); })) return null;
+  var out = { modo: modo, huella: grupos[0], fecha: partes[2] || '', nombre: partes[3] || '' };
+  if (grupos.length === 4) out.partes = { desc: grupos[1], conc: grupos[2], datos: grupos[3] };
+  return out;
 }
 
-function revisionVigente(rev, actuacion, conclusion, infraccion, campos) {
-  return !!(rev && rev.huella && rev.huella === huellaRevision(actuacion, conclusion, infraccion, campos));
+// `sinSenalesCoherencia`: solo cambia `datos` (chips/casillas) y el chequeo
+// local no ve contradicción con los textos → la revisión sigue vigente
+// (decisión del usuario 2026-10-17: marcar un chip que no contradice el
+// texto no obliga a revisar). Sin el 6.º argumento, `['datos']` vence.
+function revisionVigente(rev, actuacion, conclusion, infraccion, campos, sinSenalesCoherencia) {
+  if (!rev) return false;
+  if (!rev.partes) {
+    return !!(rev.huella && rev.huella === huellaRevision(actuacion, conclusion, infraccion, campos));
+  }
+  var cambiadas = partesCambiadas(rev, actuacion, conclusion, infraccion, campos);
+  if (!cambiadas.length) return true;
+  return cambiadas.length === 1 && cambiadas[0] === 'datos' && sinSenalesCoherencia === true;
 }
 
 // Muletillas y fórmulas que prohíbe prompt-actuacion.txt (sin tildes, en
@@ -3823,6 +3879,10 @@ var _cuUtilsExports = {
   reglasBloqueoActa: reglasBloqueoActa,
   camposRevision: camposRevision,
   huellaRevision: huellaRevision,
+  partesRevision: partesRevision,
+  huellaParaBD: huellaParaBD,
+  partesCambiadas: partesCambiadas,
+  _normTextoSuave: _normTextoSuave,
   leerSelloRevision: leerSelloRevision,
   revisionVigente: revisionVigente,
   revisarTextoLocal: revisarTextoLocal,

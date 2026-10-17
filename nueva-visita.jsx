@@ -324,14 +324,38 @@ function _normTextoUI(s) {
   return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 }
 
+// Señales del chequeo local sobre los textos y casillas de un estado del
+// formulario (`dObj`). Lo usan _revisionVigenteD (con los textos del
+// formulario) y _senalesPanel (con los textos del panel de revisión): una
+// sola copia de la lista de casillas que lee revisarTextoLocal.
+function _senalesTextoD(dObj) {
+  return revisarTextoLocal({
+    actuacion: dObj.actuacion, conclusion: dObj.obsConclusion,
+    infraccion: _infraccionSoloCatalogo(dObj.infraccion), poligono: dObj.poligono,
+    area: dObj.area, areaNoAplica: dObj.areaNoAplica, areaNoMedible: dObj.areaNoMedible,
+    repLocativa: dObj.repLocativa, licenciaAportada: dObj.licenciaAportada,
+    requiereLicencia: (dObj.reqLicencia || {}).respuesta,
+    alturaPisos: dObj.alturaPisos, pisos: dObj.pisos, destActuales: dObj.destActuales,
+    destinaciones: dObj.destinaciones, usos: dObj.usos,
+  });
+}
+// Solo las de coherencia (las de forma avisan, no vencen). Si cambian los
+// datos y esto queda vacío, la revisión sigue vigente (regla 2026-10-17).
+function _senalesCoherenciaD(dObj) {
+  return _senalesTextoD(dObj).filter(s => s.tipo !== 'forma');
+}
+
 // Lo que viaja a REVISION_DESCRIPCION al guardar: la revisión solo si sigue
 // vigente (una vencida no se borra de la hoja: el cliente la compara por
 // huella y ya no vale). El backend no reescribe si la huella es la misma.
 // Revisión vigente = la huella sellada es la de los textos, los chips y las
 // casillas que leen las reglas con justificación (camposRevision, utils.js).
+// Desde 2026-10-17: si solo cambiaron los datos y el chequeo local no ve
+// contradicciones, sigue vigente (6.º argumento de revisionVigente).
 function _revisionVigenteD(dObj) {
   return revisionVigente(dObj.revision, dObj.actuacion, dObj.obsConclusion,
-    _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj));
+    _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj),
+    _senalesCoherenciaD(dObj).length === 0);
 }
 // Lo que va en la celda de conclusiones del acta (A38): la frase jurídica que
 // arma la app desde los chips y debajo el texto del inspector. Lo usan el
@@ -477,7 +501,7 @@ function _contextoVisitaD(dObj) {
 function _revisionParaGuardar(dObj) {
   const rev = dObj.revision;
   if (!rev || !_revisionVigenteD(dObj)) return undefined;
-  const out = { modo: rev.modo, huella: rev.huella };
+  const out = { modo: rev.modo, huella: huellaParaBD(rev) };
   if (dObj.revisionJustif) out.justificacion = dObj.revisionJustif;
   return out;
 }
@@ -3418,9 +3442,32 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       await appAlert('Escribe algo en la descripción primero.', { tono: 'aviso', titulo: 'Nada que revisar' });
       return;
     }
+    // Revisión por campo (2026-10-17): solo se revisa lo que cambió de verdad
+    // desde el sello. Nada vencido → ya está revisada, no se llama a la IA.
+    // Excepción: revisado pero no cabe en el acta (se selló antes del tope) —
+    // hay que volver a pedir la propuesta condensada aunque nada cambiara.
+    const cambiadas = partesCambiadas(d.revision, d.actuacion, d.obsConclusion,
+      _infraccionSoloCatalogo(d.infraccion), camposRevision(d));
+    const esActaPre = documentoVisita(d.documento) === 'ACTA';
+    const noCabePre = esActaPre && (!capacidadActa(d.actuacion, 'situacion').cabe ||
+      !capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe);
+    if (!noCabePre && (!cambiadas.length ||
+        (cambiadas.length === 1 && cambiadas[0] === 'datos' && _revisionVigenteD(d)))) {
+      await appAlert('La descripción y la conclusión ya están revisadas.', { tono: 'aviso', titulo: 'Nada que revisar' });
+      return;
+    }
+    let pedirDesc = cambiadas.indexOf('desc') >= 0;
+    let pedirConc = cambiadas.indexOf('conc') >= 0;
+    if (noCabePre) {
+      if (!capacidadActa(d.actuacion, 'situacion').cabe) pedirDesc = true;
+      if (!capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe) pedirConc = true;
+    }
+    // Solo cambian los datos (con señales de coherencia): sin IA, el panel
+    // abre con los dos textos propios y pide la justificación.
+    const soloDatos = !pedirDesc && !pedirConc;
     // Sin señal no se abre: generar el acta también necesita conexión, y
     // cerrar «LOCAL» sin red sería una forma de saltarse la IA.
-    if (!navigator.onLine) {
+    if (!soloDatos && !navigator.onLine) {
       await appAlert('Sin conexión: la revisión necesita internet. Guarda la descripción tal cual y revísala cuando vuelva la señal.',
         { tono: 'aviso', titulo: 'Sin conexión' });
       return;
@@ -3432,7 +3479,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // Topes del acta (2026-10-15), solo si la visita va a acta: la descripción
     // se condensa si no cabe; las conclusiones siempre van con lo que queda en
     // su celda tras la frase del art. 135 y su línea vacía. Con informe, sin tope.
-    const esActa = documentoVisita(d.documento) === 'ACTA';
+    const esActa = esActaPre;
     const parrafos = t => String(t).split(/\n+/).filter(s => s.trim()).length;
     const maxDesc = !esActa || capacidadActa(origDesc, 'situacion').cabe ? 0
       : caracteresParaActa('situacion', 0, parrafos(origDesc));
@@ -3443,23 +3490,25 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // Sin espacio (revisión externa 2026-10-15): con la frase del art. 135
     // llenando la celda (2 comportamientos, o uno del literal D), 0 caracteres
     // no es «sin tope»: no se pide conclusión, ninguna cabría.
-    const sinEspacioConc = esActa && maxConc === 0;
-    // Las conclusiones se piden siempre, con lo diligenciado: si el inspector
-    // no escribió, la propuesta sale de los datos y él la aprueba o la edita.
-    // Cada casilla falla por su lado: si solo falla la de conclusiones, la
-    // descripción conserva su propuesta y el panel avisa (concFallo).
-    let ia = true, desc = origDesc, conc = origConc, concFallo = false;
+    const sinEspacioConc = pedirConc && esActa && maxConc === 0;
+    // El campo que no cambió no se manda a la IA: se revisa solo lo que
+    // cambió (regla 2026-10-17). Las conclusiones se piden siempre que toca,
+    // con lo diligenciado: si el inspector no escribió, la propuesta sale de
+    // los datos y él la aprueba o la edita. Cada casilla falla por su lado:
+    // si solo falla la de conclusiones, la descripción conserva su propuesta
+    // y el panel avisa (concFallo).
+    let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false;
     try {
       const [tD, tC] = await Promise.all([
-        mejorarTexto(origDesc, 'actuacion', chips, maxDesc),
-        sinEspacioConc ? Promise.resolve(null)
+        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc) : Promise.resolve(origDesc),
+        !pedirConc ? Promise.resolve(origConc)
+          : sinEspacioConc ? Promise.resolve(null)
           : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
       ]);
-      if (!tD) throw new Error('respuesta vacía');
-      desc = tD;
-      if (tC) conc = tC;
-      else if (tC === '') concFallo = true;
+      if (pedirDesc && !tD) throw new Error('respuesta vacía');
+      if (pedirDesc) desc = tD;
+      if (pedirConc) { if (tC) conc = tC; else concFallo = true; }
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -3475,6 +3524,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       desc: origDesc, conc: origConc, justif: '',
       elDesc: sinCambio(origDesc, desc) ? 'propio' : null,
       elConc: sinCambio(origConc, conc) ? 'propio' : null,
+      cambioDesc: pedirDesc, cambioConc: pedirConc, soloDatos,
+      modoPrevio: d.revision && d.revision.modo,
       sinEspacioConc, concFallo: ia && concFallo,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
@@ -3485,17 +3536,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     setTimeout(() => setBusyMe(false), 3000);
   }
 
-  // Señales del chequeo local sobre lo que hay en el panel.
+  // Señales del chequeo local sobre lo que hay en el panel (los textos del
+  // panel, las casillas del formulario).
   function _senalesPanel(p) {
-    return revisarTextoLocal({
-      actuacion: p.desc, conclusion: p.conc,
-      infraccion: _infraccionSoloCatalogo(d.infraccion), poligono: d.poligono,
-      area: d.area, areaNoAplica: d.areaNoAplica, areaNoMedible: d.areaNoMedible,
-      repLocativa: d.repLocativa, licenciaAportada: d.licenciaAportada,
-      requiereLicencia: (d.reqLicencia || {}).respuesta,
-      alturaPisos: d.alturaPisos, pisos: d.pisos, destActuales: d.destActuales,
-      destinaciones: d.destinaciones, usos: d.usos,
-    });
+    return _senalesTextoD(Object.assign({}, d, { actuacion: p.desc, obsConclusion: p.conc }));
   }
 
   // Solo las señales de coherencia piden justificación; las de forma avisan.
@@ -3509,13 +3553,19 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const senales = _senalesCoherencia(_senalesPanel(p));
     const justif = (p.justif || '').trim();
     if (senales.length && justif.length < 20) return;
-    // IA = eligió la propuesta en alguna casilla (aunque luego la editara).
-    const modo = !p.ia ? 'LOCAL' : (p.elDesc === 'ia' || p.elConc === 'ia' ? 'IA' : 'PROPIO');
+    // Modo (regla 2026-10-17): IA = eligió la propuesta en alguna casilla
+    // revisada (aunque luego la editara). Si no, se conserva el modo del
+    // sello anterior —los campos no revisados ya estaban revisados con él—;
+    // sin sello anterior, PROPIO. Sin propuesta de la IA → LOCAL.
+    const modo = !p.ia ? 'LOCAL'
+      : (p.elDesc === 'ia' || p.elConc === 'ia') ? 'IA'
+      : (p.modoPrevio || 'PROPIO');
     setCampo('actuacion', p.desc);
     setCampo('obsConclusion', p.conc);
     const hoy = new Date();
     setCampo('revision', {
       modo, huella: huellaRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
+      partes: partesRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
       fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
         '/' + hoy.getFullYear(),
       nombre: '',
@@ -3646,7 +3696,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       );
     }
 
-    function bloque(titulo, k, elKey, orig, ia, celda) {
+    function bloque(titulo, k, elKey, orig, ia, celda, cambio) {
       const el = p[elKey];
       const hayPropuesta = p.ia && _normTextoUI(ia) !== _normTextoUI(orig);
       const desdeDatos = celda === 'conclusiones' && !orig.trim() && hayPropuesta;
@@ -3660,7 +3710,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             {titulo}
             {(!hayPropuesta || desdeDatos) && !(celda === 'conclusiones' && (p.sinEspacioConc || p.concFallo)) && (
               <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--texto-suave)', marginLeft: 8 }}>
-                {desdeDatos ? 'Propuesta con todo lo diligenciado' : p.ia ? 'Sin cambios propuestos' : 'Tu texto'}
+                {desdeDatos ? 'Propuesta con todo lo diligenciado'
+                  : !cambio && d.revision ? 'Sin cambios desde la última revisión'
+                  : p.ia ? 'Sin cambios propuestos' : 'Tu texto'}
               </span>
             )}
           </div>
@@ -3728,10 +3780,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 12 }}>
           {p.ia
             ? 'Compara tu texto con la propuesta y elige cuál queda. Lo elegido se puede editar.'
+            : p.soloDatos
+            ? 'Los textos no cambiaron desde la última revisión: solo queda por explicar por qué cuadran con las casillas.'
             : 'No hubo propuesta (el servicio no respondió): la revisión se cierra solo con el chequeo de la app.'}
         </div>
-        {bloque('Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion')}
-        {hayConc && bloque('Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones')}
+        {bloque('Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion', p.cambioDesc !== false)}
+        {hayConc && bloque('Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones', p.cambioConc !== false)}
         {coherencia.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--rojo)' }}>
