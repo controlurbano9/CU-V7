@@ -3437,6 +3437,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     setBusyGeo(false);
   }
 
+  // Sella la revisión en silencio (decisión del usuario 2026-10-17): el texto
+  // ya estaba revisado y el retoque no amerita otra propuesta — ni panel, ni
+  // IA, ni avisos; el estado pasa a «✓ Revisado…» como siempre.
+  function sellarRevisionSilencioso(modo) {
+    const hoy = new Date();
+    setCampo('revision', {
+      modo: modo || 'PROPIO',
+      huella: huellaRevision(d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
+      partes: partesRevision(d.actuacion, d.obsConclusion, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
+      textos: { desc: d.actuacion, conc: d.obsConclusion },
+      fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
+        '/' + hoy.getFullYear(),
+      nombre: '',
+    });
+    setCampo('revisionJustif', '');
+  }
+
   // ── Revisión obligatoria del texto (antes «Mejorar texto») ──────────
   // docs/PROPUESTA_2026-10-14_coherencia-acta.md § 8. Revisar = propuesta de
   // la IA para la descripción y las conclusiones (con los chips marcados) +
@@ -3472,6 +3489,22 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (noCabePre) {
       if (!capacidadActa(d.actuacion, 'situacion').cabe) pedirDesc = true;
       if (!capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe) pedirConc = true;
+    }
+    // Retoque menor sobre un texto ya revisado (2026-10-17, decisión del
+    // usuario): no se pide otra propuesta. Solo si la casilla cabe en el acta
+    // (si no cabe, toca pedir la versión condensada).
+    const previos = d.revision && d.revision.textos;
+    if (previos) {
+      if (pedirDesc && cambioMenorRevision(previos.desc, d.actuacion) &&
+          (!esActaPre || capacidadActa(d.actuacion, 'situacion').cabe)) pedirDesc = false;
+      if (pedirConc && cambioMenorRevision(previos.conc, d.obsConclusion) &&
+          (!esActaPre || capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe)) pedirConc = false;
+    }
+    // Nada que pedir y sin contradicciones: se sella en silencio, sin abrir
+    // el panel ni llamar a la IA.
+    if (!pedirDesc && !pedirConc && _senalesCoherenciaD(d).length === 0) {
+      sellarRevisionSilencioso(d.revision && d.revision.modo);
+      return;
     }
     // Solo cambian los datos (con señales de coherencia): sin IA, el panel
     // abre con los dos textos propios y pide la justificación.
@@ -3518,6 +3551,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
       console.warn('[revisión] la IA no respondió:', e.message);
       ia = false;
+    }
+    // Propuesta que no aporta nada (casi idéntica y sin pérdidas): no se
+    // muestra como opción — la casilla queda «Sin cambios propuestos» y ya
+    // viene elegida con el texto propio (2026-10-17).
+    const aportaDesc = ia && pedirDesc && propuestaAporta(origDesc, desc);
+    const aportaConc = ia && pedirConc && conc !== '' && propuestaAporta(origConc, conc);
+    if (ia && pedirDesc && !aportaDesc) desc = origDesc;
+    if (ia && pedirConc && !aportaConc) conc = origConc;
+    // Ninguna casilla aporta y sin contradicciones: sellar en silencio con el
+    // modo que tocaría (modoPrevio || 'PROPIO') y no abrir el panel.
+    if (ia && !aportaDesc && !aportaConc && !concFallo && _senalesCoherenciaD(d).length === 0) {
+      sellarRevisionSilencioso(d.revision && d.revision.modo);
+      setBusyMe(false);
+      return;
     }
     // Sin opción por defecto (decisión del usuario 2026-10-15): en cada
     // casilla donde la IA propone algo distinto, el inspector elige entre su
@@ -3578,6 +3625,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     setCampo('revision', {
       modo, huella: huellaRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
       partes: partesRevision(p.desc, p.conc, _infraccionSoloCatalogo(d.infraccion), camposRevision(d)),
+      // Los textos sellados viajan en el borrador local (no en BD: el sello
+      // que guarda `_revisionParaGuardar` es solo modo + huella): permiten
+      // detectar el retoque menor la próxima vez.
+      textos: { desc: p.desc, conc: p.conc },
       fecha: String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') +
         '/' + hoy.getFullYear(),
       nombre: '',

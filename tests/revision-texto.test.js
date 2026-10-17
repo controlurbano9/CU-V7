@@ -345,3 +345,65 @@ test('resumenCambios: condensa solo con la opción (tope del acta)', () => {
   assert.equal(resumenCambios(orig, prop).some(x => /condensa/.test(x.texto)), false);
   assert.match(resumenCambios(orig, prop, { condensa: true })[0].texto, /Se condensa para que quepa en el acta/);
 });
+
+// ── Segunda revisión sin propuestas innecesarias (2026-10-17) ──────────
+// cambioMenorRevision y propuestaAporta: un retoque menor de un texto ya
+// revisado no vuelve a pedir propuesta; una propuesta casi idéntica y sin
+// pérdidas no se muestra como opción.
+const u = require('../utils.js');
+
+const LARGO = 'Se realizó diligencia de inspección ocular al inmueble ubicado en la carrera 50 número 32-10, ' +
+  'donde se observó una construcción en un segundo piso sobre la placa de la vivienda existente, con materiales ' +
+  'de bloque y concreto, sin licencia de construcción aportada por el propietario, y con obras avanzadas al ' +
+  'ochenta por ciento según lo manifestado por el ocupante del inmueble en el momento de la visita.';
+
+test('cambioMenorRevision: una coma o una tilde → menor', () => {
+  const conComa = LARGO.replace('concreto sin', 'concreto, sin');
+  assert.equal(u.cambioMenorRevision(LARGO, conComa), true);
+  const conTilde = LARGO.replace('numero', 'número');
+  assert.equal(u.cambioMenorRevision(LARGO, conTilde), true);
+});
+
+test('cambioMenorRevision: cambiar 1 palabra de 40 → menor', () => {
+  const cambiada = LARGO.replace('observó', 'evidenció');
+  assert.equal(u.cambioMenorRevision(LARGO, cambiada), true);
+});
+
+test('cambioMenorRevision: agregar una oración → no es menor', () => {
+  const conOracion = LARGO + ' El área en contravención se midió con el equipo del inspector.';
+  assert.equal(u.cambioMenorRevision(LARGO, conOracion), false);
+});
+
+test('cambioMenorRevision: agregar «16 m²» (cifra nueva) → no es menor', () => {
+  const conCifra = LARGO + ' El área en contravención es de 16 m2.';
+  assert.equal(u.cambioMenorRevision(LARGO, conCifra), false);
+});
+
+test('cambioMenorRevision: revisado vacío o actual vacío → no es menor', () => {
+  assert.equal(u.cambioMenorRevision('', LARGO), false);
+  assert.equal(u.cambioMenorRevision(undefined, LARGO), false);
+  assert.equal(u.cambioMenorRevision(null, LARGO), false);
+  assert.equal(u.cambioMenorRevision(LARGO, ''), false);
+  assert.equal(u.cambioMenorRevision(LARGO, undefined), false);
+});
+
+test('propuestaAporta: idénticos → no aporta', () => {
+  assert.equal(u.propuestaAporta(LARGO, LARGO), false);
+});
+
+test('propuestaAporta: casi idénticos sin pérdidas → no aporta', () => {
+  const casi = LARGO.replace('número', 'número,'); // solo una coma
+  assert.equal(u.propuestaAporta(LARGO, casi), false);
+  const unaPalabra = LARGO.replace('observó', 'evidenció');
+  assert.equal(u.propuestaAporta(LARGO, unaPalabra), false);
+});
+
+test('propuestaAporta: con una cifra perdida → aporta', () => {
+  const sinCifra = LARGO.replace('50 número 32-10', 'la vía principal');
+  assert.equal(u.propuestaAporta(LARGO, sinCifra), true);
+});
+
+test('propuestaAporta: original vacío con propuesta → aporta', () => {
+  assert.equal(u.propuestaAporta('', 'La propuesta sale de lo diligenciado.'), true);
+  assert.equal(u.propuestaAporta('', ''), false);
+});

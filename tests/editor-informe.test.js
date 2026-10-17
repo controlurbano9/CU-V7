@@ -536,3 +536,14 @@ test('avisoCasillaVisita: gana el primero que aplica; sin coincidencia, vacío',
   assert.equal(ed.avisoCasillaVisita(t('Se observó una edificación en construcción.'), { sin_licencia: true }), '');
   assert.equal(ed.avisoCasillaVisita(t('Texto cualquiera.'), {}), '');
 });
+
+test('avisoCasillaVisita: la negación en voz pasiva («no se requiere») también cuenta', () => {
+  const t = s => ({ texto: s });
+  // requiere SI y el texto niega en pasiva → avisa.
+  assert.equal(ed.avisoCasillaVisita(t('No se requiere licencia urbanística.'), { requiere_licencia: 'SI' }),
+    'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.');
+  assert.equal(ed.avisoCasillaVisita(t('No se requieren licencias para la obra.'), { requiere_licencia: 'SI' }),
+    'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.');
+  // requiere NO y el texto niega en pasiva → consistente, sin aviso.
+  assert.equal(ed.avisoCasillaVisita(t('No se requiere licencia urbanística.'), { requiere_licencia: 'NO' }), '');
+});

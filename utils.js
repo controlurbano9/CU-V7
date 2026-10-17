@@ -3341,6 +3341,53 @@ function resumenCambios(orig, prop, opts) {
   return out;
 }
 
+// ── Segunda revisión sin propuestas innecesarias (2026-10-17) ──────────
+// Palabras comparables: minúsculas, sin tildes, solo [a-z0-9] (mismo
+// criterio que _normTexto de informe/editor.js).
+function _palabrasRevision(t) {
+  return String(t == null ? '' : t).toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+}
+function _jaccardConjuntos(a, b) {
+  var sa = {}, sb = {};
+  a.forEach(function (w) { sa[w] = true; });
+  b.forEach(function (w) { sb[w] = true; });
+  var na = Object.keys(sa).length, nb = Object.keys(sb).length;
+  if (!na || !nb) return 0;
+  var inter = 0;
+  for (var k in sa) if (sb[k]) inter++;
+  return inter / (na + nb - inter);
+}
+
+// ¿El retoque de un texto ya revisado es menor? (no amerita otra propuesta).
+// Decisión del usuario 2026-10-17: coma, tilde o una palabra cambiada en un
+// texto largo → el texto se queda como está y la revisión se sella en silencio.
+// No es menor si aparece una cifra nueva o una oración más.
+function cambioMenorRevision(revisado, actual) {
+  revisado = String(revisado == null ? '' : revisado).trim();
+  actual = String(actual == null ? '' : actual).trim();
+  if (!revisado || !actual) return false;
+  if (_jaccardConjuntos(_palabrasRevision(revisado), _palabrasRevision(actual)) < 0.85) return false;
+  var cifras = function (t) { var s = {}; (t.match(/\d+([.,]\d+)?/g) || []).forEach(function (n) { s[n] = true; }); return s; };
+  var cr = cifras(revisado), ca = cifras(actual);
+  for (var k in ca) if (!cr[k]) return false;
+  var oraciones = function (t) { return t.split(/[.!?]+\s+/).filter(function (s) { return s.trim().length > 3; }).length; };
+  return oraciones(actual) <= oraciones(revisado);
+}
+
+// ¿La propuesta aporta algo frente al texto? (si no, no se muestra como
+// opción): casi idéntica y sin pérdidas → no aporta.
+function propuestaAporta(original, propuesta) {
+  original = String(original == null ? '' : original);
+  propuesta = String(propuesta == null ? '' : propuesta);
+  if (!original.trim()) return !!propuesta.trim();
+  if (!propuesta.trim()) return false;
+  if (resumenCambios(original, propuesta).some(function (r) { return r.tipo === 'pierde'; })) return true;
+  return _jaccardConjuntos(_palabrasRevision(original), _palabrasRevision(propuesta)) < 0.95;
+}
+
 // ── Reglas de coherencia que bloquean el acta (fase 1) ────────
 // docs/PROPUESTA_2026-10-14_coherencia-acta.md § 4, con las decisiones del
 // usuario: contradicciones entre casillas que no se pasan con justificación.
@@ -3982,6 +4029,8 @@ var _cuUtilsExports = {
   caracteresParaActa: caracteresParaActa,
   documentoVisita: documentoVisita,
   resumenCambios: resumenCambios,
+  cambioMenorRevision: cambioMenorRevision,
+  propuestaAporta: propuestaAporta,
   SALVEDADES_REVISION: SALVEDADES_REVISION,
   EXPRESIONES_IA: EXPRESIONES_IA,
   expresionesIA: expresionesIA,

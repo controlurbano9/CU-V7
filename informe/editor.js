@@ -408,10 +408,12 @@ function avisoCasillaVisita(cambio, d) {
   if (!d.sin_licencia && t.indexOf('no fue aportada ni exhibida') >= 0) {
     return 'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = SI.';
   }
-  if (d.requiere_licencia === 'SI' && t.indexOf('no requiere') >= 0) {
+  // La negación también en voz pasiva: «no se requiere(n) licencia» (2026-10-17).
+  var niega = /\bno (se )?requieren?\b/.test(t);
+  if (d.requiere_licencia === 'SI' && niega) {
     return 'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.';
   }
-  if (d.requiere_licencia === 'NO' && /requieren? licencia/.test(t) && t.indexOf('no requiere') < 0) {
+  if (d.requiere_licencia === 'NO' && /requieren? licencia/.test(t) && !niega) {
     return 'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = NO.';
   }
   return '';
@@ -2115,10 +2117,6 @@ root.addEventListener('click', function (e) {
     _usarTextoRevision(parseInt(b.getAttribute('data-ed-usar'), 10), b.getAttribute('data-ed-cual'));
   } else if (b.hasAttribute('data-ed-rev-aplicar')) {
     _aplicarCambiosRevision();
-  } else if (b.hasAttribute('data-ed-rev-sincambios')) {
-    // El inspector no usó ninguna propuesta: el sello lo dice (2026-10-17).
-    _sellarRevision('PROPIO');
-    _cerrarPanelRevision();
   }
 });
 
@@ -2178,10 +2176,22 @@ function _sellarRevision(modo) {
   _revSello = {
     huella: huellaInforme(_informeActual(), huellaRevision),
     secciones: huellasSecciones(_informeActual()),
+    // Los textos sellados viajan en el borrador: permiten detectar el retoque
+    // menor la próxima vez (2026-10-17). Los sellos viejos no lo traen y todo
+    // se comporta como antes.
+    textos: _informeActual(),
     modo: modo, fecha: new Date().toISOString().slice(0, 10)
   };
   _guardarEditor();
   _pintarEstado();
+}
+
+// El texto de una sección del informe: las listas van unidas por saltos.
+function _textoDeSeccion(informe, s) {
+  var inf = informe || {};
+  if (s === 'conclusiones') return (inf.conclusiones_items || []).join('\n');
+  if (s === 'recomendaciones') return (inf.recomendaciones_items || []).join('\n');
+  return inf[s] || '';
 }
 
 function _abrirRevision() {
@@ -2190,9 +2200,25 @@ function _abrirRevision() {
   _revPanel = {};
   // Revisión por secciones (2026-10-16): con sello y cambios parciales, la
   // IA solo crítica lo que cambió y no repite preguntas ya respondidas.
+  // Retoques menores (2026-10-17): una coma o una tilde no vuelven a pasar
+  // por la IA — la sección cuenta como revisada.
   var opts = {};
   if (_revSello) {
     var cambiadas = seccionesCambiadas(_revSello, _informeActual(), huellaRevision);
+    if (_revSello.textos) cambiadas = cambiadas.filter(function (s) {
+      return !cambioMenorRevision(_textoDeSeccion(_revSello.textos, s), _textoDeSeccion(_informeActual(), s));
+    });
+    if (!cambiadas.length) {
+      // Nada cambió de verdad: solo el chequeo local. Limpio → se sella y se
+      // cierra sin mostrar nada (decisión del usuario 2026-10-17).
+      var problemas = validarInformeIA(_informeActual(), recolectarDatosWizard(), { sinCantidades: true }).problemas;
+      if (!problemas.length) {
+        _sellarRevision(_revSello.modo);
+        _cerrarPanelRevision();
+        return;
+      }
+      return _criticaLocal();
+    }
     if (cambiadas.length && cambiadas.length < SECCIONES_REVISION.length) opts.secciones = cambiadas;
     if (_revResp.length) opts.respuestasPrevias = _revResp;
   }
@@ -2227,10 +2253,10 @@ function _abrirRevision() {
 function _criticaLocal() {
   var problemas = validarInformeIA(_informeActual(), recolectarDatosWizard(), { sinCantidades: true }).problemas;
   if (!problemas.length) {
+    // Sin problemas: se sella y se cierra, sin modal de solo confirmación
+    // (decisión del usuario 2026-10-17).
     _sellarRevision('LOCAL');
-    _modalRevision(_cabModal('Revisión del informe') +
-      '<div class="ed-modal-cuerpo"><p class="ed-rev-ok">✓ Revisado sin conexión: el chequeo local no encontró problemas y el informe quedó vigente.</p></div>' +
-      '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-cerrar>Listo</button></div>');
+    _cerrarPanelRevision();
     return;
   }
   _modalRevision(_cabModal('Revisión del informe · sin conexión') +
@@ -2263,11 +2289,10 @@ function _pintarPaso1() {
   ].filter(function (g) { return g[1].length; });
   var limpia = !cr.falta.length && !cr.no_coincide.length && !cr.forma.length;
   if (limpia && !cr.preguntas.length) {
-    // Sin hallazgos ni preguntas: revisión limpia → sello directo.
+    // Sin hallazgos ni preguntas: revisión limpia → sello directo y cierre,
+    // sin modal de solo confirmación (decisión del usuario 2026-10-17).
     _sellarRevision('IA');
-    _modalRevision(_cabModal('Revisión del informe') +
-      '<div class="ed-modal-cuerpo"><p class="ed-rev-ok">✓ La revisión no encontró problemas: el informe quedó vigente.</p></div>' +
-      '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-cerrar>Listo</button></div>');
+    _cerrarPanelRevision();
     return;
   }
   var html = _cabModal('Revisión del informe · 1 de 2') +
@@ -2315,12 +2340,13 @@ function _continuarRevision() {
     }
     var cambios = filtrarCambiosRevision(
       normalizarCambios((ia.json || {}).cambios, _informeActual(), opts.secciones),
-      recolectarDatosWizard(), validarInformeIA);
+      recolectarDatosWizard(), validarInformeIA)
+      // Fuera los cambios que no aportan nada (2026-10-17): casi idénticos y
+      // sin pérdidas — no se hacen elegir al inspector.
+      .filter(function (c) { return propuestaAporta(c.original, c.texto); });
     if (!cambios.length) {
       _sellarRevision('IA');
-      _modalRevision(_cabModal('Revisión del informe') +
-        '<div class="ed-modal-cuerpo"><p class="ed-rev-ok">✓ La revisión no propone cambios: el informe quedó vigente.</p></div>' +
-        '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-cerrar>Listo</button></div>');
+      _cerrarPanelRevision();
       return;
     }
     _revPanel.cambios = cambios;
@@ -2399,7 +2425,6 @@ function _piePaso2() {
   var n = _revPanel.eleccion.filter(Boolean).length;
   var m = _revPanel.cambios.length;
   return '<span class="ed-rev-falta">' + (n < m ? 'Falta elegir ' + (m - n) + ' de ' + m + '.' : 'Todo listo.') + '</span>' +
-    '<button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-sincambios>Quedarme con mi texto en todo</button>' +
     '<button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-aplicar' + (n < m ? ' disabled' : '') + '>Aplicar</button>';
 }
 
@@ -2441,7 +2466,9 @@ function _aplicarCambiosRevision() {
     if (!cual) return;
     if (cual === 'ia') usoIA = true;
     var texto = _revPanel.textos[i];
-    if (_normTexto(texto) === _normTexto(c.original)) return; // no cambió nada
+    // Comparación exacta (2026-10-17): la normalizada ignoraba una corrección
+    // de solo puntuación o tildes y no la aplicaba.
+    if (String(texto).trim() === String(c.original).trim()) return; // no cambió nada
     if (c.seccion === 'antecedentes') _el('ed-antecedentes').textContent = texto;
     else if (c.seccion === 'observaciones') _el('ed-obs').textContent = texto;
     else {
