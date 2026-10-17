@@ -192,8 +192,9 @@ test('resumenCambios: el caso de Alejandro avisa la salvedad perdida', () => {
   assert.deepEqual(tipos.slice(0, 2), ['pierde', 'pierde']);           // lo perdido va primero
   assert.match(r[0].texto, /\b5\b/);                                     // la cifra (5)
   assert.match(r[1].texto, /«por sí mismas»/);                          // con sus tildes
-  assert.ok(tipos.includes('largo'));
-  assert.ok(r.find(x => x.tipo === 'forma').texto.includes('«no obstante»'));
+  const m = r.find(x => x.tipo === 'motivo');
+  assert.ok(m);
+  assert.match(m.texto, /«asimismo»/);                                   // la expresión de IA citada
 });
 
 test('resumenCambios: el separador de miles o decimales no cuenta como cifra perdida', () => {
@@ -280,4 +281,68 @@ test('revisionVigente: datos solos siguen vigentes solo sin señales de coherenc
   assert.equal(revisionVigente(rev, 'a', 'b', 'D13: Materiales en vía', 'c', true), true);               // datos, sin señales
   assert.equal(revisionVigente(rev, 'a', 'b', 'D13: Materiales en vía', 'c', false), false);             // datos, con señales
   assert.equal(revisionVigente(rev, 'otra', 'b', 'A3: Bienes uso público (Antejardín)', 'c', true), false); // desc: el 6.º no salva
+});
+
+// ── 2026-10-17: expresiones de IA (tachado en «Tu texto») y motivos cortos ──
+const { expresionesIA } = require('../utils.js');
+
+test('expresionesIA: conector al empezar la oración sí, en medio de la oración no', () => {
+  const a = expresionesIA('Asimismo, se revisó el muro.');
+  assert.deepEqual(a, [{ inicio: 0, fin: 8, frase: 'Asimismo' }]);
+  assert.deepEqual(expresionesIA('Se revisó el muro, asimismo la cubierta.'), []);
+  // Tras punto y tras salto de línea también cuentan.
+  assert.deepEqual(expresionesIA('Se revisó el muro.\nEn consecuencia, se retira.').map(x => x.frase), ['En consecuencia']);
+  assert.deepEqual(expresionesIA('Se revisó el muro. En síntesis, todo está bien.').map(x => x.frase), ['En síntesis']);
+  // Las posiciones caen sobre el texto original aunque lleve tildes.
+  const s = expresionesIA('En síntesis, todo está bien.');
+  assert.equal(s[0].frase, 'En síntesis');
+  assert.equal(s[0].fin, 11);
+  assert.equal('En síntesis, todo está bien.'.slice(s[0].inicio, s[0].fin), 'En síntesis');
+});
+
+test('expresionesIA: «reparación integral» no; «integral» suelto sí', () => {
+  assert.deepEqual(expresionesIA('Se pidió reparación integral del muro.'), []);
+  assert.deepEqual(expresionesIA('La solución integral del predio.').map(x => x.frase), ['integral']);
+});
+
+test('expresionesIA: «con el fin de» suelto no; «con el fin de garantizar» sí (traga «garantizar»)', () => {
+  assert.deepEqual(expresionesIA('Se cerró con el fin de proteger el muro.'), []);
+  assert.deepEqual(expresionesIA('Se cerró con el fin de garantizar la seguridad.').map(x => x.frase), ['con el fin de garantizar']);
+});
+
+test('resumenCambios: máximo 2 motivos, por prioridad', () => {
+  const { resumenCambios } = require('../utils.js');
+  const orig = 'Asimismo, el muro es nuevo. El patio tiene enchape.';
+  const prop = 'El patio tiene enchape. El muro es nuevo.';
+  const r = resumenCambios(orig, prop, { condensa: true });
+  const motivos = r.filter(x => x.tipo === 'motivo');
+  assert.equal(motivos.length, 2);                                      // IA y reordenó; «condensa» no cabe
+  assert.match(motivos[0].texto, /«asimismo»/);
+  assert.match(motivos[1].texto, /ordenan los hechos/);
+});
+
+test('resumenCambios: detecta el reordenamiento de los hechos', () => {
+  const { resumenCambios } = require('../utils.js');
+  const orig = 'El muro está agrietado. La cubierta es de zinc. El patio tiene enchape.';
+  const prop = 'El patio tiene enchape. El muro está agrietado. La cubierta es de zinc.';
+  const r = resumenCambios(orig, prop);
+  assert.equal(r.length, 1);
+  assert.match(r[0].texto, /ordenan los hechos como ocurrieron en la visita/);
+});
+
+test('resumenCambios: oraciones de más de 35 palabras partidas', () => {
+  const { resumenCambios } = require('../utils.js');
+  const palabras = Array.from({ length: 38 }, (_, i) => 'palabra' + i);
+  const larga = 'Se observó ' + palabras.join(' ') + '.';
+  const partida = 'Se observó ' + palabras.slice(0, 20).join(' ') + '. ' + palabras.slice(20).join(' ') + '.';
+  const r = resumenCambios(larga, partida);
+  assert.equal(r.filter(x => x.tipo === 'motivo').length, 1);
+  assert.match(r.find(x => x.tipo === 'motivo').texto, /parten las oraciones muy largas/);
+});
+
+test('resumenCambios: condensa solo con la opción (tope del acta)', () => {
+  const { resumenCambios } = require('../utils.js');
+  const orig = 'El muro está agrietado.', prop = 'El muro está agrietado y es viejo.';
+  assert.equal(resumenCambios(orig, prop).some(x => /condensa/.test(x.texto)), false);
+  assert.match(resumenCambios(orig, prop, { condensa: true })[0].texto, /Se condensa para que quepa en el acta/);
 });

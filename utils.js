@@ -3264,13 +3264,13 @@ function caracteresParaActa(celda, ocupados, parrafos) {
   return libres > 0 ? Math.floor(libres * c.porRenglon * 0.9) : 0;
 }
 
-// Resumen de lo que cambia la propuesta de «Revisar» frente al texto del
-// inspector. El panel muestra los textos limpios, sin tachar ni resaltar
-// (decisión del usuario 2026-10-15), y esto debajo. Solo lo que se mide sin
-// IA; lo perdido va primero porque es lo que cambia el sentido (caso
+// Resumen de lo que hace la propuesta de «Revisar» frente al texto del
+// inspector. Lo perdido va primero porque es lo que cambia el sentido (caso
 // 20251084835: «no evidencian, por sí mismas, una intervención que requiera
-// licencia» → «no requieren licencia»).
-//   [{ tipo: 'pierde' | 'largo' | 'forma' | 'oraciones', texto }]
+// licencia» → «no requieren licencia»). Después, como mucho 2 motivos que
+// explican qué hace la propuesta, sin decir que es «mejor» (decisión del
+// usuario 2026-10-17).
+//   [{ tipo: 'pierde' | 'motivo', texto }]
 // Fuentes de regex sobre el texto sin tildes y en minúscula. Con límite de
 // palabra: «segun» no puede atrapar «segundo piso».
 var SALVEDADES_REVISION = [
@@ -3279,7 +3279,8 @@ var SALVEDADES_REVISION = [
   '\\bno fue posible\\b', '\\bno se pudo\\b', '\\bno se logro\\b', '\\bpresunt\\w*', '\\baparente\\w*',
   '\\bsegun\\b', '\\bmanifest\\w*'
 ];
-function resumenCambios(orig, prop) {
+function resumenCambios(orig, prop, opts) {
+  opts = opts || {};
   orig = String(orig || ''); prop = String(prop || '');
   var out = [];
   var on = _sinTildesRev(orig), pn = _sinTildesRev(prop);
@@ -3292,7 +3293,6 @@ function resumenCambios(orig, prop) {
     var trozo = on.length === orig.length ? orig.substr(m.index, m[0].length) : m[0];
     return '«' + trozo.toLowerCase() + '»';
   };
-  var escapar = function(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
 
   // Cifras del original que no aparecen en la propuesta (medidas, pisos…).
   // Se comparan solo por sus dígitos («1.500» = «1500», «2,5» = «2.5»: el
@@ -3313,26 +3313,53 @@ function resumenCambios(orig, prop) {
   var quitadas = SALVEDADES_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
   if (quitadas.length) out.push({ tipo: 'pierde', texto: 'Quita o reduce salvedades: ' + quitadas.slice(0, 4).map(cita).join(', ') + '. Confirma que el sentido no cambia.' });
 
-  var lo = orig.trim().length, lp = prop.trim().length;
-  if (lo && Math.abs(lp - lo) / lo >= 0.05) {
-    out.push({ tipo: 'largo', texto: (lp < lo ? 'Más corto' : 'Más largo') + ': de ' + lo.toLocaleString('es-CO') + ' a ' +
-      lp.toLocaleString('es-CO') + ' caracteres (' + (lp < lo ? '−' : '+') + Math.round(Math.abs(lp - lo) / lo * 100) + ' %).' });
+  // Motivos: máximo 2, por prioridad (2026-10-17).
+  var motivos = [];
+
+  // 1. Quitó expresiones de IA (las de orig que ya no están en la propuesta).
+  var enProp = {};
+  expresionesIA(prop).forEach(function (x) { enProp[_sinTildesRev(x.frase)] = true; });
+  var iaFuera = expresionesIA(orig).filter(function (x) { return !enProp[_sinTildesRev(x.frase)]; });
+  if (iaFuera.length) {
+    var citas = iaFuera.slice(0, 2).map(function (x) { return '«' + x.frase.toLowerCase() + '»'; });
+    motivos.push('Se quitan expresiones típicas de textos generados por IA (' + citas.join(', ') + ').');
   }
 
-  var formulas = MULETILLAS_REVISION.filter(function(p) { return on.indexOf(p) >= 0 && pn.indexOf(p) < 0; });
-  if (formulas.length) {
-    out.push({ tipo: 'forma', texto: 'Quita fórmulas de oficina: ' +
-      formulas.slice(0, 4).map(function(p) { return cita(escapar(p)); }).join(', ') + '.' });
-  }
-
-  var ppo = function(t) {
-    var o = t.split(/[.!?]+\s+/).filter(function(s) { return s.trim().length > 3; });
-    return o.length ? t.split(/\s+/).length / o.length : 0;
+  // 2. Reordenó: cada oración de orig con la de prop que más palabras suyas
+  // (> 3 letras) contiene (≥ 60 %); si las emparejadas cambiaron de orden.
+  var oraciones = function (t) { return t.split(/[.!?]+(?:\s+|$)/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 3; }); };
+  var palabrasLargas = function (s) {
+    var set = {};
+    _sinTildesRev(s).split(/[^a-z0-9ñ]+/).forEach(function (w) { if (w.length > 3) set[w] = true; });
+    return set;
   };
-  var po = ppo(orig), pp = ppo(prop);
-  if (po && pp && po - pp >= 5) {
-    out.push({ tipo: 'oraciones', texto: 'Oraciones más cortas: de ' + Math.round(po) + ' a ' + Math.round(pp) + ' palabras en promedio.' });
+  var oo = oraciones(orig).map(palabrasLargas), pp = oraciones(prop).map(palabrasLargas);
+  var parejas = [];
+  oo.forEach(function (po, i) {
+    var claves = Object.keys(po);
+    if (!claves.length) return;
+    var mejor = -1, comunes = 0;
+    pp.forEach(function (pq, j) {
+      var n2 = claves.filter(function (w) { return pq[w]; }).length;
+      if (n2 > comunes && n2 / claves.length >= 0.6) { mejor = j; comunes = n2; }
+    });
+    if (mejor >= 0) parejas.push(mejor);
+  });
+  if (parejas.length >= 2 && parejas.some(function (j, i) { return i && j <= parejas[i - 1]; })) {
+    motivos.push('Se ordenan los hechos como ocurrieron en la visita.');
   }
+
+  // 3. Partió oraciones largas (> 35 palabras) y quedan menos.
+  var largas = function (tt) { return oraciones(tt).filter(function (s) { return s.split(/\s+/).length > 35; }).length; };
+  if (largas(orig) > largas(prop)) motivos.push('Se parten las oraciones muy largas para que se lean de una vez.');
+
+  // 4. Condensó (la propuesta se pidió con tope del acta).
+  if (opts.condensa === true) motivos.push('Se condensa para que quepa en el acta.');
+
+  // 5. Cambió otra cosa.
+  if (!motivos.length && orig.trim() !== prop.trim()) motivos.push('Se corrigen ortografía y redacción.');
+
+  motivos.slice(0, 2).forEach(function (t) { out.push({ tipo: 'motivo', texto: t }); });
   return out;
 }
 
@@ -3503,17 +3530,92 @@ function revisionVigente(rev, actuacion, conclusion, infraccion, campos, sinSena
   return cambiadas.length === 1 && cambiadas[0] === 'datos' && sinSenalesCoherencia === true;
 }
 
-// Muletillas y fórmulas que prohíbe prompt-actuacion.txt (sin tildes, en
-// minúscula). Si cambia el prompt, cambiar aquí: el chequeo local y la IA
-// tienen que medir con la misma vara.
-var MULETILLAS_REVISION = [
-  'cabe destacar', 'es importante senalar', 'en el marco de', 'por otro lado',
-  'en conclusion', 'en sintesis', 'asimismo', 'no obstante', 'en este orden de ideas',
-  'se puede evidenciar', 'se procede a', 'es fundamental', 'el suscrito',
-  'de conformidad con lo establecido', 'en atencion a lo anteriormente', 'la precitada',
-  'se permite informar', 'toda vez que', 'con el fin de dar cumplimiento',
-  'objeto de la presente', 'una vez realizada la inspeccion ocular', 'respectivamente'
+// Expresiones evidentes de textos generados por IA, medidas en BD VISITAS
+// (2026-10-17). `conector: true` = solo cuenta al empezar una oración (inicio
+// del texto o tras «.», «;», «:» o salto de línea). Patrones sin tildes y en
+// minúscula (se comparan con _sinTildesRev), con límite de palabra.
+// Naturales, que NO entran (para que nadie las agregue después): «toda vez
+// que», «con el fin de» (suelta), «dicho/dicha», «no obstante», «sin
+// embargo», «lo cual», «lo anterior», «se procedió a», «se evidencia»,
+// «se observa», «se constató», «durante la visita», «al momento de la
+// visita», «respectivamente», «evidenciando».
+var EXPRESIONES_IA = [
+  // Conectores: solo al empezar la oración.
+  { rx: '\\basimismo\\b', conector: true },
+  { rx: '\\badicionalmente\\b', conector: true },
+  { rx: '\\bde igual manera\\b', conector: true },
+  { rx: '\\bde igual forma\\b', conector: true },
+  { rx: '\\bigualmente\\b', conector: true },
+  { rx: '\\ben consecuencia\\b', conector: true },
+  { rx: '\\bpor otro lado\\b', conector: true },
+  { rx: '\\bcabe destacar\\b', conector: true },
+  { rx: '\\bcabe resaltar\\b', conector: true },
+  { rx: '\\bes importante senalar\\b', conector: true },
+  { rx: '\\bes fundamental\\b', conector: true },
+  { rx: '\\ben este orden de ideas\\b', conector: true },
+  { rx: '\\ben sintesis\\b', conector: true },
+  { rx: '\\ben conclusion\\b', conector: true },
+  // En cualquier parte.
+  { rx: '\\bcon el proposito de\\b' },
+  { rx: '\\bcon el fin de garantizar\\b' },
+  { rx: '\\bcon el fin de salvaguardar\\b' },
+  { rx: '\\bsalvaguardar\\b' },
+  { rx: '\\bgarantiz\\w*\\b' },
+  // «integral» salvo «reparación integral» (modalidad de licencia).
+  { rx: '\\bintegral\\b', salvoPrevio: 'reparacion ' },
+  { rx: '\\bsignificativ[oa]s?\\b' },
+  { rx: '\\bdebidamente\\b' },
+  { rx: '\\bpertinente\\b' },
+  { rx: '\\bclaramente\\b' },
+  { rx: '\\bcontundente\\b' },
+  { rx: '\\brobust[oa]s?\\b' },
+  { rx: '\\bcrucial\\b' },
+  { rx: '\\ben el marco de\\b' },
+  { rx: '\\ben virtud de\\b' },
+  { rx: '\\blo que permite establecer\\b' },
+  { rx: '\\bque permiten establecer\\b' },
+  { rx: '\\bsituacion que\\b' },
+  { rx: '\\bresulta evidente\\b' },
+  { rx: '\\bse procede a\\b' },
+  { rx: '\\bel suscrito\\b' },
+  { rx: '\\bse permite informar\\b' },
+  { rx: '\\ben atencion a lo anteriormente expuesto\\b' },
+  { rx: '\\bobjeto de la presente\\b' }
 ];
+
+// ¿Empieza oración en `i`? Inicio del texto o justo tras «.», «;», «:» o
+// salto de línea (solo espacios entre el separador y `i`).
+function _inicioOracionIA(n, i) {
+  if (i === 0) return true;
+  var antes = n.slice(0, i);
+  var j = Math.max(antes.lastIndexOf('.'), antes.lastIndexOf(';'),
+                   antes.lastIndexOf(':'), antes.lastIndexOf('\n'));
+  return !/\S/.test(antes.slice(j + 1));
+}
+
+// Cada expresión evidente de IA en el texto: [{ inicio, fin, frase }] con
+// posiciones sobre el texto original (para tachar). NFD conserva el largo, así
+// que el índice del texto normalizado sirve en el original. Con solapes gana
+// el match más largo («con el fin de garantizar» traga «garantizar»).
+function expresionesIA(texto) {
+  var t = String(texto || '');
+  var n = _sinTildesRev(t);
+  var todos = [];
+  EXPRESIONES_IA.forEach(function (e) {
+    var m, re = new RegExp(e.rx, 'g');
+    while ((m = re.exec(n))) {
+      if (e.conector && !_inicioOracionIA(n, m.index)) continue;
+      if (e.salvoPrevio && n.slice(Math.max(0, m.index - e.salvoPrevio.length), m.index) === e.salvoPrevio) continue;
+      todos.push({ inicio: m.index, fin: m.index + m[0].length, frase: t.substr(m.index, m[0].length) });
+    }
+  });
+  todos.sort(function (a, b) { return a.inicio - b.inicio || (b.fin - b.inicio) - (a.fin - a.inicio); });
+  var out = [], ultimoFin = -1;
+  todos.forEach(function (x) {
+    if (x.inicio >= ultimoFin) { out.push(x); ultimoFin = x.fin; }
+  });
+  return out;
+}
 var _NUMERALES_LITERAL = { A: [1, 4], B: [5, 8], C: [9, 12], D: [13, 24] };
 
 function _sinTildesRev(s) {
@@ -3571,18 +3673,17 @@ function revisarTextoLocal(e) {
     { donde: 'conclusion', nombre: 'En las conclusiones:', t: String(e.conclusion || '') }
   ];
 
-  // Prosa de oficina (solo la descripción: es la larga). El largo ya no
-  // cuenta: lo mide capacidadActa contra la celda real.
+  // Prosa de otra herramienta (solo la descripción: es la larga). El largo ya
+  // no cuenta: lo mide capacidadActa contra la celda real.
   var desc = textos[0].t.trim();
   if (desc) {
-    var dn = _sinTildesRev(desc);
-    var mul = MULETILLAS_REVISION.filter(function(p) { return dn.indexOf(p) >= 0; });
+    var ia = expresionesIA(desc).map(function(x) { return x.frase.toLowerCase(); });
     var oraciones = desc.split(/[.!?]+\s+/).filter(function(s) { return s.trim().length > 3; });
     var ppo = desc.split(/\s+/).length / Math.max(1, oraciones.length);
-    if (mul.length >= 3 || ppo > 35) {
+    if (ia.length >= 3 || ppo > 35) {
       add('externo', 'descripcion', 'La descripción tiene ' +
-        (mul.length >= 3 ? mul.length + ' fórmulas de oficina («' + mul.slice(0, 3).join('», «') + '»)'
-                         : 'oraciones de ' + Math.round(ppo) + ' palabras en promedio') + '.');
+        (ia.length >= 3 ? ia.length + ' expresiones de textos generados por IA («' + ia.slice(0, 3).join('», «') + '»)'
+                        : 'oraciones de ' + Math.round(ppo) + ' palabras en promedio') + '.');
     }
   }
 
@@ -3894,7 +3995,8 @@ var _cuUtilsExports = {
   documentoVisita: documentoVisita,
   resumenCambios: resumenCambios,
   SALVEDADES_REVISION: SALVEDADES_REVISION,
-  MULETILLAS_REVISION: MULETILLAS_REVISION,
+  EXPRESIONES_IA: EXPRESIONES_IA,
+  expresionesIA: expresionesIA,
   AGENDA_OFICINA: AGENDA_OFICINA,
   nivelPrioridad: nivelPrioridad,
   motivoPrioridad: motivoPrioridad,

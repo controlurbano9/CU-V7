@@ -3528,6 +3528,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       cambioDesc: pedirDesc, cambioConc: pedirConc, soloDatos,
       modoPrevio: d.revision && d.revision.modo,
       sinEspacioConc, concFallo: ia && concFallo,
+      // Si la propuesta se pidió con tope del acta (maxDesc/maxConc > 0):
+      // resumenCambios lo cuenta como «se condensa».
+      condensaDesc: maxDesc > 0, condensaConc: maxConc > 0,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -3662,11 +3665,30 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const hayConc = !!(p.origConc.trim() || p.iaConc.trim() || p.sinEspacioConc || p.concFallo);
     const esActaP = documentoVisita(d.documento) === 'ACTA';
 
-    // Tarjeta con el texto limpio (sin tachar ni resaltar: decisión del
-    // usuario 2026-10-15). La de la propuesta lleva debajo el resumen de
-    // cambios (resumenCambios, utils.js), con lo perdido primero.
+    // Tarjeta con el texto. En «Tu texto», las expresiones de IA van tachadas
+    // (decisión del usuario 2026-10-17, reemplaza la de 2026-10-15 de no
+    // tachar): solo se nota, no bloquea nada y el texto guardado no cambia.
+    // La de la propuesta lleva debajo 1-2 motivos de lo que hace
+    // (resumenCambios, utils.js), con lo perdido primero.
     function tarjeta(titulo, cual, texto, elegida, onElegir, resumen) {
       const vacio = !String(texto || '').trim();
+      // Texto con las expresiones de IA en <del> (solo lectura de pantalla:
+      // aria-label anticipa qué es lo tachado).
+      const tachado = t => {
+        const expr = expresionesIA(t);
+        if (!expr.length) return String(t || '');
+        const partes = [];
+        let pos = 0;
+        expr.forEach((x, i) => {
+          if (x.inicio > pos) partes.push(t.slice(pos, x.inicio));
+          partes.push(<del key={i} aria-label={'expresión de IA: ' + t.slice(x.inicio, x.fin)}
+            style={{ color: 'var(--texto-suave)', textDecorationThickness: '1px' }}>{t.slice(x.inicio, x.fin)}</del>);
+          pos = x.fin;
+        });
+        if (pos < t.length) partes.push(t.slice(pos));
+        return partes;
+      };
+      const exprIA = cual === 'propio' && !vacio ? expresionesIA(texto) : [];
       return (
         <div style={{
           background: 'var(--superficie)', borderRadius: 'var(--r-ctl, 8px)', padding: 12,
@@ -3682,24 +3704,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </div>
           <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto',
             color: vacio ? 'var(--texto-suave)' : undefined, fontStyle: vacio ? 'italic' : undefined }}>
-            {vacio ? 'No escribiste conclusiones.' : texto}
+            {vacio ? 'No escribiste conclusiones.' : (cual === 'propio' ? tachado(texto) : texto)}
           </div>
+          {exprIA.length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--texto-suave)' }}>
+              Lo tachado son expresiones típicas de textos generados por IA.
+            </div>
+          )}
           {resumen && resumen.length > 0 && (
             <div style={{ fontSize: 12, borderTop: '1px solid var(--borde)', paddingTop: 8 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>Qué cambia</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {resumen.map((r, i) => (
-                  <li key={i} style={{ marginBottom: 2, color: r.tipo === 'pierde' ? 'var(--rojo)' : 'var(--texto-suave)',
-                    fontWeight: r.tipo === 'pierde' ? 600 : 400 }}>{r.texto}</li>
-                ))}
-              </ul>
+              {resumen.map((r, i) => (
+                <div key={i} style={{ marginBottom: 2, color: r.tipo === 'pierde' ? 'var(--rojo)' : 'var(--texto-suave)',
+                  fontWeight: r.tipo === 'pierde' ? 600 : 400 }}>{r.texto}</div>
+              ))}
             </div>
           )}
         </div>
       );
     }
 
-    function bloque(titulo, k, elKey, orig, ia, celda, cambio) {
+    function bloque(titulo, k, elKey, orig, ia, celda, cambio, condensa) {
       const el = p[elKey];
       const hayPropuesta = p.ia && _normTextoUI(ia) !== _normTextoUI(orig);
       const desdeDatos = celda === 'conclusiones' && !orig.trim() && hayPropuesta;
@@ -3748,7 +3772,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           {hayPropuesta && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginBottom: 8 }}>
               {tarjeta('Tu texto', 'propio', orig, el === 'propio', () => elegir(k, elKey, 'propio', orig))}
-              {tarjeta('Propuesta', 'ia', ia, el === 'ia', () => elegir(k, elKey, 'ia', ia), resumenCambios(orig, ia))}
+              {tarjeta('Propuesta', 'ia', ia, el === 'ia', () => elegir(k, elKey, 'ia', ia), resumenCambios(orig, ia, { condensa }))}
             </div>
           )}
           {el ? (
@@ -3787,8 +3811,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             ? 'Los textos no cambiaron desde la última revisión: solo queda por explicar por qué cuadran con las casillas.'
             : 'No hubo propuesta (el servicio no respondió): la revisión se cierra solo con el chequeo de la app.'}
         </div>
-        {bloque('Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion', p.cambioDesc !== false)}
-        {hayConc && bloque('Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones', p.cambioConc !== false)}
+        {bloque('Situación encontrada', 'desc', 'elDesc', p.origDesc, p.iaDesc, 'situacion', p.cambioDesc !== false, p.condensaDesc)}
+        {hayConc && bloque('Conclusiones', 'conc', 'elConc', p.origConc, p.iaConc, 'conclusiones', p.cambioConc !== false, p.condensaConc)}
         {coherencia.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--rojo)' }}>
