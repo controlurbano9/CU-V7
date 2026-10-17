@@ -3029,6 +3029,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
 
   // Helper para actualizar un campo del form
   function setCampo(k, v) { setD(prev => ({ ...prev, [k]: v })); }
+  // Acta ↔ informe cambia qué se revisa (con informe no hay conclusiones): una
+  // revisión abierta deja de valer y se cierra. Antes, pasar a informe sin
+  // elegir las conclusiones dejaba «Aplicar» deshabilitado para siempre
+  // (revisión DeepSeek 2026-10-17); a la inversa, sellaba conclusiones sin revisar.
+  function cambiarDocumento(v) { setRevisionPanel(null); setCampo('documento', v); }
 
   // Chips de licencia («Tipo de trámite» / «Modalidad»): el estado sigue
   // siendo el texto d.tipoLicencia (columna AL); cada toggle parsea, cambia
@@ -3459,7 +3464,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       !capacidadActa(_conclusionesActaD(d), 'conclusiones').cabe);
     if (!noCabePre && (!cambiadas.length ||
         (cambiadas.length === 1 && cambiadas[0] === 'datos' && _revisionVigenteD(d)))) {
-      await appAlert('La descripción y la conclusión ya están revisadas.', { tono: 'aviso', titulo: 'Nada que revisar' });
+      await appAlert(esActaPre ? 'La descripción y la conclusión ya están revisadas.' : 'La descripción ya está revisada.', { tono: 'aviso', titulo: 'Nada que revisar' });
       return;
     }
     let pedirDesc = cambiadas.indexOf('desc') >= 0;
@@ -5772,7 +5777,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         estado={estadosSeccion["Descripción de la situación encontrada"]} color="gris">
         {/* Primero el documento: decide si el texto tiene el tope del acta. */}
         <_DocumentoVisita valor={documentoVisita(d.documento)} bloqueado={_actaGeneradaD(d)}
-          onCambiar={v => setCampo('documento', v)} />
+          onCambiar={cambiarDocumento} />
         <_Campo label="Situación encontrada" fullWidth>
           <TextAreaNV value={d.actuacion} onChange={v => setCampo('actuacion', v)} rows={8} autoAlto />
         </_Campo>
@@ -5780,7 +5785,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <div style={{ flex: '1 1 280px', minWidth: 0 }}>
             {documentoVisita(d.documento) === 'ACTA' && (
               <_MedidorActa texto={d.actuacion} celda="situacion"
-                onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')} />
+                onUsarInforme={_actaGeneradaD(d) ? null : () => cambiarDocumento('INFORME')} />
             )}
           </div>
           {_botonDictar()}
@@ -5984,7 +5989,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         )}
         {documentoVisita(d.documento) === 'ACTA' && (
           <_MedidorActa texto={_conclusionesActaD(d)} celda="conclusiones"
-            onUsarInforme={_actaGeneradaD(d) ? null : () => setCampo('documento', 'INFORME')} />
+            onUsarInforme={_actaGeneradaD(d) ? null : () => cambiarDocumento('INFORME')} />
         )}
         {/* Un solo «Revisar» para todo, al final: ya está todo diligenciado. */}
         {/* Abierta, la revisión ocupa el sitio del bloque: un solo «Revisión del texto». */}
