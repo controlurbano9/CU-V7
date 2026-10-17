@@ -504,3 +504,35 @@ test('normalizarCambios con secciones: fuera los cambios de secciones no revisad
   // Sin secciones: como hoy.
   assert.equal(ed.normalizarCambios(cambios, INFORME_R2).length, 3);
 });
+
+test('avisoCasillaVisita: los 4 mensajes nombran la casilla de la visita', () => {
+  const t = s => ({ texto: s });
+  // 1. La visita dice que no se aportó licencia y el texto afirma lo contrario.
+  assert.equal(ed.avisoCasillaVisita(t('La licencia aportada ampara la obra.'), { sin_licencia: true }),
+    'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = NO.');
+  // 2. La visita aportó licencia y el texto dice que no.
+  assert.equal(ed.avisoCasillaVisita(t('La licencia no fue aportada ni exhibida.'), {}),
+    'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = SI.');
+  // 3. Las obras requieren licencia y el texto dice que no.
+  assert.equal(ed.avisoCasillaVisita(t('La obra no requiere licencia.'), { requiere_licencia: 'SI' }),
+    'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.');
+  // 4. No requieren licencia y el texto afirma que sí (singular y plural).
+  assert.equal(ed.avisoCasillaVisita(t('Las obras requieren licencia de construcción.'), { requiere_licencia: 'NO' }),
+    'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = NO.');
+  assert.equal(ed.avisoCasillaVisita(t('La obra requiere licencia.'), { requiere_licencia: 'NO' }),
+    'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = NO.');
+});
+
+test('avisoCasillaVisita: gana el primero que aplica; sin coincidencia, vacío', () => {
+  const t = s => ({ texto: s });
+  // Con sin_licencia, el aviso de la licencia aportada gana aunque el texto
+  // también diga «no requiere» y la visita tenga requiere_licencia.
+  assert.equal(
+    ed.avisoCasillaVisita(t('La licencia aportada… y la obra no requiere licencia.'), { sin_licencia: true, requiere_licencia: 'SI' }),
+    'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = NO.');
+  // «no requiere» con requiere_licencia = NO no dispara nada (va con el dato).
+  assert.equal(ed.avisoCasillaVisita(t('La obra no requiere licencia.'), { requiere_licencia: 'NO' }), '');
+  // Menciona licencia pero ninguna casilla contradice.
+  assert.equal(ed.avisoCasillaVisita(t('Se observó una edificación en construcción.'), { sin_licencia: true }), '');
+  assert.equal(ed.avisoCasillaVisita(t('Texto cualquiera.'), {}), '');
+});

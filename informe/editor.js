@@ -403,10 +403,16 @@ function avisoCasillaVisita(cambio, d) {
   if (!t) return '';
   if (d.sin_licencia && (t.indexOf('se aporto') >= 0 || t.indexOf('aporto licencia') >= 0 ||
       t.indexOf('licencia aportada') >= 0 || t.indexOf('licencia vigente') >= 0)) {
-    return 'Corrige también la casilla en la visita: ahí dice que no se aportó licencia.';
+    return 'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = NO.';
   }
   if (!d.sin_licencia && t.indexOf('no fue aportada ni exhibida') >= 0) {
-    return 'Corrige también la casilla en la visita: ahí dice que se aportó licencia.';
+    return 'Corrige también la visita: en Verificación documental, «¿Se aportó licencia?» = SI.';
+  }
+  if (d.requiere_licencia === 'SI' && t.indexOf('no requiere') >= 0) {
+    return 'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.';
+  }
+  if (d.requiere_licencia === 'NO' && /requieren? licencia/.test(t) && t.indexOf('no requiere') < 0) {
+    return 'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = NO.';
   }
   return '';
 }
@@ -2105,19 +2111,21 @@ root.addEventListener('click', function (e) {
     _cerrarPanelRevision();
   } else if (b.hasAttribute('data-ed-rev-continuar') || b.hasAttribute('data-ed-rev-reintentar2')) {
     _continuarRevision();
+  } else if (b.hasAttribute('data-ed-usar')) {
+    _usarTextoRevision(parseInt(b.getAttribute('data-ed-usar'), 10), b.getAttribute('data-ed-cual'));
   } else if (b.hasAttribute('data-ed-rev-aplicar')) {
     _aplicarCambiosRevision();
   } else if (b.hasAttribute('data-ed-rev-sincambios')) {
-    _sellarRevision('IA');
+    // El inspector no usó ninguna propuesta: el sello lo dice (2026-10-17).
+    _sellarRevision('PROPIO');
     _cerrarPanelRevision();
   }
 });
 
-// Radios de preguntas y casillas de cambios (panel de revisión).
-root.addEventListener('change', function (e) {
-  if (e.target.hasAttribute && e.target.hasAttribute('data-ed-cambio')) {
-    var btn = document.querySelector('[data-ed-rev-aplicar]');
-    if (btn) btn.disabled = !document.querySelectorAll('[data-ed-cambio]:checked').length;
+// Texto editado de una tarjeta elegida del paso 2 (revisión).
+root.addEventListener('input', function (e) {
+  if (e.target.hasAttribute && e.target.hasAttribute('data-ed-c-txt') && _revPanel && _revPanel.textos) {
+    _revPanel.textos[parseInt(e.target.getAttribute('data-ed-c-txt'), 10)] = e.target.value;
   }
 });
 
@@ -2142,17 +2150,18 @@ document.querySelectorAll('.comp-ac').forEach(function (cb) {
 });
 
 // ── Revisión final: una sola, al final (3 pasos + sello por huella) ──
-var _revPanel = null; // { critica, respuestas, cambios }
+var _revPanel = null; // { critica, respuestas, cambios, eleccion, textos, avisos }
 
 function _cabModal(titulo) {
   return '<div class="ed-modal-cab"><b>' + titulo + '</b>' +
     '<button type="button" class="ed-ico" data-ed-rev-cerrar aria-label="Cerrar revisión">✕</button></div>';
 }
 
-function _modalRevision(html) {
+function _modalRevision(html, ancha) {
   var m = _el('ed-modal');
   m.hidden = false;
-  m.innerHTML = '<div class="ed-modal-caja" role="dialog" aria-modal="true" aria-label="Revisión del informe">' + html + '</div>';
+  m.innerHTML = '<div class="ed-modal-caja' + (ancha ? ' ed-modal-ancha' : '') +
+    '" role="dialog" aria-modal="true" aria-label="Revisión del informe">' + html + '</div>';
 }
 
 function _cerrarPanelRevision() {
@@ -2324,51 +2333,128 @@ function _seccionNombre(sec) {
     conclusion: 'Conclusiones', recomendacion: 'Recomendaciones' }[sec] || sec;
 }
 
+// Paso 2 con tarjetas elegibles (rediseño 2026-10-17, misma forma que el
+// panel de revisión de la visita): sin opción por defecto, la elegida se
+// vuelve el editor en su sitio y la otra queda al lado del mismo tamaño
+// para seguir comparando. Elegir otra vez descarta lo editado antes.
+function _tachadoIA(t) {
+  t = String(t || '');
+  if (typeof expresionesIA !== 'function') return { html: _esc(t), alguna: false };
+  var expr = expresionesIA(t);
+  if (!expr.length) return { html: _esc(t), alguna: false };
+  var html = '', pos = 0;
+  expr.forEach(function (x) {
+    if (x.inicio > pos) html += _esc(t.slice(pos, x.inicio));
+    html += '<del>' + _esc(t.slice(x.inicio, x.fin)) + '</del>';
+    pos = x.fin;
+  });
+  if (pos < t.length) html += _esc(t.slice(pos));
+  return { html: html, alguna: true };
+}
+
+// Una tarjeta («Tu texto» o «Propuesta»). Elegida → textarea editable.
+function _tarjetaRevision(i, c, cual, elegida, otraElegida) {
+  var titulo = cual === 'ia' ? 'Propuesta' : 'Tu texto';
+  var usar = otraElegida ? 'Usar este' : (cual === 'ia' ? 'Usar la propuesta' : 'Usar mi texto');
+  var html = '<div class="ed-op' + (elegida ? ' elegida' : '') + '">' +
+    '<div class="ed-op-cab"><b>' + titulo + '</b>' +
+    (elegida ? '<span class="ed-op-ok">✓ Queda este</span>'
+      : '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-usar="' + i +
+        '" data-ed-cual="' + cual + '">' + usar + '</button>') +
+    '</div>';
+  if (cual === 'ia') {
+    var qc = resumenCambios(c.original, c.texto);
+    html += '<ul class="ed-qc">' + (qc.length
+      ? qc.map(function (x) { return '<li>' + _esc(x.texto) + '</li>'; }).join('')
+      : '<li>Solo la redacción; el contenido queda igual.</li>') + '</ul>';
+  }
+  if (elegida) {
+    html += '<textarea class="ed-op-txt" data-ed-c-txt="' + i + '" aria-label="' + titulo +
+      ': texto que queda">' + _esc(_revPanel.textos[i]) + '</textarea>';
+  } else if (cual === 'propio') {
+    var tac = _tachadoIA(c.original);
+    html += '<div class="ed-op-txt">' + tac.html + '</div>' +
+      (tac.alguna ? '<div class="ed-op-nota">Lo tachado son expresiones típicas de textos generados por IA.</div>' : '');
+  } else {
+    html += '<div class="ed-op-txt">' + _esc(c.texto) + '</div>';
+  }
+  return html + '</div>';
+}
+
+function _htmlCambioRevision(i, c) {
+  var el = _revPanel.eleccion[i];
+  var aviso = _revPanel.avisos[i];
+  return '<div class="ed-cambio" data-ed-c="' + i + '">' +
+    '<div class="ed-cambio-cab">' + _esc(_seccionNombre(c.seccion) +
+      ((c.seccion === 'conclusion' || c.seccion === 'recomendacion') ? ' · punto ' + c.numero : '')) + '</div>' +
+    '<div class="ed-ops">' +
+    _tarjetaRevision(i, c, 'propio', el === 'propio', el === 'ia') +
+    _tarjetaRevision(i, c, 'ia', el === 'ia', el === 'propio') +
+    '</div>' +
+    (aviso ? '<div class="ed-aviso-casilla">' + _esc(aviso) + '</div>' : '') +
+    '</div>';
+}
+
+function _piePaso2() {
+  var n = _revPanel.eleccion.filter(Boolean).length;
+  var m = _revPanel.cambios.length;
+  return '<span class="ed-rev-falta">' + (n < m ? 'Falta elegir ' + (m - n) + ' de ' + m + '.' : 'Todo listo.') + '</span>' +
+    '<button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-sincambios>Quedarme con mi texto en todo</button>' +
+    '<button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-aplicar' + (n < m ? ' disabled' : '') + '>Aplicar</button>';
+}
+
 function _pintarPaso2() {
   var d = recolectarDatosWizard().d;
-  var html = _cabModal('Revisión del informe · 2 de 2') + '<div class="ed-modal-cuerpo">' +
-    '<p class="ed-rev-estado">Elige los cambios que aplicas. Nada se cambia solo.</p>' +
-    _revPanel.cambios.map(function (c, i) {
-      var qc = resumenCambios(c.original, c.texto);
-      var aviso = avisoCasillaVisita(c, d);
-      return '<div class="ed-cambio">' +
-        '<div class="ed-cambio-cab"><label><input type="checkbox" data-ed-cambio="' + i + '"> Aplicar</label>' +
-        '<span>' + _esc(_seccionNombre(c.seccion) +
-          ((c.seccion === 'conclusion' || c.seccion === 'recomendacion') ? ' · punto ' + c.numero : '')) + '</span></div>' +
-        '<div class="ed-cambio-cols">' +
-        '<div><h4>Tu texto</h4><p>' + _esc(c.original) + '</p></div>' +
-        '<div><h4>Propuesta</h4><p>' + _esc(c.texto) + '</p></div>' +
-        '</div>' +
-        '<div class="ed-qc"><b>Qué cambia:</b> ' +
-        (qc.length ? qc.map(function (x) { return _esc(x.texto); }).join(' ')
-          : 'solo la redacción; el contenido queda igual.') + '</div>' +
-        (aviso ? '<div class="ed-aviso-casilla">' + _esc(aviso) + '</div>' : '') +
-        '</div>';
-    }).join('') + '</div>' +
-    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-aplicar disabled>Aplicar</button>' +
-    '<button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-sincambios>Continuar sin cambios</button></div>';
-  _modalRevision(html);
+  _revPanel.eleccion = _revPanel.cambios.map(function () { return null; });
+  _revPanel.textos = _revPanel.cambios.map(function () { return ''; });
+  _revPanel.avisos = _revPanel.cambios.map(function (c) { return avisoCasillaVisita(c, d); });
+  _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
+    '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Elige en cada cambio: tu texto o la propuesta. Nada se cambia solo.</p>' +
+    _revPanel.cambios.map(function (c, i) { return _htmlCambioRevision(i, c); }).join('') +
+    '</div><div class="ed-modal-pie">' + _piePaso2() + '</div>', true);
+}
+
+// Elegir «Usar mi texto» / «Usar la propuesta»: repinta SOLO ese bloque y el
+// pie (repintar el modal entero devuelve el scroll del cuerpo a cero).
+function _usarTextoRevision(i, cual) {
+  if (!_revPanel || !_revPanel.cambios) return;
+  var c = _revPanel.cambios[i];
+  if (!c || (cual !== 'propio' && cual !== 'ia')) return;
+  _revPanel.eleccion[i] = cual;
+  _revPanel.textos[i] = cual === 'ia' ? c.texto : c.original;
+  var bloque = document.querySelector('[data-ed-c="' + i + '"]');
+  if (bloque) bloque.outerHTML = _htmlCambioRevision(i, c);
+  var pie = document.querySelector('#ed-modal .ed-modal-pie');
+  if (pie) pie.innerHTML = _piePaso2();
+  var t = document.querySelector('[data-ed-c-txt="' + i + '"]');
+  if (t) {
+    t.focus();
+    t.setSelectionRange(t.value.length, t.value.length);
+  }
 }
 
 function _aplicarCambiosRevision() {
   if (!_revPanel || !_revPanel.cambios) return;
-  document.querySelectorAll('[data-ed-cambio]').forEach(function (cb) {
-    if (!cb.checked) return;
-    var c = _revPanel.cambios[parseInt(cb.getAttribute('data-ed-cambio'), 10)];
-    if (!c) return;
-    if (c.seccion === 'antecedentes') _el('ed-antecedentes').textContent = c.texto;
-    else if (c.seccion === 'observaciones') _el('ed-obs').textContent = c.texto;
+  var usoIA = false;
+  _revPanel.cambios.forEach(function (c, i) {
+    var cual = _revPanel.eleccion[i];
+    if (!cual) return;
+    if (cual === 'ia') usoIA = true;
+    var texto = _revPanel.textos[i];
+    if (_normTexto(texto) === _normTexto(c.original)) return; // no cambió nada
+    if (c.seccion === 'antecedentes') _el('ed-antecedentes').textContent = texto;
+    else if (c.seccion === 'observaciones') _el('ed-obs').textContent = texto;
     else {
       var id = c.seccion === 'conclusion' ? 'ed-concl' : 'ed-rec';
       var ol = _el(id);
       var items = document.querySelectorAll('#' + id + ' > .ed-item:not(.ed-item-fijo)');
       var li = items[c.numero - 1];
-      if (li) li.querySelector('.ed-ed').textContent = c.texto;
-      else ol.insertBefore(_item(c.texto, true), ol.querySelector('.ed-item-fijo') || null);
+      if (li) li.querySelector('.ed-ed').textContent = texto;
+      else ol.insertBefore(_item(texto, true), ol.querySelector('.ed-item-fijo') || null);
       _pintarVacio(id);
     }
   });
-  _sellarRevision('IA'); // huella del informe ya corregido
+  _sellarRevision(usoIA ? 'IA' : 'PROPIO'); // huella del informe ya corregido
   _pintarSugerencias();
   _programarGuardar();
   _cerrarPanelRevision();
