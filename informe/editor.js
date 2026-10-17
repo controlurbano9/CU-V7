@@ -307,15 +307,18 @@ function armarMensajeCritica(informe, d, opts) {
     + _bloqueSecciones(opts)
     + _bloqueRespuestasPrevias(opts)
     + 'JSON exacto requerido:\n'
-    + '{"bien":[],"falta":[],"no_coincide":[],"forma":[],"preguntas":[{"pregunta":"","opciones":["",""],"obligatoria":false}]}\n\n'
+    + '{"bien":[],"falta":[],"no_coincide":[],"forma":[],"preguntas":[{"pregunta":"","opciones":["",""]}]}\n\n'
     + 'REGLAS:\n'
     + '1. Cada punto cita la sección a la que se refiere: Antecedentes, Observaciones de campo, Conclusiones o Recomendaciones.\n'
     + '2. "bien": lo que está correcto y bien sustentado (frases cortas; puede ser una lista vacía).\n'
     + '3. "falta": hechos de los DATOS que sostienen una conclusión del informe y no aparecen en él.\n'
     + '4. "no_coincide": afirmaciones contrarias a los DATOS DE LA VISITA o contradictorias entre secciones del informe.\n'
     + '5. "forma": problemas de redacción u orden, MÁXIMO 4.\n'
-    + '6. "preguntas": MÁXIMO 4, SOLO sobre faltas o no coincidencias (nunca de forma); 2 a 4 opciones cortas cada una; '
-    + '"obligatoria": true cuando la respuesta es imprescindible para corregir el informe.\n'
+    + '6. "preguntas": SOLO cuando tengas una DUDA REAL que los DATOS DE LA VISITA y el informe no permiten resolver '
+    + 'y cuya respuesta cambiaría el texto del informe. MÁXIMO 2, con 2 a 4 opciones cortas cada una. PROHIBIDO preguntar '
+    + 'para confirmar un hecho que ya está en los DATOS o en el informe, preguntar sobre la forma, o volver a preguntar algo '
+    + 'ya respondido. Si el problema se corrige con los DATOS, va en "falta" o "no_coincide" sin pregunta. Sin dudas reales, '
+    + '"preguntas" va vacía.\n'
     + '7. No juzgues ni corrijas la decisión jurídica del inspector.\n'
     + '8. PROHIBIDO proponer plazos: los concede el Inspector de Policía.\n'
     + '9. Si el informe está bien, devuelve las cuatro listas vacías y sin preguntas.\n';
@@ -2195,11 +2198,10 @@ function _abrirRevision() {
     function arr(x) {
       return Array.isArray(x) ? x.map(function (s) { return String(s || '').trim(); }).filter(Boolean) : [];
     }
-    var preguntas = (Array.isArray(c.preguntas) ? c.preguntas : []).slice(0, 4).map(function (p) {
+    var preguntas = (Array.isArray(c.preguntas) ? c.preguntas : []).slice(0, 2).map(function (p) {
       return (p && typeof p === 'object') ? {
         pregunta: String(p.pregunta || '').trim(),
-        opciones: arr(p.opciones).slice(0, 4),
-        obligatoria: !!p.obligatoria
+        opciones: arr(p.opciones).slice(0, 4)
       } : null;
     }).filter(function (p) { return p && p.pregunta; });
     preguntas = filtrarPreguntasRepetidas(preguntas, opts.respuestasPrevias || _revResp);

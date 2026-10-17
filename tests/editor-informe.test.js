@@ -182,7 +182,11 @@ test('mensaje de crítica: informe completo, datos de la visita y reglas del pla
   assert.match(msg, /PROHIBIDO proponer plazos/);
   assert.match(msg, /No juzgues ni corrijas la decisión jurídica/);
   assert.match(msg, /MÁXIMO 4/);
-  assert.match(msg, /"obligatoria": true cuando la respuesta es imprescindible/);
+  // Preguntas solo ante dudas reales, nunca para confirmar hechos (2026-10-17).
+  assert.match(msg, /SOLO cuando tengas una DUDA REAL/);
+  assert.match(msg, /PROHIBIDO preguntar para confirmar un hecho/);
+  assert.match(msg, /MÁXIMO 2/);
+  assert.ok(!msg.includes('obligatoria'));
 });
 
 test('mensaje de correcciones: informe, respuestas no vacías y reglas', () => {
