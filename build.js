@@ -41,6 +41,9 @@ const ARCHIVOS = [
   'mis-visitas.jsx',
   'buscar.jsx',
   'agenda.jsx',
+  // tablero.jsx reusa el índice de barrios de buscar.jsx (_cargarIdxBarriosBQ)
+  // y FichaVisita; no consume nada de nueva-visita.
+  'tablero.jsx',
   // escaner-orden.jsx antes de nueva-visita.jsx (que lo consume)
   'escaner-orden.jsx',
   'nueva-visita.jsx',

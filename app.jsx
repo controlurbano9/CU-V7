@@ -766,6 +766,10 @@ function AppV6() {
   if (veTodas) tabs.push({ k: 'home', label: 'Inicio', Icono: Icon.Home });
   tabs.push({ k: 'mis-visitas',   label: 'Mis visitas',Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
+  // Tablero territorial (E7): admin y supervisor; en la barra lateral, entre
+  // Buscar y Agenda. En móvil no hay pestaña (la barra de abajo ya tiene 5):
+  // se llega desde el enlace «Ver tablero» de Inicio.
+  if (veTodas) tabs.push({ k: 'tablero', label: 'Tablero', Icono: Icon.Tablero });
   if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
@@ -868,6 +872,7 @@ function AppV6() {
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
             onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
           {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
+          {pantalla === 'tablero' && <TableroScreen usuario={usuario} onNavegar={navegar} onContinuar={irContinuar} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen
             usuario={usuario}
             filaInicial={contextoNueva?.fila || null}
@@ -888,7 +893,8 @@ function AppV6() {
         {/* ── NAV INFERIOR (móvil) ── */}
         {!isDesktop && !enFormulario && (
           <div className="nav-inferior" style={{ display: 'flex' }}>
-            {tabs.map(t => (
+            {/* El Tablero no entra: la barra de abajo ya tiene 5 pestañas (E7 §2). */}
+            {tabs.filter(t => t.k !== 'tablero').map(t => (
               <BottomTab key={t.k} pantalla={pantalla} setPantalla={navegar}
                 k={t.k} label={t.label} Icono={t.Icono} />
             ))}

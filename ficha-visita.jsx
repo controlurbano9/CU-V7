@@ -13,10 +13,10 @@
 const { useState: useStateFV, useEffect: useEffectFV, useRef: useRefFV, useMemo: useMemoFV } = React;
 
 // El scroller de la ficha depende de quién la aloja: el panel de Mis visitas
-// (.mv-panel) o, más adelante, la hoja del modal (E2c). Misma búsqueda de la
-// maqueta: closest('.mv-panel, .fv-hoja').
+// (.mv-panel), la hoja del modal (E2c) o el panel del Tablero (.tb-panel).
+// Misma búsqueda de la maqueta: closest('.mv-panel, .fv-hoja, .tb-panel').
 function _scrollerFV(el) {
-  return el && el.closest ? el.closest('.mv-panel, .fv-hoja') : null;
+  return el && el.closest ? el.closest('.mv-panel, .fv-hoja, .tb-panel') : null;
 }
 
 function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion, visitas, onElegirVisita }) {

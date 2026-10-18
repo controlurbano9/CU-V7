@@ -34,6 +34,13 @@ const Icon = {
     React.createElement('circle', { key: 1, cx: 11, cy: 11, r: 8 }),
     React.createElement('line',   { key: 2, x1: 21, y1: 21, x2: 16.65, y2: 16.65 }),
   ], p?.size),
+  // Tablero territorial (E7): barras de un panel de indicadores.
+  Tablero: (p) => _svg([
+    React.createElement('line',   { key: 1, x1: 5,  y1: 20, x2: 19, y2: 20 }),
+    React.createElement('line',   { key: 2, x1: 7,  y1: 13, x2: 7,  y2: 17 }),
+    React.createElement('line',   { key: 3, x1: 12, y1: 8,  x2: 12, y2: 17 }),
+    React.createElement('line',   { key: 4, x1: 17, y1: 11, x2: 17, y2: 17 }),
+  ], p?.size),
   Norma:  (p) => _svg([
     React.createElement('path',     { key: 1, d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
     React.createElement('polyline', { key: 2, points: '14 2 14 8 20 8' }),

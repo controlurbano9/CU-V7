@@ -293,6 +293,16 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       </div>
 
+      {/* ── Tablero territorial (E7): en móvil no hay pestaña (la barra de
+          abajo ya tiene 5), así que Inicio le presta la entrada a quien ve
+          todas las visitas ── */}
+      {veTodo && (
+        <button type="button" className="home-ver-tablero" onClick={() => onNavegar('tablero')}>
+          <Icon.Tablero size={16} /> Ver tablero
+          <span aria-hidden="true">→</span>
+        </button>
+      )}
+
       {/* ── Urgentes (audiencia en ≤3 días): franja solo cuando hay ── */}
       {!cargando && alertas.conteo.urgente > 0 && (
         <div className="home-urg" role="status">
