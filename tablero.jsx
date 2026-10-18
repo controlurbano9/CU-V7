@@ -58,9 +58,18 @@ function _initTB() {
   try {
     const h = JSON.parse(decodeURIComponent((location.hash || '').slice(1)));
     if (h && typeof h === 'object') {
-      Object.keys(S).forEach(k => {
-        if (h[k] !== undefined) S[k] = h[k];
-      });
+      // Cada campo se valida: un enlace viejo o editado a mano no rompe la
+      // pantalla (revisión DeepSeek 2026-10-17).
+      if (h.dim === 'fr' || h.dim === 'fv') S.dim = h.dim;
+      if (['todo', '2025', 'anio', '90'].indexOf(h.per) >= 0) S.per = h.per;
+      if (typeof h.desde === 'string' || typeof h.desde === 'number') S.desde = h.desde;
+      if (typeof h.hasta === 'string' || typeof h.hasta === 'number') S.hasta = h.hasta;
+      if (typeof h.com === 'string') S.com = h.com;
+      if (typeof h.bar === 'string') S.bar = h.bar;
+      if (typeof h.ins === 'string') S.ins = h.ins;
+      if (Array.isArray(h.est)) S.est = h.est.filter(k => TB_EST_KEYS.indexOf(k) >= 0);
+      if (['com', 'bar', 'pto'].indexOf(h.vista) >= 0) S.vista = h.vista;
+      if (TB_METRICAS[h.met]) S.met = h.met;
     }
   } catch (e) { /* enlace roto: se ignora */ }
   S.sel = null;
@@ -112,7 +121,9 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
   const toastT = useRefTB(null);
   const panelRef = useRefTB(null);
   const cajonXRef = useRefTB(null);
+  const abridorRef = useRefTB(null);   // botón que abrió el cajón: el foco vuelve ahí
   const hoy = useMemoTB(() => new Date(), []);
+  useEffectTB(() => () => clearTimeout(toastT.current), []);
 
   // ── Carga: copia local + re-pintado sin spinner, como Inicio ──
   useEffectTB(() => {
@@ -164,6 +175,7 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
   const base = useMemoTB(() => filtrarTablero(filas, S, null, hoy), [filas, S, hoy]);
   // Cada faceta cuenta sobre los demás filtros, sin el suyo (§4).
   const sinCom = useMemoTB(() => filtrarTablero(filas, S, 'com', hoy), [filas, S, hoy]);
+
   const sinIns = useMemoTB(() => filtrarTablero(filas, S, 'ins', hoy), [filas, S, hoy]);
   const sinEst = useMemoTB(() => filtrarTablero(filas, S, 'est', hoy), [filas, S, hoy]);
   const sinPer = useMemoTB(() => filtrarTablero(filas, S, 'per', hoy), [filas, S, hoy]);
@@ -230,7 +242,12 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
 
   // Esc cierra el cajón (y el foco vuelve al abrirse, §6.9).
   useEffectTB(() => {
-    if (!cajon) return;
+    if (!cajon) {
+      if (abridorRef.current && abridorRef.current.focus) abridorRef.current.focus();
+      abridorRef.current = null;
+      return;
+    }
+    if (!abridorRef.current) abridorRef.current = document.activeElement;
     if (cajonXRef.current) cajonXRef.current.focus();
     const esc = e => { if (e.key === 'Escape') setCajon(null); };
     document.addEventListener('keydown', esc);
@@ -277,6 +294,12 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
   // ── Render ──
   const hayFiltros = !!(S.desde != null || S.hasta != null || S.com || S.bar != null || S.ins ||
     (S.est && S.est.length < TB_EST_KEYS.length));
+
+  // Solo admin y supervisor (§ 2): la pestaña ya se oculta, esto cubre la
+  // llegada por hash o navegación directa. Después de todos los hooks.
+  if (!veTodasLasVisitas(usuario && usuario.rol)) {
+    return <div className="tb-vacio">El tablero es solo para administración y supervisión.</div>;
+  }
 
   return (
     <div className="pantalla activa pad-bottom tb-pantalla">
@@ -402,7 +425,7 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
               )}
             </div>
           </div>
-          <MapaTB filas={sinCom} mapas={idxBarrios && idxBarrios.mapas} proj={idxBarrios && idxBarrios.proj}
+          <MapaTB filas={_filasMapaTB(S, sinCom, base)} mapas={idxBarrios && idxBarrios.mapas} proj={idxBarrios && idxBarrios.proj}
             S={S} parchar={parchar} sel={sel} />
         </section>
         <aside className="tb-tarj tb-panel" ref={panelRef} aria-label="Detalle del tablero">
@@ -478,6 +501,15 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
 
 // Las 12 comunas de Bello (la 12 es rural).
 const TB_COMUNAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+
+// Qué filas pinta el mapa: en Comunas, todas las comunas (para elegir otra);
+// en Barrios, todos los barrios si ya hay uno elegido, o los de la comuna
+// elegida; en Visitas, la vista con todos los filtros.
+function _filasMapaTB(S, sinArea, base) {
+  if (S.vista === 'com') return sinArea;
+  if (S.vista === 'bar') return S.bar != null ? sinArea : base;
+  return base;
+}
 
 // ── Mapa (§6.4): SVG propio, sin Google Maps ──────────────────
 // `mapas` viene del índice compartido con Buscar ({w, h, comunas, barrios})
