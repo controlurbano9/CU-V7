@@ -211,3 +211,10 @@ test('normalizarCoord — repara coordenadas con el decimal comido por el Sheet'
   assert.equal(normalizarCoord(null, 'lon'), null);
   assert.equal(normalizarCoord(0, 'lat'), null);
 });
+
+// Ley 2578 de 2026 (Virgen de Chiquinquirá, 9 jul → lunes). Quitar si la Corte la tumba.
+test('_festivosColombia — Virgen de Chiquinquirá se traslada al lunes', () => {
+  assert.equal(esDiaHabil(new Date(2026, 6, 13)), false);
+  assert.equal(esDiaHabil(new Date(2027, 6, 12)), false);
+  assert.equal(esDiaHabil(new Date(2026, 6, 14)), true);
+});

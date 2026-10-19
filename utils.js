@@ -93,6 +93,7 @@ function _festivosColombia(anio) {
     [0, 6],   // 6 ene — Reyes Magos
     [2, 19],  // 19 mar — San José
     [5, 29],  // 29 jun — San Pedro y San Pablo
+    [6, 9],   // 9 jul — Virgen de Chiquinquirá (Ley 2578 de 2026; quitar si la Corte la tumba)
     [7, 15],  // 15 ago — Asunción
     [9, 12],  // 12 oct — Día de la Raza
     [10, 1],  // 1 nov — Todos los Santos
