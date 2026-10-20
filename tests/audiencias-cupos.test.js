@@ -44,6 +44,7 @@ function cargarBackend() {
   const mEstadoVars = [
     /var ESTADO_CUPO_APARTADO = 'APARTADO';/,
     /var APARTADOS_MAX = 3;/,
+    /var DOCUMENTO_NO_APORTADO = 'NO APORTA';/,
     /var CALIDADES_CITADO = \[[\s\S]*?\];/,
     /var CITACION_COLUMNAS_CONSERVAR = \[[\s\S]*?\];/
   ];
@@ -394,6 +395,15 @@ test('backend: _validarDatosCitado — documento de 5 a 12 dígitos y calidad de
   assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12A4567', calidadCitado: 'OTRO' }).ok, false);
   assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12345678', calidadCitado: 'APODERADO' }).ok, false);
   assert.equal(B._validarDatosCitado({ citado: '', documentoCitado: '12345678', calidadCitado: 'OTRO' }).ok, false);
+});
+
+test('backend: _validarDatosCitado — «No aportó documento» deja constancia', opts, () => {
+  const B = cargarBackend();
+  const r = B._validarDatosCitado({ citado: 'ANA', documentoCitado: '', sinDocumento: true, calidadCitado: 'OTRO' });
+  assert.equal(r.ok, true);
+  assert.equal(r.documento, 'NO APORTA');
+  // Sin documento y sin marcar la casilla sigue fallando.
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '', calidadCitado: 'OTRO' }).ok, false);
 });
 
 // ── TASK 1b: actualizar conserva la citación ──
