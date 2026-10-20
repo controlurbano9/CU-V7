@@ -1671,6 +1671,26 @@ function ordenPoliciaDe(f) {
   return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
 }
 
+// Expediente del caso (col EXPEDIENTE, 2026-10-19): dígitos o vacío. 'NUEVO'
+// no es un expediente, es «aún sin expediente» — misma lectura que el campo
+// al asignar, donde vacío significa NUEVO. tests/expediente.test.js.
+function expedienteDe(f) {
+  var s = String((f && f['EXPEDIENTE']) == null ? '' : f['EXPEDIENTE']).trim();
+  var u = s.toUpperCase();
+  return (!s || u === 'NUEVO') ? '' : s;
+}
+
+// Cómo se identifica la visita en pantalla (decisión del usuario 2026-10-19):
+// con expediente, la tarjeta muestra «Exp. 2201» en lugar del radicado y el
+// radicado pasa al title; sin expediente, el radicado como siempre. En la
+// ficha y «Ver datos» se muestran los dos porque ahí se gestiona. `secundario`
+// es '' cuando principal ya es el radicado.
+function identificadorVisita(f) {
+  var exp = expedienteDe(f);
+  var rad = String((f && f['RADICADO']) || '').trim();
+  return exp ? { principal: 'Exp. ' + exp, secundario: rad } : { principal: rad, secundario: '' };
+}
+
 // Id de un archivo de Drive a partir de su enlace (`/d/<id>/` o `?id=<id>`),
 // '' si no es un enlace de archivo. Para armar la vista previa embebida.
 function idArchivoDrive(link) {
@@ -2093,6 +2113,9 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   // Radicado y tipo de caso
   c.rad = _colBuscar(f, 'RADICADO');
   c.nRad = _normBuscar(c.rad);
+  // Expediente: la casilla de texto libre también lo encuentra (TASK 2).
+  c.exp = expedienteDe(f);
+  c.nExp = _normBuscar(c.exp);
   c.tipo = !esRadicadoDeCaso(c.rad) ? 'V2' : (/^OFICIO-/i.test(c.rad) ? 'OFICIO' : 'PQR');
   var principal = claveRadicado(c.rad);
   c.reit = radicadosReiterados(f).filter(function (r) { return r !== principal; });
@@ -2196,6 +2219,10 @@ function filtrosBuscarVacios() {
 function coincideBuscar(c, q) {
   var n = _normBuscar(q); if (!n) return '';
   if (c.nRad.indexOf(n) !== -1) return 'rad';
+  // El expediente son dígitos: cualquier número suelto podría calzar, así que
+  // se exige coincidencia por subcadena en el número normalizado, igual que
+  // el radicado, pero solo si la fila tiene expediente.
+  if (c.nExp && c.nExp.indexOf(n) !== -1) return 'exp';
   if (c.nDir.indexOf(n) !== -1) return 'dir';
   var k = claveBusquedaDireccion(n);
   if (k && k.length >= 3 && c.kDir.indexOf(k) !== -1) return 'dirk';
@@ -4011,6 +4038,8 @@ function faltantesRequiereLicencia(o) {
 var _cuUtilsExports = {
   ART135_LITERALES: ART135_LITERALES,
   ART135_TEXTO: ART135_TEXTO,
+  expedienteDe: expedienteDe,
+  identificadorVisita: identificadorVisita,
   citaArt135: citaArt135,
   comportamientosParaIA: comportamientosParaIA,
   reglasBloqueoActa: reglasBloqueoActa,

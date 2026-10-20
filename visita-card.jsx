@@ -129,9 +129,12 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
           {/* Línea de identidad, sin etiquetas: radicado · PQR · barrio · comuna
               · fecha de radicado. El radicado conserva peso (mono 12/600
               terracota) frente al resto en 11 regular — es el identificador
-              único y tiene que localizarse de un vistazo. */}
+              único y tiene que localizarse de un vistazo. Con expediente se ve
+              «Exp. N» y el radicado queda en el title (decisión 2026-10-19). */}
           <div className="vc-ident">
-            <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+            <span className="vc-rad" title={identificadorVisita(f).secundario || undefined}>
+              {identificadorVisita(f).principal || '—'}
+            </span>
             <BotonPdfRadicado f={f} />
             <span className="vc-sep">·</span>
             <span>{f['BARRIO/VEREDA'] || f['BARRIO'] || '—'}</span>
@@ -529,18 +532,21 @@ function BotonesAdminVisita({ f, esAdmin, busy, abierto,
 //
 // Props:
 //   f, busy, abierto, inspectores
-//   onAsignar(fila, nombre, f)           — usado para PENDIENTE/ASIGNADO/INICIADO
-//   onAsignarNuevaVisita(fila, nombre)   — usado solo para COMPLETADO
+//   onAsignar(fila, nombre, f, fechaAsignacion, expediente)  — PENDIENTE/ASIGNADO/INICIADO
+//   onAsignarNuevaVisita(fila, nombre, fechaAsignacion, expediente) — solo COMPLETADO
+//   conExpediente — campo opcional «Expediente» (solo dígitos, 1-6): quien
+//     asigna es quien conoce el caso (decisión 2026-10-19). Vacío = NUEVO.
 //
 // El 3er argumento de onAsignar (la fila completa) es opcional para el caller:
 // Buscar lo usa para advertir antes de relevar una visita INICIADA; Agenda,
 // donde todo está en PENDIENTE, lo ignora.
 // ═══════════════════════════════════════════════════════════════
 function PanelSeleccionInspector({ f, busy, abierto, inspectores,
-  onAsignar, onAsignarNuevaVisita, accion, conFecha }) {
+  onAsignar, onAsignarNuevaVisita, accion, conFecha, conExpediente }) {
   // Hooks antes de cualquier early return (React #310).
   const [fecha, setFecha] = useStateVC('');
   const [aviso, setAviso] = useStateVC('');
+  const [expediente, setExpediente] = useStateVC('');
 
   if (!abierto || !inspectores || inspectores.length === 0) return null;
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
@@ -556,8 +562,9 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 
   function elegir(nombre) {
     const ddmmaaaa = fecha ? _isoADDMMAAAA(fecha) : hoyDDMMAAAA();
-    if (esNueva && onAsignarNuevaVisita) onAsignarNuevaVisita(f._idx, nombre, ddmmaaaa);
-    else onAsignar(f._idx, nombre, f, ddmmaaaa);
+    const exp = conExpediente ? expediente : '';
+    if (esNueva && onAsignarNuevaVisita) onAsignarNuevaVisita(f._idx, nombre, ddmmaaaa, exp);
+    else onAsignar(f._idx, nombre, f, ddmmaaaa, exp);
   }
 
   function cambiarFecha(v) {
@@ -590,6 +597,17 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
       </div>
       )}
       {conFecha && aviso && <div className="psi-aviso">{aviso}</div>}
+
+      {/* Expediente del caso: lo conoce quien asigna, no el visitador en
+          campo. Opcional y solo dígitos (el backend valida 1-6); vacío = NUEVO. */}
+      {conExpediente && (
+        <div className="psi-exp">
+          <label htmlFor={'psi-e-' + f._idx}>Expediente <small>(opcional, solo números)</small></label>
+          <input id={'psi-e-' + f._idx} type="text" inputMode="numeric" autoComplete="off"
+            placeholder="NUEVO" maxLength={6} value={expediente}
+            onChange={e => setExpediente(e.target.value.replace(/\D+/g, '').slice(0, 6))} />
+        </div>
+      )}
 
       {inspectores.map(i => (
         <button key={i.nombre} type="button"

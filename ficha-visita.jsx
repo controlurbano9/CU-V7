@@ -132,7 +132,12 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
             {/* Una dirección que es una coordenada se dice «Punto GPS», como en Buscar. */}
             <div className="fv-dir" title={dir}>{puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</div>
             <div className="vc-ident">
-              <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+              {/* Aquí se gestiona: con expediente se muestran los dos
+                  («Exp. 2201 · Rad. 20261041205», decisión 2026-10-19). */}
+              <span className="vc-rad">
+                {expedienteDe(f) ? 'Exp. ' + expedienteDe(f) + ' · Rad. ' + (f['RADICADO'] || '—')
+                  : (f['RADICADO'] || '—')}
+              </span>
               <BotonPdfRadicado f={f} onAbrir={alternarPqr}
                 titulo={verPqr ? 'Ocultar la PQR' : 'Ver la PQR radicada'} />
               {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}

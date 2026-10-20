@@ -293,7 +293,10 @@ function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinua
           onClick={sinPropagar(conPanel ? () => onElegir(f) : verDatos)}>
           {puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</button>
         <div className="vc-ident">
-          <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+          {/* Con expediente se ve «Exp. N» y el radicado pasa al title (2026-10-19). */}
+          <span className="vc-rad" title={identificadorVisita(f).secundario || undefined}>
+            {identificadorVisita(f).principal || '—'}
+          </span>
           {!conPanel && <BotonPdfRadicado f={f} />}
           {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
           {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}

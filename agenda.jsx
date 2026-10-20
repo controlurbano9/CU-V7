@@ -142,6 +142,9 @@ function AgendaScreen({ usuario }) {
   const [mapa, setMapa]               = useStateG(null);
   const [reglasAbiertas, setReglasAbiertas] = useStateG(false);
   const [asignando, setAsignando]     = useStateG(false);
+  // Expediente por visita del borrador (fila → texto): lo conoce quien asigna.
+  // Suele ir vacío; no se persiste con el borrador, es del momento.
+  const [expedientes, setExpedientes] = useStateG({});
   const pidiendoPuntos = useRefG({});
 
   const esAdmin = usuario.rol === 'ADMIN';
@@ -281,11 +284,13 @@ function AgendaScreen({ usuario }) {
           .map(n => ({
             inspector: n,
             fechaAsignacion: diaKey,
-            visitas: borrador[n].map(v => ({ fila: v.fila, radicado: v.radicado })),
+            visitas: borrador[n].map(v => ({ fila: v.fila, radicado: v.radicado,
+              expediente: expedientes[v.fila] || '' })),
           })),
       });
       if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
       invalidarCache('visitas');
+      setExpedientes({});
       setEdiciones(prev => {
         const next = Object.assign({}, prev);
         delete next[diaKey];
@@ -414,7 +419,9 @@ function AgendaScreen({ usuario }) {
               {inspectores.map((n, i) => (
                 <DiaInspector key={n} nombre={n} indice={i} meta={meta}
                   nuevas={borrador[n] || []} ya={ya[n] || []} puntos={puntos}
-                  sinPendientes={!data.totalPendientes} editado={!!ediciones[diaKey]} onQuitar={quitar} />
+                  sinPendientes={!data.totalPendientes} editado={!!ediciones[diaKey]} onQuitar={quitar}
+                  expedientes={expedientes}
+                  onExpediente={(fila, v) => setExpedientes(prev => Object.assign({}, prev, { [fila]: v }))} />
               ))}
               {ediciones[diaKey] && (
                 <button type="button" className="ag-link ag-restablecer" onClick={volverASugerencia}>
@@ -513,7 +520,8 @@ function ListaSugeridas({ visitas, agrupar, verMas, onVerMas, inspectores, dueno
   );
 }
 
-function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes, editado, onQuitar }) {
+function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes, editado, onQuitar,
+  expedientes, onExpediente }) {
   const paradas = ordenarRuta(
     ya.map(f => ({ ya: true, fila: f._idx, radicado: f['RADICADO'] || '', fechaRad: f['FECHA RADICADO'] || '', direccion: direccionVisita(f), barrio: f['BARRIO/VEREDA'] || f['BARRIO'] || '', comuna: f['COMUNA'], punto: puntoParadaAG(direccionVisita(f), f, puntos) }))
       .concat(nuevas.map(v => Object.assign({ punto: puntoParadaAG(v.direccion, null, puntos) }, v))),
@@ -561,6 +569,14 @@ function DiaInspector({ nombre, indice, meta, nuevas, ya, puntos, sinPendientes,
                   {p.ya ? <span className="sr-only"> (ya asignada)</span> : <span className="ag-tag">Nueva</span>}
                 </DireccionAG>
                 <RadicadoAG radicado={p.radicado} fecha={p.fechaRad} />
+                {!p.ya && onExpediente && (
+                  /* Expediente del caso (2026-10-19): opcional, solo dígitos,
+                     lo diligencia quien asigna. Vacío = NUEVO. */
+                  <input className="ag-exp" type="text" inputMode="numeric" autoComplete="off"
+                    placeholder="Expediente" aria-label={'Expediente de ' + (p.radicado || 'la visita')}
+                    maxLength={6} value={expedientes[p.fila] || ''}
+                    onChange={e => onExpediente(p.fila, e.target.value.replace(/\D+/g, '').slice(0, 6))} />
+                )}
                 <div className="ag-por">
                   {[p.barrio, p.comuna != null && p.comuna !== '' ? etiquetaComuna(p.comuna) : ''].filter(Boolean).join(' · ')}
                   {!p.punto && <> · sin ubicación</>}

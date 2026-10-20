@@ -231,6 +231,8 @@ function SemanaCard({ f, movil, onAbrir }) {
   const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección';
   const rad = String(f['RADICADO'] || '').trim();
+  // Con expediente se ve «Exp. N» y el radicado queda en el title (2026-10-19).
+  const ident = identificadorVisita(f);
   const fRad = _svDDMM(f['FECHA RADICADO']);
   const ubic = _svUbic(f);
 
@@ -250,8 +252,10 @@ function SemanaCard({ f, movil, onAbrir }) {
       <div className="sv-dir" title={dir}>{direccionVisible(dir)}</div>
       <div className="sv-meta">
         {ubic && <span>{ubic} · </span>}
-        {rad && <span className="sv-rad">{rad}</span>}
-        {rad && fRad && ' · '}
+        {(ident.principal || rad) && (
+          <span className="sv-rad" title={ident.secundario || undefined}>{ident.principal}</span>
+        )}
+        {(ident.principal || rad) && fRad && ' · '}
         {fRad}
       </div>
       <div className="sv-pie">

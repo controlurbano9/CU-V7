@@ -514,7 +514,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   // ── Acciones admin: asignar, desasignar, completar, nueva visita ──
   const datosRef = useRefB(datos);
   datosRef.current = datos;
-  const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion) => {
+  const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion, expediente) => {
     // Relevar una visita INICIADA no es lo mismo que asignar una pendiente:
     // el backend conserva el estado, pero por la regla del diligenciador el
     // inspector anterior deja de verla, y su borrador local (localStorage)
@@ -538,6 +538,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
         radicadoConocido: (f && f['RADICADO']) || '',
         idVisita: (f && f['ID_VISITA']) || '',
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
+        // Vacío no pisa un expediente que ya exista (regla del backend).
+        expediente: expediente || '',
       });
       invalidarCache('visitas');
       setAsignandoFila(null);
@@ -551,7 +553,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     setBusyFila(null);
   }, [cargar]);
 
-  const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector, fechaAsignacion) => {
+  const adminAsignarNuevaVisita = useCallbackB(async (filaOrigen, inspector, fechaAsignacion, expediente) => {
     setBusyFila(filaOrigen);
     try {
       const fOrigen = datosRef.current.find(x => x._idx === filaOrigen);
@@ -561,6 +563,8 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
         idVisita: (fOrigen && fOrigen['ID_VISITA']) || '',
         fila: filaOrigen, inspector,
         fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
+        // Sin expediente explícito la visita nueva hereda el de su hermana.
+        expediente: expediente || '',
       });
       if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
       invalidarCache('visitas');
@@ -1310,7 +1314,11 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
           <div className="vc-ident">
             {c.tipo === 'V2'
               ? <span className="bq-v2" title="Fila migrada de V2 sin número de radicado"><span className="bq-tag">V2</span> <MarcarBQ texto={c.rad} q={q} /></span>
-              : <span className="vc-rad"><MarcarBQ texto={c.rad} q={q} /></span>}
+              // Con expediente se ve «Exp. N» y el radicado pasa al title
+              // (decisión 2026-10-19). El PDF de la PQR sigue colgado del radicado.
+              : (c.exp
+                ? <span className="vc-rad" title={'Radicado ' + c.rad}>Exp. {c.exp}</span>
+                : <span className="vc-rad"><MarcarBQ texto={c.rad} q={q} /></span>)}
             {!conPanel && <BotonPdfRadicado f={f} />}
             {c.rural
               ? <><span className="vc-sep">·</span><span>Vda. <MarcarBQ texto={c.vereda} q={q} /></span></>
@@ -1484,12 +1492,12 @@ function GestionBQ({ f, todas, inspectores, busyFila, asignandoFila, setAsignand
       {est !== 'COMPLETADO' && (
         <PanelSeleccionInspector
           f={f} busy={busy} abierto={abierto} inspectores={inspectores}
-          accion="asignar" conFecha onAsignar={onAsignar} />
+          accion="asignar" conFecha conExpediente onAsignar={onAsignar} />
       )}
       {puedeNueva && !abierta && !pendiente && est === 'COMPLETADO' && (
         <PanelSeleccionInspector
           f={filaBase} busy={busyFila === filaBase._idx} abierto={panelNuevaAbierto}
-          inspectores={inspectores} accion="nueva" conFecha
+          inspectores={inspectores} accion="nueva" conFecha conExpediente
           onAsignar={onAsignar} onAsignarNuevaVisita={onAsignarNuevaVisita} />
       )}
     </section>

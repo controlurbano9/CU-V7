@@ -440,7 +440,12 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   // Sin barrio: la dirección ya ubica el caso y el renglón se leía como una
   // fila de la hoja. Un RADICADO con varios valores muestra el primero + «+N».
   const rads = String(f['RADICADO'] || '').split(/\s*[\/,;\n]\s*/).filter(Boolean);
-  const rad = rads.length ? rads[0] + (rads.length > 1 ? ' +' + (rads.length - 1) : '') : '—';
+  // Con expediente se ve «Exp. N» en lugar del radicado (el title ya trae el
+  // RADICADO completo); sin expediente, el radicado como siempre (2026-10-19).
+  const exp = expedienteDe(f);
+  const rad = exp
+    ? 'Exp. ' + exp + (rads.length > 1 ? ' +' + (rads.length - 1) : '')
+    : (rads.length ? rads[0] + (rads.length > 1 ? ' +' + (rads.length - 1) : '') : '—');
   const meta = [mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
   // «Sin iniciar»/«Sin completar» repetían la etiqueta de estado: queda solo el
   // conteo. La urgente conserva su motivo (PQR, audiencia), que es lo que importa.
