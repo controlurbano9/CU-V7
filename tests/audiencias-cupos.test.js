@@ -30,12 +30,28 @@ function cargarBackend() {
     'parsearFechaVisita', '_fechaRadicadoComoDate', '_normRadicadoFila',
     '_normNombre', '_franjaDeHora', '_minutosHora', '_horaCitacionBonita',
     '_novedadActiva', '_novedadCubre', '_cupoBloqueadoPorNovedad',
-    '_cuposDisponibles', '_decisionReservaCupo', '_cuposAfectadosPorNovedad'
+    '_cuposDisponibles', '_decisionReservaCupo', '_cuposAfectadosPorNovedad',
+    // TASK 1b: apartados, citado, conservación en actualizar y lista Excel.
+    '_calcularPascuaCO', '_alLunesCO', '_festivosColombiaCO', '_esDiaHabilCO',
+    '_diasHabilesEntre', '_apartadoVencido', '_validarDatosCitado',
+    '_tieneReservaVigente', '_camposCitacionAConservar',
+    '_visitaEstaCompletada', '_clasificarCuposExcel'
   ];
   let codigo = '';
   const mEstado = /var ESTADO_CUPO_RESERVADO = 'RESERVADO';/.exec(src);
   assert.ok(mEstado, 'no se encontró ESTADO_CUPO_RESERVADO');
   codigo += mEstado[0] + '\n';
+  const mEstadoVars = [
+    /var ESTADO_CUPO_APARTADO = 'APARTADO';/,
+    /var APARTADOS_MAX = 3;/,
+    /var CALIDADES_CITADO = \[[\s\S]*?\];/,
+    /var CITACION_COLUMNAS_CONSERVAR = \[[\s\S]*?\];/
+  ];
+  mEstadoVars.forEach(re => {
+    const m = re.exec(src);
+    assert.ok(m, 'no se encontró ' + re);
+    codigo += m[0] + '\n';
+  });
   nombres.forEach(n => {
     const m = new RegExp('function ' + n + '\\([^)]*\\) \\{[\\s\\S]*?\\n}').exec(src);
     assert.ok(m, 'no se encontró ' + n);
@@ -265,4 +281,156 @@ test('backend: _horaCitacionBonita da el formato con que el formulario escribe F
   assert.equal(B._horaCitacionBonita('9:00AM'), '9:00 AM');
   assert.equal(B._horaCitacionBonita('2:00PM'), '2:00 PM');
   assert.equal(B._horaCitacionBonita('10:00AM'), '10:00 AM');
+});
+
+// ── TASK 1b: festivos y días hábiles (vencimiento de apartados) ──
+
+test('backend: _esDiaHabilCO conoce los festivos (Semana Santa y Chiquinquirá 2027)', opts, () => {
+  const B = cargarBackend();
+  assert.equal(B._esDiaHabilCO(new Date(2027, 2, 25)), false); // Jueves Santo
+  assert.equal(B._esDiaHabilCO(new Date(2027, 2, 26)), false); // Viernes Santo
+  assert.equal(B._esDiaHabilCO(new Date(2027, 6, 12)), false); // Chiquinquirá → lunes 12/07/2027
+  assert.equal(B._esDiaHabilCO(new Date(2027, 0, 1)), false);  // Año Nuevo
+  assert.equal(B._esDiaHabilCO(new Date(2027, 3, 24)), false); // sábado
+  assert.equal(B._esDiaHabilCO(new Date(2027, 2, 24)), true);  // miércoles común
+  assert.equal(B._esDiaHabilCO(new Date(2027, 6, 13)), true);  // martes tras el festivo
+});
+
+test('backend: _diasHabilesEntre cuenta hábiles estrictos entre las fechas', opts, () => {
+  const B = cargarBackend();
+  // De lunes 22/03/2027 a lunes 29/03: martes 23, miércoles 24 (jueves y
+  // viernes son Semana Santa) y el propio lunes 29 = 3 hábiles.
+  assert.equal(B._diasHabilesEntre(new Date(2027, 2, 22), new Date(2027, 2, 29)), 3);
+  // Mismo día: 0. Hasta antes de desde: 0.
+  assert.equal(B._diasHabilesEntre(new Date(2027, 2, 22), new Date(2027, 2, 22)), 0);
+  assert.equal(B._diasHabilesEntre(new Date(2027, 2, 29), new Date(2027, 2, 22)), 0);
+});
+
+test('backend: _apartadoVencido — vence al pasar 2 días hábiles desde APARTADO_EN', opts, () => {
+  const B = cargarBackend();
+  const apartado = cupo({
+    estado: 'APARTADO', apartadoPara: 'ALEJANDRO GIRALDO',
+    apartadoEn: new Date(2027, 2, 22), // lunes
+    fecha: new Date(2027, 4, 3)        // cupo lejano: la rama de 5 días no aplica
+  });
+  assert.equal(B._apartadoVencido(apartado, new Date(2027, 2, 23)), false); // martes (1 hábil)
+  assert.equal(B._apartadoVencido(apartado, new Date(2027, 2, 24)), false); // miércoles (2 hábiles)
+  // Jueves y viernes son Semana Santa: los festivos no descuentan margen.
+  assert.equal(B._apartadoVencido(apartado, new Date(2027, 2, 25)), false);
+  assert.equal(B._apartadoVencido(apartado, new Date(2027, 2, 26)), false);
+  assert.equal(B._apartadoVencido(apartado, new Date(2027, 2, 29)), true);  // lunes siguiente (3 hábiles)
+});
+
+test('backend: _apartadoVencido — vence cuando faltan 5 días hábiles o menos para el cupo', opts, () => {
+  const B = cargarBackend();
+  // Cupo el miércoles 14/07/2027. El conteo llega hasta el día del cupo
+  // inclusive: «faltan N días hábiles» cuenta los días de trabajo que quedan,
+  // y el de la audiencia es el último. El apartado se renueva cada assert
+  // para que la rama de los 2 días hábiles nunca dispare antes.
+  const apartado = (hoy) => cupo({
+    estado: 'APARTADO', apartadoPara: 'ALEJANDRO GIRALDO',
+    apartadoEn: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1),
+    fecha: new Date(2027, 6, 14)
+  });
+  assert.equal(B._apartadoVencido(apartado(new Date(2027, 6, 2)), new Date(2027, 6, 2)), false);  // vie: faltan 7
+  assert.equal(B._apartadoVencido(apartado(new Date(2027, 6, 5)), new Date(2027, 6, 5)), false);  // lun: faltan 6 (el 12/07 es festivo)
+  assert.equal(B._apartadoVencido(apartado(new Date(2027, 6, 6)), new Date(2027, 6, 6)), true);   // mar: faltan 5 (borde)
+  assert.equal(B._apartadoVencido(apartado(new Date(2027, 6, 13)), new Date(2027, 6, 13)), true); // la víspera
+  assert.equal(B._apartadoVencido(apartado(new Date(2027, 6, 14)), new Date(2027, 6, 14)), true); // el propio día
+});
+
+test('backend: _apartadoVencido — sin APARTADO_EN o sin fecha del cupo se devuelve a LIBRE', opts, () => {
+  const B = cargarBackend();
+  assert.equal(B._apartadoVencido(cupo({ estado: 'APARTADO', apartadoPara: 'X', apartadoEn: null }), HOY), true);
+  assert.equal(B._apartadoVencido(cupo({ estado: 'APARTADO', apartadoPara: 'X', apartadoEn: HOY, fecha: null }), HOY), true);
+  // Un cupo no apartado no vence por esta regla.
+  assert.equal(B._apartadoVencido(cupo(), HOY), false);
+});
+
+// ── TASK 1b: apartados y _decisionReservaCupo ──
+
+test('backend: un cupo apartado no sale en _cuposDisponibles', opts, () => {
+  const B = cargarBackend();
+  const cupos = [
+    cupo({ idCupo: '20270405-0900-VICTOR' }),
+    cupo({ idCupo: '20270412-0900-VICTOR', fecha: new Date(2027, 3, 12),
+      estado: 'APARTADO', apartadoPara: 'ALEJANDRO GIRALDO' })
+  ];
+  const libres = B._cuposDisponibles(cupos, [], HOY);
+  assert.deepEqual(Array.from(libres.map(c => c.idCupo)), ['20270405-0900-VICTOR']);
+});
+
+test('backend: _decisionReservaCupo — el apartado propio reserva, el ajeno da ocupado', opts, () => {
+  const B = cargarBackend();
+  const apartado = cupo({ estado: 'APARTADO', apartadoPara: 'ALEJANDRO GIRALDO' });
+  assert.equal(B._decisionReservaCupo(apartado, '20261011111', [], [], HOY, 'ALEJANDRO GIRALDO').ok, true);
+  assert.equal(B._decisionReservaCupo(apartado, '20261011111', [], [], HOY, 'MAURICIO VÉLEZ').motivo, 'ocupado');
+  // Sin nombre (sesión sin usuario) no se entrega a nadie.
+  assert.equal(B._decisionReservaCupo(apartado, '20261011111', [], [], HOY, '').motivo, 'ocupado');
+  // El apartado propio sigue pasando por fecha y novedades.
+  assert.equal(B._decisionReservaCupo(
+    cupo({ estado: 'APARTADO', apartadoPara: 'ALEJANDRO GIRALDO', fecha: new Date(2026, 9, 1) }),
+    '20261011111', [], [], HOY, 'ALEJANDRO GIRALDO').motivo, 'pasado');
+});
+
+// ── TASK 1b: citado ──
+
+test('backend: _validarDatosCitado — los tres vacíos = cliente viejo, el citado sale de la visita', opts, () => {
+  const B = cargarBackend();
+  const r = B._validarDatosCitado({ citado: '', documentoCitado: '', calidadCitado: '' });
+  assert.equal(r.ok, true);
+  assert.equal(r.usarVisita, true);
+  assert.equal(B._validarDatosCitado({}).usarVisita, true);
+});
+
+test('backend: _validarDatosCitado — documento de 5 a 12 dígitos y calidad de la lista', opts, () => {
+  const B = cargarBackend();
+  const r = B._validarDatosCitado({ citado: 'ANA GÓMEZ', documentoCitado: '12345678',
+    calidadCitado: 'propietario' });
+  assert.equal(r.ok, true);
+  assert.equal(r.calidad, 'PROPIETARIO');
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234', calidadCitado: 'OTRO' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234567890123', calidadCitado: 'OTRO' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12A4567', calidadCitado: 'OTRO' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12345678', calidadCitado: 'APODERADO' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: '', documentoCitado: '12345678', calidadCitado: 'OTRO' }).ok, false);
+});
+
+// ── TASK 1b: actualizar conserva la citación ──
+
+test('backend: _tieneReservaVigente — RESERVADO, mismo radicado y fecha de hoy en adelante', opts, () => {
+  const B = cargarBackend();
+  const reserva = cupo({ estado: 'RESERVADO', radicado: '20261011111', fecha: new Date(2027, 3, 5) });
+  assert.equal(B._tieneReservaVigente([reserva], '20261011111', HOY), true);
+  assert.equal(B._tieneReservaVigente([reserva], ' 20261011111 ', HOY), true); // normalizado
+  assert.equal(B._tieneReservaVigente([reserva], '20261022222', HOY), false);
+  assert.equal(B._tieneReservaVigente(
+    [cupo({ estado: 'RESERVADO', radicado: '20261011111', fecha: new Date(2026, 9, 1) })],
+    '20261011111', HOY), false); // ya pasada
+  assert.equal(B._tieneReservaVigente([cupo()], '20261011111', HOY), false); // libre
+  assert.equal(B._tieneReservaVigente([], '20261011111', HOY), false);
+});
+
+test('backend: _camposCitacionAConservar — con reserva vigente conserva la citación, sin ella nada', opts, () => {
+  const B = cargarBackend();
+  assert.deepEqual(Array.from(B._camposCitacionAConservar(true)),
+    ['FECHA CITACION', 'CITADO', 'DOCUMENTO_CITADO', 'CALIDAD_CITADO']);
+  assert.deepEqual(Array.from(B._camposCitacionAConservar(false)), []);
+});
+
+// ── TASK 1b: lista diaria del Excel solo con visitas completadas ──
+
+test('backend: _clasificarCuposExcel reparte por visita completada (COMPLETADA de V2 también)', opts, () => {
+  const B = cargarBackend();
+  const cupos = [
+    cupo({ idCupo: 'a' }), cupo({ idCupo: 'b' }), cupo({ idCupo: 'c' }), cupo({ idCupo: 'd' })
+  ];
+  const visitas = {
+    a: { estado: 'COMPLETADO' }, b: { estado: 'INICIADO' }, c: null, d: { estado: 'COMPLETADA' }
+  };
+  const r = B._clasificarCuposExcel(cupos, visitas);
+  assert.deepEqual(Array.from(r.lista.map(c => c.idCupo)), ['a', 'd']);
+  assert.deepEqual(Array.from(r.sinCompletar.map(c => c.idCupo)), ['b', 'c']);
+  assert.equal(B._visitaEstaCompletada({ estado: 'PENDIENTE' }), false);
+  assert.equal(B._visitaEstaCompletada(null), false);
 });
