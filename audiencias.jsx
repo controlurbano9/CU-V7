@@ -119,7 +119,7 @@ function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
   }
   useEffectAU(function () {
     cargarCupos();
-    leerVisitas().then(function (f) { setFilas(f || []); }).catch(function () {});
+    leerVisitas().then(function (r) { setFilas((r && r.datos) || []); }).catch(function () {});
   }, []);
 
   const hoyD = _auHoy();
@@ -306,7 +306,7 @@ function AudienciasScreen({ usuario }) {
     _AU_ULTIMO = null;
     cargar();
     // Cupos apartados para pedir citas sin señal en campo (se repiten sin daño).
-    if (!esSup && navigator.onLine) apartarCuposAudiencias().catch(function () {});
+    if (esInsp && navigator.onLine) apartarCuposAudiencias().catch(function () {});
   }, []);
 
   const dias = useMemoAU(() => agruparAudienciasPorDia((datos && datos.cupos) || []), [datos]);
@@ -353,7 +353,7 @@ function AudienciasScreen({ usuario }) {
 
   async function abrirCita(c) {
     try {
-      const filas = await leerVisitas();
+      const filas = (await leerVisitas()).datos || [];
       const idv = String(c.idVisita || '').trim();
       const f = filas.find(function (x) {
           return idv && String(x['ID_VISITA'] || '').trim() === idv; }) ||
