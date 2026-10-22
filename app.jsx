@@ -767,8 +767,8 @@ function AppV6() {
   tabs.push({ k: 'mis-visitas',   label: 'Mis visitas',Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
   if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
-  // Audiencias (TASK 3a): los 3 roles; el inspector la ve en solo lectura.
-  tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
+  // Audiencias: los 3 roles; para el inspector se llama «Citaciones» (ahí pide la cita).
+  tabs.push({ k: 'audiencias', label: veTodas ? 'Audiencias' : 'Citaciones', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
   const enFormulario = pantalla === 'nueva-visita';

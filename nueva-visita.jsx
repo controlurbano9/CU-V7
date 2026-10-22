@@ -531,6 +531,20 @@ function _revisionParaGuardar(dObj) {
 // borra); con NO se borran; sin responder, undefined → el backend no toca.
 // «¿Requiere licencia?» viaja siempre que esté respondida, se aporte o no
 // licencia (REQUIERE_LICENCIA / _DETALLE).
+// Citado de la citación (audiencias 2026-10-21). `{ mismaPersona }` = se cita
+// a quien atendió (el backend deja CITADO vacío); sin nombre todavía no se
+// manda nada, para no borrar lo que haya.
+function _citadoParaGuardar(dObj) {
+  if (!dObj.citaOtraPersona && !dObj.noAtiende) return { mismaPersona: true };
+  const nombre = String(dObj.citadoNombre || '').trim();
+  if (!nombre) return undefined;
+  return {
+    citado: nombre,
+    documentoCitado: dObj.citadoSinDoc ? '' : String(dObj.citadoDocumento || '').replace(/\D/g, ''),
+    sinDocumento: !!dObj.citadoSinDoc,
+  };
+}
+
 function _licenciaExtraParaGuardar(dObj) {
   let out;
   if (dObj.licenciaAportada === 'SI') {
@@ -656,6 +670,11 @@ function _estadoInicial(datosIniciales) {
                        return match ? match.val : '';
                      })(),
     noCitacion:      (d['FECHA CITACION'] || '').toString().trim() === 'No se deja citación',
+    // Citado (audiencias 2026-10-21): vacío = se cita a quien atendió.
+    citaOtraPersona: !!String(d['CITADO'] || '').trim(),
+    citadoNombre:    String(d['CITADO'] || '').trim(),
+    citadoDocumento: /^\d+$/.test(String(d['DOCUMENTO_CITADO'] || '').trim()) ? String(d['DOCUMENTO_CITADO']).trim() : '',
+    citadoSinDoc:    String(d['DOCUMENTO_CITADO'] || '').trim().toUpperCase() === 'NO APORTA',
     // Visitadores
     visitador:       d['VISITADOR(ES)']       || '',
     // POT
@@ -2815,7 +2834,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur) });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur), citadoVisita: _citadoParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -3044,6 +3063,30 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
 
   // Helper para actualizar un campo del form
   function setCampo(k, v) { setD(prev => ({ ...prev, [k]: v })); }
+
+  // Audiencias (TASK 3b): la cita se pide en campo por radicado o N° de orden.
+  // Si hay una reserva, la fecha y la hora de citación salen de ella (fijas).
+  const [citaReservada, setCitaReservada] = React.useState(null);
+  React.useEffect(() => {
+    const caso = { radicado: d.radicado || '', ordenPolicia: normOrdenAudiencias(d.orden) ? d.orden : '' };
+    if (!caso.radicado && !caso.ordenPolicia) { setCitaReservada(null); return; }
+    if (!navigator.onLine) return;
+    let vivo = true;
+    const t = setTimeout(() => {
+      listarCuposAudiencias(caso).then(r => {
+        if (!vivo) return;
+        const c = (r && r.propias && r.propias[0]) || null;
+        setCitaReservada(c);
+        if (!c) return;
+        const min = horaAudienciasMin(c.hora);
+        const hh = String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+        const iso = _fechaAIso(c.fecha);
+        setD(prev => (prev.citacionFecha === iso && prev.citacionHora === hh && !prev.noCitacion)
+          ? prev : { ...prev, citacionFecha: iso, citacionHora: hh, noCitacion: false });
+      }).catch(() => {});
+    }, 800);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [d.radicado, d.orden]);
   // Acta ↔ informe cambia qué se revisa (con informe no hay conclusiones): una
   // revisión abierta deja de valer y se cierra. Antes, pasar a informe sin
   // elegir las conclusiones dejaba «Aplicar» deshabilitado para siempre
@@ -4422,7 +4465,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal) });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal), citadoVisita: _citadoParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
@@ -5986,6 +6029,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </>
         )}
 
+        {citaReservada ? (
+          <_Campo label="Citación" fullWidth>
+            <div className="cita-reservada">
+              Cita reservada · {citaReservada.fecha} · {horaBonitaAudiencias(citaReservada.hora)}
+              <small>{citaReservada.sustanciador}</small>
+            </div>
+          </_Campo>
+        ) : (<>
         <_Campo label="Citación" fullWidth>
           <label className="check-tap" style={{ marginBottom: 4 }}>
             <input type="checkbox"
@@ -6014,6 +6065,34 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             {HORAS_CITACION.map(h => <option key={h.val} value={h.val}>{h.l}</option>)}
           </select>
         </_Campo>
+        </>)}
+        {(citaReservada || (!d.noCitacion && d.citacionFecha)) && (<>
+          {!d.noAtiende && (
+            <_Campo label="Citado" fullWidth>
+              <label className="check-tap">
+                <input type="checkbox" checked={!d.citaOtraPersona}
+                  onChange={e => setCampo('citaOtraPersona', !e.target.checked)} />
+                Se cita a quien atendió la visita{d.atiendeNombre ? ' (' + d.atiendeNombre + ')' : ''}
+              </label>
+            </_Campo>
+          )}
+          {(d.citaOtraPersona || d.noAtiende) && (<>
+            <_Campo label={d.noAtiende ? 'Citado' : 'Nombre del citado'}>
+              <_Input value={d.citadoNombre} onChange={v => setCampo('citadoNombre', v)} />
+            </_Campo>
+            <_Campo label="Documento">
+              <_Input value={d.citadoDocumento} inputMode="numeric" disabled={!!d.citadoSinDoc}
+                onChange={v => setCampo('citadoDocumento', v.replace(/\D/g, ''))} />
+            </_Campo>
+            <_Campo label="" fullWidth>
+              <label className="check-tap">
+                <input type="checkbox" checked={!!d.citadoSinDoc}
+                  onChange={e => { setCampo('citadoSinDoc', e.target.checked); if (e.target.checked) setCampo('citadoDocumento', ''); }} />
+                No aportó documento
+              </label>
+            </_Campo>
+          </>)}
+        </>)}
       </_Seccion>
 
       {/* 8. VISITADORES ──────────────────────────────────── */}

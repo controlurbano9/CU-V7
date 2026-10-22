@@ -886,12 +886,56 @@ async function listaDiariaExcelAudiencias(desde) {
   return gasPost(p);
 }
 
-async function marcarCitacionExcelAudiencias(idCupo, pasada) {
-  return gasPost({ accion: 'marcarCitacionExcel', idCupo, pasada: !!pasada });
-}
-
 async function liberarCupoAudiencias(idCupo, motivo) {
   return gasPost({ accion: 'liberarCupo', idCupo, motivo: motivo || '' });
+}
+
+// ── Pedir cita (TASK 3b): la cita se pide en campo ──
+// `caso` = { radicado, ordenPolicia }: uno de los dos.
+async function listarCuposAudiencias(caso) {
+  const p = { accion: 'listarCupos' };
+  if (caso && caso.radicado) p.radicado = caso.radicado;
+  if (caso && caso.ordenPolicia) p.ordenPolicia = caso.ordenPolicia;
+  return gasPost(p);
+}
+
+// Cupos apartados para reservar sin señal: se piden al abrir la pestaña con
+// señal y se guardan en el equipo para usarlos en campo.
+const _CLAVE_APARTADOS = 'cu_cupos_apartados_v1';
+async function apartarCuposAudiencias() {
+  const r = await gasPost({ accion: 'apartarCupos' });
+  try { localStorage.setItem(_CLAVE_APARTADOS, JSON.stringify(r.apartados || [])); } catch (e) {}
+  return r;
+}
+function cuposApartadosGuardados() {
+  try { return JSON.parse(localStorage.getItem(_CLAVE_APARTADOS) || '[]') || []; } catch (e) { return []; }
+}
+
+// Reserva un cupo para el caso. Sin señal, un cupo apartado se encola (es del
+// inspector: no choca con nadie) y sale del equipo; uno libre no se puede.
+async function reservarCupoAudiencias(caso, cupo) {
+  const body = { accion: 'reservarCupo', idCupo: cupo.idCupo, requestId: _nuevoRequestId() };
+  if (caso.radicado) body.radicado = caso.radicado;
+  if (caso.ordenPolicia) body.ordenPolicia = caso.ordenPolicia;
+  try {
+    return await gasPost(body);
+  } catch (e) {
+    const apartados = cuposApartadosGuardados();
+    const esApartado = apartados.some(function (c) { return c.idCupo === cupo.idCupo; });
+    if (esApartado && typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
+      await offlineEnqueue({
+        tipo: 'gasPost',
+        body: _conCredencialesSesion(body),
+        descripcion: 'Cita ' + cupo.fecha + ' ' + cupo.hora + ' · ' + (caso.radicado || caso.ordenPolicia),
+      });
+      try {
+        localStorage.setItem(_CLAVE_APARTADOS, JSON.stringify(
+          apartados.filter(function (c) { return c.idCupo !== cupo.idCupo; })));
+      } catch (e2) {}
+      return { ok: true, encolado: true, cupo: cupo };
+    }
+    throw e;
+  }
 }
 
 async function registrarLog(usuario, texto) {
@@ -1164,6 +1208,8 @@ async function guardarVisita(payload) {
   // LICENCIA_TITULAR / _AREA_APROBADA / _CURADURIA: las escribe por nombre
   // el backend; '' borra, clave ausente no se toca.
   if (payload.licenciaExtra) body.licenciaExtra = payload.licenciaExtra;
+  // CITADO / DOCUMENTO_CITADO (audiencias): { mismaPersona } o el citado.
+  if (payload.citadoVisita) body.citadoVisita = payload.citadoVisita;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
@@ -1966,8 +2012,8 @@ Object.assign(window, {
   registrarExportacion, cargarXLSX,
   leerConfigAgenda, guardarConfigAgenda,
   agendaAudiencias, listarNovedadesAudiencias, guardarNovedadAudiencias,
-  desactivarNovedadAudiencias, listaDiariaExcelAudiencias,
-  marcarCitacionExcelAudiencias, liberarCupoAudiencias,
+  desactivarNovedadAudiencias, listaDiariaExcelAudiencias, liberarCupoAudiencias,
+  listarCuposAudiencias, apartarCuposAudiencias, cuposApartadosGuardados, reservarCupoAudiencias,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,

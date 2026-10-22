@@ -4205,7 +4205,7 @@ button.sv-col-head {
 .au-row .hora { flex: none; width: 76px; font: 600 13px var(--font-sans); }
 .au-row .t { flex: 1; min-width: 0; font-size: 13px; font-family: inherit; background: none; border: 0;
   padding: 0; color: var(--ink); cursor: default; text-align: left; }
-.au-row button.t { cursor: pointer; }
+.au-row button.t { cursor: pointer; align-self: stretch; text-align: left; }
 .au-row .t b { font-weight: 600; }
 .au-row .t small { display: block; margin-top: 1px; font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
 .au-chip-pend { flex: none; padding: 2px 8px; border-radius: var(--r-full); background: var(--amber-bg);
@@ -4333,11 +4333,43 @@ button.sv-col-head {
 .au-hoj-cab small { display: block; margin-top: 1px; font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
 .au-hoj-cab .au-x { width: 32px; height: 32px; font-size: 17px; }
 
+/* «Pedir cita» (TASK 3b): caso + 5 cupos; confirmación grande para el papel */
+.au-btn-pedir { width: auto; margin: 0 0 0 auto; padding: 0 18px; min-height: var(--tap-min); font-size: 14px; }
+.au-pbotones .btn-principal, .au-preservar { margin-bottom: 0; }
+.au-cab .au-btn-pedir + .au-btn-nov { margin-left: 0; }
+.au-pedidas { margin-bottom: 14px; }
+.au-pedidas > h2 { margin-bottom: 8px; }
+.au-pgrupo { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+.au-pgrupo legend, .au-pleg { display: block; margin-bottom: 6px; font: 600 13px var(--font-sans); color: var(--ink-2); }
+.au-pcaso, .au-pcupo { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--tap);
+  margin-bottom: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--surface); text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.au-pcaso.on, .au-pcupo.on { border-color: var(--ink); background: var(--surface-2); }
+.au-pcaso .t, .au-pcupo .t { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
+.au-pcaso small, .au-pcupo small { display: block; margin-top: 1px; font-size: 12px; font-weight: 400; color: var(--ink-3); overflow-wrap: anywhere; }
+.au-pcupo input { flex: none; width: 18px; height: 18px; accent-color: var(--ink); }
+.au-potro { display: block; margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.au-potro input { display: block; width: 100%; min-height: var(--tap); margin-top: 3px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: var(--r-card); background: var(--surface); font: inherit; font-size: 15px; color: var(--ink); }
+.au-psugs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.au-preservar { width: 100%; min-height: var(--tap); }
+.au-perror { margin: 0 0 10px; color: var(--red); font-size: 13px; }
+.au-pconf { padding: 18px 12px; text-align: center; border-radius: var(--r-card); background: var(--surface-2); }
+.au-pconf .f { font: 600 20px/1.25 var(--font-sans); }
+.au-pconf .h { margin-top: 4px; font: 600 28px/1.1 var(--font-sans); }
+.au-pconf .s { margin-top: 6px; font-size: 15px; }
+.au-pconf .caso { margin-top: 10px; font-size: 13px; color: var(--ink-3); }
+.au-pconf .cola { margin-top: 8px; font-size: 13px; color: var(--amber); }
+.au-pbotones { display: flex; gap: 8px; margin-top: 14px; }
+.au-pbotones > * { flex: 1; min-height: var(--tap); }
+
 /* Celular (<900): rejilla de un día con selector, táctil a 44 px */
 @media (max-width: 899px) {
   .au-pantalla { padding: 0 0 32px; }
   .au-cab h1 { font-size: 24px; }
   .au-btn-nov { min-height: var(--tap); }
+  .au-btn-pedir { min-height: var(--tap); }
+  .au-hoj-cab .au-x { width: var(--tap); height: var(--tap); }
   .au-chip { min-height: var(--tap); }
   .au-flecha { width: var(--tap); height: var(--tap); }
   .au-row { min-height: var(--tap); }
@@ -4361,3 +4393,8 @@ button.sv-col-head {
 @media (min-width: 900px) {
   .au-hoj-ovl { display: grid; place-items: center; padding: 16px; }
 }
+
+/* Formulario › Citación: la cita pedida en campo (fecha y hora fijas) */
+.cita-reservada { padding: 10px 12px; border-radius: var(--r-card); background: var(--surface-2);
+  font: 600 14px var(--font-sans); }
+.cita-reservada small { display: block; margin-top: 2px; font-weight: 400; font-size: 12px; color: var(--ink-3); }

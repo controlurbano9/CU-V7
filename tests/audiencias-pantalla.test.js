@@ -11,8 +11,9 @@ const assert = require('node:assert/strict');
 const {
   normNombreAudiencias, horaAudienciasMin, horaBonitaAudiencias,
   agruparAudienciasPorDia, agruparAudienciasPorSustanciador,
-  proximoDiaAudiencias, estadoListaAudiencias,
-  filtrarListaAudiencias, filaTsvAudiencias,
+  proximoDiaAudiencias, filtrarListaAudiencias,
+  normOrdenAudiencias, mismoCasoAudiencias, opcionesPedirCita, casosAgendaHoyAudiencias,
+  sugerirCasosAudiencias, citaVigenteDelCaso, pedidasHoyAudiencias,
 } = require('../utils.js');
 
 // Cita de prueba con la forma de agendaAudiencias.
@@ -72,13 +73,6 @@ test('proximoDiaAudiencias: hoy si tiene cupos; si no, el próximo', () => {
   assert.equal(proximoDiaAudiencias(dias, new Date(2027, 4, 1)), null);
 });
 
-test('estadoListaAudiencias: excel > pend > pasar', () => {
-  assert.equal(estadoListaAudiencias(cita({})), 'pasar');
-  assert.equal(estadoListaAudiencias(cita({ visitaCompletada: false })), 'pend');
-  assert.equal(estadoListaAudiencias(cita({ enviadoExcel: '20/04/2027' })), 'excel');
-  assert.equal(estadoListaAudiencias(cita({ enviadoExcel: '20/04/2027', visitaCompletada: false })), 'excel');
-});
-
 test('filtrarListaAudiencias: solo citas, de hoy en adelante, búsqueda y estado', () => {
   const cupos = [
     cita({}), // 05/04, pasar
@@ -101,17 +95,74 @@ test('filtrarListaAudiencias: solo citas, de hoy en adelante, búsqueda y estado
   assert.deepEqual(q('2201'), ['20270405-0900-PATRICIA']);
   assert.deepEqual(q('5566778'), ['a3']);
   assert.deepEqual(q('nada-que-calcule'), []);
-  // Chip de estado.
-  assert.deepEqual(filtrarListaAudiencias(cupos, { hoy, incluirPasadas: true, estado: 'pend' })
-    .map(c => c.idCupo), ['a2']);
   // «Mis citas» del inspector: solo las que reservó él.
   assert.deepEqual(
     filtrarListaAudiencias(cupos, { hoy, deQuien: 'MAURICIO HERRERA' }).map(c => c.idCupo), ['a3']);
 });
 
-test('filaTsvAudiencias: 8 columnas tabuladas', () => {
-  const tsv = filaTsvAudiencias(cita());
-  assert.equal(tsv.split('\t').length, 8);
-  assert.equal(tsv, '05/04/2027\t9:00AM\tPATRICIA LÓPEZ\t20272041228\t2201\tCarlos Ramírez\t\tCL 50 # 32-10');
-  assert.equal(filaTsvAudiencias(null), '\t\t\t\t\t\t\t');
+// ── Pedir cita (TASK 3b) ──
+
+test('normOrdenAudiencias y mismoCasoAudiencias: por radicado o por orden', () => {
+  assert.equal(normOrdenAudiencias('2026-09-015'), '2026-9-15');
+  assert.equal(normOrdenAudiencias('N/A'), '');
+  assert.equal(mismoCasoAudiencias(cita({ radicado: '', ordenPolicia: '2026-09-386' }),
+    { radicado: '', ordenPolicia: '2026-9-386' }), true);
+  assert.equal(mismoCasoAudiencias(cita({}), { radicado: '20272041228' }), true);
+  assert.equal(mismoCasoAudiencias(cita({}), { radicado: '20272041229' }), false);
+});
+
+test('opcionesPedirCita: una por fecha y hora, las 5 primeras', () => {
+  const cupos = [
+    cita({ idCupo: 'v', estado: 'LIBRE', sustanciador: 'VICTOR' }),
+    cita({ idCupo: 'j', estado: 'LIBRE', sustanciador: 'JUANSE' }),       // misma fecha y hora
+    cita({ idCupo: 't', estado: 'LIBRE', hora: '2:00PM' }),
+    cita({ idCupo: 'm1', estado: 'LIBRE', fecha: '06/04/2027' }),
+    cita({ idCupo: 'm2', estado: 'LIBRE', fecha: '06/04/2027', hora: '2:00PM' }),
+    cita({ idCupo: 'x1', estado: 'LIBRE', fecha: '07/04/2027' }),
+    cita({ idCupo: 'x2', estado: 'LIBRE', fecha: '12/04/2027' }),
+  ];
+  assert.deepEqual(opcionesPedirCita(cupos, 5).map(c => c.idCupo), ['v', 't', 'm1', 'm2', 'x1']);
+});
+
+test('casosAgendaHoyAudiencias: asignadas o iniciadas del inspector con fecha de hoy', () => {
+  const hoy = new Date(2027, 3, 5);
+  const filas = [
+    { 'RADICADO': '20272041228', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'ALEJANDRO',
+      'FECHA ASIGNACION VISITA': '05/04/2027', 'DIRECCION INFRACCION': 'CL 50 # 32-10', 'BARRIO/VEREDA': 'NIQUÍA' },
+    { 'RADICADO': '20272041229', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'MAURICIO',
+      'FECHA ASIGNACION VISITA': '05/04/2027' },
+    { 'RADICADO': '20272041230', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'ALEJANDRO',
+      'FECHA ASIGNACION VISITA': '06/04/2027' },
+    { 'RADICADO': 'OFICIO-2027-09-012', 'ESTADO VISITA': 'INICIADO', 'VISITADOR(ES)': 'ALEJANDRO',
+      'FECHA DE VISITA': '05/04/2027', 'N° ORDEN DE POLICIA': '2027-09-012' },
+    { 'RADICADO': '20272041231', 'ESTADO VISITA': 'COMPLETADO', 'VISITADOR(ES)': 'ALEJANDRO',
+      'FECHA DE VISITA': '05/04/2027' },
+  ];
+  const r = casosAgendaHoyAudiencias(filas, 'ALEJANDRO', hoy);
+  assert.deepEqual(r.map(c => c.radicado), ['20272041228', 'OFICIO-2027-09-012']);
+  assert.equal(r[0].direccion, 'CL 50 # 32-10');
+  assert.equal(r[1].ordenPolicia, '2027-09-012');
+});
+
+test('sugerirCasosAudiencias: por radicado o por orden sin ceros', () => {
+  const filas = [
+    { 'RADICADO': '20272041228' }, { 'RADICADO': '20272041228' }, // hermanas: una sola
+    { 'RADICADO': 'OFICIO-2026-09-386', 'N° ORDEN DE POLICIA': '2026-09-386' },
+  ];
+  assert.deepEqual(sugerirCasosAudiencias(filas, '204122').map(c => c.radicado), ['20272041228']);
+  assert.deepEqual(sugerirCasosAudiencias(filas, '2026-9-386').map(c => c.ordenPolicia), ['2026-09-386']);
+  assert.deepEqual(sugerirCasosAudiencias(filas, '20'), []);
+});
+
+test('citaVigenteDelCaso y pedidasHoyAudiencias', () => {
+  const cupos = [
+    cita({ idCupo: 'vieja', fecha: '28/02/2027' }),
+    cita({ idCupo: 'buena', reservadoEn: '01/03/2027 10:20' }),
+    cita({ idCupo: 'otra', radicado: '1', reservadoEn: '01/03/2027 09:05', reservadoPor: 'Mauricio' }),
+    cita({ idCupo: 'ayer', radicado: '2', reservadoEn: '28/02/2027 16:00' }),
+    cita({ idCupo: 'libre', estado: 'LIBRE', reservadoEn: '' }),
+  ];
+  assert.equal(citaVigenteDelCaso(cupos, { radicado: '20272041228' }, '01/03/2027').idCupo, 'buena');
+  assert.equal(citaVigenteDelCaso(cupos, { radicado: '99' }, '01/03/2027'), null);
+  assert.deepEqual(pedidasHoyAudiencias(cupos, '01/03/2027').map(c => c.idCupo), ['buena', 'otra']);
 });

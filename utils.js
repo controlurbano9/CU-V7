@@ -4112,18 +4112,9 @@ function proximoDiaAudiencias(dias, hoy) {
   return null;
 }
 
-// Estado de una cita para la vista «Lista»: ya en el Excel, visita sin
-// completar o lista para pasar.
-function estadoListaAudiencias(c) {
-  if (!c) return 'pasar';
-  if (c.enviadoExcel) return 'excel';
-  if (!c.visitaCompletada) return 'pend';
-  return 'pasar';
-}
-
 // Filtro de «Lista»: solo citas (RESERVADO), de hoy en adelante salvo
-// incluirPasadas, con búsqueda por nombre/radicado/expediente/documento,
-// chip de estado y, para el inspector, solo las suyas (deQuien normalizado).
+// incluirPasadas, con búsqueda por nombre/radicado/orden/expediente/documento
+// y, para el inspector, solo las suyas (deQuien normalizado).
 function filtrarListaAudiencias(cupos, opts) {
   opts = opts || {};
   var q = String(opts.q || '').trim().toLowerCase();
@@ -4132,9 +4123,8 @@ function filtrarListaAudiencias(cupos, opts) {
     if (c.estado !== 'RESERVADO') return false;
     if (!opts.incluirPasadas && hoyT && parsearFecha(c.fecha) && parsearFecha(c.fecha) < parsearFecha(hoyT)) return false;
     if (opts.deQuien && normNombreAudiencias(c.reservadoPor) !== opts.deQuien) return false;
-    if (opts.estado && opts.estado !== 'todos' && estadoListaAudiencias(c) !== opts.estado) return false;
     if (q) {
-      var en = [c.citado, c.radicado, c.expediente, c.documentoCitado].some(function (v) {
+      var en = [c.citado, c.radicado, c.ordenPolicia, c.expediente, c.documentoCitado].some(function (v) {
         return v && String(v).toLowerCase().indexOf(q) >= 0;
       });
       if (!en) return false;
@@ -4147,12 +4137,101 @@ function filtrarListaAudiencias(cupos, opts) {
   });
 }
 
-// Fila TSV para pegar en el Excel (mismo orden que listaDiariaExcel), por si
-// la respuesta no la trae.
-function filaTsvAudiencias(c) {
-  c = c || {};
-  return [c.fecha, c.hora, c.sustanciador, c.radicado, c.expediente, c.citado,
-    c.documentoCitado || '', c.direccion || ''].join('\t');
+// ── «Pedir cita» (TASK 3b, 2026-10-21) ──
+// La cita se pide en campo por radicado o por N° de Orden de Policía.
+
+// N° de orden comparable, como el backend: '2026-09-015' = '2026-9-15'.
+function normOrdenAudiencias(v) {
+  var t = String(v == null ? '' : v).trim();
+  if (!/^\d{4}-\d{1,3}-\d{1,4}$/.test(t)) return '';
+  return t.split('-').map(function (x) { return String(parseInt(x, 10)); }).join('-');
+}
+
+// ¿La cita `c` es del caso {radicado, ordenPolicia}?
+function mismoCasoAudiencias(c, caso) {
+  if (!c || !caso) return false;
+  var ra = claveRadicado(c.radicado), rb = claveRadicado(caso.radicado);
+  if (ra && rb && ra === rb) return true;
+  var oa = normOrdenAudiencias(c.ordenPolicia), ob = normOrdenAudiencias(caso.ordenPolicia);
+  return !!(oa && ob && oa === ob);
+}
+
+// Las `n` primeras opciones de cupo (vienen ordenadas y con el reparto hecho):
+// una por fecha y hora, la del sustanciador que el sistema asigna.
+function opcionesPedirCita(cupos, n) {
+  var vistos = {}, out = [];
+  (cupos || []).forEach(function (c) {
+    if (out.length >= (n || 5)) return;
+    var k = String(c.fecha) + '|' + horaAudienciasMin(c.hora);
+    if (vistos[k]) return;
+    vistos[k] = 1;
+    out.push(c);
+  });
+  return out;
+}
+
+// Caso de una fila de BD VISITAS para la hoja «Pedir cita».
+function casoDeVisitaAudiencias(f) {
+  var orden = ordenPoliciaDe(f);
+  return {
+    radicado: String(f['RADICADO'] || '').trim(),
+    ordenPolicia: normOrdenAudiencias(orden) ? orden : '',
+    direccion: direccionVisible(String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim()),
+    barrio: String(f['BARRIO/VEREDA'] || f['BARRIO'] || '').trim(),
+    expediente: expedienteDe(f)
+  };
+}
+
+// Visitas del inspector con fecha de hoy (asignadas o iniciadas): lo primero
+// que ofrece «Pedir cita». Misma regla del diligenciador que la Semana.
+function casosAgendaHoyAudiencias(filas, miNombre, hoy) {
+  var h = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).getTime();
+  return (filas || []).filter(function (f) {
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
+    if (e !== 'ASIGNADO' && e !== 'INICIADO') return false;
+    if (!_esVisitaDe(f, miNombre)) return false;
+    var d = fechaAgendaVisita(f);
+    return !!d && new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === h;
+  }).map(casoDeVisitaAudiencias);
+}
+
+// Sugerencias mientras se escribe el radicado o el N° de orden (máx. `max`).
+function sugerirCasosAudiencias(filas, texto, max) {
+  var q = String(texto || '').trim();
+  if (q.length < 3) return [];
+  var qRad = claveRadicado(q), qOrd = normOrdenAudiencias(q);
+  var vistos = {}, out = [];
+  (filas || []).forEach(function (f) {
+    if (out.length >= (max || 5)) return;
+    var c = casoDeVisitaAudiencias(f);
+    var porRad = c.radicado && claveRadicado(c.radicado).indexOf(qRad) >= 0;
+    var porOrd = qOrd ? normOrdenAudiencias(c.ordenPolicia) === qOrd
+      : (c.ordenPolicia && c.ordenPolicia.indexOf(q) >= 0);
+    if (!porRad && !porOrd) return;
+    var k = claveRadicado(c.radicado) || normOrdenAudiencias(c.ordenPolicia);
+    if (vistos[k]) return;
+    vistos[k] = 1;
+    out.push(c);
+  });
+  return out;
+}
+
+// La cita vigente (de hoy en adelante) del caso, o null.
+function citaVigenteDelCaso(cupos, caso, hoyTxt) {
+  var h = parsearFecha(hoyTxt);
+  var vig = (cupos || []).filter(function (c) {
+    var f = parsearFecha(c.fecha);
+    return c.estado === 'RESERVADO' && f && (!h || f >= h) && mismoCasoAudiencias(c, caso);
+  }).sort(function (a, b) { return parsearFecha(a.fecha) - parsearFecha(b.fecha); });
+  return vig[0] || null;
+}
+
+// «Pedidas hoy»: lo que reservaron hoy todos los inspectores (RESERVADO_EN
+// empieza por la fecha de hoy), la más reciente primero.
+function pedidasHoyAudiencias(cupos, hoyTxt) {
+  return (cupos || []).filter(function (c) {
+    return c.estado === 'RESERVADO' && String(c.reservadoEn || '').indexOf(hoyTxt) === 0;
+  }).sort(function (a, b) { return String(b.reservadoEn).localeCompare(String(a.reservadoEn)); });
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
@@ -4166,9 +4245,15 @@ var _cuUtilsExports = {
   agruparAudienciasPorDia: agruparAudienciasPorDia,
   agruparAudienciasPorSustanciador: agruparAudienciasPorSustanciador,
   proximoDiaAudiencias: proximoDiaAudiencias,
-  estadoListaAudiencias: estadoListaAudiencias,
   filtrarListaAudiencias: filtrarListaAudiencias,
-  filaTsvAudiencias: filaTsvAudiencias,
+  // Pedir cita (TASK 3b)
+  normOrdenAudiencias: normOrdenAudiencias,
+  mismoCasoAudiencias: mismoCasoAudiencias,
+  opcionesPedirCita: opcionesPedirCita,
+  casosAgendaHoyAudiencias: casosAgendaHoyAudiencias,
+  sugerirCasosAudiencias: sugerirCasosAudiencias,
+  citaVigenteDelCaso: citaVigenteDelCaso,
+  pedidasHoyAudiencias: pedidasHoyAudiencias,
   expedienteDe: expedienteDe,
   identificadorVisita: identificadorVisita,
   citaArt135: citaArt135,

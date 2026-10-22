@@ -1,13 +1,14 @@
 // ═══════════════════════════════════════════════════════════════
-// v6/audiencias.jsx — Pestaña «Audiencias» (TASK 3a, 2026-10-20).
-//   La agenda del bloque de cupos de Control Urbano, según la maqueta v4
-//   (propuesta-audiencias.html). La citación que diligencia el inspector
-//   (componente «Citación», cupos apartados) NO está construida: va en otra
-//   tarea. Aquí no se toca nueva-visita.jsx.
+// v6/audiencias.jsx — Pestaña «Audiencias» («Citaciones» para el inspector).
+//   La agenda del bloque de cupos de Control Urbano (maqueta v5,
+//   propuesta-audiencias.html). TASK 3a + 3b (2026-10-21).
 //
-//   Vistas: Hoy · Semana · Lista. ADMIN ve todo (novedades y «Pasar al
-//   Excel»); SUPERVISOR entra filtrado por su nombre como sustanciador y
-//   solo gestiona sus novedades; INSPECTOR solo lectura, en «Mis citas».
+//   El inspector pide la cita en campo («Pedir cita»: caso de su agenda de hoy
+//   o escrito, y uno de los 5 cupos más próximos; sin señal, sus 3 apartados).
+//   Vistas: Hoy · Semana · Lista. ADMIN ve todo, libera cupos y copia las
+//   «Citaciones visitas completadas» para pegarlas en el Excel; SUPERVISOR
+//   entra filtrado por su nombre y solo gestiona sus novedades; INSPECTOR
+//   solo lectura, en «Mis citas». No es una pestaña de alertas.
 //
 //   Datos: agendaAudiencias (todos los cupos con estado, una lectura),
 //   listarNovedades y, solo admin, listaDiariaExcel. La lógica va en
@@ -67,11 +68,185 @@ function _auMismoRad(a, b) {
   return !!(da && db && da === db);
 }
 
+function _auMayus(t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
+
+// El caso de una cita como se muestra: «Exp. N», el radicado o la orden.
+function _auCaso(c) {
+  if (c.expediente && c.expediente !== 'NUEVO') return 'Exp. ' + c.expediente;
+  return c.radicado || (c.ordenPolicia ? 'Orden ' + c.ordenPolicia : '');
+}
+
+var _AU_SVG_COPIAR = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>
+);
+var _AU_SVG_QUITAR = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+  </svg>
+);
+
+// ── Hoja «Pedir cita» ──────────────────────────────────────────
+// Caso (agenda de hoy del inspector o escrito) y uno de los 5 cupos más
+// próximos; sin señal, sus cupos apartados. Al reservar, la fecha, la hora y
+// el sustanciador en grande para copiarlos a la citación de papel.
+function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
+  const [filas, setFilas] = useStateAU([]);
+  const [caso, setCaso] = useStateAU(null);
+  const [texto, setTexto] = useStateAU('');
+  const [cupos, setCupos] = useStateAU(null);    // null = cargando
+  const [sinSenal, setSinSenal] = useStateAU(!navigator.onLine);
+  const [elegido, setElegido] = useStateAU(null);
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+  const [hecha, setHecha] = useStateAU(null);    // {cupo, caso, encolado}
+
+  async function cargarCupos() {
+    setCupos(null); setError('');
+    if (!navigator.onLine) { setSinSenal(true); setCupos(cuposApartadosGuardados()); return; }
+    try {
+      const r = await listarCuposAudiencias();
+      setSinSenal(false);
+      setCupos(opcionesPedirCita(r.cupos || [], 5));
+    } catch (e) {
+      setSinSenal(true);
+      setCupos(cuposApartadosGuardados());
+    }
+  }
+  useEffectAU(function () {
+    cargarCupos();
+    leerVisitas().then(function (f) { setFilas(f || []); }).catch(function () {});
+  }, []);
+
+  const hoyD = _auHoy();
+  const hoyTxt = formatearFecha(hoyD);
+  const agendaHoy = useMemoAU(function () {
+    return casosAgendaHoyAudiencias(filas, String(usuario.usuario || '').toUpperCase(), hoyD);
+  }, [filas]);
+  const sugerencias = useMemoAU(function () { return sugerirCasosAudiencias(filas, texto, 5); }, [filas, texto]);
+  const casoEscrito = !caso && texto.trim()
+    ? (normOrdenAudiencias(texto) ? { radicado: '', ordenPolicia: texto.trim() } : { radicado: texto.trim(), ordenPolicia: '' })
+    : null;
+  const casoFinal = caso || casoEscrito;
+  const yaTiene = casoFinal ? citaVigenteDelCaso(agenda, casoFinal, hoyTxt) : null;
+  const noEnBase = !caso && texto.trim().length >= 5 && !sugerencias.length;
+
+  async function reservar() {
+    if (!casoFinal || !elegido || enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await reservarCupoAudiencias(casoFinal, elegido);
+      setHecha({ cupo: r.cupo || elegido, caso: casoFinal, encolado: !!r.encolado });
+      onReservada();
+    } catch (e) {
+      setError(e.message || 'No se pudo reservar.');
+      setElegido(null);
+      cargarCupos();
+    }
+    setEnviando(false);
+  }
+
+  function otra() {
+    setHecha(null); setCaso(null); setTexto(''); setElegido(null);
+    cargarCupos();
+  }
+
+  const etiquetaCaso = function (c) {
+    return c.expediente ? 'Exp. ' + c.expediente : (c.radicado || 'Orden ' + c.ordenPolicia);
+  };
+
+  return (
+    <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Pedir cita"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj au-pedir">
+        <div className="au-hoj-cab">
+          <div className="t"><b>{hecha ? 'Cita reservada' : 'Pedir cita'}</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+
+        {hecha ? (<>
+          <div className="au-pconf">
+            <p className="f">{_auMayus(_auFechaLarga(hecha.cupo.fecha))}</p>
+            <p className="h">{horaBonitaAudiencias(hecha.cupo.hora)}</p>
+            <p className="s">{titleCaseNombre(hecha.cupo.sustanciador)}</p>
+            <p className="caso">{hecha.caso.radicado ? 'Rad. ' + hecha.caso.radicado : 'Orden ' + hecha.caso.ordenPolicia}</p>
+            {hecha.encolado && <p className="cola">⇡ En cola</p>}
+          </div>
+          <div className="au-pbotones">
+            <button type="button" className="btn-neutro" onClick={otra}>Pedir otra</button>
+            <button type="button" className="btn-principal" onClick={onCerrar}>Listo</button>
+          </div>
+        </>) : (<>
+          <fieldset className="au-pgrupo">
+            <legend>Caso</legend>
+            {agendaHoy.map(function (c) {
+              const on = caso && caso.radicado === c.radicado && caso.ordenPolicia === c.ordenPolicia;
+              const cita = citaVigenteDelCaso(agenda, c, hoyTxt);
+              return (
+                <button type="button" key={c.radicado + c.ordenPolicia} className={'au-pcaso' + (on ? ' on' : '')}
+                  aria-pressed={on ? 'true' : 'false'}
+                  onClick={function () { setCaso(on ? null : c); setTexto(''); }}>
+                  <span className="t">{c.direccion || etiquetaCaso(c)}
+                    <small>{[etiquetaCaso(c), c.barrio, cita ? 'cita ' + _auDiaCorto(cita.fecha) : ''].filter(Boolean).join(' · ')}</small>
+                  </span>
+                </button>
+              );
+            })}
+            <label className="au-potro">Otro caso
+              <input type="text" value={texto} autoComplete="off" placeholder="Radicado o N° de orden"
+                onChange={function (e) { setTexto(e.target.value); setCaso(null); }} />
+            </label>
+            {!caso && sugerencias.length > 0 && (
+              <div className="au-psugs">
+                {sugerencias.map(function (c) {
+                  return <button type="button" key={c.radicado + c.ordenPolicia} className="au-chip"
+                    onClick={function () { setCaso(c); setTexto(c.radicado || c.ordenPolicia); }}>
+                    {c.radicado || c.ordenPolicia}</button>;
+                })}
+              </div>
+            )}
+            {noEnBase && <p className="au-sindoc">No está en la base</p>}
+          </fieldset>
+
+          <div className="au-pgrupo">
+            <b className="au-pleg">Fecha</b>
+            {sinSenal && <p className="au-aviso-linea">Sin señal · tus cupos apartados</p>}
+            {yaTiene ? (
+              <p className="au-aviso-linea">Ya tiene cita: {_auDiaCorto(yaTiene.fecha)} · {horaBonitaAudiencias(yaTiene.hora)} · {titleCaseNombre(yaTiene.sustanciador)}</p>
+            ) : cupos === null ? (
+              <p className="au-vacio-hoy">Cargando…</p>
+            ) : !cupos.length ? (
+              <p className="au-vacio-hoy">{sinSenal ? 'Sin señal y sin cupos apartados' : 'Sin cupos libres'}</p>
+            ) : cupos.map(function (c) {
+              const on = elegido && elegido.idCupo === c.idCupo;
+              return (
+                <label className={'au-pcupo' + (on ? ' on' : '')} key={c.idCupo}>
+                  <input type="radio" name="au-pcupo" checked={!!on} onChange={function () { setElegido(c); }} />
+                  <span className="t">{_auDiaCorto(c.fecha)}/{(parsearFecha(c.fecha) || hoyD).getFullYear()} · {horaBonitaAudiencias(c.hora)}
+                    <small>{titleCaseNombre(c.sustanciador)}</small></span>
+                </label>
+              );
+            })}
+          </div>
+          {error && <p className="au-perror">{error}</p>}
+          <button type="button" className="btn-principal au-preservar"
+            disabled={!casoFinal || !elegido || !!yaTiene || enviando}
+            onClick={reservar}>{enviando ? 'Reservando…' : 'Reservar'}</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 // ── Pantalla ────────────────────────────────────────────────────
 function AudienciasScreen({ usuario }) {
   const [datos, setDatos] = useStateAU(null); // {cupos, novedadesActivas, ultimaFechaConCupo}
   const [novedades, setNovedades] = useStateAU([]);
-  const [excel, setExcel] = useStateAU(null); // solo admin: {lista, sinCompletar, yaPasadas}
+  const [excel, setExcel] = useStateAU(null); // solo admin: {lista}
   const [cargando, setCargando] = useStateAU(true);
   const [error, setError] = useStateAU('');
   const [sinConexion, setSinConexion] = useStateAU(false);
@@ -80,12 +255,13 @@ function AudienciasScreen({ usuario }) {
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
   const [offsetSem, setOffsetSem] = useStateAU(0);
   const [diaCel, setDiaCel] = useStateAU(0);
-  const [lis, setLis] = useStateAU({ q: '', est: 'todos', pas: false });
+  const [lis, setLis] = useStateAU({ q: '', pas: false });
   const [novAbierta, setNovAbierta] = useStateAU(false);
   const [novForm, setNovForm] = useStateAU(false);
   const [afectadas, setAfectadas] = useStateAU(null);
   const [copiado, setCopiado] = useStateAU('');
   const [ocupado, setOcupado] = useStateAU(false); // escritura en curso
+  const [pedirAbierto, setPedirAbierto] = useStateAU(false);
 
   const esAdmin = usuario.rol === 'ADMIN';
   const esSup = !esAdmin && veTodasLasVisitas(usuario.rol);
@@ -126,7 +302,12 @@ function AudienciasScreen({ usuario }) {
     setCargando(false);
   }
 
-  useEffectAU(() => { _AU_ULTIMO = null; cargar(); }, []);
+  useEffectAU(() => {
+    _AU_ULTIMO = null;
+    cargar();
+    // Cupos apartados para pedir citas sin señal en campo (se repiten sin daño).
+    if (!esSup && navigator.onLine) apartarCuposAudiencias().catch(function () {});
+  }, []);
 
   const dias = useMemoAU(() => agruparAudienciasPorDia((datos && datos.cupos) || []), [datos]);
   const hoyTxt = formatearFecha(_auHoy());
@@ -234,65 +415,16 @@ function AudienciasScreen({ usuario }) {
     setOcupado(false);
   }
 
+  // La app no sabe cuándo se pegó en el Excel: solo copia (✓ un momento).
   async function copiarFilaExcel(r) {
-    const tsv = r.filaTSV || filaTsvAudiencias(r);
     try {
-      await navigator.clipboard.writeText(tsv);
+      await navigator.clipboard.writeText(r.filaTSV);
     } catch (e) {
-      await appAlert('No se pudo copiar automáticamente. Cópiala a mano:\n\n' +
-        tsv.replace(/\t/g, ' · '), { tono: 'error', titulo: 'Copiar fila' });
+      await appAlert(r.filaTSV.replace(/\t/g, ' · '), { titulo: 'Copiar fila' });
       return;
     }
     setCopiado(r.idCupo);
-    try {
-      const resp = await marcarCitacionExcelAudiencias(r.idCupo, true);
-      if (!resp.ok) {
-        setCopiado('');
-        await appAlert(resp.error || 'La fila se copió pero no se pudo marcar como pasada.', { tono: 'error' });
-        return;
-      }
-    } catch (e) {
-      setCopiado('');
-      await appAlert('La fila se copió pero no se pudo marcar como pasada: ' + (e.message || e), { tono: 'error' });
-      return;
-    }
-    // ✓ 1,5 s y la fila baja a «Ya pasadas» (misma pausa de la maqueta).
-    setTimeout(function () {
-      setExcel(function (prev) {
-        if (!prev) return prev;
-        return {
-          lista: prev.lista.filter(function (x) { return x.idCupo !== r.idCupo; }),
-          sinCompletar: prev.sinCompletar,
-          yaPasadas: [Object.assign({}, r, { enviadoExcel: hoyTxt })].concat(prev.yaPasadas)
-        };
-      });
-      setCopiado('');
-    }, 1500);
-  }
-
-  async function devolverExcel(r) {
-    if (ocupado) return;
-    setOcupado(true);
-    try {
-      const resp = await marcarCitacionExcelAudiencias(r.idCupo, false);
-      if (!resp.ok) {
-        await appAlert(resp.error || 'No se pudo devolver la citación.', { tono: 'error' });
-      } else {
-        setExcel(function (prev) {
-          if (!prev) return prev;
-          const devuelta = Object.assign({}, r, { filaTSV: filaTsvAudiencias(r) });
-          delete devuelta.enviadoExcel;
-          return {
-            lista: prev.lista.concat([devuelta]),
-            sinCompletar: prev.sinCompletar,
-            yaPasadas: prev.yaPasadas.filter(function (x) { return x.idCupo !== r.idCupo; })
-          };
-        });
-      }
-    } catch (e) {
-      await appAlert('No se pudo devolver la citación: ' + (e.message || e), { tono: 'error' });
-    }
-    setOcupado(false);
+    setTimeout(function () { setCopiado(''); }, 1500);
   }
 
   // ── Derivados de vista ──
@@ -336,7 +468,7 @@ function AudienciasScreen({ usuario }) {
   const listaRows = useMemoAU(function () {
     if (!datos) return [];
     return filtrarListaAudiencias(datos.cupos, {
-      q: lis.q, estado: lis.est, incluirPasadas: lis.pas, hoy: hoyTxt,
+      q: lis.q, incluirPasadas: lis.pas, hoy: hoyTxt,
       deQuien: esInsp && !misCitas ? '' : (esInsp ? yo : '')
     });
   }, [datos, lis, hoyTxt, esInsp, misCitas, yo]);
@@ -348,7 +480,6 @@ function AudienciasScreen({ usuario }) {
     })();
 
   // ── Render helpers ──
-  function citaPend(c) { return c.estado === 'RESERVADO' && !c.visitaCompletada; }
   function clicableCita(c) {
     if (esAdmin || esSup) return true;
     return normNombreAudiencias(c.reservadoPor) === yo;
@@ -361,10 +492,9 @@ function AudienciasScreen({ usuario }) {
       <div className="au-row" key={clave}>
         <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { abrirCita(c); } : undefined}>
-          <b>{c.citado || 'Sin nombre'}</b> · {_auDocTxt(c)} · {c.expediente ? 'Exp. ' + c.expediente : (c.radicado || '')}
-          <small>{c.direccion ? c.direccion + ' · ' : ''}citó {c.reservadoPor}</small>
+          <b>{c.citado || _auCaso(c)}</b>{c.citado ? ' · ' + _auCaso(c) : ''}
+          <small>{[c.direccion, c.reservadoPor].filter(Boolean).join(' · ')}</small>
         </Tag>
-        {citaPend(c) && <span className="au-chip-pend">Visita sin completar</span>}
         {esAdmin && c.estado === 'RESERVADO' && (
           <button type="button" className="au-lib" disabled={ocupado}
             onClick={function (e) { e.stopPropagation(); liberarCupoDe(c); }}
@@ -421,23 +551,18 @@ function AudienciasScreen({ usuario }) {
     return (
       <div>
         <div className="au-hoy-tit">
-          {esHoy ? 'Hoy · ' + _auFechaLarga(diaMostrar.fecha)
-                 : <>Próximo día con audiencias: <b>{_auFechaLarga(diaMostrar.fecha)}</b></>}
-          <small>{esHoy ? '' : 'Hoy es ' + _auFechaLarga(hoyTxt) + ' y no tiene audiencias · '}
-            Audiencias{soloMias ? ' · tus citas' : ' de Control Urbano'}</small>
+          {esHoy ? 'Hoy · ' + _auFechaLarga(diaMostrar.fecha) : _auFechaLarga(diaMostrar.fecha)}
         </div>
         {todoBloqueado ? (
           <div style={{ marginTop: 10 }}>
             {bloqueoLinea(vis[0].motivoBloqueo, filtroSus ? '' : 'Todos')}
           </div>
         ) : (<>
-          <p className="au-hoy-libres">
-            {soloMias
-              ? (citas.length ? citas.length + ' cita' + (citas.length === 1 ? '' : 's') + ' tuya' + (citas.length === 1 ? '' : 's')
-                              : 'Sin citas tuyas este día')
-              : libres + ' cupo' + (libres === 1 ? '' : 's') + ' libre' + (libres === 1 ? '' : 's') +
-                (filtroSus ? ' de ' + (sustanciadores.find(function (s) { return s.norm === filtroSus; }) || {}).nombre : '')}
-          </p>
+          {!soloMias && (
+            <p className="au-hoy-libres">
+              {libres + ' cupo' + (libres === 1 ? '' : 's') + ' libre' + (libres === 1 ? '' : 's')}
+            </p>
+          )}
           {grupos.map(function (g) {
             const delGrupo = g.cupos.filter(function (c) {
               return c.estado === 'RESERVADO' && (!soloMias || normNombreAudiencias(c.reservadoPor) === yo);
@@ -453,7 +578,7 @@ function AudienciasScreen({ usuario }) {
               </div>
             );
           })}
-          {!citas.length && <p className="au-vacio-hoy">{soloMias ? 'Sin citas tuyas este día.' : 'Sin citaciones este día.'}</p>}
+          {!citas.length && <p className="au-vacio-hoy">Sin citas</p>}
         </>)}
       </div>
     );
@@ -475,9 +600,8 @@ function AudienciasScreen({ usuario }) {
           <span className="au-estado">{etiqueta}</span>
         </span>
         {c.estado === 'RESERVADO' ? <>
-          <span className="exp">{c.expediente ? 'Exp. ' + c.expediente : (c.radicado || '')}
-            {citaPend(c) && <i className="au-pend-txt"> · visita sin completar</i>}</span>
-          <span className="quien">{c.citado} · citó {c.reservadoPor}</span>
+          <span className="exp">{_auCaso(c)}</span>
+          <span className="quien">{[c.citado, c.reservadoPor].filter(Boolean).join(' · ')}</span>
         </> : <span className="sus">{c.sustanciador}</span>}
       </Tag>
     );
@@ -536,46 +660,36 @@ function AudienciasScreen({ usuario }) {
   }
 
   // ── Vista Lista ──
-  var _AU_EST_LIS = { pasar: 'Por pasar al Excel', excel: 'En el Excel', pend: 'Visita sin completar' };
   function renderLista() {
     const n = listaRows.length;
     return (
       <div>
         <div className="au-lis-tools">
           <input className="au-lis-buscar" type="search" value={lis.q}
-            placeholder="Buscar nombre, radicado, expediente o documento"
+            placeholder="Nombre, radicado, orden, expediente o documento"
             aria-label="Buscar citación"
             onChange={function (e) { setLis(Object.assign({}, lis, { q: e.target.value })); }} />
-          {[['todos', 'Todos'], ['pasar', 'Por pasar al Excel'], ['excel', 'En el Excel'], ['pend', 'Visita sin completar']]
-            .map(function (par) {
-              return <button type="button" key={par[0]}
-                className={'au-chip' + (lis.est === par[0] ? ' on' : '')}
-                onClick={function () { setLis(Object.assign({}, lis, { est: par[0] })); }}>{par[1]}</button>;
-            })}
           <button type="button" className={'au-chip' + (lis.pas ? ' on' : '')}
             aria-pressed={String(lis.pas)}
             onClick={function () { setLis(Object.assign({}, lis, { pas: !lis.pas })); }}>Incluir pasadas</button>
         </div>
-        <p className="au-hoy-libres">{n} citaci{n === 1 ? 'ón' : 'ones'}{esInsp ? ' tuyas' : ''}
-          {lis.pas ? ' · incluyendo pasadas' : ' · de hoy en adelante'}</p>
-        {!n ? <p className="au-vacio-hoy">Nada que coincida con el filtro.</p> : (<>
+        <p className="au-hoy-libres">{n} citaci{n === 1 ? 'ón' : 'ones'}</p>
+        {!n ? <p className="au-vacio-hoy">Sin resultados</p> : (<>
           <div className="au-tabla">
             <table>
               <thead><tr><th>Fecha</th><th>Hora</th><th>Sustanciador</th><th>Exp./Radicado</th>
-                <th>Citado</th><th>Documento</th><th>Inspector que citó</th><th>Estado</th></tr></thead>
+                <th>Citado</th><th>Documento</th><th>Inspector</th></tr></thead>
               <tbody>
                 {listaRows.map(function (c) {
-                  const est = estadoListaAudiencias(c);
                   return (
                     <tr key={c.idCupo}>
                       <td>{c.fecha}</td>
                       <td>{horaBonitaAudiencias(c.hora)}</td>
                       <td>{c.sustanciador}</td>
-                      <td>{c.expediente ? 'Exp. ' + c.expediente : ''} {c.radicado}</td>
+                      <td>{_auCaso(c)}</td>
                       <td><b>{c.citado}</b></td>
                       <td>{_auDocTxt(c)}</td>
-                      <td>{c.reservadoPor}</td>
-                      <td><span className={'au-lest ' + est}>{_AU_EST_LIS[est]}</span></td>
+                      <td>{c.reservadoPor}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
                     </tr>
                   );
                 })}
@@ -584,14 +698,12 @@ function AudienciasScreen({ usuario }) {
           </div>
           <div className="au-lrows">
             {listaRows.map(function (c) {
-              const est = estadoListaAudiencias(c);
               return (
                 <div className="au-lrow" key={c.idCupo}>
-                  <div className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span>
-                    <span className="sp"></span>
-                    <span className={'au-lest ' + est}>{_AU_EST_LIS[est]}</span></div>
-                  <div className="l2"><b>{c.citado}</b> · {_auDocTxt(c)}</div>
-                  <div className="l3">{c.expediente ? 'Exp. ' + c.expediente : c.radicado} · {c.sustanciador} · citó {c.reservadoPor}</div>
+                  <div className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></div>
+                  <div className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</div>
+                  <div className="l3">{_auCaso(c)} · {c.sustanciador} · {c.reservadoPor}
+                    {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</div>
                 </div>
               );
             })}
@@ -611,8 +723,7 @@ function AudienciasScreen({ usuario }) {
         onClick={function (e) { if (e.target === e.currentTarget) setNovAbierta(false); }}>
         <div className="au-hoj au-hoj-nov">
           <div className="au-hoj-cab">
-            <div className="t"><b>Días sin audiencias</b>
-              <small>Novedades: vacaciones, jornadas, comisiones. No borran cupos: al quitarlas vuelven.</small></div>
+            <div className="t"><b>Días sin audiencias</b></div>
             <button type="button" className="au-x" aria-label="Cerrar" onClick={function () { setNovAbierta(false); }}>×</button>
           </div>
           {!mias.length && <p className="au-vacio-hoy">Sin novedades.</p>}
@@ -639,8 +750,7 @@ function AudienciasScreen({ usuario }) {
                       <option value="TODOS">Todos</option>
                       {sustanciadores.map(function (s) { return <option key={s.norm} value={s.nombre}>{s.nombre}</option>; })}
                     </select>
-                  ) : <input type="text" defaultValue={usuario.usuario} disabled
-                      title="Como sustanciador solo agregas tus propias novedades" />}
+                  ) : <input type="text" defaultValue={usuario.usuario} disabled />}
                 </div>
                 <div>
                   <label htmlFor="au-nv-franja">Franja</label>
@@ -664,8 +774,7 @@ function AudienciasScreen({ usuario }) {
           )}
           {afectadas && !!afectadas.length && (
             <div className="au-aviso">
-              <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón' : 'ones'} caen en esos días</b>
-              {' '}(el citado ya tiene la fecha en papel, no se mueven solas):
+              <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón cae' : 'ones caen'} en esos días</b>
               <ul>
                 {afectadas.slice(0, 10).map(function (c) {
                   return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {c.sustanciador} · {c.expediente ? 'Exp. ' + c.expediente : c.radicado} · {c.citado}</li>;
@@ -678,81 +787,53 @@ function AudienciasScreen({ usuario }) {
     );
   }
 
-  // ── Pasar al Excel (solo admin) ──
-  function renderExcel() {
+  // ── Citaciones visitas completadas (solo admin): copiar y pegar en el Excel ──
+  function renderCompletadas() {
     if (!excel) return null;
-    const SVG_COPIAR = (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="9" y="9" width="12" height="12" rx="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-      </svg>
-    );
-    const filaExcel = function (r) {
-      return (
-        <div className="au-row" key={r.idCupo}>
-          <span className="t">
-            <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {r.sustanciador} · {r.expediente ? 'Exp. ' + r.expediente : r.radicado}
-            <small>{r.citado} · {r.documentoCitado && !/^NO\s*APORT/i.test(r.documentoCitado)
-              ? 'C.C. ' + _auDocPuntos(r.documentoCitado) : 'Sin documento'} · {r.direccion}</small>
-          </span>
-          <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
-            aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
-            disabled={copiado === r.idCupo}
-            onClick={function () { copiarFilaExcel(r); }}>
-            {copiado === r.idCupo ? '✓' : SVG_COPIAR}
-          </button>
-        </div>
-      );
-    };
-    const pend = excel.lista || [];
-    const sinCompletar = excel.sinCompletar || [];
-    const yaPasadas = excel.yaPasadas || [];
+    const lista = excel.lista || [];
     return (
       <section className="au-caja" aria-labelledby="au-t-exc">
-        <h2 id="au-t-exc">Pasar al Excel</h2>
-        <p className="sub">Solo citas de visitas ya completadas. El icono copia la fila en el formato del Excel y
-          la baja a «Ya pasadas»; si no se llegó a pegar, «Devolver».</p>
-        {!pend.length ? (
-          <div className="au-vacio"><b>Todo al día</b>No hay citaciones pendientes de pasar al Excel.</div>
-        ) : pend.map(filaExcel)}
-        {!!yaPasadas.length && (
-          <details className="au-det">
-            <summary>Ya pasadas (últimos 7 días) · {yaPasadas.length}</summary>
-            <div className="au-det-cuerpo">
-              {yaPasadas.map(function (r) {
-                return (
-                  <div className="au-row" key={r.idCupo}>
-                    <span className="t">
-                      <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {r.sustanciador} · {r.expediente ? 'Exp. ' + r.expediente : r.radicado}
-                      <small>{r.citado} · pasada el {r.enviadoExcel}</small>
-                    </span>
-                    <button type="button" className="btn-neutro btn-chico" disabled={ocupado}
-                      onClick={function () { devolverExcel(r); }}>Devolver</button>
-                  </div>
-                );
-              })}
+        <h2 id="au-t-exc">Citaciones visitas completadas</h2>
+        {!lista.length ? <p className="au-vacio-hoy">Sin citaciones</p> : lista.map(function (r) {
+          return (
+            <div className="au-row" key={r.idCupo}>
+              <span className="t">
+                <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {r.sustanciador} · {r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente}
+                <small>{[r.citado, r.direccion, r.filaExcel ? 'fila ' + r.filaExcel + ' del Excel' : ''].filter(Boolean).join(' · ')}</small>
+              </span>
+              <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
+                aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
+                onClick={function () { copiarFilaExcel(r); }}>
+                {copiado === r.idCupo ? '✓' : _AU_SVG_COPIAR}
+              </button>
             </div>
-          </details>
-        )}
-        {!!sinCompletar.length && (
-          <details className="au-det amber">
-            <summary>{sinCompletar.length} citaci{sinCompletar.length === 1 ? 'ón tiene' : 'ones tienen'} la visita sin completar</summary>
-            <div className="au-det-cuerpo">
-              {sinCompletar.map(function (r) {
-                return (
-                  <div className="au-row" key={r.idCupo}>
-                    <span className="t">
-                      <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {r.sustanciador} · {r.expediente ? 'Exp. ' + r.expediente : r.radicado}
-                      <small>{r.citado} · {r.direccion}</small>
-                    </span>
-                    <span className="au-chip-pend">Visita sin completar</span>
-                  </div>
-                );
-              })}
+          );
+        })}
+      </section>
+    );
+  }
+
+  // ── Pedidas hoy: lo que reservaron hoy todos los inspectores ──
+  function renderPedidasHoy() {
+    const lista = pedidasHoyAudiencias(datos.cupos, hoyTxt);
+    return (
+      <section className="au-caja au-pedidas" aria-labelledby="au-t-ped">
+        <h2 id="au-t-ped">Pedidas hoy</h2>
+        {!lista.length ? <p className="au-vacio-hoy">Ninguna</p> : lista.map(function (c) {
+          const mia = normNombreAudiencias(c.reservadoPor) === yo;
+          return (
+            <div className="au-row" key={c.idCupo}>
+              <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
+              <span className="t"><b>{_auDiaCorto(c.fecha)}</b> · {_auCaso(c)}
+                <small>{titleCaseNombre(c.sustanciador)} · {mia ? 'tú' : titleCaseNombre(c.reservadoPor)}</small></span>
+              {esAdmin && (
+                <button type="button" className="au-copy" disabled={ocupado}
+                  aria-label="Liberar cita" title="Liberar cita"
+                  onClick={function () { liberarCupoDe(c); }}>{_AU_SVG_QUITAR}</button>
+              )}
             </div>
-          </details>
-        )}
+          );
+        })}
       </section>
     );
   }
@@ -762,7 +843,12 @@ function AudienciasScreen({ usuario }) {
   return (
     <div className="au-pantalla">
       <header className="au-cab">
-        <h1>Audiencias</h1>
+        <h1>{esInsp ? 'Citaciones' : 'Audiencias'}</h1>
+        {!esSup && (
+          <button type="button" className="btn-principal au-btn-pedir" onClick={function () { setPedirAbierto(true); }}>
+            Pedir cita
+          </button>
+        )}
         {(esAdmin || esSup) && (
           <button type="button" className="btn-neutro btn-chico au-btn-nov" aria-haspopup="dialog"
             onClick={function () { setNovAbierta(true); setNovForm(false); setAfectadas(null); }}>
@@ -772,12 +858,12 @@ function AudienciasScreen({ usuario }) {
         )}
       </header>
 
-      {sinConexion && (
-        <p className="au-aviso-linea">Sin conexión — se muestra lo último que se leyó.</p>
-      )}
+      {sinConexion && <p className="au-aviso-linea">Sin conexión</p>}
       {quedanCupos && (
         <p className="au-aviso-linea">Quedan cupos solo hasta el <b>{datos.ultimaFechaConCupo}</b>. Hay que apartar más en el Excel.</p>
       )}
+
+      {!esSup && renderPedidasHoy()}
 
       <div className="au-topbar">
         <button type="button" className={'au-chip' + (vista === 'hoy' ? ' on' : '')} onClick={function () { setVista('hoy'); }}>Hoy</button>
@@ -803,10 +889,15 @@ function AudienciasScreen({ usuario }) {
       {vista === 'lis' && renderLista()}
 
       {esAdmin && (
-        <div className="au-bajo">{renderExcel()}</div>
+        <div className="au-bajo">{renderCompletadas()}</div>
       )}
 
       {novAbierta && renderNovedades()}
+      {pedirAbierto && (
+        <PedirCitaHoja usuario={usuario} agenda={datos.cupos}
+          onCerrar={function () { setPedirAbierto(false); }}
+          onReservada={function () { cargar(); }} />
+      )}
     </div>
   );
 }

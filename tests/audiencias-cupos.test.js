@@ -34,8 +34,10 @@ function cargarBackend() {
     // TASK 1b: apartados, citado, conservación en actualizar y lista Excel.
     '_calcularPascuaCO', '_alLunesCO', '_festivosColombiaCO', '_esDiaHabilCO',
     '_diasHabilesEntre', '_apartadoVencido', '_validarDatosCitado',
-    '_tieneReservaVigente', '_camposCitacionAConservar',
-    '_visitaEstaCompletada', '_clasificarCuposExcel',
+    '_visitaEstaCompletada',
+    // TASK 3b: cita pedida en campo por radicado u orden, fila del Excel.
+    '_normOrdenPolicia', '_cupoDelCaso', '_reservaVigenteDelCaso',
+    '_direccionConBarrio', '_filaExcelCitacion',
     // TASK 3a: estado del cupo para la pestaña «Audiencias».
     '_estadoCupoAgenda'
   ];
@@ -46,9 +48,7 @@ function cargarBackend() {
   const mEstadoVars = [
     /var ESTADO_CUPO_APARTADO = 'APARTADO';/,
     /var APARTADOS_MAX = 3;/,
-    /var DOCUMENTO_NO_APORTADO = 'NO APORTA';/,
-    /var CALIDADES_CITADO = \[[\s\S]*?\];/,
-    /var CITACION_COLUMNAS_CONSERVAR = \[[\s\S]*?\];/
+    /var DOCUMENTO_NO_APORTADO = 'NO APORTA';/
   ];
   mEstadoVars.forEach(re => {
     const m = re.exec(src);
@@ -378,72 +378,86 @@ test('backend: _decisionReservaCupo — el apartado propio reserva, el ajeno da 
 
 // ── TASK 1b: citado ──
 
-test('backend: _validarDatosCitado — los tres vacíos = cliente viejo, el citado sale de la visita', opts, () => {
+test('backend: _validarDatosCitado — vacío = se cita a quien atendió', opts, () => {
   const B = cargarBackend();
-  const r = B._validarDatosCitado({ citado: '', documentoCitado: '', calidadCitado: '' });
-  assert.equal(r.ok, true);
-  assert.equal(r.usarVisita, true);
+  assert.equal(B._validarDatosCitado({ citado: '', documentoCitado: '' }).usarVisita, true);
   assert.equal(B._validarDatosCitado({}).usarVisita, true);
 });
 
-test('backend: _validarDatosCitado — documento de 5 a 12 dígitos y calidad de la lista', opts, () => {
+test('backend: _validarDatosCitado — documento de 5 a 12 dígitos, sin calidad', opts, () => {
   const B = cargarBackend();
-  const r = B._validarDatosCitado({ citado: 'ANA GÓMEZ', documentoCitado: '12345678',
-    calidadCitado: 'propietario' });
+  const r = B._validarDatosCitado({ citado: 'ANA GÓMEZ', documentoCitado: '12345678' });
   assert.equal(r.ok, true);
-  assert.equal(r.calidad, 'PROPIETARIO');
-  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234', calidadCitado: 'OTRO' }).ok, false);
-  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234567890123', calidadCitado: 'OTRO' }).ok, false);
-  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12A4567', calidadCitado: 'OTRO' }).ok, false);
-  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12345678', calidadCitado: 'APODERADO' }).ok, false);
-  assert.equal(B._validarDatosCitado({ citado: '', documentoCitado: '12345678', calidadCitado: 'OTRO' }).ok, false);
+  assert.equal(r.documento, '12345678');
+  assert.equal(r.calidad, undefined);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '1234567890123' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '12A4567' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: '', documentoCitado: '12345678' }).ok, false);
 });
 
 test('backend: _validarDatosCitado — «No aportó documento» deja constancia', opts, () => {
   const B = cargarBackend();
-  const r = B._validarDatosCitado({ citado: 'ANA', documentoCitado: '', sinDocumento: true, calidadCitado: 'OTRO' });
+  const r = B._validarDatosCitado({ citado: 'ANA', documentoCitado: '', sinDocumento: true });
   assert.equal(r.ok, true);
   assert.equal(r.documento, 'NO APORTA');
-  // Sin documento y sin marcar la casilla sigue fallando.
-  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '', calidadCitado: 'OTRO' }).ok, false);
+  assert.equal(B._validarDatosCitado({ citado: 'ANA', documentoCitado: '' }).ok, false);
 });
 
-// ── TASK 1b: actualizar conserva la citación ──
+// ── TASK 3b: la cita se pide en campo por radicado o por N° de orden ──
 
-test('backend: _tieneReservaVigente — RESERVADO, mismo radicado y fecha de hoy en adelante', opts, () => {
+test('backend: _normOrdenPolicia compara sin ceros a la izquierda', opts, () => {
   const B = cargarBackend();
-  const reserva = cupo({ estado: 'RESERVADO', radicado: '20261011111', fecha: new Date(2027, 3, 5) });
-  assert.equal(B._tieneReservaVigente([reserva], '20261011111', HOY), true);
-  assert.equal(B._tieneReservaVigente([reserva], ' 20261011111 ', HOY), true); // normalizado
-  assert.equal(B._tieneReservaVigente([reserva], '20261022222', HOY), false);
-  assert.equal(B._tieneReservaVigente(
-    [cupo({ estado: 'RESERVADO', radicado: '20261011111', fecha: new Date(2026, 9, 1) })],
-    '20261011111', HOY), false); // ya pasada
-  assert.equal(B._tieneReservaVigente([cupo()], '20261011111', HOY), false); // libre
-  assert.equal(B._tieneReservaVigente([], '20261011111', HOY), false);
+  assert.equal(B._normOrdenPolicia('2026-09-015'), '2026-9-15');
+  assert.equal(B._normOrdenPolicia(' 2026-9-15 '), '2026-9-15');
+  assert.equal(B._normOrdenPolicia('N/A'), '');
+  assert.equal(B._normOrdenPolicia('20261011111'), '');
 });
 
-test('backend: _camposCitacionAConservar — con reserva vigente conserva la citación, sin ella nada', opts, () => {
+test('backend: _cupoDelCaso — por radicado o por orden', opts, () => {
   const B = cargarBackend();
-  assert.deepEqual(Array.from(B._camposCitacionAConservar(true)),
-    ['FECHA CITACION', 'CITADO', 'DOCUMENTO_CITADO', 'CALIDAD_CITADO']);
-  assert.deepEqual(Array.from(B._camposCitacionAConservar(false)), []);
+  const porOrden = cupo({ estado: 'RESERVADO', ordenPolicia: '2026-09-386' });
+  assert.equal(B._cupoDelCaso(porOrden, '', '2026-9-386'), true);
+  assert.equal(B._cupoDelCaso(porOrden, '20261011111', ''), false);
+  const porRad = cupo({ estado: 'RESERVADO', radicado: '20261011111' });
+  assert.equal(B._cupoDelCaso(porRad, '20261011111', ''), true);
 });
 
-// ── TASK 1b: lista diaria del Excel solo con visitas completadas ──
-
-test('backend: _clasificarCuposExcel reparte por visita completada (COMPLETADA de V2 también)', opts, () => {
+test('backend: reservado por la misma orden → idempotente; por otra → ocupado', opts, () => {
   const B = cargarBackend();
-  const cupos = [
-    cupo({ idCupo: 'a' }), cupo({ idCupo: 'b' }), cupo({ idCupo: 'c' }), cupo({ idCupo: 'd' })
-  ];
-  const visitas = {
-    a: { estado: 'COMPLETADO' }, b: { estado: 'INICIADO' }, c: null, d: { estado: 'COMPLETADA' }
-  };
-  const r = B._clasificarCuposExcel(cupos, visitas);
-  assert.deepEqual(Array.from(r.lista.map(c => c.idCupo)), ['a', 'd']);
-  assert.deepEqual(Array.from(r.sinCompletar.map(c => c.idCupo)), ['b', 'c']);
-  assert.equal(B._visitaEstaCompletada({ estado: 'PENDIENTE' }), false);
+  const c = cupo({ estado: 'RESERVADO', ordenPolicia: '2026-09-386' });
+  assert.equal(B._decisionReservaCupo(c, '', [], [], HOY, 'ANA', '2026-9-386').ok, true);
+  assert.equal(B._decisionReservaCupo(c, '', [], [], HOY, 'ANA', '2026-09-401').motivo, 'ocupado');
+});
+
+test('backend: _reservaVigenteDelCaso — la más próxima, de hoy en adelante, por radicado u orden', opts, () => {
+  const B = cargarBackend();
+  const a = cupo({ idCupo: 'a', estado: 'RESERVADO', ordenPolicia: '2026-09-386', fecha: new Date(2027, 3, 12) });
+  const b = cupo({ idCupo: 'b', estado: 'RESERVADO', ordenPolicia: '2026-09-386', fecha: new Date(2027, 3, 5) });
+  const vieja = cupo({ idCupo: 'v', estado: 'RESERVADO', radicado: '20261011111', fecha: new Date(2026, 9, 1) });
+  assert.equal(B._reservaVigenteDelCaso([a, b], '', HOY, '2026-9-386').idCupo, 'b');
+  assert.equal(B._reservaVigenteDelCaso([vieja], '20261011111', HOY, ''), null);
+  assert.equal(B._reservaVigenteDelCaso([a], '', HOY, ''), null);
+});
+
+test('backend: _filaExcelCitacion — 10 columnas en el orden del Excel, citado de la visita', opts, () => {
+  const B = cargarBackend();
+  const c = cupo({ estado: 'RESERVADO', radicado: '20261011111', reservadoPor: 'ALEJANDRO GIRALDO' });
+  const visita = { radicado: '20261011111', fechaRadicado: '02/03/2026', quejoso: 'JUAN PÉREZ',
+    atiende: 'MARÍA GÓMEZ', citado: '', direccion: 'CL 50 # 32-10', barrio: 'NIQUÍA', expediente: '' };
+  const f = B._filaExcelCitacion(c, visita);
+  assert.equal(f.length, 10);
+  assert.deepEqual(Array.from(f.slice(0, 9)), ['20261011111', '02/03/2026', 'JUAN PÉREZ', 'MARÍA GÓMEZ',
+    'CL 50 # 32-10 - NIQUÍA', '05/04/2027', '9:00AM', 'VICTOR QUIROZ', 'NUEVO']);
+  // Citado distinto de quien atendió, con documento; expediente numérico.
+  const g = B._filaExcelCitacion(c, Object.assign({}, visita,
+    { citado: 'PEDRO RUIZ', documentoCitado: '43123456', expediente: '2201' }));
+  assert.equal(g[3], 'PEDRO RUIZ - C.C. 43123456');
+  assert.equal(g[8], '2201');
+  // «No aportó documento»: solo el nombre.
+  assert.equal(B._filaExcelCitacion(c, Object.assign({}, visita,
+    { citado: 'PEDRO RUIZ', documentoCitado: 'NO APORTA' }))[3], 'PEDRO RUIZ');
+  assert.equal(B._visitaEstaCompletada({ estado: 'COMPLETADA' }), true);
   assert.equal(B._visitaEstaCompletada(null), false);
 });
 
