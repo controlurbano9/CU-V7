@@ -160,7 +160,7 @@ const _ACCIONES_SOLO_LECTURA = {
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
   linksPdfReiterados: true, leerPendientesAdmin: true,
   // Audiencias (TASK 3a): agenda completa y novedades se pueden repetir.
-  agendaAudiencias: true, listarNovedades: true,
+  agendaAudiencias: true, listarNovedades: true, listarCupos: true,
 };
 // Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
