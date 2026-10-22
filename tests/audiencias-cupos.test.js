@@ -447,6 +447,7 @@ test('backend: _filaExcelCitacion — 10 columnas en el orden del Excel, citado 
     atiende: 'MARÍA GÓMEZ', citado: '', direccion: 'CL 50 # 32-10', barrio: 'NIQUÍA', expediente: '' };
   const f = B._filaExcelCitacion(c, visita);
   assert.equal(f.length, 10);
+  assert.equal(f[9], ''); // OBSERVACIONES vacía
   assert.deepEqual(Array.from(f.slice(0, 9)), ['20261011111', '02/03/2026', 'JUAN PÉREZ', 'MARÍA GÓMEZ',
     'CL 50 # 32-10 - NIQUÍA', '05/04/2027', '9:00AM', 'VICTOR QUIROZ', 'NUEVO']);
   // Citado distinto de quien atendió, con documento; expediente numérico.
