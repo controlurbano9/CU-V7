@@ -440,23 +440,22 @@ function AudienciasScreen({ usuario }) {
   };
 
   const semanas = useMemoAU(function () {
-    // Días agrupados por semana (lunes a domingo), indexados por offset
-    // desde la semana actual. Los días pasados caen en el offset 0.
+    // Días agrupados por semana (lunes a domingo), por offset desde la semana
+    // actual: las pasadas quedan en offsets negativos (antes se amontonaban en la 0).
     const hoy = _auHoy();
     const lunesHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - ((hoy.getDay() + 6) % 7));
-    const out = [];
+    const out = { min: 0, max: 0 };
     dias.forEach(function (d) {
       const f = parsearFecha(d.fecha);
       if (!f) return;
-      const k = Math.max(0, Math.floor((f - lunesHoy) / (7 * 86400000)));
-      if (!out[k]) out[k] = [];
-      out[k].push(d);
+      const k = Math.floor((f - lunesHoy) / (7 * 86400000));
+      (out[k] = out[k] || []).push(d);
+      out.min = Math.min(out.min, k); out.max = Math.max(out.max, k);
     });
-    for (var i = 0; i < out.length; i++) if (!out[i]) out[i] = [];
     return out;
   }, [dias]);
 
-  const diasSem = semanas[Math.min(offsetSem, semanas.length - 1)] || [];
+  const diasSem = semanas[offsetSem] || [];
   const semanaInfo = useMemoAU(function () {
     let cupos = 0, citados = 0;
     diasSem.forEach(function (d) { cupos += d.cupos.length; citados += d.cupos.filter(function (c) { return c.estado === 'RESERVADO'; }).length; });
@@ -493,7 +492,7 @@ function AudienciasScreen({ usuario }) {
         <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { abrirCita(c); } : undefined}>
           <b>{c.citado || _auCaso(c)}</b>{c.citado ? ' · ' + _auCaso(c) : ''}
-          <small>{[c.direccion, c.reservadoPor].filter(Boolean).join(' · ')}</small>
+          <small>{[c.direccion, titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
         </Tag>
         {esAdmin && c.estado === 'RESERVADO' && (
           <button type="button" className="au-lib" disabled={ocupado}
@@ -551,7 +550,7 @@ function AudienciasScreen({ usuario }) {
     return (
       <div>
         <div className="au-hoy-tit">
-          {esHoy ? 'Hoy · ' + _auFechaLarga(diaMostrar.fecha) : _auFechaLarga(diaMostrar.fecha)}
+          {esHoy ? 'Hoy · ' + _auFechaLarga(diaMostrar.fecha) : _auMayus(_auFechaLarga(diaMostrar.fecha))}
         </div>
         {todoBloqueado ? (
           <div style={{ marginTop: 10 }}>
@@ -571,7 +570,7 @@ function AudienciasScreen({ usuario }) {
             if (!delGrupo.length && !grupoBloqueado) return null;
             return (
               <div className="au-grupo" key={g.sustanciador}>
-                <h3>{g.sustanciador}</h3>
+                <h3>{titleCaseNombre(g.sustanciador)}</h3>
                 {grupoBloqueado && !delGrupo.length
                   ? bloqueoLinea(g.cupos[0].motivoBloqueo)
                   : delGrupo.map(function (c, i) { return filaCita(c, g.sustanciador + i); })}
@@ -601,8 +600,8 @@ function AudienciasScreen({ usuario }) {
         </span>
         {c.estado === 'RESERVADO' ? <>
           <span className="exp">{_auCaso(c)}</span>
-          <span className="quien">{[c.citado, c.reservadoPor].filter(Boolean).join(' · ')}</span>
-        </> : <span className="sus">{c.sustanciador}</span>}
+          <span className="quien">{[c.citado, titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</span>
+        </> : <span className="sus">{titleCaseNombre(c.sustanciador)}</span>}
       </Tag>
     );
   }
@@ -612,7 +611,7 @@ function AudienciasScreen({ usuario }) {
     return (
       <div>
         <div className="au-sem-bar">
-          <button type="button" className="au-flecha" disabled={offsetSem === 0}
+          <button type="button" className="au-flecha" disabled={offsetSem <= semanas.min}
             onClick={function () { setOffsetSem(offsetSem - 1); setDiaCel(0); }} aria-label="Semana anterior">‹</button>
           <div className="au-sem-tit">
             {semanaInfo.primera
@@ -620,7 +619,8 @@ function AudienciasScreen({ usuario }) {
               : 'Semana sin audiencias'}
             <small>{semanaInfo.cupos} cupo{semanaInfo.cupos === 1 ? '' : 's'} · {semanaInfo.citados} citado{semanaInfo.citados === 1 ? '' : 's'}</small>
           </div>
-          <button type="button" className="au-flecha" onClick={function () { setOffsetSem(offsetSem + 1); setDiaCel(0); }} aria-label="Semana siguiente">›</button>
+          <button type="button" className="au-flecha" disabled={offsetSem >= semanas.max}
+            onClick={function () { setOffsetSem(offsetSem + 1); setDiaCel(0); }} aria-label="Semana siguiente">›</button>
         </div>
         {!diasSem.length ? (
           <p className="au-vacio-hoy">Sin cupos esta semana (festivo o sin audiencias del bloque).</p>
@@ -685,11 +685,11 @@ function AudienciasScreen({ usuario }) {
                     <tr key={c.idCupo}>
                       <td>{c.fecha}</td>
                       <td>{horaBonitaAudiencias(c.hora)}</td>
-                      <td>{c.sustanciador}</td>
+                      <td>{titleCaseNombre(c.sustanciador)}</td>
                       <td>{_auCaso(c)}</td>
                       <td><b>{c.citado}</b></td>
-                      <td>{_auDocTxt(c)}</td>
-                      <td>{c.reservadoPor}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
+                      <td>{c.citado ? _auDocTxt(c) : null}</td>
+                      <td>{titleCaseNombre(c.reservadoPor || '')}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
                     </tr>
                   );
                 })}
@@ -702,7 +702,7 @@ function AudienciasScreen({ usuario }) {
                 <div className="au-lrow" key={c.idCupo}>
                   <div className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></div>
                   <div className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</div>
-                  <div className="l3">{_auCaso(c)} · {c.sustanciador} · {c.reservadoPor}
+                  <div className="l3">{_auCaso(c)} · {titleCaseNombre(c.sustanciador)} · {titleCaseNombre(c.reservadoPor || '')}
                     {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</div>
                 </div>
               );
@@ -748,7 +748,7 @@ function AudienciasScreen({ usuario }) {
                   {esAdmin ? (
                     <select id="au-nv-sus" defaultValue="TODOS">
                       <option value="TODOS">Todos</option>
-                      {sustanciadores.map(function (s) { return <option key={s.norm} value={s.nombre}>{s.nombre}</option>; })}
+                      {sustanciadores.map(function (s) { return <option key={s.norm} value={s.nombre}>{titleCaseNombre(s.nombre)}</option>; })}
                     </select>
                   ) : <input type="text" defaultValue={usuario.usuario} disabled />}
                 </div>
@@ -777,7 +777,7 @@ function AudienciasScreen({ usuario }) {
               <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón cae' : 'ones caen'} en esos días</b>
               <ul>
                 {afectadas.slice(0, 10).map(function (c) {
-                  return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {c.sustanciador} · {c.expediente ? 'Exp. ' + c.expediente : c.radicado} · {c.citado}</li>;
+                  return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)} · {_auCaso(c)} · {c.citado}</li>;
                 })}
               </ul>
             </div>
@@ -798,7 +798,7 @@ function AudienciasScreen({ usuario }) {
           return (
             <div className="au-row" key={r.idCupo}>
               <span className="t">
-                <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {r.sustanciador} · {r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente}
+                <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {titleCaseNombre(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente}
                 <small>{[r.citado, r.direccion, r.filaExcel ? 'fila ' + r.filaExcel + ' del Excel' : ''].filter(Boolean).join(' · ')}</small>
               </span>
               <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}

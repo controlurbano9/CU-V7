@@ -6033,7 +6033,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Campo label="Citación" fullWidth>
             <div className="cita-reservada">
               Cita reservada · {citaReservada.fecha} · {horaBonitaAudiencias(citaReservada.hora)}
-              <small>{citaReservada.sustanciador}</small>
+              <small>{titleCaseNombre(citaReservada.sustanciador)}</small>
             </div>
           </_Campo>
         ) : (<>
