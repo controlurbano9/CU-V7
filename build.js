@@ -41,6 +41,8 @@ const ARCHIVOS = [
   'mis-visitas.jsx',
   'buscar.jsx',
   'agenda.jsx',
+  // audiencias.jsx antes de app.jsx (la pestaña de audiencias del router)
+  'audiencias.jsx',
   // escaner-orden.jsx antes de nueva-visita.jsx (que lo consume)
   'escaner-orden.jsx',
   'nueva-visita.jsx',

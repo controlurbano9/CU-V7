@@ -4034,10 +4034,141 @@ function faltantesRequiereLicencia(o) {
   return [];
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Audiencias (TASK 3a) — lógica de la pestaña «Audiencias». Solo
+// funciones puras sobre la respuesta de agendaAudiencias; la pantalla
+// (audiencias.jsx) pinta. Pruebas: tests/audiencias-pantalla.test.js.
+// ═══════════════════════════════════════════════════════════════
+
+// Mayúsculas sin tildes, como _normNombre del backend: 'Juanse Pinzón' ===
+// 'JUANSE PINZON'. Compara sustanciador, quien reservó y quién mira.
+function normNombreAudiencias(n) {
+  return String(n || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// '9:00AM' / '2:00 PM' / '14:00' → minutos desde 00:00 (para ordenar).
+function horaAudienciasMin(hora) {
+  var m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(String(hora == null ? '' : hora).trim());
+  if (!m) return 24 * 60;
+  var h = parseInt(m[1], 10);
+  if (m[3] && m[3].toUpperCase() === 'PM') h = (h % 12) + 12;
+  return h * 60 + parseInt(m[2], 10);
+}
+
+// '9:00AM' → '9:00 a. m.', '2:00PM' → '2:00 p. m.' (como la maqueta v4).
+function horaBonitaAudiencias(hora) {
+  var min = horaAudienciasMin(hora);
+  var m = /^(\d{1,2}):(\d{2})/.exec(String(hora == null ? '' : hora).trim());
+  if (!m) return String(hora || '').trim();
+  var h24 = Math.floor(min / 60);
+  var ap = h24 < 12 ? 'a. m.' : 'p. m.';
+  var h12 = h24 % 12 || 12;
+  return h12 + ':' + m[2] + ' ' + ap;
+}
+
+// Cupos agrupados por día (orden fecha + hora) y, dentro del día, por
+// sustanciador. `cupos` viene tal cual de agendaAudiencias.
+function agruparAudienciasPorDia(cupos) {
+  var porFecha = {};
+  var orden = [];
+  (cupos || []).forEach(function (c) {
+    var f = String(c.fecha || '').trim();
+    if (!f) return;
+    if (!porFecha[f]) { porFecha[f] = []; orden.push(f); }
+    porFecha[f].push(c);
+  });
+  orden.sort(function (a, b) {
+    var da = parsearFecha(a), db = parsearFecha(b);
+    return (da && db ? da - db : a.localeCompare(b));
+  });
+  return orden.map(function (f) {
+    var delDia = porFecha[f].slice().sort(function (a, b) {
+      return horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora);
+    });
+    return { fecha: f, cupos: delDia };
+  });
+}
+
+function agruparAudienciasPorSustanciador(cuposDia) {
+  var grupos = {};
+  var orden = [];
+  (cuposDia || []).forEach(function (c) {
+    var s = String(c.sustanciador || '').trim() || 'SIN SUSTANCIADOR';
+    if (!grupos[s]) { grupos[s] = []; orden.push(s); }
+    grupos[s].push(c);
+  });
+  return orden.map(function (s) { return { sustanciador: s, cupos: grupos[s] }; });
+}
+
+// El próximo día con cupos desde `hoy` (Date). «Hoy» muestra este día cuando
+// hoy no tiene: jueves y viernes no hay audiencias del bloque de Control
+// Urbano, y nada se reubica en «hoy» (misma regla que la Semana de visitas).
+function proximoDiaAudiencias(dias, hoy) {
+  var h = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  for (var i = 0; i < (dias || []).length; i++) {
+    var d = parsearFecha(dias[i].fecha);
+    if (d && d >= h) return dias[i];
+  }
+  return null;
+}
+
+// Estado de una cita para la vista «Lista»: ya en el Excel, visita sin
+// completar o lista para pasar.
+function estadoListaAudiencias(c) {
+  if (!c) return 'pasar';
+  if (c.enviadoExcel) return 'excel';
+  if (!c.visitaCompletada) return 'pend';
+  return 'pasar';
+}
+
+// Filtro de «Lista»: solo citas (RESERVADO), de hoy en adelante salvo
+// incluirPasadas, con búsqueda por nombre/radicado/expediente/documento,
+// chip de estado y, para el inspector, solo las suyas (deQuien normalizado).
+function filtrarListaAudiencias(cupos, opts) {
+  opts = opts || {};
+  var q = String(opts.q || '').trim().toLowerCase();
+  var hoyT = String(opts.hoy || '');
+  return (cupos || []).filter(function (c) {
+    if (c.estado !== 'RESERVADO') return false;
+    if (!opts.incluirPasadas && hoyT && parsearFecha(c.fecha) && parsearFecha(c.fecha) < parsearFecha(hoyT)) return false;
+    if (opts.deQuien && normNombreAudiencias(c.reservadoPor) !== opts.deQuien) return false;
+    if (opts.estado && opts.estado !== 'todos' && estadoListaAudiencias(c) !== opts.estado) return false;
+    if (q) {
+      var en = [c.citado, c.radicado, c.expediente, c.documentoCitado].some(function (v) {
+        return v && String(v).toLowerCase().indexOf(q) >= 0;
+      });
+      if (!en) return false;
+    }
+    return true;
+  }).sort(function (a, b) {
+    var da = parsearFecha(a.fecha), db = parsearFecha(b.fecha);
+    if (da && db && da - db) return da - db;
+    return horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora);
+  });
+}
+
+// Fila TSV para pegar en el Excel (mismo orden que listaDiariaExcel), por si
+// la respuesta no la trae.
+function filaTsvAudiencias(c) {
+  c = c || {};
+  return [c.fecha, c.hora, c.sustanciador, c.radicado, c.expediente, c.citado,
+    c.documentoCitado || '', c.direccion || ''].join('\t');
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   ART135_LITERALES: ART135_LITERALES,
   ART135_TEXTO: ART135_TEXTO,
+  // Audiencias (TASK 3a)
+  normNombreAudiencias: normNombreAudiencias,
+  horaAudienciasMin: horaAudienciasMin,
+  horaBonitaAudiencias: horaBonitaAudiencias,
+  agruparAudienciasPorDia: agruparAudienciasPorDia,
+  agruparAudienciasPorSustanciador: agruparAudienciasPorSustanciador,
+  proximoDiaAudiencias: proximoDiaAudiencias,
+  estadoListaAudiencias: estadoListaAudiencias,
+  filtrarListaAudiencias: filtrarListaAudiencias,
+  filaTsvAudiencias: filaTsvAudiencias,
   expedienteDe: expedienteDe,
   identificadorVisita: identificadorVisita,
   citaArt135: citaArt135,

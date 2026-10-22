@@ -159,12 +159,14 @@ const _ACCIONES_SOLO_LECTURA = {
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
   linksPdfReiterados: true, leerPendientesAdmin: true,
+  // Audiencias (TASK 3a): agenda completa y novedades se pueden repetir.
+  agendaAudiencias: true, listarNovedades: true,
 };
 // Tiempo límite por intento, solo en lecturas: abortar una escritura en curso
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
 // señal débil, tarda más en bajar.
 const _TIMEOUT_LECTURA_MS = 20000;
-const _TIMEOUT_POR_ACCION_MS = { login: 15000, leerHoja: 45000 };
+const _TIMEOUT_POR_ACCION_MS = { login: 15000, leerHoja: 45000, agendaAudiencias: 45000 };
 
 function _politicaReintento(body) {
   const accion = body && body.accion;
@@ -852,6 +854,44 @@ async function guardarConfigAgenda(config) {
   const r = await gasPost(Object.assign({ accion: 'guardarConfigAgenda' }, config));
   invalidarCache('inspectores'); // el filtro de agenda.jsx depende de esta config
   return r;
+}
+
+// ── Audiencias (TASK 3a): agenda de cupos, novedades y lista del Excel ──
+// Contrato del backend: INFORME-1.md / INFORME-1b.md de
+// herramientas/audiencias. agendaAudiencias y listarNovedades son lecturas.
+async function agendaAudiencias(opts) {
+  const p = { accion: 'agendaAudiencias' };
+  if (opts && opts.desde) p.desde = opts.desde;
+  if (opts && opts.hasta) p.hasta = opts.hasta;
+  if (opts && opts.incluirPasadas) p.incluirPasadas = true;
+  return gasPost(p);
+}
+
+async function listarNovedadesAudiencias() {
+  const d = await gasPost({ accion: 'listarNovedades' });
+  return d.novedades || [];
+}
+
+async function guardarNovedadAudiencias(novedad) {
+  return gasPost(Object.assign({ accion: 'guardarNovedad' }, novedad));
+}
+
+async function desactivarNovedadAudiencias(id) {
+  return gasPost({ accion: 'desactivarNovedad', id });
+}
+
+async function listaDiariaExcelAudiencias(desde) {
+  const p = { accion: 'listaDiariaExcel' };
+  if (desde) p.desde = desde;
+  return gasPost(p);
+}
+
+async function marcarCitacionExcelAudiencias(idCupo, pasada) {
+  return gasPost({ accion: 'marcarCitacionExcel', idCupo, pasada: !!pasada });
+}
+
+async function liberarCupoAudiencias(idCupo, motivo) {
+  return gasPost({ accion: 'liberarCupo', idCupo, motivo: motivo || '' });
 }
 
 async function registrarLog(usuario, texto) {
@@ -1925,6 +1965,9 @@ Object.assign(window, {
   generarPinTemporal, cambiarMiPin, cambiarRol, leerPendientesAdmin, marcarHallazgoRevisado,
   registrarExportacion, cargarXLSX,
   leerConfigAgenda, guardarConfigAgenda,
+  agendaAudiencias, listarNovedadesAudiencias, guardarNovedadAudiencias,
+  desactivarNovedadAudiencias, listaDiariaExcelAudiencias,
+  marcarCitacionExcelAudiencias, liberarCupoAudiencias,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,

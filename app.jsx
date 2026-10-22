@@ -767,6 +767,8 @@ function AppV6() {
   tabs.push({ k: 'mis-visitas',   label: 'Mis visitas',Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
   if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
+  // Audiencias (TASK 3a): los 3 roles; el inspector la ve en solo lectura.
+  tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
   const enFormulario = pantalla === 'nueva-visita';
@@ -868,6 +870,7 @@ function AppV6() {
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
             onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
           {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
+          {pantalla === 'audiencias' && <AudienciasScreen usuario={usuario} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen
             usuario={usuario}
             filaInicial={contextoNueva?.fila || null}

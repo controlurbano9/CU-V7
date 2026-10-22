@@ -35,7 +35,9 @@ function cargarBackend() {
     '_calcularPascuaCO', '_alLunesCO', '_festivosColombiaCO', '_esDiaHabilCO',
     '_diasHabilesEntre', '_apartadoVencido', '_validarDatosCitado',
     '_tieneReservaVigente', '_camposCitacionAConservar',
-    '_visitaEstaCompletada', '_clasificarCuposExcel'
+    '_visitaEstaCompletada', '_clasificarCuposExcel',
+    // TASK 3a: estado del cupo para la pestaña «Audiencias».
+    '_estadoCupoAgenda'
   ];
   let codigo = '';
   const mEstado = /var ESTADO_CUPO_RESERVADO = 'RESERVADO';/.exec(src);
@@ -443,4 +445,42 @@ test('backend: _clasificarCuposExcel reparte por visita completada (COMPLETADA d
   assert.deepEqual(Array.from(r.sinCompletar.map(c => c.idCupo)), ['b', 'c']);
   assert.equal(B._visitaEstaCompletada({ estado: 'PENDIENTE' }), false);
   assert.equal(B._visitaEstaCompletada(null), false);
+});
+
+// ── TASK 3a: _estadoCupoAgenda (estado para la pestaña «Audiencias») ──
+test('backend: _estadoCupoAgenda — RESERVADO tal cual, APARTADO sale LIBRE', opts, () => {
+  const B = cargarBackend();
+  assert.equal(B._estadoCupoAgenda(cupo({ estado: 'RESERVADO' }), []).estado, 'RESERVADO');
+  assert.equal(B._estadoCupoAgenda(cupo({ estado: 'APARTADO' }), []).estado, 'LIBRE');
+  assert.equal(B._estadoCupoAgenda(cupo({ estado: '' }), []).estado, 'LIBRE');
+});
+
+test('backend: _estadoCupoAgenda — novedad activa bloquea con su motivo; inactiva no', opts, () => {
+  const B = cargarBackend();
+  const vacaciones = {
+    desde: new Date(2027, 4, 10), hasta: new Date(2027, 4, 21),
+    sustanciador: 'PATRICIA LÓPEZ', franja: 'DIA', motivo: 'Vacaciones', activa: true
+  };
+  const dentro = B._estadoCupoAgenda(cupo({
+    fecha: new Date(2027, 4, 12), sustanciador: 'Patricia Lopez', hora: '9:00AM'
+  }), [vacaciones]);
+  assert.equal(dentro.estado, 'BLOQUEADO');
+  assert.equal(dentro.motivoBloqueo, 'Vacaciones');
+  // Otro sustanciador u otro día: LIBRE.
+  assert.equal(B._estadoCupoAgenda(cupo({
+    fecha: new Date(2027, 4, 12), sustanciador: 'VICTOR QUIROZ', hora: '9:00AM'
+  }), [vacaciones]).estado, 'LIBRE');
+  assert.equal(B._estadoCupoAgenda(cupo({
+    fecha: new Date(2027, 4, 25), sustanciador: 'PATRICIA LÓPEZ', hora: '9:00AM'
+  }), [vacaciones]).estado, 'LIBRE');
+  // Inactiva no bloquea (quitar la novedad devuelve los cupos).
+  assert.equal(B._estadoCupoAgenda(cupo({
+    fecha: new Date(2027, 4, 12), sustanciador: 'PATRICIA LÓPEZ', hora: '9:00AM'
+  }), [Object.assign({}, vacaciones, { activa: false })]).estado, 'LIBRE');
+  // Sin motivo la línea no queda vacía.
+  const sinMotivo = B._estadoCupoAgenda(cupo({
+    fecha: new Date(2027, 4, 12), sustanciador: 'PATRICIA LÓPEZ', hora: '9:00AM'
+  }), [Object.assign({}, vacaciones, { motivo: '' })]);
+  assert.equal(sinMotivo.estado, 'BLOQUEADO');
+  assert.equal(sinMotivo.motivoBloqueo, 'Día sin audiencias');
 });
