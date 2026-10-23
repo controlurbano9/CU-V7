@@ -16,8 +16,16 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateAU, useEffect: useEffectAU, useMemo: useMemoAU } = React;
 
-// Última lectura en memoria: sin señal se muestra esto con «Sin conexión».
-var _AU_ULTIMO = null;
+// Copia local de la agenda por rol (2026-10-22): la pestaña abre al instante
+// con lo último que se leyó y se actualiza por detrás; con la firma, el
+// backend responde «sin cambios» en ~100 bytes.
+var _AU_CLAVE_COPIA = 'cu_audiencias_v1_';
+function _auLeerCopia(rol) {
+  try { return JSON.parse(localStorage.getItem(_AU_CLAVE_COPIA + rol) || 'null'); } catch (e) { return null; }
+}
+function _auGuardarCopia(rol, r) {
+  try { localStorage.setItem(_AU_CLAVE_COPIA + rol, JSON.stringify(r)); } catch (e) {}
+}
 
 // El «hoy» de la pantalla. Los bancos de QA lo fijan con window._AU_HOY
 // (fecha ISO) para tener datos estables; en la app es el reloj.
@@ -83,30 +91,25 @@ var _AU_SVG_COPIAR = (
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
   </svg>
 );
-var _AU_SVG_QUITAR = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
-  </svg>
-);
 
 // ── Hoja «Pedir cita» ──────────────────────────────────────────
 // Caso (agenda de hoy del inspector o escrito) y uno de los 5 cupos más
 // próximos; sin señal, sus cupos apartados. Al reservar, la fecha, la hora y
 // el sustanciador en grande para copiarlos a la citación de papel.
-function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
+function PedirCitaHoja({ usuario, agenda, cuposIniciales, onCerrar, onReservada }) {
   const [filas, setFilas] = useStateAU([]);
   const [caso, setCaso] = useStateAU(null);
   const [texto, setTexto] = useStateAU('');
-  const [cupos, setCupos] = useStateAU(null);    // null = cargando
+  const [cupos, setCupos] = useStateAU(cuposIniciales || null);    // null = cargando
   const [sinSenal, setSinSenal] = useStateAU(!navigator.onLine);
   const [elegido, setElegido] = useStateAU(null);
   const [enviando, setEnviando] = useStateAU(false);
   const [error, setError] = useStateAU('');
   const [hecha, setHecha] = useStateAU(null);    // {cupo, caso, encolado}
 
-  async function cargarCupos() {
-    setCupos(null); setError('');
+  async function cargarCupos(enSilencio) {
+    if (!enSilencio) setCupos(null);
+    setError('');
     if (!navigator.onLine) { setSinSenal(true); setCupos(cuposApartadosGuardados()); return; }
     try {
       const r = await listarCuposAudiencias();
@@ -118,7 +121,8 @@ function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
     }
   }
   useEffectAU(function () {
-    cargarCupos();
+    // Con los cupos ya precargados se abre al instante y se refresca por detrás.
+    cargarCupos(!!cuposIniciales);
     leerVisitas().then(function (r) { setFilas((r && r.datos) || []); }).catch(function () {});
   }, []);
 
@@ -164,17 +168,18 @@ function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
       onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
       <div className="au-hoj au-pedir">
         <div className="au-hoj-cab">
-          <div className="t"><b>{hecha ? 'Cita reservada' : 'Pedir cita'}</b></div>
+          <div className="t"><b>Pedir cita</b></div>
           <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
         </div>
 
         {hecha ? (<>
-          <div className="au-pconf">
+          <div className={'au-pconf ' + (hecha.encolado ? 'cola' : 'ok')}>
+            <p className="est">{hecha.encolado ? '⇡ En cola · se confirma al volver la señal' : '✓ Cita confirmada'}</p>
             <p className="f">{_auMayus(_auFechaLarga(hecha.cupo.fecha))}</p>
             <p className="h">{horaBonitaAudiencias(hecha.cupo.hora)}</p>
             <p className="s">{titleCaseNombre(hecha.cupo.sustanciador)}</p>
             <p className="caso">{hecha.caso.radicado ? 'Rad. ' + hecha.caso.radicado : 'Orden ' + hecha.caso.ordenPolicia}</p>
-            {hecha.encolado && <p className="cola">⇡ En cola</p>}
+            {hecha.encolado && <p className="nota">Es tu cupo apartado: puedes entregarla.</p>}
           </div>
           <div className="au-pbotones">
             <button type="button" className="btn-neutro" onClick={otra}>Pedir otra</button>
@@ -227,7 +232,7 @@ function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
                 <label className={'au-pcupo' + (on ? ' on' : '')} key={c.idCupo}>
                   <input type="radio" name="au-pcupo" checked={!!on} onChange={function () { setElegido(c); }} />
                   <span className="t">{_auDiaCorto(c.fecha)}/{(parsearFecha(c.fecha) || hoyD).getFullYear()} · {horaBonitaAudiencias(c.hora)}
-                    <small>{titleCaseNombre(c.sustanciador)}</small></span>
+                    <span className="sus"> · {titleCaseNombre(c.sustanciador)}</span></span>
                 </label>
               );
             })}
@@ -237,6 +242,45 @@ function PedirCitaHoja({ usuario, agenda, onCerrar, onReservada }) {
             disabled={!casoFinal || !elegido || !!yaTiene || enviando}
             onClick={reservar}>{enviando ? 'Reservando…' : 'Reservar'}</button>
         </>)}
+      </div>
+    </div>
+  );
+}
+
+// ── Detalle de una cita ────────────────────────────────────────
+// Lo que se toca en Hoy, Semana o Lista. Es el único lugar desde donde el
+// admin libera una cita (antes estaba a un toque en cada fila). El
+// sustanciador abre de aquí el acta y el informe para preparar la audiencia.
+function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar }) {
+  const c = cita;
+  return (
+    <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Cita"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj au-cita">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Cita</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        <div className="au-pconf ok">
+          <p className="est">✓ Cita confirmada</p>
+          <p className="f">{_auMayus(_auFechaLarga(c.fecha))}</p>
+          <p className="h">{horaBonitaAudiencias(c.hora)}</p>
+          <p className="s">{titleCaseNombre(c.sustanciador)}</p>
+        </div>
+        <dl className="au-cita-datos">
+          <dt>Caso</dt><dd>{_auCaso(c)}{c.expediente && c.radicado ? ' · ' + c.radicado : ''}</dd>
+          {c.citado && <><dt>Citado</dt><dd>{c.citado}{c.documentoCitado ? <> · {_auDocTxt(c)}</> : null}</dd></>}
+          {c.direccion && <><dt>Dirección</dt><dd>{c.direccion}</dd></>}
+          <dt>Pedida por</dt><dd>{titleCaseNombre(c.reservadoPor || '')}{c.reservadoEn ? ' · ' + String(c.reservadoEn).slice(0, 10) : ''}</dd>
+        </dl>
+        <div className="au-cita-acc">
+          {c.linkActa && <a className="btn-neutro" href={c.linkActa} target="_blank" rel="noopener">Acta</a>}
+          {c.linkInforme && <a className="btn-neutro" href={c.linkInforme} target="_blank" rel="noopener">Informe</a>}
+          {!c.sinVisita && <button type="button" className="btn-neutro" onClick={onVerVisita}>Ver visita</button>}
+        </div>
+        {esAdmin && (
+          <button type="button" className="au-cita-liberar" disabled={ocupado} onClick={onLiberar}>Liberar cita</button>
+        )}
       </div>
     </div>
   );
@@ -262,49 +306,64 @@ function AudienciasScreen({ usuario }) {
   const [copiado, setCopiado] = useStateAU('');
   const [ocupado, setOcupado] = useStateAU(false); // escritura en curso
   const [pedirAbierto, setPedirAbierto] = useStateAU(false);
+  const [conPasadas, setConPasadas] = useStateAU(false);   // «Incluir pasadas»: se pide a demanda
+  const [cuposPedir, setCuposPedir] = useStateAU(null);    // precargados para «Pedir cita»
+  const [pendientes, setPendientes] = useStateAU([]);      // citas pedidas sin señal
+  const [citaAbierta, setCitaAbierta] = useStateAU(null);
 
   const esAdmin = usuario.rol === 'ADMIN';
   const esSup = !esAdmin && veTodasLasVisitas(usuario.rol);
   const esInsp = !esAdmin && !esSup;
   const yo = normNombreAudiencias(usuario.usuario);
 
-  async function cargar() {
-    setCargando(true);
-    if (!navigator.onLine && _AU_ULTIMO) {
-      setDatos(_AU_ULTIMO.datos); setNovedades(_AU_ULTIMO.novedades);
-      if (esAdmin) setExcel(_AU_ULTIMO.excel);
-      setSinConexion(true); setCargando(false);
+  function aplicar(r) {
+    setDatos({
+      cupos: r.cupos || [],
+      novedadesActivas: r.novedadesActivas || 0,
+      ultimaFechaConCupo: r.ultimaFechaConCupo || ''
+    });
+    setNovedades(r.novedades || []);
+    if (esAdmin) setExcel({ lista: r.completadas || [] });
+  }
+
+  // Abre con la copia local y la actualiza por detrás. Solo la vista de hoy en
+  // adelante se guarda; «Incluir pasadas» se pide aparte.
+  async function cargar(pasadas) {
+    const incluir = pasadas === undefined ? conPasadas : pasadas;
+    const copia = incluir ? null : _auLeerCopia(usuario.rol);
+    if (copia) { aplicar(copia); setCargando(false); }
+    else if (!datos) setCargando(true);
+    if (!navigator.onLine) {
+      setSinConexion(true);
+      if (!copia && !datos) setError('Sin conexión y sin datos guardados en este equipo.');
+      setCargando(false);
       return;
     }
     try {
-      const pedidos = [agendaAudiencias({ incluirPasadas: true }), listarNovedadesAudiencias()];
-      if (esAdmin) pedidos.push(listaDiariaExcelAudiencias());
-      const rs = await Promise.all(pedidos);
-      if (!rs[0].ok) throw new Error(rs[0].error || 'No se pudo leer la agenda.');
-      const d = {
-        cupos: rs[0].cupos || [],
-        novedadesActivas: rs[0].novedadesActivas || 0,
-        ultimaFechaConCupo: rs[0].ultimaFechaConCupo || ''
-      };
-      _AU_ULTIMO = { datos: d, novedades: rs[1] || [], excel: esAdmin ? rs[2] : null };
-      setDatos(d); setNovedades(rs[1] || []);
-      if (esAdmin) setExcel(rs[2]);
+      const r = await agendaAudiencias({ incluirPasadas: incluir, firma: copia && copia.firma });
+      if (!r.ok) throw new Error(r.error || 'No se pudo leer la agenda.');
+      if (!r.sinCambios) {
+        aplicar(r);
+        if (!incluir) _auGuardarCopia(usuario.rol, r);
+      }
       setSinConexion(false); setError('');
     } catch (e) {
-      if (_AU_ULTIMO) {
-        setDatos(_AU_ULTIMO.datos); setNovedades(_AU_ULTIMO.novedades);
-        if (esAdmin) setExcel(_AU_ULTIMO.excel);
-        setSinConexion(true);
-      } else {
-        setError(e.message || 'No se pudo cargar la agenda de audiencias.');
-      }
+      if (copia || datos) setSinConexion(true);
+      else setError(e.message || 'No se pudo cargar la agenda de audiencias.');
     }
     setCargando(false);
+    citasPendientes().then(setPendientes).catch(function () {});
+  }
+
+  function precargarCupos() {
+    if (esSup || !navigator.onLine) return;
+    listarCuposAudiencias().then(function (r) { setCuposPedir(opcionesPedirCita(r.cupos || [], 5)); })
+      .catch(function () {});
   }
 
   useEffectAU(() => {
-    _AU_ULTIMO = null;
     cargar();
+    precargarCupos();
     // Cupos apartados para pedir citas sin señal en campo (se repiten sin daño).
     if (esInsp && navigator.onLine) apartarCuposAudiencias().catch(function () {});
   }, []);
@@ -335,15 +394,15 @@ function AudienciasScreen({ usuario }) {
   async function liberarCupoDe(c) {
     if (ocupado) return;
     const ok = await appConfirm(
-      '¿Liberar el cupo del ' + c.fecha + ' a las ' + horaBonitaAudiencias(c.hora) + '?\n\n' +
-      'La cita queda sin agendar (el citado ya tiene la fecha en papel si se le entregó) ' +
-      'y el cupo vuelve a estar disponible.',
-      { titulo: 'Liberar cupo', btnOk: 'Sí, liberar', btnCancel: 'Cancelar', peligro: true });
+      '¿Liberar la cita del ' + c.fecha + ' a las ' + horaBonitaAudiencias(c.hora) + '?\n\n' +
+      'El cupo vuelve a estar libre y la visita queda sin fecha de citación.',
+      { titulo: 'Liberar cita', btnOk: 'Sí, liberar', btnCancel: 'Cancelar', peligro: true });
     if (!ok) return;
     setOcupado(true);
     try {
       const r = await liberarCupoAudiencias(c.idCupo, 'Liberado desde la pestaña Audiencias');
       if (!r.ok) await appAlert(r.error || 'No se pudo liberar el cupo.', { tono: 'error' });
+      setCitaAbierta(null);
       await cargar();
     } catch (e) {
       await appAlert('No se pudo liberar el cupo: ' + (e.message || e), { tono: 'error' });
@@ -368,6 +427,10 @@ function AudienciasScreen({ usuario }) {
 
   async function quitarNovedad(n) {
     if (ocupado) return;
+    const ok = await appConfirm('¿Quitar «' + (n.motivo || 'esta novedad') + '» (' + n.desde +
+      (n.hasta !== n.desde ? ' – ' + n.hasta : '') + ')? Sus cupos vuelven a estar disponibles.',
+      { titulo: 'Quitar novedad', btnOk: 'Quitar', btnCancel: 'Cancelar' });
+    if (!ok) return;
     setOcupado(true);
     try {
       const r = await desactivarNovedadAudiencias(n.id);
@@ -458,11 +521,15 @@ function AudienciasScreen({ usuario }) {
   const diasSem = semanas[offsetSem] || [];
   const semanaInfo = useMemoAU(function () {
     let cupos = 0, citados = 0;
-    diasSem.forEach(function (d) { cupos += d.cupos.length; citados += d.cupos.filter(function (c) { return c.estado === 'RESERVADO'; }).length; });
+    diasSem.forEach(function (d) {
+      const vis = cuposDeDiaFiltrados(d);
+      cupos += vis.length;
+      citados += vis.filter(function (c) { return c.estado === 'RESERVADO'; }).length;
+    });
     const primera = diasSem[0] ? diasSem[0].fecha : '';
     const ultima = diasSem.length ? diasSem[diasSem.length - 1].fecha : '';
     return { cupos: cupos, citados: citados, primera: primera, ultima: ultima };
-  }, [diasSem]);
+  }, [diasSem, filtroSus]);
 
   const listaRows = useMemoAU(function () {
     if (!datos) return [];
@@ -490,15 +557,10 @@ function AudienciasScreen({ usuario }) {
     return (
       <div className="au-row" key={clave}>
         <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
-        <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { abrirCita(c); } : undefined}>
+        <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { setCitaAbierta(c); } : undefined}>
           <b>{c.citado || _auCaso(c)}</b>{c.citado ? ' · ' + _auCaso(c) : ''}
-          <small>{[c.direccion, titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
+          <small>{[c.direccion, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
         </Tag>
-        {esAdmin && c.estado === 'RESERVADO' && (
-          <button type="button" className="au-lib" disabled={ocupado}
-            onClick={function (e) { e.stopPropagation(); liberarCupoDe(c); }}
-            title="Liberar este cupo (vuelve a estar disponible)">Liberar</button>
-        )}
       </div>
     );
   }
@@ -514,9 +576,9 @@ function AudienciasScreen({ usuario }) {
   if (error) {
     return (
       <div className="au-pantalla">
-        <header className="au-cab"><h1>Audiencias</h1></header>
+        <header className="au-cab"><h1>{esInsp ? 'Citaciones' : 'Audiencias'}</h1></header>
         <div className="au-vacio"><b>No se pudo cargar</b>{error}
-          <button type="button" className="btn-accion" onClick={cargar}>Reintentar</button>
+          <button type="button" className="btn-accion" onClick={function () { cargar(); }}>Reintentar</button>
         </div>
       </div>
     );
@@ -526,11 +588,11 @@ function AudienciasScreen({ usuario }) {
   if (!datos.cupos.length) {
     return (
       <div className="au-pantalla">
-        <header className="au-cab"><h1>Audiencias</h1></header>
+        <header className="au-cab"><h1>{esInsp ? 'Citaciones' : 'Audiencias'}</h1></header>
         <div className="au-vacio">
           <b>Sin cupos cargados</b>
           La hoja AUDIENCIAS está vacía: falta pegar la lista CUPOS_CU del Excel del despacho.
-          <button type="button" className="btn-accion" onClick={cargar}>Reintentar</button>
+          <button type="button" className="btn-accion" onClick={function () { cargar(); }}>Reintentar</button>
         </div>
       </div>
     );
@@ -592,7 +654,7 @@ function AudienciasScreen({ usuario }) {
     const etiqueta = c.estado === 'RESERVADO' ? 'Citado' : c.estado === 'BLOQUEADO' ? 'Sin audiencia' : 'Libre';
     return (
       <Tag className={clase} key={clave} type={clicable ? 'button' : undefined}
-        onClick={clicable ? function () { abrirCita(c); } : undefined}
+        onClick={clicable ? function () { setCitaAbierta(c); } : undefined}
         title={c.estado === 'BLOQUEADO' ? 'Día sin audiencias · ' + c.motivoBloqueo : undefined}>
         <span className="h1l">
           <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
@@ -600,8 +662,8 @@ function AudienciasScreen({ usuario }) {
         </span>
         {c.estado === 'RESERVADO' ? <>
           <span className="exp">{_auCaso(c)}</span>
-          <span className="quien">{[c.citado, titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</span>
-        </> : <span className="sus">{titleCaseNombre(c.sustanciador)}</span>}
+          <span className="quien">{[c.citado, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</span>
+        </> : (filtroSus ? null : <span className="sus">{titleCaseNombre(c.sustanciador)}</span>)}
       </Tag>
     );
   }
@@ -617,7 +679,7 @@ function AudienciasScreen({ usuario }) {
             {semanaInfo.primera
               ? 'Semana del ' + semanaInfo.primera + ' al ' + semanaInfo.ultima
               : 'Semana sin audiencias'}
-            <small>{semanaInfo.cupos} cupo{semanaInfo.cupos === 1 ? '' : 's'} · {semanaInfo.citados} citado{semanaInfo.citados === 1 ? '' : 's'}</small>
+            <small>{semanaInfo.citados} cita{semanaInfo.citados === 1 ? '' : 's'} · {semanaInfo.cupos - semanaInfo.citados} libre{semanaInfo.cupos - semanaInfo.citados === 1 ? '' : 's'}</small>
           </div>
           <button type="button" className="au-flecha" disabled={offsetSem >= semanas.max}
             onClick={function () { setOffsetSem(offsetSem + 1); setDiaCel(0); }} aria-label="Semana siguiente">›</button>
@@ -645,7 +707,7 @@ function AudienciasScreen({ usuario }) {
                     <b>{_auDiaCorto(d.fecha)}</b>
                     <span>{todoBloqueado ? 'sin audiencias'
                       : soloMias ? (mostrar.length ? mostrar.length + ' tuya' + (mostrar.length === 1 ? '' : 's') : 'sin citas tuyas')
-                      : (vis.length ? libres + ' de ' + vis.length + ' libres' : 'sin cupos')}</span>
+                      : (vis.length ? (vis.length - libres) + ' cita' + (vis.length - libres === 1 ? '' : 's') + ' · ' + libres + ' libre' + (libres === 1 ? '' : 's') : 'sin cupos')}</span>
                   </div>
                   {todoBloqueado
                     ? bloqueoLinea(vis[0].motivoBloqueo)
@@ -671,7 +733,11 @@ function AudienciasScreen({ usuario }) {
             onChange={function (e) { setLis(Object.assign({}, lis, { q: e.target.value })); }} />
           <button type="button" className={'au-chip' + (lis.pas ? ' on' : '')}
             aria-pressed={String(lis.pas)}
-            onClick={function () { setLis(Object.assign({}, lis, { pas: !lis.pas })); }}>Incluir pasadas</button>
+            onClick={function () {
+              const v = !lis.pas;
+              setLis(Object.assign({}, lis, { pas: v }));
+              if (v && !conPasadas) { setConPasadas(true); cargar(true); }
+            }}>Incluir pasadas</button>
         </div>
         <p className="au-hoy-libres">{n} citaci{n === 1 ? 'ón' : 'ones'}</p>
         {!n ? <p className="au-vacio-hoy">Sin resultados</p> : (<>
@@ -682,7 +748,8 @@ function AudienciasScreen({ usuario }) {
               <tbody>
                 {listaRows.map(function (c) {
                   return (
-                    <tr key={c.idCupo}>
+                    <tr key={c.idCupo} className={clicableCita(c) ? 'clic' : ''}
+                      onClick={clicableCita(c) ? function () { setCitaAbierta(c); } : undefined}>
                       <td>{c.fecha}</td>
                       <td>{horaBonitaAudiencias(c.hora)}</td>
                       <td>{titleCaseNombre(c.sustanciador)}</td>
@@ -699,7 +766,8 @@ function AudienciasScreen({ usuario }) {
           <div className="au-lrows">
             {listaRows.map(function (c) {
               return (
-                <div className="au-lrow" key={c.idCupo}>
+                <div className={'au-lrow' + (clicableCita(c) ? ' clic' : '')} key={c.idCupo}
+                  onClick={clicableCita(c) ? function () { setCitaAbierta(c); } : undefined}>
                   <div className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></div>
                   <div className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</div>
                   <div className="l3">{_auCaso(c)} · {titleCaseNombre(c.sustanciador)} · {titleCaseNombre(c.reservadoPor || '')}
@@ -715,9 +783,13 @@ function AudienciasScreen({ usuario }) {
 
   // ── Días sin audiencias (ventana; admin y supervisor) ──
   function renderNovedades() {
+    const hoyD = parsearFecha(hoyTxt);
     const mias = novedades.filter(function (n) {
+      if (n.activa === false) return false;
+      const h = parsearFecha(n.hasta);
+      if (h && hoyD && h < hoyD) return false;   // vencida: ya no bloquea nada
       return !esSup || normNombreAudiencias(n.sustanciador) === yo;
-    });
+    }).sort(function (a, b) { return (parsearFecha(a.desde) || 0) - (parsearFecha(b.desde) || 0); });
     return (
       <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Días sin audiencias"
         onClick={function (e) { if (e.target === e.currentTarget) setNovAbierta(false); }}>
@@ -731,7 +803,7 @@ function AudienciasScreen({ usuario }) {
             return (
               <div className="au-nov" key={n.id}>
                 <div className="au-nov-t">
-                  <b>{n.sustanciador === 'TODOS' ? 'Todos' : n.sustanciador}</b> · {n.desde}{n.hasta !== n.desde ? ' – ' + n.hasta : ''} · {n.franja === 'DIA' ? 'Todo el día' : n.franja}
+                  <b>{n.sustanciador === 'TODOS' ? 'Todos' : titleCaseNombre(n.sustanciador)}</b> · {n.desde}{n.hasta !== n.desde ? ' – ' + n.hasta : ''} · {n.franja === 'DIA' ? 'Todo el día' : n.franja}
                   <small>{n.motivo}</small>
                 </div>
                 <button type="button" className="au-x" aria-label={'Quitar novedad de ' + n.sustanciador}
@@ -796,10 +868,11 @@ function AudienciasScreen({ usuario }) {
         <h2 id="au-t-exc">Citaciones visitas completadas</h2>
         {!lista.length ? <p className="au-vacio-hoy">Sin citaciones</p> : lista.map(function (r) {
           return (
-            <div className="au-row" key={r.idCupo}>
+            <div className="au-row au-exc-row" key={r.idCupo}>
+              <span className="fila" title="Fila del Excel donde se pega">{r.filaExcel ? 'Fila ' + r.filaExcel : '—'}</span>
               <span className="t">
-                <b>{r.fecha} · {horaBonitaAudiencias(r.hora)}</b> · {titleCaseNombre(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente}
-                <small>{[r.citado, r.direccion, r.filaExcel ? 'fila ' + r.filaExcel + ' del Excel' : ''].filter(Boolean).join(' · ')}</small>
+                <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
+                <small>{[titleCaseNombre(r.sustanciador), r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente, r.citado].filter(Boolean).join(' · ')}</small>
               </span>
               <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
                 aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
@@ -816,23 +889,33 @@ function AudienciasScreen({ usuario }) {
   // ── Pedidas hoy: lo que reservaron hoy todos los inspectores ──
   function renderPedidasHoy() {
     const lista = pedidasHoyAudiencias(datos.cupos, hoyTxt);
+    const fila = function (c, estado, clave, onClic) {
+      const mia = normNombreAudiencias(c.reservadoPor || usuario.usuario) === yo;
+      const Tag = onClic ? 'button' : 'span';
+      return (
+        <div className="au-row" key={clave}>
+          <span className={'au-est-dot ' + estado} role="img"
+            aria-label={estado === 'ok' ? 'Confirmada' : estado === 'cola' ? 'En cola' : 'No se pudo'}></span>
+          <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
+          <Tag className="t" type={onClic ? 'button' : undefined} onClick={onClic}>
+            <b>{_auDiaCorto(c.fecha)}</b> · {_auCaso(c)}
+            <small>{titleCaseNombre(c.sustanciador)} · {mia ? 'tú' : titleCaseNombre(c.reservadoPor)}
+              {estado === 'cola' ? ' · en cola' : estado === 'fallo' ? ' · no se pudo: pide otra' : ''}</small>
+          </Tag>
+        </div>
+      );
+    };
+    const pend = pendientes.map(function (p) {
+      return fila(Object.assign({}, p.cupo, { radicado: p.caso.radicado, ordenPolicia: p.caso.ordenPolicia }),
+        p.estado, 'p' + p.requestId);
+    });
     return (
       <section className="au-caja au-pedidas" aria-labelledby="au-t-ped">
         <h2 id="au-t-ped">Pedidas hoy</h2>
-        {!lista.length ? <p className="au-vacio-hoy">Ninguna</p> : lista.map(function (c) {
-          const mia = normNombreAudiencias(c.reservadoPor) === yo;
-          return (
-            <div className="au-row" key={c.idCupo}>
-              <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
-              <span className="t"><b>{_auDiaCorto(c.fecha)}</b> · {_auCaso(c)}
-                <small>{titleCaseNombre(c.sustanciador)} · {mia ? 'tú' : titleCaseNombre(c.reservadoPor)}</small></span>
-              {esAdmin && (
-                <button type="button" className="au-copy" disabled={ocupado}
-                  aria-label="Liberar cita" title="Liberar cita"
-                  onClick={function () { liberarCupoDe(c); }}>{_AU_SVG_QUITAR}</button>
-              )}
-            </div>
-          );
+        {!lista.length && !pend.length ? <p className="au-vacio-hoy">Ninguna</p> : null}
+        {pend}
+        {lista.map(function (c) {
+          return fila(c, 'ok', c.idCupo, clicableCita(c) ? function () { setCitaAbierta(c); } : undefined);
         })}
       </section>
     );
@@ -863,8 +946,10 @@ function AudienciasScreen({ usuario }) {
         <p className="au-aviso-linea">Quedan cupos solo hasta el <b>{datos.ultimaFechaConCupo}</b>. Hay que apartar más en el Excel.</p>
       )}
 
-      {!esSup && renderPedidasHoy()}
+      {esInsp && renderPedidasHoy()}
 
+      <div className={esAdmin ? 'au-grid' : ''}>
+      <div className="au-principal">
       <div className="au-topbar">
         <button type="button" className={'au-chip' + (vista === 'hoy' ? ' on' : '')} onClick={function () { setVista('hoy'); }}>Hoy</button>
         <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')} onClick={function () { setVista('sem'); }}>Semana</button>
@@ -887,16 +972,27 @@ function AudienciasScreen({ usuario }) {
       {vista === 'hoy' && renderHoy()}
       {vista === 'sem' && renderSemana()}
       {vista === 'lis' && renderLista()}
+      </div>
 
       {esAdmin && (
-        <div className="au-bajo">{renderCompletadas()}</div>
+        <aside className="au-riel">
+          {renderCompletadas()}
+          {renderPedidasHoy()}
+        </aside>
       )}
+      </div>
 
       {novAbierta && renderNovedades()}
       {pedirAbierto && (
-        <PedirCitaHoja usuario={usuario} agenda={datos.cupos}
+        <PedirCitaHoja usuario={usuario} agenda={datos.cupos} cuposIniciales={cuposPedir}
           onCerrar={function () { setPedirAbierto(false); }}
-          onReservada={function () { cargar(); }} />
+          onReservada={function () { cargar(); precargarCupos(); }} />
+      )}
+      {citaAbierta && (
+        <CitaHoja cita={citaAbierta} esAdmin={esAdmin} ocupado={ocupado}
+          onCerrar={function () { setCitaAbierta(null); }}
+          onVerVisita={function () { const c = citaAbierta; setCitaAbierta(null); abrirCita(c); }}
+          onLiberar={function () { liberarCupoDe(citaAbierta); }} />
       )}
     </div>
   );

@@ -111,7 +111,7 @@ test('normOrdenAudiencias y mismoCasoAudiencias: por radicado o por orden', () =
   assert.equal(mismoCasoAudiencias(cita({}), { radicado: '20272041229' }), false);
 });
 
-test('opcionesPedirCita: una por fecha y hora, las 5 primeras', () => {
+test('opcionesPedirCita: los 5 primeros cupos, también los de la misma hora', () => {
   const cupos = [
     cita({ idCupo: 'v', estado: 'LIBRE', sustanciador: 'VICTOR' }),
     cita({ idCupo: 'j', estado: 'LIBRE', sustanciador: 'JUANSE' }),       // misma fecha y hora
@@ -121,7 +121,7 @@ test('opcionesPedirCita: una por fecha y hora, las 5 primeras', () => {
     cita({ idCupo: 'x1', estado: 'LIBRE', fecha: '07/04/2027' }),
     cita({ idCupo: 'x2', estado: 'LIBRE', fecha: '12/04/2027' }),
   ];
-  assert.deepEqual(opcionesPedirCita(cupos, 5).map(c => c.idCupo), ['v', 't', 'm1', 'm2', 'x1']);
+  assert.deepEqual(opcionesPedirCita(cupos, 5).map(c => c.idCupo), ['v', 'j', 't', 'm1', 'm2']);
 });
 
 test('casosAgendaHoyAudiencias: asignadas o iniciadas del inspector con fecha de hoy', () => {

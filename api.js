@@ -864,6 +864,9 @@ async function agendaAudiencias(opts) {
   if (opts && opts.desde) p.desde = opts.desde;
   if (opts && opts.hasta) p.hasta = opts.hasta;
   if (opts && opts.incluirPasadas) p.incluirPasadas = true;
+  // ¿Cambió algo? Con la firma de la copia guardada el backend responde
+  // sinCambios en ~100 bytes (como leerHoja con BD VISITAS).
+  if (opts && opts.firma) p.firma = opts.firma;
   return gasPost(p);
 }
 
@@ -911,6 +914,43 @@ function cuposApartadosGuardados() {
   try { return JSON.parse(localStorage.getItem(_CLAVE_APARTADOS) || '[]') || []; } catch (e) { return []; }
 }
 
+// Citas pedidas sin señal que la cola todavía no confirmó: el formulario y
+// «Pedidas hoy» las muestran como «En cola» aunque el servidor no las tenga.
+const _CLAVE_CITAS_PENDIENTES = 'cu_citas_pendientes_v1';
+function _leerCitasPendientes() {
+  try { return JSON.parse(localStorage.getItem(_CLAVE_CITAS_PENDIENTES) || '[]') || []; } catch (e) { return []; }
+}
+function _escribirCitasPendientes(l) {
+  try { localStorage.setItem(_CLAVE_CITAS_PENDIENTES, JSON.stringify(l)); } catch (e) {}
+}
+function _guardarCitaPendiente(p) { _escribirCitasPendientes(_leerCitasPendientes().concat([p])); }
+// Cada una con su estado: 'cola' o 'fallo' (el servidor la rechazó: el cupo
+// lo tomó otro o se liberó). La confirmada sale de la lista sola (abajo).
+async function citasPendientes() {
+  const pend = _leerCitasPendientes();
+  if (!pend.length) return [];
+  let items = [];
+  try { items = typeof offlineListar === 'function' ? await offlineListar() : []; } catch (e) {}
+  return pend.map(function (p) {
+    const it = items.find(function (x) { return x.body && x.body.requestId === p.requestId; });
+    // Sin ítem en la cola y sin confirmación: se descarta (se borró a mano).
+    if (!it) return null;
+    return Object.assign({}, p, { estado: it.ultimoError ? 'fallo' : 'cola', error: it.ultimoError || '' });
+  }).filter(Boolean);
+}
+if (typeof offlineOnItemSynced === 'function') {
+  offlineOnItemSynced(function (ev) {
+    try {
+      // El ítem sincronizó: su cita queda confirmada y sale de las pendientes.
+      offlineListar().then(function (items) {
+        const vivos = {};
+        items.forEach(function (x) { if (x.body && x.body.requestId) vivos[x.body.requestId] = 1; });
+        _escribirCitasPendientes(_leerCitasPendientes().filter(function (p) { return vivos[p.requestId]; }));
+      }).catch(function () {});
+    } catch (e) {}
+  });
+}
+
 // Reserva un cupo para el caso. Sin señal, un cupo apartado se encola (es del
 // inspector: no choca con nadie) y sale del equipo; uno libre no se puede.
 async function reservarCupoAudiencias(caso, cupo) {
@@ -928,6 +968,7 @@ async function reservarCupoAudiencias(caso, cupo) {
         body: _conCredencialesSesion(body),
         descripcion: 'Cita ' + cupo.fecha + ' ' + cupo.hora + ' · ' + (caso.radicado || caso.ordenPolicia),
       });
+      _guardarCitaPendiente({ requestId: body.requestId, caso: caso, cupo: cupo, ts: Date.now() });
       try {
         localStorage.setItem(_CLAVE_APARTADOS, JSON.stringify(
           apartados.filter(function (c) { return c.idCupo !== cupo.idCupo; })));
@@ -2014,6 +2055,7 @@ Object.assign(window, {
   agendaAudiencias, listarNovedadesAudiencias, guardarNovedadAudiencias,
   desactivarNovedadAudiencias, listaDiariaExcelAudiencias, liberarCupoAudiencias,
   listarCuposAudiencias, apartarCuposAudiencias, cuposApartadosGuardados, reservarCupoAudiencias,
+  citasPendientes,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,
   geocodeDireccion, crearCarpetaVisita, guardarVisita,
   mejorarTexto,

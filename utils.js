@@ -4156,18 +4156,11 @@ function mismoCasoAudiencias(c, caso) {
   return !!(oa && ob && oa === ob);
 }
 
-// Las `n` primeras opciones de cupo (vienen ordenadas y con el reparto hecho):
-// una por fecha y hora, la del sustanciador que el sistema asigna.
+// Las `n` primeras opciones de cupo, tal como vienen (por fecha y hora, y en la
+// misma hora primero el sustanciador con menos citas del mes). Cada cupo es una
+// opción: el inspector elige también con quién (decisión del usuario 2026-10-22).
 function opcionesPedirCita(cupos, n) {
-  var vistos = {}, out = [];
-  (cupos || []).forEach(function (c) {
-    if (out.length >= (n || 5)) return;
-    var k = String(c.fecha) + '|' + horaAudienciasMin(c.hora);
-    if (vistos[k]) return;
-    vistos[k] = 1;
-    out.push(c);
-  });
-  return out;
+  return (cupos || []).slice(0, n || 5);
 }
 
 // Caso de una fila de BD VISITAS para la hoja «Pedir cita».

@@ -4279,7 +4279,7 @@ button.sv-col-head {
 /* Días sin audiencias + Pasar al Excel */
 .au-bajo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; align-items: start; max-width: 780px; }
 .au-caja { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); padding: 14px 16px; min-width: 0; }
-.au-caja > h2 { font: 600 17px/1.2 var(--font-serif); }
+.au-caja > h2 { font: 600 15px/1.25 var(--font-sans); }
 .au-caja .sub { margin: 2px 0 10px; font-size: 12px; color: var(--ink-3); }
 .au-nov { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .au-nov:last-of-type { border-bottom: 0; }
@@ -4398,6 +4398,41 @@ button.sv-col-head {
 }
 
 /* Formulario › Citación: la cita pedida en campo (fecha y hora fijas) */
-.cita-reservada { padding: 10px 12px; border-radius: var(--r-card); background: var(--surface-2);
-  font: 600 14px var(--font-sans); }
-.cita-reservada small { display: block; margin-top: 2px; font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.cita-reservada { display: block; padding: 12px 14px; border-radius: var(--r-card); border-left: 4px solid var(--green);
+  background: var(--green-bg); font: 600 15px var(--font-sans); }
+.cita-reservada .est { display: block; margin-bottom: 4px; font-size: 12px; color: var(--green-ink); }
+.cita-reservada b { display: block; font-weight: 600; }
+.cita-reservada small { display: block; margin-top: 3px; font-weight: 400; font-size: 12.5px; color: var(--ink-2); }
+.cita-reservada.cola { border-left-color: var(--amber); background: var(--amber-bg); }
+.cita-reservada.cola .est { color: var(--amber); }
+.cita-reservada.fallo { border-left-color: var(--red); background: var(--red-bg); }
+.cita-reservada.fallo .est { color: var(--red); }
+
+/* ── Audiencias 2026-10-22: admin en dos columnas, detalle de la cita, estados ── */
+@media (min-width: 1200px) {
+  .au-pantalla:has(.au-grid) { max-width: 1440px; }
+  .au-grid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(360px, 32%, 460px); gap: 20px; align-items: start; }
+  .au-riel { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; }
+}
+@media (max-width: 1199px) { .au-riel { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; } }
+.au-exc-row .fila { flex: none; min-width: 74px; font: 600 13px var(--font-sans); color: var(--ink); }
+.au-est-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.au-est-dot.cola { background: var(--amber); }
+.au-est-dot.fallo { background: var(--red); }
+.au-pconf .est { margin-bottom: 8px; font: 600 13px var(--font-sans); }
+.au-pconf.ok { background: var(--green-bg); }
+.au-pconf.ok .est { color: var(--green-ink); }
+.au-pconf.cola { background: var(--amber-bg); }
+.au-pconf.cola .est { color: var(--amber); }
+.au-pconf .nota { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+.au-pcupo .sus { font-weight: 600; }
+.au-cita-datos { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 14px 2px; font-size: 14px; }
+.au-cita-datos dt { color: var(--ink-3); }
+.au-cita-datos dd { margin: 0; overflow-wrap: anywhere; }
+.au-cita-acc { display: flex; flex-wrap: wrap; gap: 8px; }
+.au-cita-acc > * { min-height: var(--tap); padding: 0 16px; display: inline-flex; align-items: center; text-decoration: none; }
+.au-cita-liberar { display: block; margin: 16px auto 0; min-height: var(--tap); padding: 0 16px; border: 0; background: none;
+  color: var(--red); font: 600 13px var(--font-sans); cursor: pointer; }
+.au-cita-liberar:disabled { opacity: .5; }
+tr.clic, .au-lrow.clic { cursor: pointer; }
+tr.clic:hover td { background: var(--surface-2); }

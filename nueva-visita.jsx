@@ -545,6 +545,15 @@ function _citadoParaGuardar(dObj) {
   };
 }
 
+// 'lunes 5 de abril de 2027' → 'Lunes 5 de abril de 2027' (tarjeta de la cita).
+function _fechaLargaCita(fechaTxt) {
+  const d = parsearFecha(fechaTxt);
+  if (!d) return fechaTxt;
+  const t = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    .replace(/,/g, '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 function _licenciaExtraParaGuardar(dObj) {
   let out;
   if (dObj.licenciaAportada === 'SI') {
@@ -3070,13 +3079,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   React.useEffect(() => {
     const caso = { radicado: d.radicado || '', ordenPolicia: normOrdenAudiencias(d.orden) ? d.orden : '' };
     if (!caso.radicado && !caso.ordenPolicia) { setCitaReservada(null); return; }
-    if (!navigator.onLine) return;
     let vivo = true;
-    const t = setTimeout(() => {
+    // Pedida sin señal y aún en la cola: se muestra «En cola» (o «No se pudo»)
+    // aunque el servidor todavía no la tenga.
+    const pendiente = () => citasPendientes().then(l => {
+      const p = l.find(x => mismoCasoAudiencias({ radicado: x.caso.radicado, ordenPolicia: x.caso.ordenPolicia }, caso));
+      return p ? Object.assign({}, p.cupo, { estadoCita: p.estado, reservadoPor: usuario.usuario }) : null;
+    }).catch(() => null);
+    const t = setTimeout(async () => {
+      const pend = await pendiente();
+      if (!vivo) return;
+      if (pend) { setCitaReservada(pend); if (pend.estadoCita === 'fallo') return; }
+      if (!navigator.onLine) return;
       listarCuposAudiencias(caso).then(r => {
         if (!vivo) return;
         const c = (r && r.propias && r.propias[0]) || null;
-        setCitaReservada(c);
+        if (!c && pend) return;
+        setCitaReservada(c ? Object.assign({}, c, { estadoCita: 'ok' }) : null);
         if (!c) return;
         const min = horaAudienciasMin(c.hora);
         const hh = String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
@@ -6029,14 +6048,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </>
         )}
 
-        {citaReservada ? (
+        {citaReservada && citaReservada.estadoCita !== 'fallo' ? (
           <_Campo label="Citación" fullWidth>
-            <div className="cita-reservada">
-              Cita reservada · {citaReservada.fecha} · {horaBonitaAudiencias(citaReservada.hora)}
-              <small>{titleCaseNombre(citaReservada.sustanciador)}</small>
+            <div className={'cita-reservada ' + (citaReservada.estadoCita === 'cola' ? 'cola' : 'ok')}>
+              <span className="est">{citaReservada.estadoCita === 'cola'
+                ? '⇡ En cola · se confirma al volver la señal' : '✓ Cita confirmada'}</span>
+              <b>{_fechaLargaCita(citaReservada.fecha)} · {horaBonitaAudiencias(citaReservada.hora)}</b>
+              <small>{titleCaseNombre(citaReservada.sustanciador)}
+                {citaReservada.reservadoPor ? ' · pedida por ' + titleCaseNombre(citaReservada.reservadoPor) +
+                  (citaReservada.reservadoEn ? ' el ' + String(citaReservada.reservadoEn).slice(0, 5) : '') : ''}</small>
             </div>
           </_Campo>
         ) : (<>
+        {citaReservada && citaReservada.estadoCita === 'fallo' && (
+          <_Campo label="Citación" fullWidth>
+            <div className="cita-reservada fallo">
+              <span className="est">✕ No se pudo reservar la cita del {citaReservada.fecha}</span>
+              <small>El cupo lo tomó otra persona. Pide otra cita en la pestaña Citaciones.</small>
+            </div>
+          </_Campo>
+        )}
         <_Campo label="Citación" fullWidth>
           <label className="check-tap" style={{ marginBottom: 4 }}>
             <input type="checkbox"
@@ -6080,7 +6111,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             <_Campo label={d.noAtiende ? 'Citado' : 'Nombre del citado'}>
               <_Input value={d.citadoNombre} onChange={v => setCampo('citadoNombre', v)} />
             </_Campo>
-            <_Campo label="Documento">
+            <_Campo label="Documento"
+              hint={!d.citadoSinDoc && String(d.citadoNombre || '').trim() && !/^\d{5,12}$/.test(d.citadoDocumento || '')
+                ? <span style={{ color: 'var(--red)' }}>Escribe de 5 a 12 dígitos o marca «No aportó documento»</span> : null}>
               <_Input value={d.citadoDocumento} inputMode="numeric" disabled={!!d.citadoSinDoc}
                 onChange={v => setCampo('citadoDocumento', v.replace(/\D/g, ''))} />
             </_Campo>

@@ -37,7 +37,7 @@ function cargarBackend() {
     '_visitaEstaCompletada',
     // TASK 3b: cita pedida en campo por radicado u orden, fila del Excel.
     '_normOrdenPolicia', '_cupoDelCaso', '_reservaVigenteDelCaso',
-    '_direccionConBarrio', '_filaExcelCitacion',
+    '_direccionConBarrio', '_filaExcelCitacion', '_visitaDeCupo',
     // TASK 3a: estado del cupo para la pestaña «Audiencias».
     '_estadoCupoAgenda'
   ];
@@ -48,6 +48,7 @@ function cargarBackend() {
   const mEstadoVars = [
     /var ESTADO_CUPO_APARTADO = 'APARTADO';/,
     /var APARTADOS_MAX = 3;/,
+    /var ANTICIPACION_MIN_HABILES = 3;/,
     /var DOCUMENTO_NO_APORTADO = 'NO APORTA';/
   ];
   mEstadoVars.forEach(re => {
@@ -225,9 +226,9 @@ test('backend: cupo pasado → pasado', opts, () => {
     cupo({ fecha: new Date(2026, 9, 12), fechaTexto: '12/10/2026' }), '20261011111', [], [], HOY);
   assert.equal(r.ok, false);
   assert.equal(r.motivo, 'pasado');
-  // El mismo día de hoy sí sirve (una audiencia de las 2:00PM se reserva en la mañana).
+  // El mismo día ya no sirve: hacen falta 3 días hábiles de anticipación (2026-10-22).
   assert.equal(B._decisionReservaCupo(
-    cupo({ fecha: new Date(2026, 9, 19), hora: '2:00PM' }), '20261011111', [], [], HOY).ok, true);
+    cupo({ fecha: new Date(2026, 9, 19), hora: '2:00PM' }), '20261011111', [], [], HOY).ok, false);
 });
 
 test('backend: cupo dentro de una novedad → novedad', opts, () => {
@@ -498,4 +499,43 @@ test('backend: _estadoCupoAgenda — novedad activa bloquea con su motivo; inact
   }), [Object.assign({}, vacaciones, { motivo: '' })]);
   assert.equal(sinMotivo.estado, 'BLOQUEADO');
   assert.equal(sinMotivo.motivoBloqueo, 'Día sin audiencias');
+});
+
+// ── 2026-10-22: anticipación, hora con espacio, fila limpia, cita del caso ──
+
+test('backend: no se ofrecen cupos a menos de 3 días hábiles', opts, () => {
+  const B = cargarBackend();
+  const hoy = B.fechaEnVm(2027, 3, 5); // lun 05/04/2027
+  const cerca = cupo({ idCupo: 'cerca', fecha: B.fechaEnVm(2027, 3, 7) });  // 2 hábiles
+  const justo = cupo({ idCupo: 'justo', fecha: B.fechaEnVm(2027, 3, 8) });  // 3 hábiles
+  assert.deepEqual(Array.from(B._cuposDisponibles([cerca, justo], [], hoy).map(c => c.idCupo)), ['justo']);
+  assert.equal(B._decisionReservaCupo(cerca, '20261011111', [], [], hoy, 'ANA').motivo, 'pasado');
+  // Un apartado propio sí se reserva aunque esté cerca (se apartó con tiempo).
+  const ap = cupo({ idCupo: 'ap', fecha: B.fechaEnVm(2027, 3, 7), estado: 'APARTADO', apartadoPara: 'ANA' });
+  assert.equal(B._decisionReservaCupo(ap, '20261011111', [], [], hoy, 'ANA').ok, true);
+});
+
+test('backend: la hora con espacio («9:00 AM») se entiende', opts, () => {
+  const B = cargarBackend();
+  assert.equal(B._minutosHora('9:00 AM'), 540);
+  assert.equal(B._franjaDeHora('2:00 PM'), 'PM');
+});
+
+test('backend: la fila del Excel no lleva tabuladores ni saltos de línea', opts, () => {
+  const B = cargarBackend();
+  const f = B._filaExcelCitacion(cupo({ estado: 'RESERVADO', radicado: '1' }),
+    { radicado: '1', direccion: 'CL 50\n# 32-10', quejoso: 'JUAN\tPÉREZ', atiende: 'ANA' });
+  assert.equal(f[2], 'JUAN PÉREZ');
+  assert.ok(f.join('').indexOf('\n') < 0);
+});
+
+test('backend: la cita es del caso — gana la visita completada', opts, () => {
+  const B = cargarBackend();
+  const comp = { radicado: '20261011111', completada: true };
+  const viva = { radicado: '20261011111', completada: false };
+  const vis = { porRadicado: { '20261011111': viva }, compRadicado: { '20261011111': comp },
+    porIdVisita: {}, porOrden: {}, compOrden: {} };
+  assert.equal(B._visitaDeCupo(vis, { radicado: '20261011111' }), comp);
+  const sinComp = { porRadicado: { '20261011111': viva }, compRadicado: {}, porIdVisita: {}, porOrden: {}, compOrden: {} };
+  assert.equal(B._visitaDeCupo(sinComp, { radicado: '20261011111' }), viva);
 });
