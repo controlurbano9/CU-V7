@@ -4227,6 +4227,32 @@ function pedidasHoyAudiencias(cupos, hoyTxt) {
   }).sort(function (a, b) { return String(b.reservadoEn).localeCompare(String(a.reservadoEn)); });
 }
 
+// ── Orden del día en la Semana (2026-10-22) ──────────────────────
+// ORDEN_DIA = 'DD/MM/YYYY#n': el orden que el admin o el inspector le dieron a
+// la visita ese día. Solo vale para ese día: si la visita cambia de día, se ignora.
+function ordenDiaDe(f, fechaTxt) {
+  var m = /^(\d{2}\/\d{2}\/\d{4})#(\d+)$/.exec(String((f && f['ORDEN_DIA']) || '').trim());
+  return m && m[1] === fechaTxt ? parseInt(m[2], 10) : null;
+}
+
+function _puntoVisitaSemana(f) {
+  var lat = normalizarCoord(f['LATITUD'], 'lat'), lon = normalizarCoord(f['LONGITUD'], 'lon');
+  if (lat != null && lon != null) return { lat: lat, lon: lon };
+  return puntoDesdeTextoCoord(String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '')) || null;
+}
+
+// Orden en que se muestran (y se recorren) las visitas de un día: primero las
+// ordenadas a mano, en su orden; las demás, por el recorrido más corto desde la
+// Alcaldía (decisión del usuario: sin ordenar, las tarjetas van como la ruta sugerida).
+function ordenarVisitasDia(lista, fechaTxt) {
+  var manual = [], resto = [];
+  (lista || []).forEach(function (f) { (ordenDiaDe(f, fechaTxt) != null ? manual : resto).push(f); });
+  manual.sort(function (a, b) { return ordenDiaDe(a, fechaTxt) - ordenDiaDe(b, fechaTxt); });
+  var ruta = rutaMasCortaDesde(resto.map(function (f) { return { f: f, punto: _puntoVisitaSemana(f) }; }))
+    .map(function (p) { return p.f; });
+  return manual.concat(ruta);
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 var _cuUtilsExports = {
   ART135_LITERALES: ART135_LITERALES,
@@ -4277,6 +4303,8 @@ var _cuUtilsExports = {
   nivelPrioridad: nivelPrioridad,
   motivoPrioridad: motivoPrioridad,
   ordenarRuta: ordenarRuta,
+  ordenDiaDe: ordenDiaDe,
+  ordenarVisitasDia: ordenarVisitasDia,
   rutaMasCortaDesde: rutaMasCortaDesde,
   linksRutaMaps: linksRutaMaps,
   armarBorradorAgenda: armarBorradorAgenda,

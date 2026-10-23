@@ -109,9 +109,6 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
     return { mias, equipo, hechas: { mias: mi.length - mias.length, equipo: eq.length - equipo.length } };
   }, [datos, dia, miNombre]);
   const [alcance, setAlcance] = useStateSV(mias.length ? 'mias' : 'equipo');
-  const [origen, setOrigen] = useStateSV(null);
-  const [gps, setGps] = useStateSV('buscando'); // buscando | ok | sin
-  const [puntosCat, setPuntosCat] = useStateSV({});
   const cerrarRef = React.useRef(null);
 
   useEffectSV(() => {
@@ -121,43 +118,19 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Para ordenar basta una ubicación aproximada y reciente; Maps afina la suya.
-  useEffectSV(() => {
-    let vivo = true;
-    if (!navigator.geolocation) { setGps('sin'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (p) => { if (vivo) { setOrigen({ lat: p.coords.latitude, lon: p.coords.longitude }); setGps('ok'); } },
-      () => { if (vivo) setGps('sin'); },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 });
-    return () => { vivo = false; };
-  }, []);
-
-  // Sin coordenadas, el punto del predio si catastro ya está en el equipo
-  // (puntoMapaCatastro nunca lo descarga), igual que «Cómo llegar».
-  useEffectSV(() => {
-    let vivo = true;
-    equipo.forEach((f) => {
-      if (!filaNecesitaPuntoCatastro(f)) return;
-      const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
-      puntoMapaCatastro(dir).then((p) => {
-        if (vivo && p) setPuntosCat((prev) => Object.assign({}, prev, { [dir]: { lat: p[0], lon: p[1] } }));
-      }).catch(() => {});
-    });
-    return () => { vivo = false; };
-  }, [equipo]);
-
   const lista = alcance === 'mias' ? mias : equipo;
   const nHechas = hechas[alcance];
-  const orden = useMemoSV(() => rutaMasCortaDesde(lista.map((f) => {
+  // El mismo orden de las tarjetas (2026-10-22): el que le dieron a mano o,
+  // si no, el recorrido más corto desde la Alcaldía.
+  const orden = useMemoSV(() => ordenarVisitasDia(lista, formatearFecha(dia)).map((f) => {
     const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
-    return { f, dir, punto: _svPuntoFila(f) || puntosCat[dir] || null };
-  }), origen), [lista, puntosCat, origen]);
+    return { f, dir, punto: _svPuntoFila(f) };
+  }), [lista, dia]);
   const tramos = linksRutaMaps(orden);
 
   const titulo = 'Ruta del ' + SV_DIAS_LARGOS[dia.getDay() - 1] + ' ' + dia.getDate();
-  const sub = gps === 'buscando' ? 'Buscando tu ubicación…'
-    : gps === 'ok' ? 'El recorrido más corto desde donde estás'
-    : 'Sin tu ubicación: el orden sale desde la Alcaldía';
+  const aMano = lista.some((f) => ordenDiaDe(f, formatearFecha(dia)) != null);
+  const sub = aMano ? 'En el orden del día' : 'El recorrido más corto desde la Alcaldía';
 
   return (
     <div className="dlg-overlay" onClick={onCerrar}>
@@ -227,7 +200,7 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
 }
 
 // ── Tarjeta de visita ──────────────────────────────────────────
-function SemanaCard({ f, movil, onAbrir }) {
+function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar }) {
   const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección';
   const rad = String(f['RADICADO'] || '').trim();
@@ -246,8 +219,12 @@ function SemanaCard({ f, movil, onAbrir }) {
   if (soloVer) accion = movil ? 'Ver datos' : 'Ver';
 
   return (
-    <div className={'sv-card ' + _svClaseEstado(f)}
-      aria-label={dir + ', ' + _svTextoEstado(f)}>
+    <div className={'sv-card ' + _svClaseEstado(f) + (arrastrable ? ' arrastrable' : '')}
+      aria-label={dir + ', ' + _svTextoEstado(f)}
+      draggable={!!arrastrable && !movil}
+      onDragStart={arrastrable && !movil ? onDragStart : undefined}
+      onDragOver={onDragOver} onDrop={onDrop}>
+      {n && <span className="sv-n" aria-label={'Parada ' + n}>{n}</span>}
       {/* Coordenada como dirección → «Punto GPS» (title con la original). */}
       <div className="sv-dir" title={dir}>{direccionVisible(dir)}</div>
       <div className="sv-meta">
@@ -268,6 +245,12 @@ function SemanaCard({ f, movil, onAbrir }) {
             ? (window.abrirVisitaDetail && window.abrirVisitaDetail(f))
             : (onAbrir && onAbrir(f._idx, f))}>{accion}</button>
           <BotonMapaVisita f={f} variante="icono" />
+          {movil && (onSubir || onBajar) && (<>
+            <button type="button" className="sv-orden" aria-label="Subir en el orden del día"
+              disabled={!onSubir} onClick={onSubir}>↑</button>
+            <button type="button" className="sv-orden" aria-label="Bajar en el orden del día"
+              disabled={!onBajar} onClick={onBajar}>↓</button>
+          </>)}
         </span>
       </div>
     </div>
@@ -296,6 +279,11 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   const setInspector = onInspector || setInspectorLocal;
   const [diaSel, setDiaSel] = useStateSV(null);
   const [rutaDia, setRutaDia] = useStateSV(null);
+  // Cambios hechos aquí mientras llega la BD nueva: {[_idx]: {fecha?, orden?}}.
+  const [ajustes, setAjustes] = useStateSV({});
+  const [arrastre, setArrastre] = useStateSV(null);   // _idx de la tarjeta en vuelo
+  const [aviso, setAviso] = useStateSV(null);         // {texto, deshacer}
+  const avisoRef = React.useRef(null);
   const [movil, setMovil] = useStateSV(() => {
     try { return window.matchMedia(SV_MOVIL).matches; } catch (e) { return false; }
   });
@@ -344,22 +332,147 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
     setDiaSel(null);
   }, [offset]);
 
+  // La BD con los cambios hechos aquí que todavía no han vuelto del servidor.
+  const datosEf = useMemoSV(() => {
+    if (!Object.keys(ajustes).length) return datos;
+    return (datos || []).map((f) => {
+      const a = ajustes[f._idx];
+      if (!a) return f;
+      const g = Object.assign({}, f);
+      if (a.fecha) g['FECHA ASIGNACION VISITA'] = a.fecha;
+      if (a.orden !== undefined) g['ORDEN_DIA'] = a.orden;
+      return g;
+    });
+  }, [datos, ajustes]);
+  // Llegó la BD nueva: los ajustes ya están en ella.
+  useEffectSV(() => { setAjustes({}); }, [datos]);
+
   const { dias, porDia, hoyIdx, conRuta } = useMemoSV(() => {
     const r = rangoSemana(new Date(), offset);
-    const g = agruparSemana(datos, r.dias, { esAdmin, miNombre, inspector });
+    const g = agruparSemana(datosEf, r.dias, { esAdmin, miNombre, inspector });
+    // Cada día en el orden de su ruta (sugerida o la que le dieron a mano).
+    g.porDia = g.porDia.map((lista, i) => ordenarVisitasDia(lista, formatearFecha(r.dias[i])));
     const hoy = new Date();
     let idx = -1;
     r.dias.forEach((d, i) => { if (_svMismoDia(d, hoy)) idx = i; });
     // «Ruta» en hoy y días por venir con algo del equipo por visitar: la
     // ruta de las ajenas existe aunque la columna (filtrada) esté vacía.
     const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-    const eq = agruparSemana(datos, r.dias, { esAdmin: true, inspector: '' }).porDia;
+    const eq = agruparSemana(datosEf, r.dias, { esAdmin: true, inspector: '' }).porDia;
     const conRuta = r.dias.map((d, i) => d >= inicioHoy && eq[i].some(_svPorVisitar));
     return { dias: r.dias, porDia: g.porDia, hoyIdx: idx, conRuta };
-  }, [datos, esAdmin, miNombre, inspector, offset]);
+  }, [datosEf, esAdmin, miNombre, inspector, offset]);
 
   const hojaRuta = rutaDia && (
-    <RutaDia dia={rutaDia} datos={datos} miNombre={miNombre} onCerrar={() => setRutaDia(null)} />
+    <RutaDia dia={rutaDia} datos={datosEf} miNombre={miNombre} onCerrar={() => setRutaDia(null)} />
+  );
+
+  function mostrarAviso(texto, deshacer) {
+    clearTimeout(avisoRef.current);
+    setAviso({ texto, deshacer });
+    avisoRef.current = setTimeout(() => setAviso(null), 6000);
+  }
+
+  // ¿Se puede ordenar? El admin, cualquiera; el inspector, sus visitas. Lo
+  // completado no se ordena (ya se hizo).
+  function puedeOrdenar(f) {
+    if (normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'COMPLETADO') return false;
+    return esAdmin || String(f['VISITADOR(ES)'] || '').toUpperCase().indexOf(String(miNombre || '').toUpperCase()) >= 0;
+  }
+  // Mover de día: solo el admin y solo una asignada que no se ha iniciado.
+  function puedeMover(f) {
+    return esAdmin && normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'ASIGNADO';
+  }
+
+  async function guardarOrden(dia, lista) {
+    const fecha = formatearFecha(dia);
+    const previos = {};
+    const nuevos = {};
+    lista.forEach((f, k) => {
+      previos[f._idx] = ajustes[f._idx];
+      nuevos[f._idx] = Object.assign({}, ajustes[f._idx], { orden: fecha + '#' + (k + 1) });
+    });
+    setAjustes((a) => Object.assign({}, a, nuevos));
+    try {
+      await gasPost({ accion: 'guardarOrdenDia', fecha, visitas: lista.map((f, k) => ({
+        fila: f._idx, radicadoConocido: f['RADICADO'] || '', idVisita: f['ID_VISITA'] || '', orden: k + 1 })) });
+      invalidarCache('visitas');
+    } catch (e) {
+      setAjustes((a) => Object.assign({}, a, previos));
+      appAlert('No se pudo guardar el orden: ' + e.message, { tono: 'error' });
+    }
+  }
+
+  async function optimizarDia(dia, lista) {
+    const fecha = formatearFecha(dia);
+    const nuevos = {};
+    lista.forEach((f) => { nuevos[f._idx] = Object.assign({}, ajustes[f._idx], { orden: '' }); });
+    setAjustes((a) => Object.assign({}, a, nuevos));
+    try {
+      await gasPost({ accion: 'guardarOrdenDia', fecha, visitas: lista.map((f) => ({
+        fila: f._idx, radicadoConocido: f['RADICADO'] || '', idVisita: f['ID_VISITA'] || '', orden: 0 })) });
+      invalidarCache('visitas');
+    } catch (e) { appAlert('No se pudo volver a la ruta sugerida: ' + e.message, { tono: 'error' }); }
+  }
+
+  async function moverDeDia(f, dia, silencioso) {
+    const antes = f['FECHA ASIGNACION VISITA'];
+    const nueva = formatearFecha(dia);
+    setAjustes((a) => Object.assign({}, a, { [f._idx]: { fecha: nueva } }));
+    try {
+      await gasPost({ accion: 'asignarRadicado', fila: f._idx, inspector: f['VISITADOR(ES)'] || '',
+        radicadoConocido: f['RADICADO'] || '', idVisita: f['ID_VISITA'] || '', fechaAsignacion: nueva });
+      invalidarCache('visitas');
+      if (!silencioso) {
+        mostrarAviso('Movida al ' + SV_ROTULOS[dia.getDay() - 1] + ' ' + dia.getDate(),
+          () => moverDeDia(Object.assign({}, f, { 'FECHA ASIGNACION VISITA': nueva }), parsearFecha(antes), true));
+      } else setAviso(null);
+    } catch (e) {
+      setAjustes((a) => { const b = Object.assign({}, a); delete b[f._idx]; return b; });
+      appAlert('No se pudo mover la visita: ' + e.message, { tono: 'error' });
+    }
+  }
+
+  // Arrastrar en escritorio: al mismo día reordena; a otro, mueve (admin).
+  function soltar(dia, lista, antesDe) {
+    const idx = arrastre;
+    setArrastre(null);
+    if (idx == null) return;
+    const f = datosEf.find((x) => x._idx === idx);
+    if (!f) return;
+    const enEsteDia = lista.some((x) => x._idx === idx);
+    if (!enEsteDia) {
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      if (puedeMover(f) && dia >= hoy) moverDeDia(f, dia);
+      return;
+    }
+    const resto = lista.filter((x) => x._idx !== idx);
+    let k = antesDe == null ? resto.length : resto.findIndex((x) => x._idx === antesDe);
+    if (k < 0) k = resto.length;
+    const nueva = resto.slice(0, k).concat([f], resto.slice(k));
+    if (nueva.every((x, i) => x._idx === lista[i]._idx)) return;
+    guardarOrden(dia, nueva);
+  }
+
+  function mover(dia, lista, i, delta) {
+    const j = i + delta;
+    if (j < 0 || j >= lista.length) return;
+    const nueva = lista.slice();
+    const t = nueva[i]; nueva[i] = nueva[j]; nueva[j] = t;
+    guardarOrden(dia, nueva);
+  }
+
+  const pieOrden = (dia, lista) => lista.some((f) => ordenDiaDe(f, formatearFecha(dia)) != null) && (
+    <button type="button" className="sv-optimizar" onClick={() => optimizarDia(dia, lista)}>
+      Volver a la ruta sugerida
+    </button>
+  );
+
+  const avisoUI = aviso && (
+    <div className="sv-aviso" role="status">
+      {aviso.texto}
+      {aviso.deshacer && <button type="button" onClick={() => { aviso.deshacer(); }}>Deshacer</button>}
+    </div>
   );
 
   // Sin selección explícita se abre en hoy; fuera de la semana actual (o en
@@ -434,12 +547,19 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
             </div>
           )}
           {porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
-          {porDia[sel].map((f, i) => (
-            <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} />
-          ))}
+          {porDia[sel].map((f, i) => {
+            const ord = puedeOrdenar(f) && porDia[sel].length > 1;
+            return (
+              <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1}
+                onSubir={ord && i > 0 ? () => mover(dias[sel], porDia[sel], i, -1) : null}
+                onBajar={ord && i < porDia[sel].length - 1 ? () => mover(dias[sel], porDia[sel], i, 1) : null} />
+            );
+          })}
+          {pieOrden(dias[sel], porDia[sel])}
         </div>
         {pie}
         {hojaRuta}
+        {avisoUI}
       </div>
     );
   }
@@ -450,7 +570,9 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
       {cabecera}
       <div className="sv-grid">
         {dias.map((d, i) => (
-          <div key={i} className={'sv-col' + (i === hoyIdx ? ' hoy' : '')}>
+          <div key={i} className={'sv-col' + (i === hoyIdx ? ' hoy' : '')}
+            onDragOver={(e) => { if (arrastre != null) e.preventDefault(); }}
+            onDrop={(e) => { e.preventDefault(); soltar(d, porDia[i], null); }}>
             {/* Con onAbrirDia (admin) la cabecera abre la Agenda en ese día. */}
             {onAbrirDia ? (
               <button type="button" className={'sv-col-head' + (i === hoyIdx ? ' hoy' : '')}
@@ -474,13 +596,19 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
             )}
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
-              <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} />
+              <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} n={j + 1}
+                arrastrable={puedeOrdenar(f) || puedeMover(f)}
+                onDragStart={(e) => { setArrastre(f._idx); try { e.dataTransfer.setData('text/plain', String(f._idx)); } catch (x) {} }}
+                onDragOver={(e) => { if (arrastre != null) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); soltar(d, porDia[i], f._idx); }} />
             ))}
+            {pieOrden(d, porDia[i])}
           </div>
         ))}
       </div>
       {pie}
       {hojaRuta}
+      {avisoUI}
     </div>
   );
 }

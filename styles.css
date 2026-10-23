@@ -4435,3 +4435,24 @@ button.sv-col-head {
 .au-cita-liberar:disabled { opacity: .5; }
 tr.clic, .au-lrow.clic { cursor: pointer; }
 tr.clic:hover td { background: var(--surface-2); }
+
+/* Semana: orden del día y mover de día (2026-10-22) */
+.sv-card { position: relative; }
+.sv-card.arrastrable { cursor: grab; }
+.sv-card.arrastrable:active { cursor: grabbing; }
+.sv-n { position: absolute; top: 6px; right: 7px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--surface-2); color: var(--ink-2);
+  font: 600 11px/18px var(--font-sans); text-align: center; }
+.sv-card .sv-dir { padding-right: 24px; }
+.sv-orden { width: 44px; height: 44px; border: 1px solid var(--line-2); border-radius: var(--r-ctl);
+  background: var(--surface); font: 600 16px var(--font-sans); color: var(--ink-2); cursor: pointer; }
+.sv-orden:disabled { opacity: .35; cursor: default; }
+.sv-optimizar { display: block; width: 100%; min-height: 32px; margin-top: 4px; border: 0; background: none;
+  color: var(--ink-3); font: 600 12px var(--font-sans); text-decoration: underline; cursor: pointer; }
+.sv-lista .sv-optimizar { min-height: 44px; }
+.sv-aviso { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 80; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: var(--r-card);
+  background: var(--ink); color: var(--surface); font: 500 14px var(--font-sans); box-shadow: var(--shadow-sm); }
+.sv-aviso button { min-height: 36px; padding: 0 10px; border: 0; background: none; color: inherit;
+  font: 600 14px var(--font-sans); text-decoration: underline; cursor: pointer; }
+@media (min-width: 900px) { .sv-aviso { bottom: 24px; } }
