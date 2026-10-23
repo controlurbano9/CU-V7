@@ -4415,7 +4415,6 @@ button.sv-col-head {
   .au-riel { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; }
 }
 @media (max-width: 1199px) { .au-riel { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; } }
-.au-exc-row .fila { flex: none; min-width: 74px; font: 600 13px var(--font-sans); color: var(--ink); }
 .au-est-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
 .au-est-dot.cola { background: var(--amber); }
 .au-est-dot.fallo { background: var(--red); }

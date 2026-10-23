@@ -868,8 +868,7 @@ function AudienciasScreen({ usuario }) {
         <h2 id="au-t-exc">Citaciones visitas completadas</h2>
         {!lista.length ? <p className="au-vacio-hoy">Sin citaciones</p> : lista.map(function (r) {
           return (
-            <div className="au-row au-exc-row" key={r.idCupo}>
-              <span className="fila" title="Fila del Excel donde se pega">{r.filaExcel ? 'Fila ' + r.filaExcel : '—'}</span>
+            <div className="au-row" key={r.idCupo}>
               <span className="t">
                 <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
                 <small>{[titleCaseNombre(r.sustanciador), r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente, r.citado].filter(Boolean).join(' · ')}</small>
