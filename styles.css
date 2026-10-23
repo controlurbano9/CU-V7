@@ -4469,3 +4469,4 @@ tr.clic:hover td { background: var(--surface-2); }
 .sv-grid { grid-template-columns: repeat(5, minmax(230px, 1fr)); overflow-x: auto;
   scroll-snap-type: x proximity; scrollbar-width: thin; padding-bottom: 4px; }
 .sv-col { scroll-snap-align: start; }
+.au-grupo-n { font-weight: 400; color: var(--ink-3); }

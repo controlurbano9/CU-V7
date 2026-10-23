@@ -296,7 +296,7 @@ function AudienciasScreen({ usuario }) {
   const [cargando, setCargando] = useStateAU(true);
   const [error, setError] = useStateAU('');
   const [sinConexion, setSinConexion] = useStateAU(false);
-  const [vista, setVista] = useStateAU('hoy');
+  const [vista, setVista] = useStateAU('prog');
   const [filtroSus, setFiltroSus] = useStateAU(''); // '' = todos; norm(nombre)
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
   const [offsetSem, setOffsetSem] = useStateAU(0);
@@ -491,8 +491,6 @@ function AudienciasScreen({ usuario }) {
   }
 
   // ── Derivados de vista ──
-  const diaHoyObj = dias.find(function (d) { return d.fecha === hoyTxt; }) || null;
-  const diaMostrar = diaHoyObj || proximoDiaAudiencias(dias, _auHoy());
   const soloMias = esInsp && misCitas;
 
   const cuposDeDiaFiltrados = function (dia) {
@@ -559,7 +557,7 @@ function AudienciasScreen({ usuario }) {
         <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { setCitaAbierta(c); } : undefined}>
           <b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auCaso(c)}</> : null}
-          <small>{[c.direccion, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
+          <small>{[filtroSus ? '' : titleCaseNombre(c.sustanciador), c.direccion, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
         </Tag>
       </div>
     );
@@ -598,49 +596,34 @@ function AudienciasScreen({ usuario }) {
     );
   }
 
-  // ── Vista Hoy ──
-  function renderHoy() {
-    if (!diaMostrar) return <p className="au-vacio-hoy">No hay días con audiencias.</p>;
-    const esHoy = diaMostrar.fecha === hoyTxt;
-    const vis = cuposDeDiaFiltrados(diaMostrar);
-    const citas = vis.filter(function (c) {
-      return c.estado === 'RESERVADO' && (!soloMias || normNombreAudiencias(c.reservadoPor) === yo);
-    });
-    const todoBloqueado = vis.length > 0 && vis.every(function (c) { return c.estado === 'BLOQUEADO'; });
-    const libres = vis.filter(function (c) { return c.estado === 'LIBRE'; }).length;
-    const grupos = agruparAudienciasPorSustanciador(vis);
+  // ── Vista Programadas (2026-10-22, decisión del usuario) ──
+  // Las audiencias ya agendadas, de hoy en adelante, agrupadas por día desde
+  // la más próxima (sea cuando sea). Solo días con citas: los cupos libres se
+  // ven en «Cupos» (admin y supervisor) y en «Pedir cita».
+  function renderProgramadas() {
+    const hoyD = parsearFecha(hoyTxt);
+    const grupos = dias.map(function (d) {
+      const f = parsearFecha(d.fecha);
+      if (!f || (hoyD && f < hoyD)) return null;
+      const citas = d.cupos.filter(function (c) {
+        return c.estado === 'RESERVADO' &&
+          (!filtroSus || normNombreAudiencias(c.sustanciador) === filtroSus) &&
+          (!soloMias || normNombreAudiencias(c.reservadoPor) === yo);
+      });
+      return citas.length ? { fecha: d.fecha, citas: citas } : null;
+    }).filter(Boolean);
+    if (!grupos.length) return <p className="au-vacio-hoy">Sin audiencias programadas</p>;
     return (
       <div>
-        <div className="au-hoy-tit">
-          {esHoy ? 'Hoy · ' + _auFechaLarga(diaMostrar.fecha) : _auMayus(_auFechaLarga(diaMostrar.fecha))}
-        </div>
-        {todoBloqueado ? (
-          <div style={{ marginTop: 10 }}>
-            {bloqueoLinea(vis[0].motivoBloqueo, filtroSus ? '' : 'Todos')}
-          </div>
-        ) : (<>
-          {!soloMias && (
-            <p className="au-hoy-libres">
-              {libres + ' cupo' + (libres === 1 ? '' : 's') + ' libre' + (libres === 1 ? '' : 's')}
-            </p>
-          )}
-          {grupos.map(function (g) {
-            const delGrupo = g.cupos.filter(function (c) {
-              return c.estado === 'RESERVADO' && (!soloMias || normNombreAudiencias(c.reservadoPor) === yo);
-            });
-            const grupoBloqueado = g.cupos.length > 0 && g.cupos.every(function (c) { return c.estado === 'BLOQUEADO'; });
-            if (!delGrupo.length && !grupoBloqueado) return null;
-            return (
-              <div className="au-grupo" key={g.sustanciador}>
-                <h3>{titleCaseNombre(g.sustanciador)}</h3>
-                {grupoBloqueado && !delGrupo.length
-                  ? bloqueoLinea(g.cupos[0].motivoBloqueo)
-                  : delGrupo.map(function (c, i) { return filaCita(c, g.sustanciador + i); })}
-              </div>
-            );
-          })}
-          {!citas.length && <p className="au-vacio-hoy">Sin citas</p>}
-        </>)}
+        {grupos.map(function (g) {
+          return (
+            <div className="au-grupo" key={g.fecha}>
+              <h3>{g.fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(g.fecha))}
+                <span className="au-grupo-n"> · {g.citas.length} cita{g.citas.length === 1 ? '' : 's'}</span></h3>
+              {g.citas.map(function (c) { return filaCita(c, c.idCupo); })}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -943,8 +926,8 @@ function AudienciasScreen({ usuario }) {
       <div className={esAdmin ? 'au-grid' : ''}>
       <div className="au-principal">
       <div className="au-topbar">
-        <button type="button" className={'au-chip' + (vista === 'hoy' ? ' on' : '')} onClick={function () { setVista('hoy'); }}>Hoy</button>
-        <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')} onClick={function () { setVista('sem'); }}>Semana</button>
+        <button type="button" className={'au-chip' + (vista === 'prog' ? ' on' : '')} onClick={function () { setVista('prog'); }}>Programadas</button>
+        {!esInsp && <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')} onClick={function () { setVista('sem'); }}>Cupos</button>}
         <button type="button" className={'au-chip' + (vista === 'lis' ? ' on' : '')} onClick={function () { setVista('lis'); }}>Lista</button>
         <span className="sp"></span>
         {esInsp
@@ -961,7 +944,7 @@ function AudienciasScreen({ usuario }) {
               }))}
       </div>
 
-      {vista === 'hoy' && renderHoy()}
+      {vista === 'prog' && renderProgramadas()}
       {vista === 'sem' && renderSemana()}
       {vista === 'lis' && renderLista()}
       </div>
