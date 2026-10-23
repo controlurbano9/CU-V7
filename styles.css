@@ -4462,3 +4462,10 @@ tr.clic:hover td { background: var(--surface-2); }
 .exp-tag { display: inline-block; padding: 0 6px; border: 1px solid var(--ink-2); border-radius: var(--r-ctl);
   color: var(--ink); font-weight: 600; line-height: 1.45; white-space: nowrap; }
 .au-tabla td:nth-child(1), .au-tabla td:nth-child(2) { white-space: nowrap; }
+
+/* Semana en pantallas angostas (2026-10-22): cada día con ancho mínimo para
+   que la tarjeta se lea; si no caben los cinco, se desplaza de lado (hoy queda
+   a la vista al abrir). En pantallas anchas se ven los cinco como antes. */
+.sv-grid { grid-template-columns: repeat(5, minmax(230px, 1fr)); overflow-x: auto;
+  scroll-snap-type: x proximity; scrollbar-width: thin; padding-bottom: 4px; }
+.sv-col { scroll-snap-align: start; }

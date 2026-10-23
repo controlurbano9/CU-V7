@@ -284,6 +284,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   const [arrastre, setArrastre] = useStateSV(null);   // _idx de la tarjeta en vuelo
   const [aviso, setAviso] = useStateSV(null);         // {texto, deshacer}
   const avisoRef = React.useRef(null);
+  const gridRef = React.useRef(null);
   const [movil, setMovil] = useStateSV(() => {
     try { return window.matchMedia(SV_MOVIL).matches; } catch (e) { return false; }
   });
@@ -479,6 +480,15 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   // fin de semana, que no tiene columna) cae en el lunes.
   const sel = diaSel == null ? (hoyIdx >= 0 ? hoyIdx : 0) : diaSel;
 
+  // Si los cinco días no caben (pantalla angosta), la rejilla se desplaza de
+  // lado: al abrir o cambiar de semana, hoy (o el lunes) queda a la vista.
+  useEffectSV(() => {
+    const g = gridRef.current;
+    if (!g || g.scrollWidth <= g.clientWidth) return;
+    const col = g.children[hoyIdx >= 0 ? hoyIdx : 0];
+    if (col) g.scrollLeft = col.offsetLeft - g.offsetLeft;
+  }, [offset, hoyIdx, movil]);
+
   function irSemana(delta) {
     setOffset(offset + delta);
     setDiaSel(null);
@@ -568,7 +578,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
   return (
     <div className="sv">
       {cabecera}
-      <div className="sv-grid">
+      <div className="sv-grid" ref={gridRef}>
         {dias.map((d, i) => (
           <div key={i} className={'sv-col' + (i === hoyIdx ? ' hoy' : '')}
             onDragOver={(e) => { if (arrastre != null) e.preventDefault(); }}
