@@ -135,7 +135,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
               {/* Aquí se gestiona: con expediente se muestran los dos
                   («Exp. 2201 · Rad. 20261041205», decisión 2026-10-19). */}
               <span className="vc-rad">
-                {expedienteDe(f) ? 'Exp. ' + expedienteDe(f) + ' · Rad. ' + (f['RADICADO'] || '—')
+                {expedienteDe(f) ? <><span className="exp-tag">Exp. {expedienteDe(f)}</span> · Rad. {f['RADICADO'] || '—'}</>
                   : (f['RADICADO'] || '—')}
               </span>
               <BotonPdfRadicado f={f} onAbrir={alternarPqr}

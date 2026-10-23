@@ -462,7 +462,7 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
         </div>
         <div className="al-dir" title={dir}>{direccionVisible(dir)}</div>
         <div className="al-meta" title={[f['RADICADO'], meta].filter(Boolean).join(' · ')}>
-          <span className="sv-rad">{rad}</span>
+          <span className={'sv-rad' + (exp ? ' exp-tag' : '')}>{rad}</span>
           {meta && ' · ' + meta}
         </div>
       </div>

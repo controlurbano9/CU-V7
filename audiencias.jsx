@@ -80,7 +80,8 @@ function _auMayus(t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
 
 // El caso de una cita como se muestra: «Exp. N», el radicado o la orden.
 function _auCaso(c) {
-  if (c.expediente && c.expediente !== 'NUEVO') return 'Exp. ' + c.expediente;
+  // Con expediente, una etiqueta con borde (sin color: el color es del estado).
+  if (c.expediente && c.expediente !== 'NUEVO') return <span className="exp-tag">Exp. {c.expediente}</span>;
   return c.radicado || (c.ordenPolicia ? 'Orden ' + c.ordenPolicia : '');
 }
 
@@ -196,7 +197,8 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, onCerrar, onReservada 
                   aria-pressed={on ? 'true' : 'false'}
                   onClick={function () { setCaso(on ? null : c); setTexto(''); }}>
                   <span className="t">{c.direccion || etiquetaCaso(c)}
-                    <small>{[etiquetaCaso(c), c.barrio, cita ? 'cita ' + _auDiaCorto(cita.fecha) : ''].filter(Boolean).join(' · ')}</small>
+                    <small>{c.expediente ? <span className="exp-tag">Exp. {c.expediente}</span> : etiquetaCaso(c)}
+                      {[c.barrio, cita ? 'cita ' + _auDiaCorto(cita.fecha) : ''].filter(Boolean).map(function (x) { return ' · ' + x; }).join('')}</small>
                   </span>
                 </button>
               );
@@ -299,14 +301,13 @@ function AudienciasScreen({ usuario }) {
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
   const [offsetSem, setOffsetSem] = useStateAU(0);
   const [diaCel, setDiaCel] = useStateAU(0);
-  const [lis, setLis] = useStateAU({ q: '', pas: false });
+  const [lis, setLis] = useStateAU({ q: '' });
   const [novAbierta, setNovAbierta] = useStateAU(false);
   const [novForm, setNovForm] = useStateAU(false);
   const [afectadas, setAfectadas] = useStateAU(null);
   const [copiado, setCopiado] = useStateAU('');
   const [ocupado, setOcupado] = useStateAU(false); // escritura en curso
   const [pedirAbierto, setPedirAbierto] = useStateAU(false);
-  const [conPasadas, setConPasadas] = useStateAU(false);   // «Incluir pasadas»: se pide a demanda
   const [cuposPedir, setCuposPedir] = useStateAU(null);    // precargados para «Pedir cita»
   const [pendientes, setPendientes] = useStateAU([]);      // citas pedidas sin señal
   const [citaAbierta, setCitaAbierta] = useStateAU(null);
@@ -326,11 +327,10 @@ function AudienciasScreen({ usuario }) {
     if (esAdmin) setExcel({ lista: r.completadas || [] });
   }
 
-  // Abre con la copia local y la actualiza por detrás. Solo la vista de hoy en
-  // adelante se guarda; «Incluir pasadas» se pide aparte.
-  async function cargar(pasadas) {
-    const incluir = pasadas === undefined ? conPasadas : pasadas;
-    const copia = incluir ? null : _auLeerCopia(usuario.rol);
+  // Abre con la copia local y la actualiza por detrás. Trae todas las citas,
+  // también las pasadas: la Lista las muestra todas en orden (decisión del usuario).
+  async function cargar() {
+    const copia = _auLeerCopia(usuario.rol);
     if (copia) { aplicar(copia); setCargando(false); }
     else if (!datos) setCargando(true);
     if (!navigator.onLine) {
@@ -340,11 +340,11 @@ function AudienciasScreen({ usuario }) {
       return;
     }
     try {
-      const r = await agendaAudiencias({ incluirPasadas: incluir, firma: copia && copia.firma });
+      const r = await agendaAudiencias({ incluirPasadas: true, firma: copia && copia.firma });
       if (!r.ok) throw new Error(r.error || 'No se pudo leer la agenda.');
       if (!r.sinCambios) {
         aplicar(r);
-        if (!incluir) _auGuardarCopia(usuario.rol, r);
+        _auGuardarCopia(usuario.rol, r);
       }
       setSinConexion(false); setError('');
     } catch (e) {
@@ -534,7 +534,7 @@ function AudienciasScreen({ usuario }) {
   const listaRows = useMemoAU(function () {
     if (!datos) return [];
     return filtrarListaAudiencias(datos.cupos, {
-      q: lis.q, incluirPasadas: lis.pas, hoy: hoyTxt,
+      q: lis.q, incluirPasadas: true, hoy: hoyTxt,
       deQuien: esInsp && !misCitas ? '' : (esInsp ? yo : '')
     });
   }, [datos, lis, hoyTxt, esInsp, misCitas, yo]);
@@ -558,7 +558,7 @@ function AudienciasScreen({ usuario }) {
       <div className="au-row" key={clave}>
         <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={clicable ? function () { setCitaAbierta(c); } : undefined}>
-          <b>{c.citado || _auCaso(c)}</b>{c.citado ? ' · ' + _auCaso(c) : ''}
+          <b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auCaso(c)}</> : null}
           <small>{[c.direccion, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</small>
         </Tag>
       </div>
@@ -731,13 +731,6 @@ function AudienciasScreen({ usuario }) {
             placeholder="Nombre, radicado, orden, expediente o documento"
             aria-label="Buscar citación"
             onChange={function (e) { setLis(Object.assign({}, lis, { q: e.target.value })); }} />
-          <button type="button" className={'au-chip' + (lis.pas ? ' on' : '')}
-            aria-pressed={String(lis.pas)}
-            onClick={function () {
-              const v = !lis.pas;
-              setLis(Object.assign({}, lis, { pas: v }));
-              if (v && !conPasadas) { setConPasadas(true); cargar(true); }
-            }}>Incluir pasadas</button>
         </div>
         <p className="au-hoy-libres">{n} citaci{n === 1 ? 'ón' : 'ones'}</p>
         {!n ? <p className="au-vacio-hoy">Sin resultados</p> : (<>
@@ -871,7 +864,7 @@ function AudienciasScreen({ usuario }) {
             <div className="au-row" key={r.idCupo}>
               <span className="t">
                 <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
-                <small>{[titleCaseNombre(r.sustanciador), r.expediente === 'NUEVO' ? r.radicado : 'Exp. ' + r.expediente, r.citado].filter(Boolean).join(' · ')}</small>
+                <small>{titleCaseNombre(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
               </span>
               <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
                 aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"

@@ -132,7 +132,7 @@ function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostra
               único y tiene que localizarse de un vistazo. Con expediente se ve
               «Exp. N» y el radicado queda en el title (decisión 2026-10-19). */}
           <div className="vc-ident">
-            <span className="vc-rad" title={identificadorVisita(f).secundario || undefined}>
+            <span className={'vc-rad' + (expedienteDe(f) ? ' exp-tag' : '')} title={identificadorVisita(f).secundario || undefined}>
               {identificadorVisita(f).principal || '—'}
             </span>
             <BotonPdfRadicado f={f} />

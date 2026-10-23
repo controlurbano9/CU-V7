@@ -230,7 +230,7 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
       <div className="sv-meta">
         {ubic && <span>{ubic} · </span>}
         {(ident.principal || rad) && (
-          <span className="sv-rad" title={ident.secundario || undefined}>{ident.principal}</span>
+          <span className={'sv-rad' + (ident.secundario ? ' exp-tag' : '')} title={ident.secundario || undefined}>{ident.principal}</span>
         )}
         {(ident.principal || rad) && fRad && ' · '}
         {fRad}

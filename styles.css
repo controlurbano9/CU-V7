@@ -4456,3 +4456,9 @@ tr.clic:hover td { background: var(--surface-2); }
 .sv-aviso button { min-height: 36px; padding: 0 10px; border: 0; background: none; color: inherit;
   font: 600 14px var(--font-sans); text-decoration: underline; cursor: pointer; }
 @media (min-width: 900px) { .sv-aviso { bottom: 24px; } }
+
+/* Expediente (2026-10-22): etiqueta con borde, sin color — el color es del
+   estado (ocre/azul/verde) y el café es acción. Igual en toda la app. */
+.exp-tag { display: inline-block; padding: 0 6px; border: 1px solid var(--ink-2); border-radius: var(--r-ctl);
+  color: var(--ink); font-weight: 600; line-height: 1.45; white-space: nowrap; }
+.au-tabla td:nth-child(1), .au-tabla td:nth-child(2) { white-space: nowrap; }

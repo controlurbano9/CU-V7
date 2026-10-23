@@ -294,7 +294,7 @@ function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinua
           {puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</button>
         <div className="vc-ident">
           {/* Con expediente se ve «Exp. N» y el radicado pasa al title (2026-10-19). */}
-          <span className="vc-rad" title={identificadorVisita(f).secundario || undefined}>
+          <span className={'vc-rad' + (expedienteDe(f) ? ' exp-tag' : '')} title={identificadorVisita(f).secundario || undefined}>
             {identificadorVisita(f).principal || '—'}
           </span>
           {!conPanel && <BotonPdfRadicado f={f} />}
