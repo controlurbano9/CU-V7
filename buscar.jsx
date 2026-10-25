@@ -222,7 +222,7 @@ function _initSBQ(usuario) {
   try {
     const prefs = JSON.parse(sessionStorage.getItem(BUSCAR_PREFS_KEY));
     if (prefs && Array.isArray(prefs.filtrosEstado)) {
-      S.estados = prefs.filtrosEstado.filter(e => BUSCAR_ESTADOS.indexOf(e) !== -1);
+      S.estados = normEstadosBuscar(prefs.filtrosEstado);
     }
     // Administración › Equipo lo escribía y nadie lo leía: Buscar abría sin
     // el filtro de esa persona.
@@ -759,13 +759,13 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   };
 
   // ── Vistas ──
-  const firmaVista = v => JSON.stringify(_diffBQ(Object.assign(filtrosBuscarVacios(), v.s)));
+  const firmaVista = v => { const n = Object.assign(filtrosBuscarVacios(), v.s); n.estados = normEstadosBuscar(n.estados); return JSON.stringify(_diffBQ(n)); };
   const firmaActual = JSON.stringify(_diffBQ(S));
   const vistasTodas = _vistasBaseBQ(veTodo, hoy).concat(vistasPropias.map(v => Object.assign({ propia: true }, v)));
   const contarVista = (v) => _nGruposBQ(universo, c => pasaBuscar(c, Object.assign(filtrosBuscarVacios(), v.s)));
   function aplicarVista(v) {
     setQInput(v.s.q || '');
-    setS(prev => Object.assign(filtrosBuscarVacios(), { yo: prev.yo }, v.s));
+    setS(prev => { const n = Object.assign(filtrosBuscarVacios(), { yo: prev.yo }, v.s); n.estados = normEstadosBuscar(n.estados); return n; });
   }
   function guardarVista(nombre) {
     nombre = (nombre || '').trim();
@@ -913,14 +913,14 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           </div>
         </div>
 
-        {/* Estados: todos marcados de fábrica. El conteo es facetado
+        {/* Estados: ninguno marcado de fábrica = todos (2026-10-25). El conteo es facetado
             (respeta los demás filtros, ignora la selección). */}
         <div className="bq-estados">
           {BUSCAR_ESTADOS.map(est => (
             <React.Fragment key={est}>
               <button type="button" className={'bq-est' + (S.estados.includes(est) ? ' on' : '')}
                 aria-pressed={S.estados.includes(est)}
-                onClick={() => parcharS({ estados: toggleEnArr(S.estados, est) })}>
+                onClick={() => parcharS({ estados: normEstadosBuscar(toggleEnArr(S.estados, est)) })}>
                 <span className={'bq-dot ' + BQ_EST_DOT[est]} aria-hidden="true" />
                 {BQ_EST_L[est]} <i>{_n0BQ(conteosEstado[est])}</i>
               </button>

@@ -2201,17 +2201,25 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   return c;
 }
 
-// Estado inicial: todos los estados (decisión del usuario 2026-10-15). Antes
-// arrancaba en lo vivo y las completadas había que pedirlas con su chip: al
-// buscar parecía que no existían. El orden «Más urgente» ya las deja al final.
+// Estado inicial: todos los estados (decisión del usuario 2026-10-15), pero
+// con ningún chip marcado (2026-10-25): sin selección se ve todo y tocar un
+// chip deja solo ese estado. Antes arrancaban los cinco marcados y para ver
+// uno había que desmarcar los otros cuatro.
 function filtrosBuscarVacios() {
   return {
-    q: '', estados: BUSCAR_ESTADOS.slice(),
+    q: '', estados: [],
     comunas: [], barrios: [], veredas: [], rural: false, sinPot: false,
     campo: 'rad', desde: '', hasta: '',            // campo: rad | asig | vis | cierre | cit
     visitador: [], mias: false, yo: '', tipo: [], nvis: [], reit: false, prio: [],
     infr: [], susp: false, orden: false, lic: [], obra: [], falta: [], listas: false,
   };
+}
+
+// Marcar los cinco estados es lo mismo que no filtrar: se guarda vacío para que
+// los chips no queden todos encendidos (selecciones guardadas antes de 2026-10-25).
+function normEstadosBuscar(estados) {
+  var e = (estados || []).filter(function (x) { return BUSCAR_ESTADOS.indexOf(x) !== -1; });
+  return BUSCAR_ESTADOS.every(function (x) { return e.indexOf(x) !== -1; }) ? [] : e;
 }
 
 // ¿Qué parte de la fila coincide con el texto? '' si ninguna. Un radicado completo
@@ -4477,6 +4485,7 @@ var _cuUtilsExports = {
   prioridadClaveBuscar: prioridadClaveBuscar,
   prepararCasoBuscar: prepararCasoBuscar,
   filtrosBuscarVacios: filtrosBuscarVacios,
+  normEstadosBuscar: normEstadosBuscar,
   coincideBuscar: coincideBuscar,
   esExactaBuscar: esExactaBuscar,
   registrarBarriosBuscar: registrarBarriosBuscar,

@@ -31,9 +31,15 @@ function fila(extra) {
   }, extra);
 }
 
-test('filtrosBuscarVacios arranca con todos los estados, completadas y cerradas incluidas', () => {
+test('filtrosBuscarVacios arranca sin estados marcados y deja pasar todos', () => {
   const S = U.filtrosBuscarVacios();
-  assert.deepEqual(S.estados, ['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO', 'CERRADO']);
+  assert.deepEqual(S.estados, []);
+  ['PENDIENTE', 'COMPLETADO', 'CERRADO'].forEach(e => assert.ok(U.pasaBuscar({ estado: e }, S, 'estado')));
+});
+
+test('normEstadosBuscar: los cinco marcados equivalen a ninguno', () => {
+  assert.deepEqual(U.normEstadosBuscar(['PENDIENTE', 'ASIGNADO', 'INICIADO', 'COMPLETADO', 'CERRADO']), []);
+  assert.deepEqual(U.normEstadosBuscar(['INICIADO', 'X']), ['INICIADO']);
 });
 
 test('estadoBuscarDe: estados de V2 y NO COMPETENCIA no se pierden', () => {
