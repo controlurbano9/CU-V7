@@ -11,7 +11,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { seccionesFicha } = require('../utils.js');
+const { seccionesFicha, bloquesFicha } = require('../utils.js');
 
 // Visita INICIADO con todas las secciones llenas.
 const FILA_COMPLETA = {
@@ -245,4 +245,48 @@ test("seccionesFicha — el «N/A» de V2 no cuenta como N° de orden", () => {
 
 test('seccionesFicha — sin fila devuelve vacío y no explota', () => {
   assert.deepEqual(seccionesFicha(null, 'ADMIN'), []);
+});
+
+// ── bloquesFicha (v2: los tres bloques del cuerpo) ─────────────
+
+test('bloquesFicha — iniciada: los tres bloques con lo de sus secciones', () => {
+  const bs = bloquesFicha(FILA_COMPLETA, 'ADMIN');
+  assert.deepEqual(bs.map(b => b.clave), ['encontrado', 'licencia', 'decision']);
+  assert.deepEqual(bs.map(b => b.titulo), ['Lo encontrado', 'Licencia y norma', 'Decisión']);
+  const labels = b => b.campos.map(c => c.l);
+  assert.ok(labels(bs[0]).includes('Nombre'), 'persona (3) en Lo encontrado');
+  assert.ok(labels(bs[0]).includes('Estado de la obra'), 'edificación (4) en Lo encontrado');
+  assert.equal(bs[0].campos.find(c => c.largo).v, 'Se constató obra sin licencia.', 'descripción (6)');
+  assert.ok(labels(bs[1]).includes('Se aportó licencia'), 'licencia (5) en Licencia y norma');
+  assert.ok(labels(bs[1]).includes('Polígono uso suelo'), 'POT (9) en Licencia y norma');
+  assert.ok(labels(bs[2]).includes('Suspensión de obra'), 'conclusiones (7) en Decisión');
+  assert.deepEqual(bs[2].campos.filter(c => c.largo).map(c => c.v),
+    ['Conclusión: abstenerse de obras.'], 'observaciones (10) al final de Decisión');
+  // Lo de la cabecera/banda/columna del lugar no se repite en los bloques.
+  const todas = bs.flatMap(b => labels(b).concat(b.sinDato));
+  ['Denunciante', 'Coordenadas', 'Código catastral', 'Fecha asignación'].forEach(l =>
+    assert.ok(!todas.includes(l), '«' + l + '» no debe aparecer'));
+});
+
+test('bloquesFicha — iniciada con vacíos: «Sin dato» al pie de cada bloque', () => {
+  const bs = bloquesFicha({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '11/09/2026' }, 'ADMIN');
+  assert.ok(bs.length === 3);
+  assert.ok(bs[0].sinDato.includes('Nombre'));
+  assert.ok(bs[1].sinDato.includes('Se aportó licencia'));
+  assert.ok(bs[2].sinDato.includes('Suspensión de obra'));
+});
+
+test('bloquesFicha — completada: sin ningún «Sin dato» y sin bloques vacíos', () => {
+  const bs = bloquesFicha({ ...FILA_COMPLETA, 'ESTADO VISITA': 'COMPLETADO' }, 'ADMIN');
+  assert.ok(bs.every(b => b.sinDato.length === 0));
+  assert.ok(bs.every(b => b.campos.length > 0));
+  // Completada sin nada que mostrar: ningún bloque se menciona.
+  assert.deepEqual(
+    bloquesFicha({ 'ESTADO VISITA': 'COMPLETADO', 'FECHA DE VISITA': '11/09/2026' }, 'ADMIN'), []);
+});
+
+test('bloquesFicha — asignada sin visita: no hay bloques', () => {
+  assert.deepEqual(
+    bloquesFicha({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA RADICADO': '23/01/2026' }, 'ADMIN'), []);
+  assert.deepEqual(bloquesFicha(null, 'ADMIN'), []);
 });

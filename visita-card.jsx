@@ -264,7 +264,8 @@ function useLinkMapaVisita(f) {
   return linkMapaVisita(f, necesita && hallado && hallado.dir === dir ? hallado.p : null);
 }
 
-function BotonMapaVisita({ f, variante }) {
+// sinIcono: la ficha de la visita quiere botones solo con texto (v2, 2026-10-25).
+function BotonMapaVisita({ f, variante, sinIcono }) {
   const link = useLinkMapaVisita(f);
   if (!link) return null;
   const titulo = 'Abrir la ubicación en Google Maps (pestaña nueva)';
@@ -282,7 +283,7 @@ function BotonMapaVisita({ f, variante }) {
     return (
       <a className="vc-btn" href={link} target="_blank" rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()} title={titulo}>
-        <Icon.Pin size={14} /> Cómo llegar
+        {!sinIcono && <Icon.Pin size={14} />} Cómo llegar
       </a>
     );
   }

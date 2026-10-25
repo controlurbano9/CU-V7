@@ -82,6 +82,17 @@ test('entregablesFaltantes — visita que se documenta con informe: falta el inf
   assert.equal(documentoVisita('ACTA'), 'ACTA');
 });
 
+test('entregablesFaltantes — acta o informe: con uno de los dos basta (ficha v2)', () => {
+  // Modo ACTA: el informe existente también cierra el renglón del acta.
+  assert.deepEqual(
+    entregablesFaltantes({ 'ESTADO VISITA': 'INICIADO', 'LINK_DOCX_INFORME': 'https://drive/i' }),
+    ['Registro fotográfico'], 'sin acta pero con informe, el acta no falta');
+  // Modo INFORME: el acta existente también cierra el renglón del informe.
+  assert.deepEqual(entregablesFaltantes({
+    'ESTADO VISITA': 'INICIADO', 'DOCUMENTO_VISITA': 'INFORME', 'LINK_XLSX_ACTA': 'https://drive/x',
+  }), [], 'sin informe pero con acta, el informe no falta');
+});
+
 // ── agruparMisVisitas ──────────────────────────────────────────
 
 test('agruparMisVisitas — reparte por estado y deja fuera lo que no es visita', () => {

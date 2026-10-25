@@ -1712,12 +1712,16 @@ function entregablesFaltantes(fila) {
   if (!fila) return [];
   if (_normEstadoVisitaBD(fila['ESTADO VISITA'] || fila[13] || '') !== 'INICIADO') return [];
   var out = [];
+  // Acta o informe: con uno de los dos basta (ficha v2, 2026-10-25) — el que
+  // existe documenta la visita y el otro no se pide.
+  var tieneActa = !!(fila['LINK_XLSX_ACTA'] || fila['LINK_PDF_ACTA']);
+  var tieneInforme = !!fila['LINK_DOCX_INFORME'];
   if (documentoVisita(fila) === 'INFORME') {
-    if (!fila['LINK_DOCX_INFORME']) out.push('Informe');
+    if (!tieneInforme && !tieneActa) out.push('Informe');
     if (ordenPoliciaDe(fila) && !fila['LINK_ORDEN_POLICIA']) out.push('Orden escaneada');
     return out;
   }
-  if (!(fila['LINK_XLSX_ACTA'] || fila['LINK_PDF_ACTA'])) out.push('Acta');
+  if (!tieneActa && !tieneInforme) out.push('Acta');
   if (ordenPoliciaDe(fila) && !fila['LINK_ORDEN_POLICIA']) out.push('Orden escaneada');
   if (!fila['LINK_REGISTRO_FOTOS']) out.push('Registro fotográfico');
   return out;
@@ -3188,6 +3192,41 @@ function seccionesFicha(f, rol) {
   return secciones;
 }
 
+// ── Ficha v2: los tres bloques del cuerpo (2026-10-25) ─────────
+// Agrupa las secciones de seccionesFicha en los tres bloques de la maqueta
+// propuesta-ficha.html. Fuera: identificación (1) y funcionarios (8), que ya
+// están en la cabecera; ubicación (2) va a la columna del lugar.
+//   bloquesFicha(f, rol) → [{ clave, titulo, campos, sinDato }]
+// «Sin dato» solo en la iniciada: la completada (y la cerrada sin visita)
+// muestra únicamente lo que existe, y un bloque sin nada no se menciona.
+var _GRUPOS_FICHA = [
+  { clave: 'encontrado', titulo: 'Lo encontrado',   ns: [3, 4, 6] },
+  { clave: 'licencia',   titulo: 'Licencia y norma', ns: [5, 9] },
+  { clave: 'decision',   titulo: 'Decisión',         ns: [7, 10] },
+];
+function bloquesFicha(f, rol) {
+  var secciones = seccionesFicha(f, rol);
+  if (!secciones.length) return [];
+  // Asignada sin visita: el cuerpo es solo el predio y el mapa.
+  if (secciones.some(function(s) { return s.resumen; })) return [];
+  var est = estadoBuscarDe(f);
+  var conFaltantes = est !== 'COMPLETADO' && est !== 'CERRADO';
+  var out = [];
+  _GRUPOS_FICHA.forEach(function(g) {
+    var campos = [], faltan = [];
+    secciones.forEach(function(s) {
+      if (g.ns.indexOf(s.n) !== -1) {
+        campos = campos.concat(s.campos);
+        faltan = faltan.concat(s.sinDato);
+      }
+    });
+    if (!conFaltantes) faltan = [];
+    if (!campos.length && !faltan.length) return;
+    out.push({ clave: g.clave, titulo: g.titulo, campos: campos, sinDato: faltan });
+  });
+  return out;
+}
+
 // ── Artículo 135 de la Ley 1801 de 2016: cita literal ─────────
 // Encabezados de literal y numerales (numeración absoluta de la ley),
 // tomados del Anexo A del AGENTE EXPERTO URBANÍSTICO, que los cotejó contra
@@ -4564,6 +4603,7 @@ var _cuUtilsExports = {
   claveComunaAgenda: claveComunaAgenda,
   validarPinNuevo: validarPinNuevo,
   seccionesFicha: seccionesFicha,
+  bloquesFicha: bloquesFicha,
   LICENCIA_TRAMITES: LICENCIA_TRAMITES,
   LICENCIA_MODALIDADES: LICENCIA_MODALIDADES,
   parsearTipoModalidad: parsearTipoModalidad,

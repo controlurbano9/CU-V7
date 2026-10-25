@@ -2986,8 +2986,14 @@ button.sv-col-head {
 .fv-estado-txt { font-weight: 600; color: var(--ink-3); }
 .fv-estado-txt.espera { color: var(--amber); }
 .fv-estado-txt.demora { color: var(--red); }
-.fv-dir { margin-top: 4px; font: 600 20px/1.2 var(--font-sans); letter-spacing: -.3px; color: var(--ink); }
-.fv-fija .vc-ident { margin-top: 4px; }
+.fv-dir { margin-top: 6px; font: 600 24px/1.2 var(--font-sans); letter-spacing: -.3px; color: var(--ink); }
+/* Renglón 3: barrio · Comuna N. */
+.fv-lugar-l { margin-top: 4px; font-size: 14px; color: var(--ink-3); }
+/* Renglón 4: los datos del caso, rótulo arriba y valor. */
+.fv-hechos { display: flex; flex-wrap: wrap; gap: 10px 32px; margin-top: 16px; }
+.fv-hechos > div { min-width: 0; }
+.fv-hechos .l { font-size: 12px; color: var(--ink-4); }
+.fv-hechos .v { margin-top: 1px; font-size: 14px; font-weight: 500; }
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
 .fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: 20px; }
@@ -3033,43 +3039,63 @@ button.sv-col-head {
   border-radius: var(--r-lg) var(--r-lg) 0 0; container-type: inline-size; box-shadow: var(--shadow-md); outline: none; }
 .fv-hoja .fv-estado, .fv-hoja .fv-dir { padding-right: 48px; }
 @media (min-width: 700px) { .fv-velo { align-items: center; padding: 24px; } .fv-hoja { border-radius: var(--r-lg); max-height: 90vh; } }
-/* Recorrido del caso en una línea, bajo el radicado (los pasos cumplidos). */
-.fv-recorrido { margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
-/* Flechita «pestaña nueva» del botón Ver PQR, más chica que el texto. */
-.fv-ext { font-size: 10px; }
-.fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 28px; padding: 4px 20px 28px; align-items: start; }
+/* ── Banda del caso (v2): denunciante · prioridad · reiterados, cada celda
+   solo si tiene dato; celdas separadas por la línea, no encajonadas. ── */
+.fv-banda { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); border-bottom: 1px solid var(--line); }
+.fv-banda > div { padding: 12px 20px; border-left: 1px solid var(--line); min-width: 0; }
+.fv-banda > div:first-child { border-left: 0; }
+.fv-banda .l { font-size: 12px; color: var(--ink-4); }
+.fv-banda .v { margin-top: 1px; font-size: 15px; font-weight: 600; }
+.fv-banda .v.alta { color: var(--red); }
+.fv-reits { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.fv-reits a { margin-left: 6px; color: var(--brand-ink); font-size: 13px; font-weight: 600; text-decoration: none; }
+.fv-reits a:hover { text-decoration: underline; }
+.fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; padding: 18px 20px 28px; align-items: start; }
 /* Mapa de la ficha: alto fijo (el 16:9 del panel se estiraba de más aquí). */
-.fv .mv-mapa { height: 220px; aspect-ratio: auto; }
-@container (min-width: 900px) {
-  .fv-cuerpo { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.fv .mv-mapa { height: 220px; aspect-ratio: auto; border-radius: 12px; }
+@container (min-width: 860px) {
+  .fv-cuerpo { grid-template-columns: minmax(0, 1fr) 300px; }
   /* El lugar de la visita queda fijo bajo la cabecera mientras se recorren
      los datos. */
   .fv-lugar { position: sticky; top: var(--fv-fija-h, 120px); }
-  .fv .mv-mapa { height: 260px; }
 }
-.fv-sec { padding-top: 18px; }
-/* Campos cortos: dos columnas también en el celular (las de Mis visitas parten de 170 px). */
-.fv-sec .mv-datos { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-.fv-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: none; border-radius: 50%;
-  background: var(--surface-2); color: var(--ink-3); font: 600 11px var(--font-mono); margin-right: 8px; }
-.fv-vacios { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-4); }
+/* Bloques del cuerpo (bloquesFicha, v2): título 15/600 sin número ni raya;
+   rótulo 12 sin mayúsculas; textos largos en recuadro. */
+.fv-bloque + .fv-bloque, .fv-ent-caja + .fv-bloque, .fv-bloque + .fv-ent-caja { margin-top: 22px; }
+.fv-bt { margin: 0 0 10px; font: 600 15px var(--font-sans); }
+.fv-bloque .mv-datos { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.fv-bloque .mv-datos dt, .fv-lugar .mv-datos dt { font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--ink-4); }
+.fv-texto { margin: 12px 0 0; padding: 12px 14px; max-width: 70ch; background: var(--paper); border-radius: 8px;
+  font-size: 14px; line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
+.fv-vacios { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-4); }
 .fv-vacios b { font-weight: 600; color: var(--ink-3); }
-/* «Se llenan en la visita»: una sola línea con los títulos, sin caja punteada. */
-.fv-luego-linea { font-size: 13px; color: var(--ink-3); }
-/* Columna del lugar (ficha ancha): el mapa separado de la sección 2 y el
-   código catastral largo sin partirse a mitad de número feo. */
+/* Entregables (iniciada) / Documentos (completada): recuadro de papel con las
+   filas de .mv-ent — lo pendiente primero, con su punto de color. */
+.fv-ent-caja { background: var(--paper); border-radius: 12px; padding: 12px 16px; }
+.fv-ent-caja .mv-ent { min-height: 38px; }
+.fv-ent-caja .mv-ent .vc-btn { min-height: 30px; padding: 0 10px; font-size: 12px; }
+/* Columna del lugar (ficha ancha): el predio en una sola columna, debajo del
+   mapa; el código catastral largo se parte antes que desbordar. */
 .fv-lugar .mv-bloque { margin-top: 18px; }
+.fv-lugar .mv-datos { grid-template-columns: 1fr; margin-top: 14px; }
 .fv-lugar .mv-datos dd { font-size: 13px; word-break: break-all; }
-.fv-ico { display: inline-flex; width: 10px; justify-content: center; color: var(--ink-3); }
 .fv-crudo { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
 .fv-crudo summary { cursor: pointer; font: 600 13px var(--font-sans); color: var(--ink-3); min-height: 32px; display: flex; align-items: center; gap: 6px; }
 .fv-crudo summary small { font-weight: 400; color: var(--ink-4); }
 .fv-crudo dt { font-family: var(--font-mono); }
-/* Celular: los dos botones de la cabecera en su renglón, a 44 px. */
-@media (max-width: 699px) {
-  .fv-fija-acc { flex-basis: 100%; }
-  .fv-fija-acc .vc-btn { flex: 1 1 0; min-height: var(--tap); }
-  .fv-dir { font-size: 18px; }
+/* Celular (contenedor <600 px): los botones bajan al final de la cabecera,
+   repartidos a 44 px; la banda a dos columnas con los reiterados abajo. */
+@container (max-width: 600px) {
+  .fv-fija { padding: 16px 16px 14px; }
+  .fv-fija-fila { align-items: stretch; flex-direction: column; gap: 0; }
+  .fv-fija-acc { margin-top: 16px; }
+  .fv-fija-acc .vc-btn { flex: 1 1 0; justify-content: center; min-height: var(--tap); padding: 0 6px; }
+  .fv-dir { font-size: 20px; }
+  .fv-hechos { gap: 10px 20px; }
+  .fv-banda { grid-template-columns: 1fr 1fr; }
+  .fv-banda > div { padding: 12px 16px; }
+  .fv-banda > div:last-child { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
+  .fv-cuerpo { padding: 18px 16px 24px; }
 }
 
 /* ╔════════════════════════════════════════════════════════════╗

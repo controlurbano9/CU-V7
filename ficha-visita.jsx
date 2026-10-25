@@ -1,30 +1,62 @@
 // ═══════════════════════════════════════════════════════════════
-// ficha-visita.jsx — FichaVisita: la ficha única de la visita (E2b)
+// ficha-visita.jsx — FichaVisita: la ficha única de la visita (v2, 2026-10-25)
 //
-// Arriba, fija (sticky), solo lo básico: estado y desde cuándo, dirección,
-// radicado + barrio + comuna + inspector, el recorrido del caso en una línea
-// y máximo tres botones (el principal, «Ver PQR» y «Cómo llegar»). Debajo,
-// un solo scroll en el orden del formulario: entregables · gestión (la
-// inyecta quien llama, E5) · las secciones de seccionesFicha (utils.js — esa
-// decide QUÉ se muestra; aquí solo se pinta) · reiterados · campos crudos
-// (admin). Con contenedor ≥900 px, la sección «Ubicación del inmueble» y el
-// mapa se van a su columna, fijos mientras se recorren los datos.
+// Según la maqueta propuesta-ficha.html. Cabecera en cuatro renglones, cada
+// uno con una sola cosa (estado · dirección · lugar · datos del caso) y, en
+// panel, los botones a la derecha (solo texto). Bajo ella, la banda del caso
+// (denunciante · prioridad · reiterados). El cuerpo depende del estado:
+// asignada → «El predio» y el mapa; iniciada → entregables (lo pendiente
+// primero) y los tres bloques de bloquesFicha (utils.js — esa decide QUÉ se
+// muestra; aquí solo se pinta); completada/cerrada → documentos que existen y
+// los bloques sin «Sin dato». Con contenedor ≥860 px, el mapa y el predio van
+// a su columna derecha, fijos mientras se recorren los datos.
 // Solo lectura: no edita nada.
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateFV, useEffect: useEffectFV, useRef: useRefFV, useMemo: useMemoFV } = React;
+const { useState: useStateFV, useEffect: useEffectFV, useRef: useRefFV } = React;
 
 // El scroller de la ficha depende de quién la aloja: el panel de Mis visitas
-// (.mv-panel) o, más adelante, la hoja del modal (E2c). Misma búsqueda de la
-// maqueta: closest('.mv-panel, .fv-hoja').
+// (.mv-panel) o la hoja del modal (.fv-hoja).
 function _scrollerFV(el) {
   return el && el.closest ? el.closest('.mv-panel, .fv-hoja') : null;
+}
+
+// El predio: código, ficha y coordenadas; solo los que tengan dato (en la
+// asignada es el bloque izquierdo; con visita hecha, la columna del lugar).
+function _predioFV(f) {
+  const lat = normalizarCoord(f['LATITUD'], 'lat');
+  const lon = normalizarCoord(f['LONGITUD'], 'lon');
+  return [
+    ['Código catastral', String(f['CODIGO CATASTRAL'] || f['CATASTRAL'] || '').trim()],
+    ['Ficha predial', String(f['N° FICHA PREDIAL'] || f['N FICHA PREDIAL'] || '').trim()],
+    ['Coordenadas', (lat != null && lon != null) ? lat.toFixed(6) + ', ' + lon.toFixed(6) : ''],
+  ].filter(p => p[1]);
+}
+
+// Entregables de la ficha v2: lo pendiente primero (entregablesFaltantes —
+// la regla de «acta o informe, con uno de los dos basta») y después lo que ya
+// existe, la carpeta de la visita al frente. Terminada: solo lo que existe.
+function _entregablesFV(f, terminada) {
+  const carpeta = f['LINK_DRIVE'] ? [{ n: 'Carpeta de la visita', link: f['LINK_DRIVE'] }] : [];
+  const existentes = _entregablesMV(f).filter(e => e.link);
+  if (terminada) return carpeta.concat(existentes);
+  const orden = ordenPoliciaDe(f);
+  const NOMBRE = {
+    'Acta': 'Acta de Inspección Ocular',
+    'Registro fotográfico': 'Registro fotográfico',
+    'Informe': 'Informe de inspección',
+  };
+  const faltan = entregablesFaltantes(f).map(x => ({
+    n: x === 'Orden escaneada' ? 'Orden de policía ' + orden : NOMBRE[x],
+    link: '',
+  }));
+  return faltan.concat(carpeta, existentes);
 }
 
 function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion, visitas, onElegirVisita }) {
   const raizRef = useRefFV(null);
   const fijaRef = useRefFV(null);
-  // ¿La ficha es ancha? (≥900 px de contenedor, la misma medida del CSS):
-  // el lugar de la visita (sección 2 + mapa) pasa a su columna derecha.
+  // ¿La ficha es ancha? (≥860 px de contenedor, la misma frontera del CSS):
+  // el mapa y el predio pasan a su columna derecha.
   const [dosCols, setDosCols] = useStateFV(false);
 
   // Estado como lo agrupa Buscar (estadoBuscarDe, utils.js): las variantes de
@@ -35,6 +67,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   const completa = est === 'COMPLETADO';
   const terminada = completa || cerrada;
   const empezada = est === 'INICIADO' || terminada;
+  const esAdmin = usuario && usuario.rol === 'ADMIN';
   const tono = cerrada ? { cls: '', label: motivoCierreBuscar(f) } : (_ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' });
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
   const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
@@ -49,12 +82,12 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     if (scroller) scroller.scrollTop = 0;
   }, [f._idx]);
 
-  // Columnas según el ancho real de la ficha (la misma frontera de 900 px
-  // del @container del CSS: cruzarla reordena el mapa de columna).
+  // Columnas según el ancho real de la ficha (la misma frontera de 860 px
+  // del @container del CSS: cruzarla mueve el mapa de columna).
   useEffectFV(() => {
     const raiz = raizRef.current;
     if (!raiz) return;
-    const aplicar = () => setDosCols(raiz.offsetWidth >= 900);
+    const aplicar = () => setDosCols(raiz.offsetWidth >= 860);
     aplicar();
     if (typeof ResizeObserver !== 'function') {
       window.addEventListener('resize', aplicar);
@@ -66,8 +99,8 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   }, []);
 
   // El alto real de la cabecera va a --fv-fija-h: la columna del lugar se
-  // pega justo debajo (la dirección puede ocupar dos renglones y un valor
-  // fijo la taparía). Se re-mide al cambiar el ancho del contenedor.
+  // pega justo debajo (los cuatro renglones pueden crecer). Se re-mide al
+  // cambiar el ancho del contenedor.
   useEffectFV(() => {
     const raiz = raizRef.current, fija = fijaRef.current;
     if (!raiz || !fija) return;
@@ -94,17 +127,15 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     return () => scroller.removeEventListener('scroll', alScroll);
   }, []);
 
-  // «Desde cuándo»: pendiente/asignada → días sin iniciar; iniciada → días
-  // sin completar (ambos en hábiles, utils.js); ocre, rojo desde el umbral de
-  // demora de las alertas. Completada → la fecha de la visita. Cerrada sin
-  // visita → la fecha de radicado (contar días de espera no tiene sentido).
+  // Renglón 1, «desde cuándo»: pendiente/asignada → días sin iniciar;
+  // iniciada → días sin completar (ambos en hábiles, utils.js); ocre, rojo
+  // desde el umbral de demora de las alertas. Completada → nada (nunca la
+  // fecha de completada). Cerrada sin visita → la fecha de radicado.
   let estadoTxt = '', estadoCls = '';
-  if (completa) {
-    estadoTxt = 'Completada el ' + (formatearFecha(f['FECHA DE VISITA'] || '') || '—');
-  } else if (cerrada) {
+  if (cerrada) {
     const fr = formatearFecha(f['FECHA RADICADO'] || '');
     estadoTxt = fr ? 'radicado el ' + fr : '';
-  } else {
+  } else if (!completa) {
     const dias = est === 'INICIADO' ? diasSinCompletar(f) : diasSinIniciar(f);
     if (dias != null) {
       estadoTxt = dias > 0 ? 'hace ' + _plural(dias, 'día', 'días') : 'hoy';
@@ -113,21 +144,21 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   }
 
   const linkPqr = linkPdfRadicado(f);
-  const secciones = seccionesFicha(f, usuario && usuario.rol);
-  const secUbic = secciones.find(s => s.clave === 'ubicacion');
-  // Recorrido del caso en una línea: solo los pasos cumplidos con fecha —
-  // el paso detenido ya lo cuenta la cabecera («hace N días»).
-  const recorridoTxt = recorridoVisita(f)
-    .filter(p => p.hecho && p.valor)
-    .map(p => p.rotulo + ' ' + p.valor)
-    .join(' · ');
-  // Secciones «se llena en la visita»: una sola línea con sus títulos, en el
-  // lugar de la primera.
-  const luegoIdx = secciones.findIndex(s => s.resumen);
-  const luegoTitulos = secciones.filter(s => s.resumen).map(s => s.titulo).join(' · ');
+  const bloques = bloquesFicha(f, usuario && usuario.rol);
+  const predio = _predioFV(f);
+  const entItems = empezada ? _entregablesFV(f, terminada) : [];
+
+  // Renglón 4, los datos del caso: cada uno solo si tiene algo que decir.
+  const exp = expedienteDe(f);
+  const rad = f['RADICADO'] || '';
+  const nVisita = String(f['N° VISITA'] || f['N VISITA'] || '').trim();
+  const fRadicado = formatearFecha(f['FECHA RADICADO'] || '');
+  // Asignada solo mientras está asignada (en pendiente tampoco).
+  const fAsignada = est === 'ASIGNADO' ? formatearFecha(f['FECHA ASIGNACION VISITA'] || '') : '';
+  const fVisita = formatearFecha(f['FECHA DE VISITA'] || '');
 
   // Campos crudos de la BD (solo admin, diagnóstico): pares no vacíos.
-  const crudoPares = usuario && usuario.rol === 'ADMIN'
+  const crudoPares = esAdmin
     ? Object.keys(f)
         .filter(k => isNaN(Number(k)) && k !== '_idx')
         .map(k => [k, f[k]])
@@ -136,7 +167,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
 
   return (
     <div className="fv" ref={raizRef}>
-      {/* ── Cabecera fija: lo básico, máximo dos botones ── */}
+      {/* ── Cabecera: 1 estado · 2 dirección · 3 lugar · 4 datos del caso ── */}
       <div className={'fv-fija' + (onCerrar ? ' con-cerrar' : '')} ref={fijaRef}>
         {onCerrar && (
           <button type="button" className="vc-btn fv-cerrar" onClick={onCerrar} aria-label="Cerrar">×</button>
@@ -152,90 +183,86 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
             </div>
             {/* Una dirección que es una coordenada se dice «Punto GPS», como en Buscar. */}
             <div className="fv-dir" title={dir}>{puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</div>
-            <div className="vc-ident">
-              {/* Aquí se gestiona: con expediente se muestran los dos
-                  («Exp. 2201 · Rad. 20261041205», decisión 2026-10-19). */}
-              <span className="vc-rad">
-                {expedienteDe(f) ? <><span className="exp-tag">Exp. {expedienteDe(f)}</span> · Rad. {f['RADICADO'] || '—'}</>
-                  : (f['RADICADO'] || '—')}
-              </span>
-              {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
-              {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
-              {quienes.length > 0 && <><span className="vc-sep">·</span><span>{titleCaseNombre(quienes[0])}{quienes.length > 1 ? ' +' + (quienes.length - 1) : ''}</span></>}
+            <div className="fv-lugar-l">
+              {[barrio, f['COMUNA'] ? 'Comuna ' + f['COMUNA'] : ''].filter(Boolean).join(' · ')}
             </div>
-            {/* Recorrido del caso: los pasos cumplidos, una sola línea. */}
-            {recorridoTxt && <div className="fv-recorrido">{recorridoTxt}</div>}
+            <div className="fv-hechos">
+              {/* Con expediente se muestran los dos («Exp. 2201 · Rad. 20261041205»). */}
+              <div>
+                <div className="l">Radicado</div>
+                <div className="v">
+                  {exp ? <><span className="exp-tag">Exp. {exp}</span> · Rad. {rad || '—'}</>
+                    : (rad || '—')}
+                </div>
+              </div>
+              {nVisita && <div><div className="l">Visita</div><div className="v">{nVisita}</div></div>}
+              {fRadicado && <div><div className="l">Radicada</div><div className="v">{fRadicado}</div></div>}
+              {fAsignada && <div><div className="l">Asignada</div><div className="v">{fAsignada}</div></div>}
+              {fVisita && <div><div className="l">Fecha de visita</div><div className="v">{fVisita}</div></div>}
+              {quienes.length > 0 && (
+                <div>
+                  <div className="l">Inspector</div>
+                  <div className="v">{titleCaseNombre(quienes[0])}{quienes.length > 1 ? ' +' + (quienes.length - 1) : ''}</div>
+                </div>
+              )}
+            </div>
           </div>
+          {/* Botones solo con texto (decisión del usuario, ficha v2). */}
           <div className="fv-fija-acc">
             {!terminada && onContinuar && (puedeDiligenciar(f)
               ? <button type="button" className="vc-btn vc-btn-cta" onClick={() => onContinuar(f._idx, f)}>
-                  <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
+                  {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
                 </button>
               // Regla del diligenciador: al co-asignado se le dice quién la lleva.
               : <span className="vc-dilig">La lleva {quienes[0]}</span>)}
-            {/* La PQR se abre en pestaña nueva, como en las tarjetas: fuera
-                el visor incrustado de la ficha (decisión del usuario). */}
+            {/* La PQR se abre en pestaña nueva, como en las tarjetas. */}
             {linkPqr && (
               <a className="vc-btn" href={linkPqr} target="_blank" rel="noopener noreferrer"
-                title="Abrir el PDF de la PQR radicada (pestaña nueva)">
-                <Icon.File size={14} /> Ver PQR <span className="fv-ext" aria-hidden="true">↗</span>
-              </a>
+                title="Abrir el PDF de la PQR radicada (pestaña nueva)">Ver PQR</a>
             )}
-            <BotonMapaVisita f={f} variante="vc" />
+            <BotonMapaVisita f={f} variante="vc" sinIcono />
           </div>
         </div>
       </div>
 
+      {/* Banda del caso: denunciante · prioridad · reiterados, celda solo si
+          hay dato; sin celdas, no hay banda. */}
+      <_BandaCasoFV f={f} verPrioridad={verPrioridad} />
+
       <div className="fv-cuerpo">
         <div className="fv-datos">
-          {/* Entregables: la carpeta de la visita primero; solo si la visita
-              empezó (las reglas del panel: «Falta» / «No se generó»). */}
-          {empezada && (!terminada || f['LINK_DRIVE'] || _entregablesMV(f).some(e => e.link)) && (
-            <section className="fv-sec">
-              <h3 className="mv-sub">Entregables{!terminada && <small>se generan dentro de la visita</small>}</h3>
-              {f['LINK_DRIVE'] && (
-                <div className="mv-ent">
-                  <span className="fv-ico"><Icon.Folder size={12} /></span>
-                  <span className="mv-ent-n">Carpeta de la visita</span>
-                  <a className="vc-btn" href={f['LINK_DRIVE']} target="_blank" rel="noopener noreferrer">Abrir</a>
-                </div>
-              )}
-              {/* Completada: solo lo que existe y se puede abrir (decisión del usuario 2026-10-14). */}
-              {_entregablesMV(f).filter(e => !terminada || e.link).map(e => (
-                <div className="mv-ent" key={e.n}>
-                  <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
-                  <span className="mv-ent-n">{e.n}</span>
-                  {e.link
-                    ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
-                    : <span className="mv-ent-e falta">Falta</span>}
-                </div>
-              ))}
-            </section>
-          )}
+          {empezada ? (<>
+            {/* Iniciada: lo pendiente primero. Completada: «Documentos»,
+                solo lo que existe (decisión del usuario 2026-10-14). */}
+            {entItems.length > 0 && (
+              <section className="fv-ent-caja">
+                <h3 className="fv-bt">{terminada ? 'Documentos' : 'Entregables'}</h3>
+                {entItems.map(e => (
+                  <div className="mv-ent" key={e.n}>
+                    <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
+                    <span className="mv-ent-n">{e.n}</span>
+                    {e.link
+                      ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
+                      : <span className="mv-ent-e falta">Falta</span>}
+                  </div>
+                ))}
+              </section>
+            )}
+            {bloques.map(b => <_BloqueFV key={b.clave} b={b} />)}
+          </>) : (<>
+            {/* Asignada sin visita: el predio y nada más — ni secciones ni
+                «Se llenan en la visita». */}
+            {predio.length > 0 && (
+              <section className="fv-bloque">
+                <h3 className="fv-bt">El predio</h3>
+                <_DatosMV pares={predio} />
+              </section>
+            )}
+          </>)}
 
-          {secciones.map((s, i) => {
-            // Ficha ancha: la ubicación se va a la columna del lugar.
-            if (dosCols && s.clave === 'ubicacion') return null;
-            // «Se llena en la visita»: todas las secciones vacías en una
-            // sola línea, en el lugar de la primera.
-            if (s.resumen) {
-              if (i !== luegoIdx) return null;
-              return (
-                <section className="fv-sec" key={s.clave}>
-                  <p className="fv-vacios fv-luego-linea"><b>Se llenan en la visita:</b> {luegoTitulos}</p>
-                </section>
-              );
-            }
-            return <_SecFV key={s.clave} s={s} f={f} />;
-          })}
-
-          {/* Ficha angosta: el mapa cierra la lista, como siempre. */}
-          {!dosCols && <MapaPanelMV f={f} />}
-
-          {/* Radicados reiterados al final (decisión del usuario 2026-10-08: se usa
-              poco y en la sección 1 quedaba muy a la vista). ReiteradosVD decide
-              solo si hay o quién mira es admin. */}
-          <ReiteradosVD key={String(f._idx) + '|' + f['RADICADO']} f={f} />
+          {/* Gestión de reiterados (agregar/quitar): solo el admin; los
+              demás los ven en la banda. */}
+          {esAdmin && <ReiteradosVD key={String(f._idx) + '|' + f['RADICADO']} f={f} />}
 
           {crudoPares && crudoPares.length > 0 && (
             <details className="fv-crudo">
@@ -247,23 +274,102 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
               </dl>
             </details>
           )}
+
+          {/* Ficha angosta: el mapa cierra la lista, como siempre. */}
+          {!dosCols && <MapaPanelMV f={f} />}
         </div>
 
-        {/* Ficha ancha: ubicación y mapa en su columna, fijos bajo la
-            cabecera mientras se recorren los datos. */}
+        {/* Ficha ancha: mapa y predio en su columna, fijos bajo la cabecera
+            mientras se recorren los datos. En la asignada el predio va a la
+            izquierda y aquí viaja solo el mapa (como la maqueta). */}
         {dosCols && (
           <div className="fv-lugar">
-            {secUbic && <_SecFV s={secUbic} f={f} />}
             <MapaPanelMV f={f} />
+            {empezada && predio.length > 0 && <_DatosMV pares={predio} />}
           </div>
         )}
       </div>
 
       {/* Gestión (E5 la inyecta): barra fija al pie, fuera de la información
-          (decisión del usuario 2026-10-12; antes iba entre los entregables y
-          la sección 1). */}
+          (decisión del usuario 2026-10-12). */}
       {gestion && <div className="fv-gestion-pie">{gestion}</div>}
     </div>
+  );
+}
+
+// Banda del caso bajo la cabecera: Denunciante · Prioridad (solo admin y
+// supervisor, con rojo desde 8) · Reiterados. El «Ver» de un reiterado solo
+// si su PDF existe: un solo pedido por visita, el mismo que hace ReiteradosVD.
+// Sin PDF no hay aviso — solo el número (decisión del usuario, ficha v2).
+function _BandaCasoFV({ f, verPrioridad }) {
+  const principal = claveRadicado(String(f['RADICADO'] || '').trim());
+  const reits = radicadosReiterados(f).filter(r => r !== principal);
+  const [links, setLinks] = useStateFV({});
+  const claveLista = reits.join(',');
+  useEffectFV(() => {
+    if (!reits.length) return;
+    let vivo = true;
+    linksPdfReiterados(reits)
+      .then(r => { if (vivo && r && r.links) setLinks(r.links); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [claveLista]);
+
+  const denunciante = String(f['DENUNCIANTE/REMITENTE'] || f['DENUNCIANTE'] || '').trim();
+  const prioTxt = String(f['PRIORIDAD'] || '').trim();
+  const celdas = [];
+  if (denunciante) {
+    celdas.push(<div key="den"><div className="l">Denunciante</div><div className="v">{denunciante}</div></div>);
+  }
+  if (verPrioridad && prioTxt) {
+    // «7 - Alto» como viene de la BD, con el guion del medio de la priorización.
+    const alta = parseInt(prioTxt, 10) >= 8;
+    celdas.push(<div key="pri"><div className="l">Prioridad</div>
+      <div className={'v' + (alta ? ' alta' : '')}>{prioTxt.replace(/\s*-\s*/, ' · ')}</div></div>);
+  }
+  if (reits.length) {
+    celdas.push(<div key="rei"><div className="l">Reiterados</div>
+      <div className="v fv-reits">{reits.map(r => (
+        <span key={r}>{r}{links[r] && (
+          <a href={links[r]} target="_blank" rel="noopener noreferrer"
+            title="Abrir el PDF de la PQR reiterada (pestaña nueva)">Ver</a>
+        )}</span>
+      ))}</div></div>);
+  }
+  if (!celdas.length) return null;
+  return <div className="fv-banda">{celdas}</div>;
+}
+
+// Un bloque de bloquesFicha (utils.js): título sin número ni raya, campos con
+// rótulo arriba, textos largos en recuadro y —solo si es iniciada— «Sin dato»
+// al pie (bloquesFicha vacía la lista en las terminadas).
+function _BloqueFV({ b }) {
+  const piezas = [];
+  let pares = [];
+  const volcar = () => {
+    if (pares.length) {
+      piezas.push(<_DatosMV key={'dl' + piezas.length} pares={pares} />);
+      pares = [];
+    }
+  };
+  b.campos.forEach(c => {
+    if (c.largo) {
+      volcar();
+      piezas.push(<p key={'tx' + piezas.length} className="fv-texto">{c.l ? c.l + ': ' : ''}{c.v}</p>);
+    } else {
+      pares.push([c.l, c.v, c.ancho]);
+    }
+  });
+  volcar();
+
+  return (
+    <section className="fv-bloque">
+      <h3 className="fv-bt">{b.titulo}</h3>
+      {piezas}
+      {b.sinDato.length > 0 && (
+        <p className="fv-vacios"><b>Sin dato:</b> {b.sinDato.join(', ')}</p>
+      )}
+    </section>
   );
 }
 
@@ -300,45 +406,6 @@ function _VisitasCasoFV({ visitas, actual, onElegir }) {
         })}
       </div>
     </div>
-  );
-}
-
-// Una sección de seccionesFicha: número + título, campos con dato y, al pie,
-// «Sin dato: …». (Las secciones «se llena en la visita» no llegan aquí: la
-// ficha las junta en una sola línea.)
-function _SecFV({ s, f }) {
-  // Campos en orden: los cortos agrupados en la lista de definición, los
-  // largos como párrafo suelto (etiqueta en línea si la lleva).
-  const bloques = [];
-  let pares = [];
-  const volcar = () => {
-    if (pares.length) {
-      bloques.push(<_DatosMV key={'dl' + bloques.length} pares={pares} />);
-      pares = [];
-    }
-  };
-  s.campos.forEach(c => {
-    if (c.largo) {
-      volcar();
-      bloques.push(
-        <p key={'tx' + bloques.length} className="mv-texto">
-          {c.l ? c.l + ': ' : ''}{c.v}
-        </p>
-      );
-    } else {
-      pares.push([c.l, c.v, c.ancho]);
-    }
-  });
-  volcar();
-
-  return (
-    <section className="fv-sec" data-sec={s.clave}>
-      <h3 className="mv-sub"><span className="fv-num" aria-hidden="true">{s.n}</span>{s.titulo}</h3>
-      {bloques}
-      {s.sinDato.length > 0 && (
-        <p className="fv-vacios"><b>Sin dato:</b> {s.sinDato.join(', ')}</p>
-      )}
-    </section>
   );
 }
 
