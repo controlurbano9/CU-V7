@@ -355,7 +355,7 @@ function _BloqueFV({ b }) {
   b.campos.forEach(c => {
     if (c.largo) {
       volcar();
-      piezas.push(<p key={'tx' + piezas.length} className="fv-texto">{c.l ? c.l + ': ' : ''}{c.v}</p>);
+      piezas.push(<p key={'tx' + piezas.length} className="fv-texto">{c.v}</p>);
     } else {
       pares.push([c.l, c.v, c.ancho]);
     }
@@ -367,7 +367,11 @@ function _BloqueFV({ b }) {
       <h3 className="fv-bt">{b.titulo}</h3>
       {piezas}
       {b.sinDato.length > 0 && (
-        <p className="fv-vacios"><b>Sin dato:</b> {b.sinDato.join(', ')}</p>
+        // Tres y «N más»: la lista entera de una visita a medio diligenciar es
+        // un párrafo que tapa los datos (la completa queda en el title).
+        <p className="fv-vacios" title={b.sinDato.length > 3 ? b.sinDato.join(', ') : undefined}>
+          <b>Sin dato:</b> {b.sinDato.slice(0, 3).join(', ')}{b.sinDato.length > 3 ? ' y ' + (b.sinDato.length - 3) + ' más' : ''}
+        </p>
       )}
     </section>
   );
