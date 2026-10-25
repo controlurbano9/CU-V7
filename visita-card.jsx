@@ -624,6 +624,37 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
   );
 }
 
+// Asignar o reasignar una visita (admin). Lo usan Buscar y la Semana de
+// Inicio. Relevar una INICIADA no es lo mismo que asignar una pendiente: el
+// backend conserva el estado, pero por la regla del diligenciador el
+// inspector anterior deja de verla, y su borrador local (localStorage) no
+// viaja — por eso se confirma. Devuelve false si el admin canceló; lanza si
+// el webhook falla.
+async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expediente) {
+  const estActual = normalizarEstado(f ? (f['ESTADO VISITA'] || f[13] || '') : '');
+  if (estActual === 'INICIADO') {
+    const actual = primerVisitador(visitadoresBD(f));
+    const ok = await appConfirm(
+      'Esta visita está INICIADA' + (actual ? ' por ' + actual : '') + '.\n\n' +
+      'Al pasarla a ' + inspector + ' conserva el estado y todo lo guardado en BD, ' +
+      'pero ' + (actual || 'el inspector actual') + ' dejará de verla y se perderá lo que ' +
+      'aún no haya guardado en su dispositivo.',
+      { titulo: 'Reasignar visita iniciada', btnOk: 'Reasignar', peligro: true }
+    );
+    if (!ok) return false;
+  }
+  await gasPost({
+    accion: 'asignarRadicado', fila, inspector,
+    radicadoConocido: (f && f['RADICADO']) || '',
+    idVisita: (f && f['ID_VISITA']) || '',
+    fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
+    // Vacío no pisa un expediente que ya exista (regla del backend).
+    expediente: expediente || '',
+  });
+  invalidarCache('visitas');
+  return true;
+}
+
 // El <input type="date"> habla ISO; BD habla DD/MM/YYYY (regla de fechas).
 // La conversión se hace acá y nunca se manda un Date ni un ISO al backend.
 function _hoyIso() {

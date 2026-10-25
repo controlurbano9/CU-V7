@@ -200,8 +200,19 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
 }
 
 // ── Tarjeta de visita ──────────────────────────────────────────
-function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar }) {
+function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar, inspectores, onReasignar }) {
+  // Reasignar (solo ADMIN): tocar el nombre del inspector abre la lista.
+  const [reasignando, setReasignando] = useStateSV(false);
+  const [ocupada, setOcupada] = useStateSV(false);
   const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  const puedeReasignar = !!onReasignar && (e === 'ASIGNADO' || e === 'INICIADO') &&
+    inspectores && inspectores.length > 0;
+  async function reasignar(fila, nombre, fv, fecha) {
+    setOcupada(true);
+    const hecho = await onReasignar(fila, nombre, fv, fecha);
+    setOcupada(false);
+    if (hecho) setReasignando(false);
+  }
   const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección';
   const rad = String(f['RADICADO'] || '').trim();
   // Con expediente se ve «Exp. N» y el radicado queda en el title (2026-10-19).
@@ -236,7 +247,16 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
         {fRad}
       </div>
       <div className="sv-pie">
-        <span className="sv-insp">{_svNombreCorto(f)}</span>
+        {puedeReasignar ? (
+          <button type="button" className="sv-insp" title="Reasignar a otro inspector"
+            aria-expanded={reasignando} onClick={() => setReasignando(!reasignando)}
+            style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit',
+              cursor: 'pointer', textAlign: 'left', textDecoration: 'underline dotted' }}>
+            {_svNombreCorto(f) || 'Reasignar'}
+          </button>
+        ) : (
+          <span className="sv-insp">{_svNombreCorto(f)}</span>
+        )}
         <span className="sv-acc">
           {/* Firma (fila, datos): la misma de BotonContinuarVisita y AlertaCard.
               Con solo (f) el router recibe la fila donde espera el _idx y el
@@ -253,12 +273,17 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
           </>)}
         </span>
       </div>
+      {puedeReasignar && (
+        <PanelSeleccionInspector f={f} busy={ocupada} abierto={reasignando}
+          inspectores={inspectores.map(n => ({ nombre: n }))}
+          accion="asignar" conFecha onAsignar={reasignar} />
+      )}
     </div>
   );
 }
 
 // ── Componente principal ───────────────────────────────────────
-function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspector: inspectorExt, onInspector, onAbrirDia,
+function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasignar, inspector: inspectorExt, onInspector, onAbrirDia,
   offset: offsetExt, onOffset }) {
   const prefs0 = _svPrefs();
   // Con onOffset la semana la maneja Inicio, que pinta navegación y filtro en
@@ -561,6 +586,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
             const ord = puedeOrdenar(f) && porDia[sel].length > 1;
             return (
               <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1}
+                inspectores={inspectores} onReasignar={onReasignar}
                 onSubir={ord && i > 0 ? () => mover(dias[sel], porDia[sel], i, -1) : null}
                 onBajar={ord && i < porDia[sel].length - 1 ? () => mover(dias[sel], porDia[sel], i, 1) : null} />
             );
@@ -607,6 +633,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, inspect
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
               <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} n={j + 1}
+                inspectores={inspectores} onReasignar={onReasignar}
                 arrastrable={puedeOrdenar(f) || puedeMover(f)}
                 onDragStart={(e) => { setArrastre(f._idx); try { e.dataTransfer.setData('text/plain', String(f._idx)); } catch (x) {} }}
                 onDragOver={(e) => { if (arrastre != null) e.preventDefault(); }}

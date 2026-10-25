@@ -409,6 +409,10 @@ function invalidarCache(key) {
 const _SNAP_DB = 'cu_datos_v1';
 const _SNAP_STORE = 'kv';
 const _SNAP_VISITAS = 'bd_visitas';
+// Hora de la última confirmación contra la red, aparte de la copia: un
+// «sin cambios» la renueva sin reescribir los 1,1 MB. Sin ella, al reabrir la
+// app el botón decía la hora del último CAMBIO bajado («hace 15 h»).
+const _SNAP_VISITAS_TS = 'bd_visitas_ts';
 let _snapDbPromesa = null;
 function _snapDb() {
   if (!_snapDbPromesa) {
@@ -447,6 +451,7 @@ let _firmaVisitas = '';       // JSON de values + filas de _visitasUltimas (dete
 let _hashVisitas = '';        // firma (MD5) que dio el servidor para esos values; '' = no mandarla
 let _visitasSucias = false;   // hubo escritura desde la última descarga
 let _visitasTs = 0;           // cuándo se confirmó la copia contra la red (o el snapshot local)
+let _visitasFallo = '';       // mensaje del último refresco fallido; '' = el último salió bien
 let _genVisitas = 0;          // sube con cada invalidarCache('visitas')
 let _visitasEnVuelo = null;   // { gen, promesa } — una sola descarga compartida
 let _snapVisitasLeida = null; // promesa de la lectura única de IndexedDB
@@ -498,14 +503,17 @@ function _claveVisitas(json, nums) {
 function _visitasLocales() {
   if (_visitasUltimas) return Promise.resolve(_visitasUltimas);
   if (!_snapVisitasLeida) {
-    _snapVisitasLeida = _snapLeer(_SNAP_VISITAS).then(reg => {
+    _snapVisitasLeida = Promise.all([_snapLeer(_SNAP_VISITAS), _snapLeer(_SNAP_VISITAS_TS)]).then(([reg, tsConf]) => {
       if (_visitasUltimas) return _visitasUltimas; // la red ganó mientras se leía
       if (!reg || typeof reg.json !== 'string') return null;
       const nums = Array.isArray(reg.filas) ? reg.filas : null;
       _visitasUltimas = _procesarVisitas(JSON.parse(reg.json), nums);
       _firmaVisitas = _claveVisitas(reg.json, nums);
       _hashVisitas = typeof reg.firma === 'string' ? reg.firma : '';
-      _visitasTs = typeof reg.ts === 'number' ? reg.ts : 0;
+      // La confirmación solo vale si es de esta copia (misma firma del servidor).
+      const tsCopia = typeof reg.ts === 'number' ? reg.ts : 0;
+      const conf = tsConf && tsConf.firma === _hashVisitas && typeof tsConf.ts === 'number' ? tsConf.ts : 0;
+      _visitasTs = Math.max(tsCopia, conf);
       return _visitasUltimas;
     }).catch(() => null);
   }
@@ -535,6 +543,18 @@ function _respuestaHoja(d) {
   return { values: d.values || [], filas: Array.isArray(d.filas) ? d.filas : null, firma: d.firma || '' };
 }
 
+function _avisarEstadoVisitas() {
+  try { window.dispatchEvent(new CustomEvent('cu-visitas-estado')); } catch (e) {}
+}
+// La copia quedó confirmada contra la red: hora en memoria y en IndexedDB
+// (atada a la firma, para no prestársela a otra copia).
+function _confirmarVisitas() {
+  _visitasTs = Date.now();
+  _visitasFallo = '';
+  _snapGuardar(_SNAP_VISITAS_TS, { ts: _visitasTs, firma: _hashVisitas });
+  _avisarEstadoVisitas();
+}
+
 function _descargarVisitas() {
   const gen = _genVisitas;
   // Todas las pantallas (y "Recargar") comparten la descarga en curso, salvo
@@ -546,7 +566,7 @@ function _descargarVisitas() {
       if (gen === _genVisitas) {
         _visitasDeRed = true;
         _visitasSucias = false;
-        _visitasTs = Date.now();
+        _confirmarVisitas();
         _cacheSet('visitas', _visitasUltimas);
       }
       return _visitasUltimas;
@@ -562,13 +582,19 @@ function _descargarVisitas() {
     _hashVisitas = r.firma;
     _visitasDeRed = true;
     _visitasSucias = false;
-    _visitasTs = Date.now();
+    _confirmarVisitas();
     _cacheSet('visitas', _visitasUltimas);
     if (cambio || firmaNueva) _snapGuardar(_SNAP_VISITAS, { json, filas: r.filas, firma: r.firma, ts: Date.now() });
     if (cambio) {
       try { window.dispatchEvent(new CustomEvent('cu-visitas-actualizadas')); } catch (e) {}
     }
     return _visitasUltimas;
+  }, e => {
+    // Antes el fallo solo iba a la consola: la app seguía mostrando la copia
+    // vieja (visitas ya iniciadas como asignadas) sin decir nada.
+    _visitasFallo = (e && e.message) || 'sin respuesta';
+    _avisarEstadoVisitas();
+    throw e;
   }).finally(() => {
     if (_visitasEnVuelo && _visitasEnVuelo.promesa === promesa) _visitasEnVuelo = null;
     _resolverPrimeraCarga();
@@ -638,16 +664,18 @@ function suscribirVisitas(fn) {
 // entrar a una pantalla. Al volver a la app y cada 5 min con ella a la vista
 // se pregunta «¿cambió algo?»: con la firma, si no cambió la respuesta es de
 // ~100 bytes; si cambió, las pantallas se re-pintan por 'cu-visitas-actualizadas'.
+// Si el último refresco falló, se reintenta cada minuto en vez de cada 5.
 const VISITAS_REFRESCO_MS = 5 * 60 * 1000;
-function _refrescarVisitasSiViejas() {
+function _refrescarVisitasSiViejas(e) {
   if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
   if (!_visitasUltimas || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
-  if (Date.now() - _visitasTs < CACHE_TTL_MS) return;
-  _descargarVisitas().catch(e => console.warn('[visitas] refresco: ' + e.message));
+  const tope = (e && e.type === 'visibilitychange') || _visitasFallo ? CACHE_TTL_MS : VISITAS_REFRESCO_MS;
+  if (Date.now() - _visitasTs < tope) return;
+  _descargarVisitas().catch(err => console.warn('[visitas] refresco: ' + err.message));
 }
 if (typeof document !== 'undefined' && document.addEventListener) {
   document.addEventListener('visibilitychange', _refrescarVisitasSiViejas);
-  setInterval(_refrescarVisitasSiViejas, VISITAS_REFRESCO_MS);
+  setInterval(_refrescarVisitasSiViejas, 60 * 1000);
 }
 
 // Resuelve cuando termina (bien o mal) la primera descarga de la BD: las
@@ -659,6 +687,9 @@ function esperarPrimeraCargaVisitas() { return _primeraCargaVisitas; }
 // N min» de la barra superior; también cuenta el snapshot local del arranque,
 // que es lo que la primera pantalla sirve.
 function ultimaDescargaVisitas() { return _visitasTs; }
+// Mensaje del último refresco fallido ('' si salió bien). Cambia con el
+// evento 'cu-visitas-estado'.
+function falloDescargaVisitas() { return _visitasFallo; }
 
 // Fila con la que se abre el formulario. Si la lista se pintó con la copia
 // local y la red aún no confirmó, espera la descarga en curso (máx. 12 s):
@@ -687,7 +718,9 @@ async function obtenerFilaVigente(fila, respaldo) {
 function _olvidarVisitasLocales() {
   _visitasUltimas = null; _visitasDeRed = false; _firmaVisitas = ''; _hashVisitas = '';
   _snapVisitasLeida = null;
+  _visitasTs = 0; _visitasFallo = '';
   _snapBorrar(_SNAP_VISITAS);
+  _snapBorrar(_SNAP_VISITAS_TS);
 }
 
 // ── Normalizar estado (igual que app.js) ───────────────────────
@@ -1209,6 +1242,30 @@ async function obtenerIdFotos(idCarpetaVisita) {
   } catch (e) { return ''; }
 }
 
+// Campos que van fuera de `valores` y que un guardado puede no traer (sin la
+// clave, el backend no toca la columna). Al reemplazar un guardado encolado
+// por uno más nuevo se heredan los que el nuevo no trae.
+const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita'];
+
+// Saca de la cola los `actualizar` de esa fila. Con `nuevo`, le pasa antes los
+// campos extra que solo traían los encolados (el más reciente gana).
+async function _descartarGuardadosEnCola(fila, nuevo) {
+  if (typeof offlineListar !== 'function' || typeof offlineEliminar !== 'function') return;
+  try {
+    const items = await offlineListar();
+    const viejos = items.filter(it => it && it.tipo === 'guardarVisita' && it.body &&
+      it.body.accion === 'actualizar' && String(it.body.fila) === String(fila));
+    for (let i = viejos.length - 1; i >= 0; i--) {
+      if (nuevo) {
+        _CAMPOS_EXTRA_GUARDADO.forEach(k => {
+          if (nuevo[k] === undefined && viejos[i].body[k] !== undefined) nuevo[k] = viejos[i].body[k];
+        });
+      }
+      await offlineEliminar(viejos[i].id);
+    }
+  } catch (e) { /* sin IDB: la cola sigue como estaba */ }
+}
+
 // Guarda una visita. Si pasa filaExistente actualiza; si no, agrega.
 // payload.valores es el array de 60 valores (cols B → BD) ya armado.
 // Si el POST falla por error de red, encola en IndexedDB y devuelve
@@ -1255,9 +1312,18 @@ async function guardarVisita(payload) {
     const d = await gasPost(body);
     invalidarCache('visitas');
     _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida);
+    // La fila entera ya quedó escrita: los guardados de esta visita que
+    // seguían en cola son versiones anteriores. Si salieran después, chocarían
+    // con este mismo guardado (conflicto de ULTIMA_MODIFICACION) y quedarían
+    // atascados — o, peor, pisarían lo nuevo con lo viejo.
+    if (body.fila && d && d.ok !== false) await _descartarGuardadosEnCola(body.fila, null);
     return d;
   } catch (e) {
     if (typeof _offlineEsErrorDeRed === 'function' && _offlineEsErrorDeRed(e)) {
+      // Cada guardado lleva la fila completa: el más nuevo reemplaza a los
+      // anteriores de la misma visita. Todos se encolan con el mismo
+      // ultimaModConocida, así que mandar varios daba conflicto desde el 2.º.
+      if (body.fila) await _descartarGuardadosEnCola(body.fila, body);
       const localId = await offlineEnqueue({
         tipo: 'guardarVisita',
         body: _conCredencialesSesion(body),

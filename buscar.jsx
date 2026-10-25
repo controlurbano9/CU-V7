@@ -515,35 +515,14 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const datosRef = useRefB(datos);
   datosRef.current = datos;
   const adminAsignar = useCallbackB(async (fila, inspector, f, fechaAsignacion, expediente) => {
-    // Relevar una visita INICIADA no es lo mismo que asignar una pendiente:
-    // el backend conserva el estado, pero por la regla del diligenciador el
-    // inspector anterior deja de verla, y su borrador local (localStorage)
-    // no viaja — lo que no haya guardado se queda en su dispositivo.
-    const estActual = normalizarEstado(f ? (f['ESTADO VISITA'] || f[13] || '') : '');
-    if (estActual === 'INICIADO') {
-      const actual = primerVisitador(visitadoresBD(f));
-      const ok = await appConfirm(
-        'Esta visita está INICIADA' + (actual ? ' por ' + actual : '') + '.\n\n' +
-        'Al pasarla a ' + inspector + ' conserva el estado y todo lo guardado en BD, ' +
-        'pero ' + (actual || 'el inspector actual') + ' dejará de verla y se perderá lo que ' +
-        'aún no haya guardado en su dispositivo.',
-        { titulo: 'Reasignar visita iniciada', btnOk: 'Reasignar', peligro: true }
-      );
-      if (!ok) return;
-    }
+    // La confirmación del relevo de una INICIADA va en asignarVisitaAdmin
+    // (visita-card.jsx), compartida con la Semana de Inicio.
     setBusyFila(fila);
     try {
-      await gasPost({
-        accion: 'asignarRadicado', fila, inspector,
-        radicadoConocido: (f && f['RADICADO']) || '',
-        idVisita: (f && f['ID_VISITA']) || '',
-        fechaAsignacion: fechaAsignacion || hoyDDMMAAAA(),
-        // Vacío no pisa un expediente que ya exista (regla del backend).
-        expediente: expediente || '',
-      });
-      invalidarCache('visitas');
-      setAsignandoFila(null);
-      await cargar(true);
+      if (await asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expediente)) {
+        setAsignandoFila(null);
+        await cargar(true);
+      }
     } catch (e) {
       // La respuesta puede perderse en el segundo salto de Google con la
       // escritura ya hecha: se recarga igual para mostrar lo que quedó en BD.

@@ -43,7 +43,7 @@ function montar() {
   vm.runInContext(src.slice(ini, fin), ctx);
   const f = n => vm.runInContext(n, ctx);
   return { pedidos, eventos, leerVisitas: f('leerVisitas'), invalidarCache: f('invalidarCache'),
-    parchear: f('_parchearVisitaLocal') };
+    parchear: f('_parchearVisitaLocal'), fallo: () => f('_visitasFallo') };
 }
 
 const firmaDe = v => 'h' + JSON.stringify(v).length;
@@ -136,14 +136,16 @@ async function conCopiaDeRed() {
 test('el refresco manda la firma de la copia y sinCambios la confirma sin re-pintar', async () => {
   const m = await conCopiaDeRed();
   assert.equal(m.pedidos[0].params.firma, undefined, 'sin copia no hay firma que mandar');
-  const eventos = m.eventos.length;
+  const repintes = () => m.eventos.filter(t => t === 'cu-visitas-actualizadas').length;
+  const eventos = repintes();
   const p = m.leerVisitas({ forzar: true });
   await tic();
   assert.equal(m.pedidos[1].params.firma, firmaDe(BD));
   m.pedidos[1].resolve({ ok: true, sinCambios: true, firma: firmaDe(BD) });
   const res = await p;
   assert.equal(res.datos.length, 2);
-  assert.equal(m.eventos.length, eventos, 'sin cambios no se re-pinta');
+  assert.equal(repintes(), eventos, 'sin cambios no se re-pinta');
+  assert.ok(m.eventos.includes('cu-visitas-estado'), 'sí avisa al botón que quedó confirmada');
   await m.leerVisitas(); // quedó confirmada: sirve de caché, sin pedido nuevo
   assert.equal(m.pedidos.length, 2);
 });
@@ -233,4 +235,19 @@ test('NO COMPETENCIA queda fuera de `datos` y aparte en `noCompetencia` (solo pa
   m.parchear(2, ['R-1', 'INICIADO', ''], '');
   const res2 = await m.leerVisitas();
   assert.deepEqual(res2.noCompetencia.map(o => o['RADICADO']), ['R-2']);
+});
+
+test('un refresco fallido queda registrado y el siguiente que sale bien lo borra', async () => {
+  const m = await conCopiaDeRed();
+  const fallo = m.fallo;
+  const p = m.leerVisitas({ forzar: true });
+  await tic();
+  m.pedidos[1].reject(Object.assign(new Error('No autorizado'), { definitivo: true }));
+  await assert.rejects(p);
+  assert.equal(fallo(), 'No autorizado');
+  const p2 = m.leerVisitas({ forzar: true });
+  await tic();
+  m.pedidos[2].resolve({ ok: true, sinCambios: true, firma: firmaDe(BD) });
+  await p2;
+  assert.equal(fallo(), '');
 });

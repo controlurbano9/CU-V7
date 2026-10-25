@@ -250,6 +250,21 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       .catch(() => {});
   }, [veTodo]);
 
+  // Reasignar desde la tarjeta de la Semana (solo ADMIN; el supervisor ve,
+  // no gestiona). Misma acción y confirmación que Buscar.
+  async function reasignarDesdeSemana(fila, nombre, f, fecha) {
+    try {
+      if (!(await asignarVisitaAdmin(fila, nombre, f, fecha))) return false;
+      await cargar(true, true);
+      return true;
+    } catch (e) {
+      // La escritura pudo hacerse y perderse la respuesta: se recarga igual.
+      invalidarCache('visitas'); cargar(true, true);
+      await appAlert('Error: ' + e.message, { tono: 'error', titulo: 'Error' });
+      return false;
+    }
+  }
+
   // ── Render ──
   const hoyR = new Date();
   const fechaHoy = hoyR.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -368,6 +383,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
             miNombre={miNombre}
             inspectores={inspectores}
             onAbrir={onContinuar}
+            onReasignar={usuario.rol === 'ADMIN' ? reasignarDesdeSemana : undefined}
             inspector={inspector}
             onInspector={setInspector}
             offset={offsetSemana}

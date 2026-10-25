@@ -948,12 +948,14 @@ function ActualizarDatos({ ancho }) {
   useEffectApp(() => {
     const id = setInterval(() => setLatido(n => n + 1), 20000);
     const off = suscribirVisitas(() => setLatido(n => n + 1));
-    return () => { clearInterval(id); off(); };
+    const repintar = () => setLatido(n => n + 1);
+    window.addEventListener('cu-visitas-estado', repintar);
+    return () => { clearInterval(id); off(); window.removeEventListener('cu-visitas-estado', repintar); };
   }, []);
   async function actualizar() {
     if (girando) return;
     setGirando(true);
-    try { await leerVisitas({ forzar: true }); } catch (e) { /* sin red: la hora no cambia */ }
+    try { await leerVisitas({ forzar: true }); } catch (e) { /* el fallo lo registra api.js y se pinta abajo */ }
     setGirando(false);
   }
   const ts = ultimaDescargaVisitas();
@@ -962,11 +964,18 @@ function ActualizarDatos({ ancho }) {
     : min < 1 ? 'ahora'
     : min < 60 ? 'hace ' + min + ' min'
     : 'hace ' + Math.floor(min / 60) + ' h';
-  const texto = (ancho ? 'Actualizado ' : '') + hace;
+  // El último intento de actualizar falló: lo que se ve puede estar viejo, y
+  // eso se dice en vez de seguir con «Actualizado hace…» como si nada.
+  const fallo = falloDescargaVisitas();
+  const texto = fallo ? (min == null ? 'Sin actualizar' : 'Sin actualizar · ' + hace)
+    : (ancho ? 'Actualizado ' : '') + hace;
+  const detalle = fallo
+    ? 'No se pudo actualizar (' + fallo + '). Datos de ' + hace + ' · tocar para reintentar'
+    : 'Actualizado ' + hace + ' · tocar para actualizar';
   return (
-    <button type="button" className={'btn-actualizar' + (girando ? ' icono-girando' : '')}
+    <button type="button" className={'btn-actualizar' + (fallo ? ' btn-actualizar-fallo' : '') + (girando ? ' icono-girando' : '')}
       onClick={actualizar} disabled={girando} aria-busy={girando}
-      title={'Actualizado ' + hace + ' · tocar para actualizar'} aria-label={'Actualizar datos. Actualizado ' + hace}>
+      title={detalle} aria-label={'Actualizar datos. ' + detalle}>
       <span>{texto}</span><Icon.Refresh size={14} />
     </button>
   );

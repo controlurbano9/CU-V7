@@ -3400,6 +3400,15 @@ button.sv-col-head {
   color: var(--ink-3); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .btn-actualizar:disabled { cursor: progress; }
+/* Falló el último intento: en rojo y, donde la hora no cabe (<480), un punto
+   sobre el icono. El texto del aria-label dice lo mismo. */
+.btn-actualizar.btn-actualizar-fallo { color: var(--rojo); position: relative; }
+@media (max-width: 479px) {
+  .btn-actualizar-fallo::after {
+    content: ''; position: absolute; top: 10px; right: 10px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--rojo);
+  }
+}
 @media (hover: hover) and (pointer: fine) {
   .btn-actualizar:hover { color: var(--ink-1); background: var(--surface-2); }
 }

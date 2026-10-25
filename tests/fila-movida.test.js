@@ -139,7 +139,9 @@ test('backend: el control corre antes del dedup y del switch', opts, () => {
 });
 
 test('cliente: asignar, desasignar y completar mandan radicadoConocido', () => {
-  const buscar = fs.readFileSync(path.join(__dirname, '..', 'buscar.jsx'), 'utf8');
+  // asignarRadicado vive en asignarVisitaAdmin (visita-card.jsx), compartida con Inicio.
+  const buscar = fs.readFileSync(path.join(__dirname, '..', 'buscar.jsx'), 'utf8') +
+    fs.readFileSync(path.join(__dirname, '..', 'visita-card.jsx'), 'utf8');
   for (const accion of ['asignarRadicado', 'crearNuevaVisitaAsignada', 'desasignarRadicado', 'completarRegistro']) {
     const i = buscar.indexOf("accion: '" + accion + "'");
     assert.ok(i > 0, accion);

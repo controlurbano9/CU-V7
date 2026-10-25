@@ -3,7 +3,7 @@
 // (revisarTextoLocal). Casos sacados de la línea base del 2026-10-14.
 const test = require('node:test');
 const assert = require('node:assert');
-const { reglasBloqueoActa, revisarTextoLocal } = require('../utils.js');
+const { reglasBloqueoActa, revisarTextoLocal, alternarContravencion, _infraccionSoloCatalogo } = require('../utils.js');
 
 const ids = s => s.map(x => x.id).sort();
 const A3 = 'A3: Bienes uso público (Antejardín)';
@@ -41,6 +41,28 @@ test('R11: quebrada o protección con literal A y sin A1', () => {
   assert.deepEqual(reglasBloqueoActa({ infraccion: 'A1: Áreas protegidas | ' + A4, quebrada: 'SI' }), []);
   // Sin comportamiento de construcción no se exige A1.
   assert.deepEqual(reglasBloqueoActa({ infraccion: 'No se evidencia infracción', quebrada: 'SI' }), []);
+});
+
+test('R16: A1 y A4 juntos no bloquean; piden justificación', () => {
+  const A1 = 'A1: Áreas protegidas';
+  assert.deepEqual(reglasBloqueoActa({ infraccion: A1 + ' | ' + A4, quebrada: 'SI' }), []);
+  const s = revisarTextoLocal({ actuacion: 'Ampliación en el lote, parte en el retiro de la quebrada.',
+    infraccion: A1 + ' | ' + A4, area: '40' });
+  const r16 = s.filter(x => x.id === 'R16');
+  assert.equal(r16.length, 1);
+  assert.equal(r16[0].tipo, 'coherencia');
+  assert.equal(revisarTextoLocal({ actuacion: 'Ampliación en el retiro de la quebrada.', infraccion: A1, area: '40' })
+    .filter(x => x.id === 'R16').length, 0);
+});
+
+test('alternarContravencion: A1 convive con A4 y va primero', () => {
+  const A1 = 'A1: Áreas protegidas';
+  assert.equal(_infraccionSoloCatalogo(A4 + ' | ' + A1), A1 + ' | ' + A4);
+  assert.deepEqual(alternarContravencion([A4, A3], A1), [A1, A4, A3]);
+  assert.deepEqual(alternarContravencion([A1], A4), [A1, A4]);
+  assert.deepEqual(alternarContravencion([A1, A3], A3), [A1]);
+  assert.deepEqual(alternarContravencion([A1], 'No se evidencia infracción'), ['No se evidencia infracción']);
+  assert.deepEqual(alternarContravencion(['No se evidencia infracción'], A4), [A4]);
 });
 
 // ── Con justificación ────────────────────────────────────────

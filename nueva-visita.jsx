@@ -398,6 +398,7 @@ var SECCIONES_SENAL = {
   R13: ['Características de la edificación', 'Tipificación y medidas'],
   R14: ['Verificación documental', 'Tipificación y medidas'],
   R15: ['Verificación documental', 'Tipificación y medidas'],
+  R16: ['Tipificación y medidas'],
   area: ['Tipificación y medidas'],
 };
 function _irASeccion(titulo) {
@@ -1059,21 +1060,9 @@ function _ChipsContravencion({ value, onChange }) {
 
   const esNoInfraccion = seleccionados.includes(CONTRAVENCION_ESPECIAL);
 
+  // «No se evidencia» y A1 primero, en utils.js.
   function toggle(val) {
-    let next;
-    if (val === CONTRAVENCION_ESPECIAL) {
-      // Si se selecciona "No se evidencia", deseleccionar todo lo demás
-      next = esNoInfraccion ? [] : [CONTRAVENCION_ESPECIAL];
-    } else {
-      // Si estaba "No se evidencia", quitarlo
-      const base = seleccionados.filter(s => s !== CONTRAVENCION_ESPECIAL);
-      if (base.includes(val)) {
-        next = base.filter(s => s !== val);
-      } else {
-        next = [...base, val];
-      }
-    }
-    onChange(next.join(sep));
+    onChange(alternarContravencion(seleccionados, val).join(sep));
   }
 
   return (
@@ -3450,7 +3439,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const noA = _chipsActuales.filter(v => !/^A\d/.test(v));
     // Quitar también "No se evidencia infracción" si estaba — ahora SÍ hay infracción.
     const noNoInfr = noA.filter(v => v !== CONTRAVENCION_ESPECIAL);
-    const final = [...noNoInfr, ..._vSugeridos];
+    // Lo sugerido (A1/A3) primero: A1 tiene prioridad.
+    const final = [..._vSugeridos, ...noNoInfr];
     _setInfraccion(final.join(' | '));
   }
 
@@ -4575,8 +4565,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       licenciaObs:     d.obsLicencia || '',
       // Caracterización
       estadoObra:     d.estadoObra,
-      repLocativa:    d.repLocativa,
-      usos:           (d.usos || '') + (d.queFunciona ? ' - ' + d.queFunciona : ''),
+      // L25 de la plantilla dice «¿REQUIERE LICENCIA?» y el backend la llena
+      // con este campo. Mandar la AA (reparación locativa) la invertía: obras
+      // que requieren licencia salían «NO». Va la respuesta del formulario.
+      repLocativa:    (d.reqLicencia || {}).respuesta || '',
+      usos:          (d.usos || '') + (d.queFunciona ? ' - ' + d.queFunciona : ''),
       alturaP:        d.alturaPisos,
       destActuales:   d.destActuales,
       cubiertalActual:d.cubiertaActual,

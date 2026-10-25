@@ -2416,8 +2416,26 @@ const _CONTRAVENCION_VALIDAS = new Set(
   CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(CONTRAVENCION_ESPECIAL)
 );
 function _infraccionSoloCatalogo(v) {
-  return String(v || '').split(' | ').map(s => s.trim())
-    .filter(s => _CONTRAVENCION_VALIDAS.has(s)).join(' | ');
+  const chips = String(v || '').split(' | ').map(s => s.trim())
+    .filter(s => _CONTRAVENCION_VALIDAS.has(s));
+  // A1 primero (prioridad, ver alternarContravencion): filas guardadas antes.
+  return chips.filter(s => /^A1:/.test(s)).concat(chips.filter(s => !/^A1:/.test(s))).join(' | ');
+}
+
+// Marca o desmarca `val` en la lista de chips y devuelve la lista nueva.
+// «No se evidencia infracción» desmarca todo lo demás, y viceversa.
+// A1 tiene prioridad (decisión del usuario 2026-10-21): va siempre primero,
+// también en el acta y el informe, que toman el orden de aquí. A1 + A4 en
+// un lote mixto se permite con justificación (R16, revisarTextoLocal); que
+// A1 sea obligatorio cuando aplica lo exige R11 (reglasBloqueoActa).
+function alternarContravencion(seleccionados, val) {
+  const sel = (seleccionados || []).slice();
+  if (val === CONTRAVENCION_ESPECIAL) {
+    return sel.includes(CONTRAVENCION_ESPECIAL) ? [] : [CONTRAVENCION_ESPECIAL];
+  }
+  const base = sel.filter(s => s !== CONTRAVENCION_ESPECIAL);
+  if (base.includes(val)) return base.filter(s => s !== val);
+  return /^A1:/.test(val) ? [val].concat(base) : base.concat(val);
 }
 
 // ── Tablero territorial (E7): lógica pura (2026-10-16) ────────
@@ -3808,6 +3826,13 @@ function revisarTextoLocal(e) {
     add('R05', 'area', 'En Verificación documental, las obras no requieren licencia por ser reparación locativa, y en Tipificación hay ' + String(e.area).trim() + ' m² en contravención: una reparación locativa no agrega área.');
   }
 
+  // R16: A1 y A4 juntos solo en un lote mixto: parte de la obra en suelo de
+  // protección o retiro (A1) y parte en terreno apto sin licencia (A4). Pide
+  // justificación (decisión del usuario 2026-10-21).
+  if (tiene('A1') && tiene('A4')) {
+    add('R16', 'descripcion', 'En Tipificación están A1 y A4: explica qué parte de la obra está en suelo de protección o retiro (A1) y qué parte está fuera, sin licencia (A4).');
+  }
+
   // R06 / R06b: el antejardín, según lo que diga el texto. Construir o
   // intervenir ahí es A3; materiales o escombros, D13 (decisión del usuario).
   // Son aviso (no piden justificación) porque la detección por texto falla
@@ -4553,6 +4578,7 @@ var _cuUtilsExports = {
   CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
   _infraccionSoloCatalogo: _infraccionSoloCatalogo,
+  alternarContravencion: alternarContravencion,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
