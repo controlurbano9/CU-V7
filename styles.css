@@ -4470,3 +4470,20 @@ tr.clic:hover td { background: var(--surface-2); }
   scroll-snap-type: x proximity; scrollbar-width: thin; padding-bottom: 4px; }
 .sv-col { scroll-snap-align: start; }
 .au-grupo-n { font-weight: 400; color: var(--ink-3); }
+
+/* Cabecera de cada día fija (2026-10-25, decisión del usuario): con el
+   desplazamiento lateral la rejilla es su propio contenedor de scroll, así que
+   también desplaza en vertical y el nombre del día queda pegado arriba. */
+@media (min-width: 900px) {
+  .sv-grid { overflow: auto; max-height: calc(100vh - var(--header-h) - 170px); }
+  .sv-col-head, button.sv-col-head {
+    position: sticky; top: 0; z-index: 1; background: var(--carril);
+    border-radius: 12px 12px 0 0;
+  }
+  .sv-col.hoy .sv-col-head, .sv-col.hoy button.sv-col-head { background: var(--brand-bg); }
+}
+@media (min-width: 1600px) {
+  .home-pantalla .home-sem { overflow: hidden; }
+  .home-pantalla .home-sem > .sv { flex: 1 1 auto; min-height: 0; }
+  .home-pantalla .home-sem .sv-grid { flex: 1 1 auto; min-height: 0; max-height: none; }
+}
