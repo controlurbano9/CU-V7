@@ -4277,7 +4277,7 @@ function _citasVisitaViejas(filas, opts) {
       fechaTxt: formatearFecha(parsearFecha(t)),
       hora: sep === -1 ? '' : t.slice(sep + 3).replace(/[\s.]/g, ''),
       citado: String(f['CITADO'] || '').trim() ||
-        String(f['NOMBRE PERSONA ATIENDE'] || '').trim(),
+        String(f['NOMBRE PERSONA ATIENDE'] || '').trim().replace(/^no se atiende.*$/i, ''),
       caso: caso,
       direccion: caso.direccion,
       inspector: primerVisitador(visitadoresBD(f)),

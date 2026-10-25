@@ -641,7 +641,8 @@ function AudienciasScreen({ usuario }) {
   function renderHoy() {
     const fecha = fechaHoy || hoyTxt;
     const idx = diasHoy.indexOf(fecha);
-    const previo = idx > 0 ? diasHoy[idx - 1] : null;
+    // Sin días anteriores (o con el día fuera de la lista al cambiar un filtro), ‹ vuelve a hoy.
+    const previo = idx > 0 ? diasHoy[idx - 1] : (fecha !== hoyTxt ? hoyTxt : null);
     const siguiente = idx >= 0 ? (diasHoy[idx + 1] || null) : (diasHoy[0] || null);
     // La lista ya viene por hora: grupos consecutivos del mismo título.
     const grupos = [];
@@ -658,7 +659,7 @@ function AudienciasScreen({ usuario }) {
             onClick={function () { setFechaHoy(previo); }} aria-label="Día anterior con audiencias">‹</button>
           <div className="au-sem-tit">
             {fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(fecha))}
-            <small>{citasHoy.length} audiencia{citasHoy.length === 1 ? '' : 's'}</small>
+            {!!citasHoy.length && <small>{citasHoy.length} audiencia{citasHoy.length === 1 ? '' : 's'}</small>}
           </div>
           <button type="button" className="au-flecha" disabled={!siguiente}
             onClick={function () { setFechaHoy(siguiente); }} aria-label="Día siguiente con audiencias">›</button>
