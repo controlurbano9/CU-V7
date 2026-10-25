@@ -4227,6 +4227,109 @@ function pedidasHoyAudiencias(cupos, hoyTxt) {
   }).sort(function (a, b) { return String(b.reservadoEn).localeCompare(String(a.reservadoEn)); });
 }
 
+// ── Vista «Hoy» (2026-10-25) ─────────────────────────────────────
+// Las audiencias citadas de UN día llegan de dos fuentes: los cupos
+// RESERVADO del bloque nuevo (traen sustanciador) y las citas viejas
+// anotadas a mano en FECHA CITACION de BD VISITAS (no tienen
+// sustanciador y no se inventa: varios sustanciadores comparten las
+// 9:00 y las 2:00). Una visita en las dos fuentes sale una sola vez,
+// la del bloque.
+
+// Cupos RESERVADO que pasan los filtros de la vista (soloDe = nombre de
+// usuario como «Mis citas»; sustanciador = norm del chip elegido).
+function _cuposBloqueFiltrados(cupos, opts) {
+  var solo = opts && opts.soloDe ? normNombreAudiencias(opts.soloDe) : '';
+  var sus = (opts && opts.sustanciador) || '';
+  return (cupos || []).filter(function (c) {
+    if (c.estado !== 'RESERVADO') return false;
+    if (sus && normNombreAudiencias(c.sustanciador) !== sus) return false;
+    if (solo && normNombreAudiencias(c.reservadoPor) !== solo) return false;
+    return true;
+  });
+}
+
+// ¿El cupo `c` y la fila `f` son la misma visita? Por ID_VISITA o porque
+// son el mismo caso (radicado u orden, como mismoCasoAudiencias).
+function _mismaCitaBloqueVisita(c, f) {
+  var idv = String((f && f['ID_VISITA']) || '').trim();
+  if (idv && String(c.idVisita || '').trim() === idv) return true;
+  return mismoCasoAudiencias(c, casoDeVisitaAudiencias(f));
+}
+
+// Citas viejas de `filas` (todas las fechas): solo INICIADO/COMPLETADO con
+// FECHA CITACION legible. Celdas como «No se deja citación» no traen fecha
+// (parsearFecha devuelve null) y se ignoran. La hora va normalizada
+// ('2:00pm') para que ordenar y pintar no dependan del formato de la celda.
+function _citasVisitaViejas(filas, opts) {
+  // Con un sustanciador elegido las viejas no salen: no tienen y no se deduce.
+  if (opts && opts.sustanciador) return [];
+  var nombre = (opts && opts.soloDe) || '';
+  return (filas || []).filter(function (f) {
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
+    if (e !== 'INICIADO' && e !== 'COMPLETADO') return false;
+    if (nombre && !_esVisitaDe(f, nombre)) return false;
+    return !!parsearFecha(f['FECHA CITACION'] || '');
+  }).map(function (f) {
+    var t = String(f['FECHA CITACION'] || '');
+    var sep = t.indexOf(' · ');
+    var caso = casoDeVisitaAudiencias(f);
+    return {
+      fechaTxt: formatearFecha(parsearFecha(t)),
+      hora: sep === -1 ? '' : t.slice(sep + 3).replace(/[\s.]/g, ''),
+      citado: String(f['CITADO'] || '').trim() ||
+        String(f['NOMBRE PERSONA ATIENDE'] || '').trim(),
+      caso: caso,
+      direccion: caso.direccion,
+      inspector: primerVisitador(visitadoresBD(f)),
+      sustanciador: '',
+      fuente: 'visita',
+      fila: f
+    };
+  });
+}
+
+// Audiencias citadas de `fechaTxt` ('DD/MM/YYYY'), ordenadas por hora (sin
+// hora al final). Del bloque traen sustanciador; de la visita, no. Pruebas:
+// tests/audiencias-hoy.test.js.
+function audienciasDelDia(filas, cupos, fechaTxt, opts) {
+  var delBloque = _cuposBloqueFiltrados(cupos, opts).filter(function (c) {
+    return c.fecha === fechaTxt;
+  });
+  var viejas = _citasVisitaViejas(filas, opts).filter(function (v) {
+    return v.fechaTxt === fechaTxt &&
+      // Una visita que también tiene cupo ese día sale una sola vez: la del bloque.
+      !delBloque.some(function (c) { return _mismaCitaBloqueVisita(c, v.fila); });
+  });
+  return delBloque.map(function (c) {
+    return {
+      hora: String(c.hora || ''), minutos: horaAudienciasMin(c.hora), citado: c.citado,
+      caso: { radicado: c.radicado, ordenPolicia: c.ordenPolicia, expediente: c.expediente },
+      direccion: c.direccion, inspector: c.reservadoPor, sustanciador: c.sustanciador,
+      fuente: 'bloque', cupo: c
+    };
+  }).concat(viejas.map(function (v) {
+    return Object.assign({}, v, { minutos: v.hora ? horaAudienciasMin(v.hora) : null });
+  })).sort(function (a, b) {
+    return (a.minutos == null ? 24 * 60 : a.minutos) - (b.minutos == null ? 24 * 60 : b.minutos);
+  });
+}
+
+// Fechas 'DD/MM/YYYY' con al menos una cita (mismos filtros), de `desdeTxt`
+// en adelante y ordenadas. Para las flechas de «Hoy» y su estado vacío.
+function diasConAudiencias(filas, cupos, desdeTxt, opts) {
+  var desde = parsearFecha(desdeTxt);
+  var fechas = {};
+  _cuposBloqueFiltrados(cupos, opts).forEach(function (c) {
+    var f = String(c.fecha || '').trim();
+    if (f) fechas[formatearFecha(f)] = 1;
+  });
+  _citasVisitaViejas(filas, opts).forEach(function (v) { fechas[v.fechaTxt] = 1; });
+  return Object.keys(fechas).filter(function (f) {
+    var d = parsearFecha(f);
+    return !!d && (!desde || d >= desde);
+  }).sort(function (a, b) { return parsearFecha(a) - parsearFecha(b); });
+}
+
 // ── Orden del día en la Semana (2026-10-22) ──────────────────────
 // ORDEN_DIA = 'DD/MM/YYYY#n': el orden que el admin o el inspector le dieron a
 // la visita ese día. Solo vale para ese día: si la visita cambia de día, se ignora.
@@ -4273,6 +4376,9 @@ var _cuUtilsExports = {
   sugerirCasosAudiencias: sugerirCasosAudiencias,
   citaVigenteDelCaso: citaVigenteDelCaso,
   pedidasHoyAudiencias: pedidasHoyAudiencias,
+  // Vista «Hoy»
+  audienciasDelDia: audienciasDelDia,
+  diasConAudiencias: diasConAudiencias,
   expedienteDe: expedienteDe,
   identificadorVisita: identificadorVisita,
   citaArt135: citaArt135,

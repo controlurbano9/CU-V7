@@ -5,7 +5,7 @@
 //
 //   El inspector pide la cita en campo («Pedir cita»: caso de su agenda de hoy
 //   o escrito, y uno de los 5 cupos más próximos; sin señal, sus 3 apartados).
-//   Vistas: Hoy · Semana · Lista. ADMIN ve todo, libera cupos y copia las
+//   Vistas: Hoy · Programadas · Cupos · Lista. ADMIN ve todo, libera cupos y copia las
 //   «Citaciones visitas completadas» para pegarlas en el Excel; SUPERVISOR
 //   entra filtrado por su nombre y solo gestiona sus novedades; INSPECTOR
 //   solo lectura, en «Mis citas». No es una pestaña de alertas.
@@ -296,7 +296,7 @@ function AudienciasScreen({ usuario }) {
   const [cargando, setCargando] = useStateAU(true);
   const [error, setError] = useStateAU('');
   const [sinConexion, setSinConexion] = useStateAU(false);
-  const [vista, setVista] = useStateAU('prog');
+  const [vista, setVista] = useStateAU('hoy');
   const [filtroSus, setFiltroSus] = useStateAU(''); // '' = todos; norm(nombre)
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
   const [offsetSem, setOffsetSem] = useStateAU(0);
@@ -311,6 +311,8 @@ function AudienciasScreen({ usuario }) {
   const [cuposPedir, setCuposPedir] = useStateAU(null);    // precargados para «Pedir cita»
   const [pendientes, setPendientes] = useStateAU([]);      // citas pedidas sin señal
   const [citaAbierta, setCitaAbierta] = useStateAU(null);
+  const [filas, setFilas] = useStateAU([]);        // BD VISITAS: citas viejas de la vista Hoy
+  const [fechaHoy, setFechaHoy] = useStateAU('');  // día visible en Hoy ('' = hoy)
 
   const esAdmin = usuario.rol === 'ADMIN';
   const esSup = !esAdmin && veTodasLasVisitas(usuario.rol);
@@ -366,6 +368,14 @@ function AudienciasScreen({ usuario }) {
     precargarCupos();
     // Cupos apartados para pedir citas sin señal en campo (se repiten sin daño).
     if (esInsp && navigator.onLine) apartarCuposAudiencias().catch(function () {});
+  }, []);
+
+  // La vista «Hoy» cruza los cupos con las citas viejas de BD VISITAS
+  // (FECHA CITACION): carga al montar y se re-pinta con el refresco.
+  useEffectAU(() => {
+    const leer = () => leerVisitas().then(function (r) { setFilas((r && r.datos) || []); }).catch(function () {});
+    leer();
+    return suscribirVisitas(leer);
   }, []);
 
   const dias = useMemoAU(() => agruparAudienciasPorDia((datos && datos.cupos) || []), [datos]);
@@ -537,6 +547,16 @@ function AudienciasScreen({ usuario }) {
     });
   }, [datos, lis, hoyTxt, esInsp, misCitas, yo]);
 
+  // Vista Hoy: filtros vigentes («Mis citas» del inspector, chip de
+  // sustanciador — con sustanciador elegido las citas viejas no salen).
+  const optsHoy = { soloDe: soloMias ? usuario.usuario : '', sustanciador: filtroSus };
+  const diasHoy = useMemoAU(function () {
+    return diasConAudiencias(filas, (datos && datos.cupos) || [], hoyTxt, optsHoy);
+  }, [filas, datos, hoyTxt, soloMias, filtroSus]);
+  const citasHoy = useMemoAU(function () {
+    return audienciasDelDia(filas, (datos && datos.cupos) || [], fechaHoy || hoyTxt, optsHoy);
+  }, [filas, datos, fechaHoy, hoyTxt, soloMias, filtroSus]);
+
   const quedanCupos = esAdmin && datos && datos.ultimaFechaConCupo &&
     (function () {
       const n = diasHabilesHasta(parsearFecha(datos.ultimaFechaConCupo));
@@ -592,6 +612,76 @@ function AudienciasScreen({ usuario }) {
           La hoja AUDIENCIAS está vacía: falta pegar la lista CUPOS_CU del Excel del despacho.
           <button type="button" className="btn-accion" onClick={function () { cargar(); }}>Reintentar</button>
         </div>
+      </div>
+    );
+  }
+
+  // ── Vista Hoy (2026-10-25) ──
+  // Las audiencias citadas de UN día: las del bloque (traen sustanciador) y
+  // las viejas anotadas en FECHA CITACION de la visita (no lo tienen y no se
+  // inventa). Las flechas saltan entre días con audiencias desde hoy; nada
+  // se reubica en «hoy» (misma regla que la Semana de visitas).
+  function filaCitaHoy(r, clave) {
+    const clicable = r.fuente === 'bloque' ? clicableCita(r.cupo) : !!r.fila;
+    const Tag = clicable ? 'button' : 'div';
+    const alClic = !clicable ? undefined : (r.fuente === 'bloque'
+      ? function () { setCitaAbierta(r.cupo); }
+      : function () { window.abrirVisitaDetail(r.fila); });
+    return (
+      <div className="au-row" key={clave}>
+        <Tag className="t" type={clicable ? 'button' : undefined} onClick={alClic}>
+          <b>{r.citado || _auCaso(r.caso)}</b>{r.citado ? <> · {_auCaso(r.caso)}</> : null}
+          <small>{[r.direccion, r.inspector ? titleCaseNombre(r.inspector) : '',
+            r.sustanciador ? titleCaseNombre(r.sustanciador) : ''].filter(Boolean).join(' · ')}</small>
+        </Tag>
+      </div>
+    );
+  }
+
+  function renderHoy() {
+    const fecha = fechaHoy || hoyTxt;
+    const idx = diasHoy.indexOf(fecha);
+    const previo = idx > 0 ? diasHoy[idx - 1] : null;
+    const siguiente = idx >= 0 ? (diasHoy[idx + 1] || null) : (diasHoy[0] || null);
+    // La lista ya viene por hora: grupos consecutivos del mismo título.
+    const grupos = [];
+    citasHoy.forEach(function (r) {
+      const titulo = r.hora ? horaBonitaAudiencias(r.hora) : 'Sin hora';
+      const g = grupos[grupos.length - 1];
+      if (g && g.titulo === titulo) g.citas.push(r); else grupos.push({ titulo: titulo, citas: [r] });
+    });
+    const proximos = diasHoy.filter(function (f) { return f !== hoyTxt; }).slice(0, 5);
+    return (
+      <div>
+        <div className="au-sem-bar">
+          <button type="button" className="au-flecha" disabled={!previo}
+            onClick={function () { setFechaHoy(previo); }} aria-label="Día anterior con audiencias">‹</button>
+          <div className="au-sem-tit">
+            {fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(fecha))}
+            <small>{citasHoy.length} audiencia{citasHoy.length === 1 ? '' : 's'}</small>
+          </div>
+          <button type="button" className="au-flecha" disabled={!siguiente}
+            onClick={function () { setFechaHoy(siguiente); }} aria-label="Día siguiente con audiencias">›</button>
+        </div>
+        {!citasHoy.length ? (<>
+          <p className="au-vacio-hoy">{fecha === hoyTxt ? 'Hoy no hay audiencias' : 'Sin audiencias este día'}</p>
+          {fecha === hoyTxt && !!proximos.length && (
+            <div className="au-dia-tabs" role="group" aria-label="Próximos días con audiencias">
+              {proximos.map(function (f) {
+                const n = audienciasDelDia(filas, (datos && datos.cupos) || [], f, optsHoy).length;
+                return <button type="button" key={f} className="au-chip" onClick={function () { setFechaHoy(f); }}>
+                  {_auDiaCorto(f)} · {n}</button>;
+              })}
+            </div>
+          )}
+        </>) : grupos.map(function (g) {
+          return (
+            <div className="au-grupo" key={g.titulo}>
+              <h3>{g.titulo}</h3>
+              {g.citas.map(function (r, i) { return filaCitaHoy(r, g.titulo + i); })}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -926,6 +1016,7 @@ function AudienciasScreen({ usuario }) {
       <div className={esAdmin ? 'au-grid' : ''}>
       <div className="au-principal">
       <div className="au-topbar">
+        <button type="button" className={'au-chip' + (vista === 'hoy' ? ' on' : '')} onClick={function () { setVista('hoy'); }}>Hoy</button>
         <button type="button" className={'au-chip' + (vista === 'prog' ? ' on' : '')} onClick={function () { setVista('prog'); }}>Programadas</button>
         {!esInsp && <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')} onClick={function () { setVista('sem'); }}>Cupos</button>}
         <button type="button" className={'au-chip' + (vista === 'lis' ? ' on' : '')} onClick={function () { setVista('lis'); }}>Lista</button>
@@ -944,6 +1035,7 @@ function AudienciasScreen({ usuario }) {
               }))}
       </div>
 
+      {vista === 'hoy' && renderHoy()}
       {vista === 'prog' && renderProgramadas()}
       {vista === 'sem' && renderSemana()}
       {vista === 'lis' && renderLista()}
