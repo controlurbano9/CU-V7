@@ -227,7 +227,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
 
       {/* Banda del caso: denunciante · prioridad · reiterados, celda solo si
           hay dato; sin celdas, no hay banda. */}
-      <_BandaCasoFV f={f} verPrioridad={verPrioridad} />
+      <BandaCasoFV f={f} verPrioridad={verPrioridad} />
 
       <div className="fv-cuerpo">
         <div className="fv-datos">
@@ -301,7 +301,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
 // supervisor, con rojo desde 8) · Reiterados. El «Ver» de un reiterado solo
 // si su PDF existe: un solo pedido por visita, el mismo que hace ReiteradosVD.
 // Sin PDF no hay aviso — solo el número (decisión del usuario, ficha v2).
-function _BandaCasoFV({ f, verPrioridad }) {
+function BandaCasoFV({ f, verPrioridad }) {
   const principal = claveRadicado(String(f['RADICADO'] || '').trim());
   const reits = radicadosReiterados(f).filter(r => r !== principal);
   const [links, setLinks] = useStateFV({});
