@@ -3963,15 +3963,19 @@ button.sv-col-head {
 
 /* ── Revisión de UI 2026-10-13 (GLM, plan docs/PLAN_2026-10-13_revision-ui-front.md) ── */
 /* Chip «PQR» (visita-card.jsx): antes estilo inline, 51×19 px con letra de 10. */
-.pqr-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 8px;
-  background: var(--brand-bg); color: var(--brand-ink); border: 1px solid var(--brand-accent);
-  font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.6; text-decoration: none; white-space: nowrap; }
+/* Chip «PQR» (2026-10-25): sin borde — el borde rojizo lo hacía leer como
+   alerta junto a «Asignada hace N días». En el celular conserva su tamaño y el
+   área táctil crece con ::after, sin inflar el renglón del radicado. */
+.pqr-chip { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 6px;
+  background: var(--brand-bg); color: var(--brand-ink); border: 0;
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.6; text-decoration: none; white-space: nowrap; }
+.pqr-chip::after { content: ''; position: absolute; inset: -12px -6px; }
 .ent-par { display: inline-flex; align-items: center; gap: 6px; }
 .sv-vacio, .ag-ley { font-size: 12px; }
 @media (max-width: 899px) {
   /* Táctil: 44 px los botones sueltos, 36 (--tap-min) los chips en fila. */
   .sv-nav-btn, .ag-flecha { width: var(--tap); height: var(--tap); }
-  .sv-hoy, .sv-chip, .pqr-chip { min-height: var(--tap-min); height: auto; }
+  .sv-hoy, .sv-chip { min-height: var(--tap-min); height: auto; }
   .ag-com-b { height: var(--tap); }
   .ag-dia-nota button { min-height: var(--tap-min); }
   .bq-orden select { height: var(--tap); }
