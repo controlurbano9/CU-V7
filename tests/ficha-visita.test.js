@@ -211,6 +211,17 @@ test('seccionesFicha — INICIADO sin fecha de visita NO es «sin visita»', () 
   assert.ok(s3.sinDato.length > 0, 'los campos aplican y van a sinDato');
 });
 
+test('seccionesFicha — sin visita: «N° orden policía» no falta (todavía no toca)', () => {
+  const ss = seccionesFicha({ 'ESTADO VISITA': 'PENDIENTE', 'FECHA RADICADO': '23/01/2026' }, 'ADMIN');
+  assert.ok(!ss.find(s => s.n === 1).sinDato.includes('N° orden policía'),
+    'una visita sin hacer no exige orden de policía');
+  // Con la visita hecha sí falta (ya se sabe si hubo o no orden).
+  const ss2 = seccionesFicha({
+    'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '11/09/2026',
+  }, 'ADMIN');
+  assert.ok(ss2.find(s => s.n === 1).sinDato.includes('N° orden policía'));
+});
+
 // ── Inspector vs admin en la sección 3 ─────────────────────────
 
 test('seccionesFicha — la sección 3 es igual para todos los roles (como el modal de hoy)', () => {

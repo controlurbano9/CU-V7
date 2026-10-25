@@ -506,35 +506,5 @@ function MapaPanelMV({ f }) {
   );
 }
 
-// ── La PQR dentro del panel ────────────────────────────────────
-// El PDF que el chip «PQR» abre en otra pestaña, legible al lado de la lista
-// (vista previa de Drive). Requiere `https://drive.google.com` en el
-// frame-src del CSP de index.html, y que los PDF sigan siendo de enlace
-// público: si se restringen, este bloque habrá que servirlo por el webhook
-// (precedente: obtenerFotoBase64).
-function PqrPanelMV({ id, link, radicado, onCerrar }) {
-  const enLinea = typeof navigator === 'undefined' || navigator.onLine !== false;
-  // Giro solo para leer cómodo una PQR escaneada de lado: gira el visor entero,
-  // no el archivo, y no se recuerda (decisión del usuario 2026-10-13).
-  const [giro, setGiro] = useStateMV(0);
-  useEffectMV(() => { setGiro(0); }, [id]);
-  return (
-    <div className="mv-bloque">
-      <h3 className="mv-sub">PQR radicada
-        <a className="mv-sub-link" href={link} target="_blank" rel="noopener noreferrer">Abrir en otra pestaña</a>
-        {enLinea && <button type="button" className="mv-sub-link fv-pqr-x" onClick={() => setGiro(g => (g + 90) % 360)}
-          title="Girar el documento 90° a la derecha" aria-label={'Girar el documento 90° a la derecha (ahora ' + giro + '°)'}>Girar</button>}
-        {onCerrar && <button type="button" className="mv-sub-link fv-pqr-x" onClick={onCerrar}>Ocultar</button>}
-      </h3>
-      {enLinea
-        ? <div className={'mv-pqr' + (giro % 180 ? ' mv-pqr-lado' : '')} style={{ '--pqr-giro': giro + 'deg' }}>
-            <iframe key={id} src={'https://drive.google.com/file/d/' + id + '/preview'}
-              title={'PQR radicada ' + (radicado || '')} loading="lazy" referrerPolicy="no-referrer" />
-          </div>
-        : <div className="mv-ent-e">Sin conexión: el documento no se puede mostrar aquí.</div>}
-    </div>
-  );
-}
-
 // Exponer componente en el scope global
 window.MisVisitasScreen = MisVisitasScreen;

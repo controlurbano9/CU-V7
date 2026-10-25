@@ -2932,35 +2932,6 @@ button.sv-col-head {
 .al-estado.mv-e-curso { background: var(--info-bg); color: var(--info); }
 .al-estado.mv-e-hecha { background: var(--green-bg); color: var(--green-ink); }
 
-/* Recorrido del caso: radicada → asignada → visita → completada. Punto lleno
-   = paso cumplido; anillo = donde está detenido (ocre, rojo si ya pasó el
-   umbral de demora). El texto dice lo mismo: el color solo no basta. */
-.mv-linea {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 4px 20px 16px; border-bottom: 1px solid var(--line);
-}
-.mv-paso { position: relative; padding: 18px 12px 0 0; }
-.mv-paso::before {
-  content: ''; position: absolute; top: 5px; left: 12px; right: 0; height: 2px;
-  background: var(--line-2);
-}
-.mv-paso:last-child::before { display: none; }
-.mv-paso::after {
-  content: ''; position: absolute; top: 0; left: 0; width: 12px; height: 12px; box-sizing: border-box;
-  border-radius: 50%; border: 2px solid var(--line-2); background: var(--surface);
-}
-.mv-paso.hecho::after { background: var(--ink-3); border-color: var(--ink-3); }
-.mv-paso.tramo::before { background: var(--ink-3); }
-.mv-paso.espera::after { border-color: var(--amber); }
-.mv-paso.demora::after { border-color: var(--red); }
-.mv-paso-rot { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-4); }
-.mv-paso-val { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.mv-paso-sub { font-size: 11px; color: var(--ink-3); }
-.mv-paso.demora .mv-paso-val, .mv-paso.demora .mv-paso-sub { color: var(--red); }
-.mv-paso.futuro .mv-paso-val { color: var(--ink-4); font-weight: 400; }
-/* A 390 px cuatro fechas de 13 px se tocaban: letra y aire más chicos. */
-@media (max-width: 480px) { .mv-paso { padding-right: 6px; } .mv-paso-val { font-size: 11.5px; } }
-
 /* Cuerpo: una columna, o dos cuando el panel da el ancho (se mide el panel,
    no la ventana: a 1366 mide ~560 px y va en una). */
 .mv-p-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px 24px; padding: 16px 20px 20px; align-items: start; }
@@ -3000,18 +2971,6 @@ button.sv-col-head {
 .mv-datos dd { margin: 2px 0 0; font-size: 14px; color: var(--ink); word-break: break-word; }
 .mv-datos .ancho { grid-column: 1 / -1; }
 .mv-texto { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
-.mv-pqr {
-  height: clamp(420px, 66vh, 860px); border: 1px solid var(--line); border-radius: var(--r);
-  overflow: hidden; background: var(--surface-2);
-  position: relative; container-type: size;
-}
-/* «Girar» (PqrPanelMV): el visor gira sobre su centro; a 90°/270° se le
-   intercambian ancho y alto (cqh/cqw del marco) para que llene el marco. */
-.mv-pqr iframe {
-  position: absolute; top: 50%; left: 50%; display: block; width: 100cqw; height: 100cqh; border: 0;
-  transform: translate(-50%, -50%) rotate(var(--pqr-giro, 0deg));
-}
-.mv-pqr.mv-pqr-lado iframe { width: 100cqh; height: 100cqw; }
 
 /* ── Ficha de la visita (ficha-visita.jsx, E2b): la misma en el panel de Mis
    visitas y, más adelante, en «Ver datos» sin panel (E2c). Arriba, fija, lo
@@ -3074,13 +3033,19 @@ button.sv-col-head {
   border-radius: var(--r-lg) var(--r-lg) 0 0; container-type: inline-size; box-shadow: var(--shadow-md); outline: none; }
 .fv-hoja .fv-estado, .fv-hoja .fv-dir { padding-right: 48px; }
 @media (min-width: 700px) { .fv-velo { align-items: center; padding: 24px; } .fv-hoja { border-radius: var(--r-lg); max-height: 90vh; } }
-.fv-linea { padding-top: 14px; }
+/* Recorrido del caso en una línea, bajo el radicado (los pasos cumplidos). */
+.fv-recorrido { margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+/* Flechita «pestaña nueva» del botón Ver PQR, más chica que el texto. */
+.fv-ext { font-size: 10px; }
 .fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 28px; padding: 4px 20px 28px; align-items: start; }
+/* Mapa de la ficha: alto fijo (el 16:9 del panel se estiraba de más aquí). */
+.fv .mv-mapa { height: 220px; aspect-ratio: auto; }
 @container (min-width: 900px) {
-  .fv-cuerpo.con-pqr { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
-  /* La PQR queda fija bajo la cabecera mientras se recorren los datos. */
-  .fv-col-pqr { position: sticky; top: var(--fv-fija-h, 120px); }
-  .fv-col-pqr .mv-pqr { height: calc(100vh - var(--fv-fija-h, 120px) - 230px); min-height: 420px; }
+  .fv-cuerpo { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+  /* El lugar de la visita queda fijo bajo la cabecera mientras se recorren
+     los datos. */
+  .fv-lugar { position: sticky; top: var(--fv-fija-h, 120px); }
+  .fv .mv-mapa { height: 260px; }
 }
 .fv-sec { padding-top: 18px; }
 /* Campos cortos: dos columnas también en el celular (las de Mis visitas parten de 170 px). */
@@ -3089,8 +3054,12 @@ button.sv-col-head {
   background: var(--surface-2); color: var(--ink-3); font: 600 11px var(--font-mono); margin-right: 8px; }
 .fv-vacios { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-4); }
 .fv-vacios b { font-weight: 600; color: var(--ink-3); }
-.fv-luego { padding-top: 18px; }
-.fv-luego .fv-vacios { font-size: 12px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: var(--r); }
+/* «Se llenan en la visita»: una sola línea con los títulos, sin caja punteada. */
+.fv-luego-linea { font-size: 13px; color: var(--ink-3); }
+/* Columna del lugar (ficha ancha): el mapa separado de la sección 2 y el
+   código catastral largo sin partirse a mitad de número feo. */
+.fv-lugar .mv-bloque { margin-top: 18px; }
+.fv-lugar .mv-datos dd { font-size: 13px; word-break: break-all; }
 .fv-ico { display: inline-flex; width: 10px; justify-content: center; color: var(--ink-3); }
 .fv-crudo { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
 .fv-crudo summary { cursor: pointer; font: 600 13px var(--font-sans); color: var(--ink-3); min-height: 32px; display: flex; align-items: center; gap: 6px; }

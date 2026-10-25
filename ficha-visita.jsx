@@ -2,12 +2,13 @@
 // ficha-visita.jsx — FichaVisita: la ficha única de la visita (E2b)
 //
 // Arriba, fija (sticky), solo lo básico: estado y desde cuándo, dirección,
-// radicado + PQR + barrio + comuna + inspector, y máximo dos botones.
-// Debajo, un solo scroll en el orden del formulario: recorrido ·
-// entregables · gestión (la inyecta quien llama, E5) · las secciones de
-// seccionesFicha (utils.js — esa decide QUÉ se muestra; aquí solo se pinta)
-// · mapa · campos crudos (admin). Con PQR y ≥900 px de contenedor, la PQR
-// queda fija en su columna mientras se recorren los datos.
+// radicado + barrio + comuna + inspector, el recorrido del caso en una línea
+// y máximo tres botones (el principal, «Ver PQR» y «Cómo llegar»). Debajo,
+// un solo scroll en el orden del formulario: entregables · gestión (la
+// inyecta quien llama, E5) · las secciones de seccionesFicha (utils.js — esa
+// decide QUÉ se muestra; aquí solo se pinta) · reiterados · campos crudos
+// (admin). Con contenedor ≥900 px, la sección «Ubicación del inmueble» y el
+// mapa se van a su columna, fijos mientras se recorren los datos.
 // Solo lectura: no edita nada.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateFV, useEffect: useEffectFV, useRef: useRefFV, useMemo: useMemoFV } = React;
@@ -22,15 +23,9 @@ function _scrollerFV(el) {
 function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion, visitas, onElegirVisita }) {
   const raizRef = useRefFV(null);
   const fijaRef = useRefFV(null);
-  // La PQR se abre a demanda (decisión del usuario 2026-10-12): antes ocupaba
-  // media ficha en cada visita. Con ficha ancha se muestra al lado; angosta,
-  // el chip abre la pestaña nueva como en las tarjetas.
-  const [verPqr, setVerPqr] = useStateFV(false);
-  const alternarPqr = (e) => {
-    if (!raizRef.current || raizRef.current.offsetWidth < 900) return;
-    e.preventDefault();
-    setVerPqr(v => !v);
-  };
+  // ¿La ficha es ancha? (≥900 px de contenedor, la misma medida del CSS):
+  // el lugar de la visita (sección 2 + mapa) pasa a su columna derecha.
+  const [dosCols, setDosCols] = useStateFV(false);
 
   // Estado como lo agrupa Buscar (estadoBuscarDe, utils.js): las variantes de
   // V2 se pliegan a las de la app y lo cerrado por otra vía o NO COMPETENCIA
@@ -46,16 +41,31 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   // visitadoresBD devuelve el texto de la columna («A / B»), no una lista.
   const quienes = String(visitadoresBD(f) || '').split(/\s*[\/,]\s*/).map(s => s.trim()).filter(Boolean);
 
-  // Otra visita: la ficha vuelve arriba, sin la PQR abierta de la anterior.
+  // Otra visita: la ficha vuelve arriba.
   useEffectFV(() => {
-    setVerPqr(false);
     const raiz = raizRef.current;
     if (!raiz) return;
     const scroller = _scrollerFV(raiz);
     if (scroller) scroller.scrollTop = 0;
   }, [f._idx]);
 
-  // El alto real de la cabecera va a --fv-fija-h: la columna de la PQR se
+  // Columnas según el ancho real de la ficha (la misma frontera de 900 px
+  // del @container del CSS: cruzarla reordena el mapa de columna).
+  useEffectFV(() => {
+    const raiz = raizRef.current;
+    if (!raiz) return;
+    const aplicar = () => setDosCols(raiz.offsetWidth >= 900);
+    aplicar();
+    if (typeof ResizeObserver !== 'function') {
+      window.addEventListener('resize', aplicar);
+      return () => window.removeEventListener('resize', aplicar);
+    }
+    const ro = new ResizeObserver(aplicar);
+    ro.observe(raiz);
+    return () => ro.disconnect();
+  }, []);
+
+  // El alto real de la cabecera va a --fv-fija-h: la columna del lugar se
   // pega justo debajo (la dirección puede ocupar dos renglones y un valor
   // fijo la taparía). Se re-mide al cambiar el ancho del contenedor.
   useEffectFV(() => {
@@ -102,8 +112,19 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     }
   }
 
-  const idPqr = verPqr ? idArchivoDrive(linkPdfRadicado(f)) : '';
+  const linkPqr = linkPdfRadicado(f);
   const secciones = seccionesFicha(f, usuario && usuario.rol);
+  const secUbic = secciones.find(s => s.clave === 'ubicacion');
+  // Recorrido del caso en una línea: solo los pasos cumplidos con fecha —
+  // el paso detenido ya lo cuenta la cabecera («hace N días»).
+  const recorridoTxt = recorridoVisita(f)
+    .filter(p => p.hecho && p.valor)
+    .map(p => p.rotulo + ' ' + p.valor)
+    .join(' · ');
+  // Secciones «se llena en la visita»: una sola línea con sus títulos, en el
+  // lugar de la primera.
+  const luegoIdx = secciones.findIndex(s => s.resumen);
+  const luegoTitulos = secciones.filter(s => s.resumen).map(s => s.titulo).join(' · ');
 
   // Campos crudos de la BD (solo admin, diagnóstico): pares no vacíos.
   const crudoPares = usuario && usuario.rol === 'ADMIN'
@@ -138,12 +159,12 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 {expedienteDe(f) ? <><span className="exp-tag">Exp. {expedienteDe(f)}</span> · Rad. {f['RADICADO'] || '—'}</>
                   : (f['RADICADO'] || '—')}
               </span>
-              <BotonPdfRadicado f={f} onAbrir={alternarPqr}
-                titulo={verPqr ? 'Ocultar la PQR' : 'Ver la PQR radicada'} />
               {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
               {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
               {quienes.length > 0 && <><span className="vc-sep">·</span><span>{titleCaseNombre(quienes[0])}{quienes.length > 1 ? ' +' + (quienes.length - 1) : ''}</span></>}
             </div>
+            {/* Recorrido del caso: los pasos cumplidos, una sola línea. */}
+            {recorridoTxt && <div className="fv-recorrido">{recorridoTxt}</div>}
           </div>
           <div className="fv-fija-acc">
             {!terminada && onContinuar && (puedeDiligenciar(f)
@@ -152,16 +173,21 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 </button>
               // Regla del diligenciador: al co-asignado se le dice quién la lleva.
               : <span className="vc-dilig">La lleva {quienes[0]}</span>)}
+            {/* La PQR se abre en pestaña nueva, como en las tarjetas: fuera
+                el visor incrustado de la ficha (decisión del usuario). */}
+            {linkPqr && (
+              <a className="vc-btn" href={linkPqr} target="_blank" rel="noopener noreferrer"
+                title="Abrir el PDF de la PQR radicada (pestaña nueva)">
+                <Icon.File size={14} /> Ver PQR <span className="fv-ext" aria-hidden="true">↗</span>
+              </a>
+            )}
             <BotonMapaVisita f={f} variante="vc" />
           </div>
         </div>
       </div>
 
-      {/* Recorrido del caso: el anillo marca dónde está detenido. */}
-      <_RecorridoFV f={f} />
-
-      <div className={'fv-cuerpo' + (idPqr ? ' con-pqr' : '')}>
-        <div>
+      <div className="fv-cuerpo">
+        <div className="fv-datos">
           {/* Entregables: la carpeta de la visita primero; solo si la visita
               empezó (las reglas del panel: «Falta» / «No se generó»). */}
           {empezada && (!terminada || f['LINK_DRIVE'] || _entregablesMV(f).some(e => e.link)) && (
@@ -187,9 +213,24 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
             </section>
           )}
 
-          {secciones.map(s => <_SecFV key={s.clave} s={s} f={f} />)}
+          {secciones.map((s, i) => {
+            // Ficha ancha: la ubicación se va a la columna del lugar.
+            if (dosCols && s.clave === 'ubicacion') return null;
+            // «Se llena en la visita»: todas las secciones vacías en una
+            // sola línea, en el lugar de la primera.
+            if (s.resumen) {
+              if (i !== luegoIdx) return null;
+              return (
+                <section className="fv-sec" key={s.clave}>
+                  <p className="fv-vacios fv-luego-linea"><b>Se llenan en la visita:</b> {luegoTitulos}</p>
+                </section>
+              );
+            }
+            return <_SecFV key={s.clave} s={s} f={f} />;
+          })}
 
-          <MapaPanelMV f={f} />
+          {/* Ficha angosta: el mapa cierra la lista, como siempre. */}
+          {!dosCols && <MapaPanelMV f={f} />}
 
           {/* Radicados reiterados al final (decisión del usuario 2026-10-08: se usa
               poco y en la sección 1 quedaba muy a la vista). ReiteradosVD decide
@@ -208,9 +249,12 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
           )}
         </div>
 
-        {idPqr && (
-          <div className="fv-col-pqr">
-            <PqrPanelMV id={idPqr} link={linkPdfRadicado(f)} radicado={f['RADICADO']} onCerrar={() => setVerPqr(false)} />
+        {/* Ficha ancha: ubicación y mapa en su columna, fijos bajo la
+            cabecera mientras se recorren los datos. */}
+        {dosCols && (
+          <div className="fv-lugar">
+            {secUbic && <_SecFV s={secUbic} f={f} />}
+            <MapaPanelMV f={f} />
           </div>
         )}
       </div>
@@ -259,34 +303,9 @@ function _VisitasCasoFV({ visitas, actual, onElegir }) {
   );
 }
 
-// Recorrido radicada → asignada → visita → completada (recorridoVisita,
-// utils.js): mismo bloque que tenía el panel de Mis visitas.
-function _RecorridoFV({ f }) {
-  const pasos = recorridoVisita(f);
-  return (
-    <div className="mv-linea fv-linea" role="list" aria-label="Recorrido del caso">
-      {pasos.map((p, i) => {
-        const sig = pasos[i + 1];
-        const cls = 'mv-paso'
-          + (p.hecho ? ' hecho' : '')
-          + (p.hecho && sig && sig.hecho ? ' tramo' : '')
-          + (p.espera ? ' espera' : '')
-          + (p.espera && _demoradaMV(p.dias) ? ' demora' : '')
-          + (!p.hecho && !p.espera ? ' futuro' : '');
-        return (
-          <div key={p.clave} className={cls} role="listitem">
-            <div className="mv-paso-rot">{p.rotulo}</div>
-            <div className="mv-paso-val">{p.valor || '—'}</div>
-            {/* Sin «hace N días» aquí: la cabecera fija ya lo dice (salía dos veces). */}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // Una sección de seccionesFicha: número + título, campos con dato y, al pie,
-// «Sin dato: …». Con resumen («Se llena en la visita.»), solo esa línea.
+// «Sin dato: …». (Las secciones «se llena en la visita» no llegan aquí: la
+// ficha las junta en una sola línea.)
 function _SecFV({ s, f }) {
   // Campos en orden: los cortos agrupados en la lista de definición, los
   // largos como párrafo suelto (etiqueta en línea si la lleva).
@@ -313,16 +332,12 @@ function _SecFV({ s, f }) {
   volcar();
 
   return (
-    <section className={'fv-sec' + (s.resumen ? ' fv-luego' : '')} data-sec={s.clave}>
+    <section className="fv-sec" data-sec={s.clave}>
       <h3 className="mv-sub"><span className="fv-num" aria-hidden="true">{s.n}</span>{s.titulo}</h3>
-      {s.resumen
-        ? <p className="fv-vacios"><b>{s.resumen}</b></p>
-        : <>
-            {bloques}
-            {s.sinDato.length > 0 && (
-              <p className="fv-vacios"><b>Sin dato:</b> {s.sinDato.join(', ')}</p>
-            )}
-          </>}
+      {bloques}
+      {s.sinDato.length > 0 && (
+        <p className="fv-vacios"><b>Sin dato:</b> {s.sinDato.join(', ')}</p>
+      )}
     </section>
   );
 }

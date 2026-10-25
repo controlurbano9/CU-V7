@@ -3168,6 +3168,8 @@ function seccionesFicha(f, rol) {
         s.campos = []; s.sinDato = []; s.resumen = 'Se llena en la visita.';
       }
     });
+    // Sin visita todavía no toca la orden de policía: no cuenta como faltante.
+    s1.sinDato = s1.sinDato.filter(function(l) { return l !== 'N° orden policía'; });
   }
 
   // POT sin ningún dato (y con visita hecha): nada que mostrar.
