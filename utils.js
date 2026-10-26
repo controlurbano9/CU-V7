@@ -3340,6 +3340,31 @@ function caracteresParaActa(celda, ocupados, parrafos) {
   return libres > 0 ? Math.floor(libres * c.porRenglon * 0.9) : 0;
 }
 
+// Tope que «Revisar» manda para la situación encontrada cuando la visita va
+// a acta (2026-10-26). La propuesta sale en párrafos por tema (hasta 4 de
+// hechos y uno de conclusión, que se permite en esta casilla) separados por
+// un salto simple: cada párrafo después del primero cuesta un
+// renglón a medias. Antes solo viajaba el largo del original, que no contaba
+// esos renglones. Si el inspector separó con líneas en blanco, se conservan
+// y cuestan lo de caracteresParaActa.
+var PARRAFOS_REVISION_MAX = 5;
+function topeSituacionRevision(texto) {
+  var t = String(texto == null ? '' : texto);
+  var p = t.split(/\n+/).filter(function (s) { return s.trim(); }).length;
+  if (/\n[ \t]*\n/.test(t)) return caracteresParaActa('situacion', 0, Math.max(p, PARRAFOS_REVISION_MAX));
+  var c = ACTA_CAPACIDAD.situacion;
+  var libres = c.renglones - (Math.max(p, PARRAFOS_REVISION_MAX) - 1);
+  return Math.floor(libres * c.porRenglon * 0.9);
+}
+
+// Marcadores para completar que no pueden llegar al acta (2026-10-26):
+// corchetes («[área]», «[ ]») y rayas bajas («__ m²»). Devuelve los que hay,
+// tal como aparecen, para nombrarlos en el aviso.
+function marcadoresPendientes(texto) {
+  var m = String(texto == null ? '' : texto).match(/\[[^\]\n]{0,80}\]|_{2,}/g) || [];
+  return m.filter(function (x, i) { return m.indexOf(x) === i; });
+}
+
 // Resumen de lo que hace la propuesta de «Revisar» frente al texto del
 // inspector. Lo perdido va primero porque es lo que cambia el sentido (caso
 // 20251084835: «no evidencian, por sí mismas, una intervención que requiera
@@ -4498,6 +4523,8 @@ var _cuUtilsExports = {
   resumenCambios: resumenCambios,
   cambioMenorRevision: cambioMenorRevision,
   propuestaAporta: propuestaAporta,
+  topeSituacionRevision: topeSituacionRevision,
+  marcadoresPendientes: marcadoresPendientes,
   SALVEDADES_REVISION: SALVEDADES_REVISION,
   EXPRESIONES_IA: EXPRESIONES_IA,
   expresionesIA: expresionesIA,

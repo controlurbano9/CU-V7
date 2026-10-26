@@ -417,6 +417,24 @@ test('propuestaAporta: corrige 3+ palabras (erratas) → aporta', () => {
   assert.equal(u.propuestaAporta(orig, prop), true);
 });
 
+// Párrafos y marcadores (2026-10-26).
+test('topeSituacionRevision: reserva un renglón por párrafo (hasta 5) con salto simple', () => {
+  assert.equal(u.topeSituacionRevision('Un solo bloque.'), Math.floor(18 * 152 * 0.9));
+  const seis = 'a.\nb.\nc.\nd.\ne.\nf.';
+  assert.equal(u.topeSituacionRevision(seis), Math.floor(17 * 152 * 0.9));
+});
+
+test('topeSituacionRevision: con líneas en blanco del inspector cuesta lo de caracteresParaActa', () => {
+  const t = 'Primer párrafo.\n\nSegundo párrafo.';
+  assert.equal(u.topeSituacionRevision(t), u.caracteresParaActa('situacion', 0, 5));
+});
+
+test('marcadoresPendientes: corchetes y rayas bajas', () => {
+  assert.deepEqual(u.marcadoresPendientes('Área de [área] m² y descarga hacia __.'), ['[área]', '__']);
+  assert.deepEqual(u.marcadoresPendientes('Cubierta de 16 m² sobre el antejardín.'), []);
+  assert.deepEqual(u.marcadoresPendientes(''), []);
+});
+
 test('propuestaAporta: original vacío con propuesta → aporta', () => {
   assert.equal(u.propuestaAporta('', 'La propuesta sale de lo diligenciado.'), true);
   assert.equal(u.propuestaAporta('', ''), false);

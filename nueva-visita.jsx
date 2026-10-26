@@ -3589,13 +3589,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const chips = comportamientosParaIA(_infraccionSoloCatalogo(d.infraccion));
     const origDesc = d.actuacion || '';
     const origConc = d.obsConclusion || '';
-    // Topes del acta (2026-10-15), solo si la visita va a acta: la descripción
-    // se condensa si no cabe; las conclusiones siempre van con el tope de su
-    // celda. Con informe, sin tope.
+    // Topes del acta (2026-10-15), solo si la visita va a acta. La descripción
+    // lleva siempre el tope que cuenta los párrafos que la propuesta puede
+    // abrir (2026-10-26; antes solo viajaba si el original no cabía); las
+    // conclusiones siempre van con el tope de su celda. Con informe, sin tope.
     const esActa = esActaPre;
     const parrafos = t => String(t).split(/\n+/).filter(s => s.trim()).length;
-    const maxDesc = !esActa || capacidadActa(origDesc, 'situacion').cabe ? 0
-      : caracteresParaActa('situacion', 0, parrafos(origDesc));
+    const maxDesc = !esActa ? 0 : topeSituacionRevision(origDesc);
     const maxConc = !esActa ? 0 : caracteresParaActa('conclusiones', 0, parrafos(origConc));
     // El campo que no cambió no se manda a la IA: se revisa solo lo que
     // cambió (regla 2026-10-17). Las conclusiones se piden siempre que toca,
@@ -3647,12 +3647,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       cambioDesc: pedirDesc, cambioConc: pedirConc, soloDatos,
       modoPrevio: d.revision && d.revision.modo,
       concFallo: ia && concFallo,
-      // Si la propuesta se pidió con tope del acta (maxDesc/maxConc > 0):
-      // resumenCambios lo cuenta como «se condensa».
-      // Las conclusiones siempre llevan tope: «se condensa» solo si el texto
+      // Las dos casillas llevan tope en acta: «se condensa» solo si el texto
       // del inspector no cabía (si no, salía también sobre una propuesta hecha
-      // desde cero).
-      condensaDesc: maxDesc > 0, condensaConc: esActa && !capacidadActa(origConc, 'conclusiones').cabe,
+      // desde cero o que solo abrió párrafos).
+      condensaDesc: esActa && !capacidadActa(origDesc, 'situacion').cabe,
+      condensaConc: esActa && !capacidadActa(origConc, 'conclusiones').cabe,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -4757,6 +4756,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (!cc.cabe) faltan.push({ seccion: 'Conclusiones y revisión',
         nombre: 'Las conclusiones no caben en el acta (sobran ≈ ' + Math.abs(cc.caracteres).toLocaleString('es-CO') +
           ' caracteres): pulsa «Revisar» para ajustarlas' });
+      // Un marcador para completar («[área]», «__ m²») saldría tal cual en el
+      // acta (2026-10-26): se completa el dato o se quita.
+      const mDesc = marcadoresPendientes(d.actuacion);
+      if (mDesc.length) faltan.push({ seccion: 'Descripción de la situación encontrada',
+        nombre: 'La descripción tiene datos por completar (' + mDesc.slice(0, 3).join(', ') + '): escribe el dato o quítalo' });
+      const mConc = marcadoresPendientes(d.obsConclusion);
+      if (mConc.length) faltan.push({ seccion: 'Conclusiones y revisión',
+        nombre: 'Las conclusiones tienen datos por completar (' + mConc.slice(0, 3).join(', ') + '): escribe el dato o quítalo' });
     }
 
     return { faltan: faltan, seccionesConObligatorios: seccionesConObligatorios };
