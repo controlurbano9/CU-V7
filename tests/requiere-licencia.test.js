@@ -60,6 +60,10 @@ test('R14: requiere licencia, no se aportó y no está A4', () => {
   assert.deepEqual(ids(revisarTextoLocal({ actuacion: 'Ampliación en el segundo piso.', requiereLicencia: 'SI', licenciaAportada: 'NO', infraccion: A4, area: '20' })), []);
 });
 
+test('R14: con A1 marcado no pide A4 (A1 tiene prioridad)', () => {
+  assert.deepEqual(ids(revisarTextoLocal({ actuacion: 'Construcción en el retiro de la quebrada, primer piso.', requiereLicencia: 'SI', licenciaAportada: 'NO', infraccion: 'A1: Áreas protegidas', area: '275' })), []);
+});
+
 test('R15: no requiere licencia con A4 marcado', () => {
   assert.deepEqual(ids(revisarTextoLocal({ actuacion: 'Cambio de enchape en el segundo piso.', requiereLicencia: 'NO', infraccion: A4, area: '20' })), ['R15']);
 });

@@ -4010,7 +4010,9 @@ function revisarTextoLocal(e) {
 
   // R14 / R15 (2026-10-15): «¿Las obras requieren licencia?» contra A4.
   var req = String(e.requiereLicencia || '').trim().toUpperCase();
-  if (req === 'SI' && String(e.licenciaAportada || '').trim().toUpperCase() === 'NO' && !tiene('A4')) {
+  // Con A1 no se pide A4: la obra en suelo de protección o retiro no es
+  // licenciable y A1 tiene prioridad; los dos juntos solo en lote mixto (R16).
+  if (req === 'SI' && String(e.licenciaAportada || '').trim().toUpperCase() === 'NO' && !tiene('A4') && !tiene('A1')) {
     add('R14', 'area', 'En Verificación documental: «¿Las obras requieren licencia?» = SI y «¿Se aportó licencia?» = NO, pero en Tipificación no está marcado A4 (sin licencia o caducada).');
   }
   if (req === 'NO' && tiene('A4')) {
