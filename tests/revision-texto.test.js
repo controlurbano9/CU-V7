@@ -403,6 +403,20 @@ test('propuestaAporta: con una cifra perdida → aporta', () => {
   assert.equal(u.propuestaAporta(LARGO, sinCifra), true);
 });
 
+// Caso real 2026-10-26: la edición mínima casi no cambia el conjunto de
+// palabras; partir oraciones largas y corregir erratas debe mostrarse.
+test('propuestaAporta: parte oraciones de más de 35 palabras → aporta', () => {
+  const partida = LARGO.replace('existente, con materiales', 'existente. La construcción es en materiales')
+    .replace('propietario, y con obras', 'propietario. Las obras están');
+  assert.equal(u.propuestaAporta(LARGO, partida), true);
+});
+
+test('propuestaAporta: corrige 3+ palabras (erratas) → aporta', () => {
+  const orig = 'El segundo nivel es una terraza que cubierta, afectada por efecto la humedad, de acuerdo al concepto especificamente técnico.';
+  const prop = 'El segundo nivel es una terraza cubierta, afectada por efecto de la humedad, de acuerdo con el concepto específicamente técnico.';
+  assert.equal(u.propuestaAporta(orig, prop), true);
+});
+
 test('propuestaAporta: original vacío con propuesta → aporta', () => {
   assert.equal(u.propuestaAporta('', 'La propuesta sale de lo diligenciado.'), true);
   assert.equal(u.propuestaAporta('', ''), false);

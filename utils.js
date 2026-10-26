@@ -3433,7 +3433,7 @@ function resumenCambios(orig, prop, opts) {
   if (opts.condensa === true) motivos.push('Se condensa para que quepa en el acta.');
 
   // 5. Cambió otra cosa.
-  if (!motivos.length && orig.trim() !== prop.trim()) motivos.push('Se corrigen ortografía y redacción.');
+  if (!motivos.length && orig.trim() !== prop.trim()) motivos.push(MOTIVO_GENERICO_REVISION);
 
   motivos.slice(0, 2).forEach(function (t) { out.push({ tipo: 'motivo', texto: t }); });
   return out;
@@ -3477,12 +3477,31 @@ function cambioMenorRevision(revisado, actual) {
 
 // ¿La propuesta aporta algo frente al texto? (si no, no se muestra como
 // opción): casi idéntica y sin pérdidas → no aporta.
+// Aporta también (2026-10-26) si resuelve lo que el panel le señala al texto
+// (parte oraciones largas, quita expresiones de IA, reordena) o corrige 3+
+// palabras: la edición mínima casi no cambia el conjunto de palabras, y con
+// solo el Jaccard se descartaba la propuesta que partía oraciones de 37
+// palabras y corregía «terraza que cubierta» / «efecto la humedad».
+var MOTIVO_GENERICO_REVISION = 'Se corrigen ortografía y redacción.';
+function _palabrasCambiadasRevision(a, b) {
+  var tok = function (t) { return String(t).toLowerCase().split(/[^a-z0-9áéíóúüñ]+/).filter(Boolean); };
+  var cuenta = {};
+  tok(a).forEach(function (w) { cuenta[w] = (cuenta[w] || 0) + 1; });
+  var agregadas = 0;
+  tok(b).forEach(function (w) { if (cuenta[w] > 0) cuenta[w]--; else agregadas++; });
+  var quitadas = 0;
+  for (var k in cuenta) quitadas += cuenta[k];
+  return agregadas + quitadas;
+}
 function propuestaAporta(original, propuesta) {
   original = String(original == null ? '' : original);
   propuesta = String(propuesta == null ? '' : propuesta);
   if (!original.trim()) return !!propuesta.trim();
   if (!propuesta.trim()) return false;
-  if (resumenCambios(original, propuesta).some(function (r) { return r.tipo === 'pierde'; })) return true;
+  if (resumenCambios(original, propuesta).some(function (r) {
+    return r.tipo === 'pierde' || r.texto !== MOTIVO_GENERICO_REVISION;
+  })) return true;
+  if (_palabrasCambiadasRevision(original, propuesta) >= 3) return true;
   return _jaccardConjuntos(_palabrasRevision(original), _palabrasRevision(propuesta)) < 0.95;
 }
 
