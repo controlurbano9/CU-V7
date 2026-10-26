@@ -117,6 +117,39 @@ test('chequeo local: «infractor» y área con «No se pudo medir» no pide áre
   assert.deepEqual(ids(s), ['infractor']);
 });
 
+// ── 2026-10-26: área con «No aplica» ──────────────────────────────────
+const CUBIERTA = 'Sobre la terraza se instaló una cubierta liviana de 58.75 m² en teja termoacústica.';
+
+test('área: «No se evidencia infracción» + no requiere licencia + «No aplica» → no avisa', () => {
+  const s = revisarTextoLocal({ actuacion: CUBIERTA, conclusion: '',
+    infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true, requiereLicencia: 'NO' });
+  assert.equal(ids(s).indexOf('area'), -1);
+});
+
+test('área: «No aplica» sin decir lo de la licencia → pregunta con respuesta de un toque y coma decimal', () => {
+  const s = revisarTextoLocal({ actuacion: CUBIERTA, conclusion: '',
+    infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true });
+  const a = s.find(x => x.id === 'area');
+  assert.match(a.mensaje, /58,75 m²/);
+  assert.match(a.mensaje, /¿Esa área está en contravención\?/);
+  assert.match(a.rapida.justificacion, /Los 58,75 m² corresponden al área de la obra/);
+  assert.ok(a.rapida.justificacion.length >= 20);
+});
+
+test('área: casilla vacía → dice qué hacer, sin respuesta de un toque', () => {
+  const s = revisarTextoLocal({ actuacion: CUBIERTA, conclusion: '', infraccion: '', area: '' });
+  const a = s.find(x => x.id === 'area');
+  assert.match(a.mensaje, /pon los m² en contravención o marca «No aplica»/);
+  assert.equal(a.rapida, undefined);
+});
+
+test('numeroAreaCO: decimales con coma, miles intactos', () => {
+  assert.equal(require('../utils.js').numeroAreaCO('58.75'), '58,75');
+  assert.equal(require('../utils.js').numeroAreaCO('16'), '16');
+  assert.equal(require('../utils.js').numeroAreaCO('2,5'), '2,5');
+  assert.equal(require('../utils.js').numeroAreaCO('1.500'), '1.500');
+});
+
 // ── 2026-10-15: justificación solo por coherencia y capacidad del acta ──
 
 test('chequeo local: cada señal dice si es de coherencia o de forma', () => {

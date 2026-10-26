@@ -3834,6 +3834,13 @@ function _comportamientosCitados(texto, poligono) {
 // de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
 var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b'];
+// Cifra de un área como se escribe en Colombia: decimales con coma
+// («58.75» → «58,75»). Un punto con 3 cifras detrás es de miles y se deja.
+function numeroAreaCO(n) {
+  var s = String(n == null ? '' : n).trim();
+  return /^\d+\.\d{1,2}$/.test(s) ? s.replace('.', ',') : s;
+}
+
 function revisarTextoLocal(e) {
   e = e || {};
   var senales = [];
@@ -3897,12 +3904,27 @@ function revisarTextoLocal(e) {
   });
 
   // Área: el texto trae m² y la casilla está vacía o en «No aplica».
+  // 2026-10-26 (decisión del usuario): con «No se evidencia infracción» y
+  // «¿Las obras requieren licencia?» = NO, el «No aplica» es lo coherente y
+  // los m² son la medida de la obra: no se avisa. Con «No aplica», el aviso
+  // es una pregunta con respuesta de un toque (`rapida`: el panel llena la
+  // justificación con ese texto).
   var todo = textos[0].t + ' ' + textos[1].t;
   var mArea = /(\d+(?:[.,]\d+)?)\s*(m2|m²|mts2|metros cuadrados)/i.exec(todo);
   var areaVacia = !String(e.area || '').trim() && !e.areaNoMedible;
-  if (mArea && areaVacia) {
-    add('area', 'area', 'El texto menciona ' + mArea[1] + ' ' + mArea[2] + ' y el área en contravención ' +
-      (e.areaNoAplica ? 'dice «No aplica»' : 'está vacía') + '.');
+  var sinObraLicenciable = ninguno && String(e.requiereLicencia || '').trim().toUpperCase() === 'NO';
+  if (mArea && areaVacia && !(e.areaNoAplica && sinObraLicenciable)) {
+    var cifra = numeroAreaCO(mArea[1]) + ' m²';
+    if (e.areaNoAplica) {
+      add('area', 'area', 'El texto menciona ' + cifra + ' y el área en contravención dice «No aplica». ¿Esa área está en contravención?');
+      senales[senales.length - 1].rapida = {
+        no: 'No, es el área de la obra',
+        si: 'Sí, ir a Tipificación y medidas',
+        justificacion: 'Los ' + cifra + ' corresponden al área de la obra; no hay área en contravención.'
+      };
+    } else {
+      add('area', 'area', 'El texto menciona ' + cifra + ' y el área en contravención está vacía: pon los m² en contravención o marca «No aplica».');
+    }
   }
 
   // Comportamiento de construcción marcado y la descripción no dice dónde.
@@ -4524,6 +4546,7 @@ var _cuUtilsExports = {
   cambioMenorRevision: cambioMenorRevision,
   propuestaAporta: propuestaAporta,
   topeSituacionRevision: topeSituacionRevision,
+  numeroAreaCO: numeroAreaCO,
   marcadoresPendientes: marcadoresPendientes,
   SALVEDADES_REVISION: SALVEDADES_REVISION,
   EXPRESIONES_IA: EXPRESIONES_IA,

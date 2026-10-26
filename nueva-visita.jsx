@@ -3959,7 +3959,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               {coherencia.map(s => (
                 <li key={s.id + s.donde}>
                   <p>{s.mensaje}</p>
-                  {(SECCIONES_SENAL[s.id] || []).length > 0 && (
+                  {s.rapida ? (
+                    // Pregunta de un toque (2026-10-26): «No» deja el dato como
+                    // está y llena la justificación, que se puede editar.
+                    <div className="rv-ir-fila">
+                      <button type="button" className="rv-ir" onClick={() => {
+                        const actual = (p.justif || '').trim();
+                        set('dejar', true);
+                        if (actual.indexOf(s.rapida.justificacion) < 0) {
+                          set('justif', actual ? actual + ' ' + s.rapida.justificacion : s.rapida.justificacion);
+                        }
+                      }}>{s.rapida.no}</button>
+                      <button type="button" className="rv-ir" onClick={() => _irASeccion('Tipificación y medidas')}>{s.rapida.si}</button>
+                    </div>
+                  ) : (SECCIONES_SENAL[s.id] || []).length > 0 && (
                     <div className="rv-ir-fila">
                       {SECCIONES_SENAL[s.id].map(sec => (
                         <button key={sec} type="button" className="rv-ir" onClick={() => _irASeccion(sec)}>Ir a {sec}</button>
