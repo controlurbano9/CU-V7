@@ -1771,15 +1771,18 @@ async function consultarPOT(lat, lon) {
 // traba el mapa en un Android barato. El relleno va sin borde y el borde se
 // dibuja aparte, recortado de los anillos reales, para que el corte de la caja
 // no aparezca como un lindero que no existe.
+// `z`: orden de pintado. El retiro va encima de todo para que su azul se lea
+// como quebrada (el suelo de protección suele cubrir el mismo cauce en verde);
+// luego amenaza, protección y el DRMI, que es el más extenso, al fondo.
 const AFECTACIONES_POT = [
-  { capa: 'retiro', color: '#2F80ED',
+  { capa: 'retiro', color: '#2F80ED', z: 4,
     archivos: ['RetirosCorrientesHidricas.geojson', 'Retiros_Corrientes_Hidricas.geojson', 'RetiroQuebradas.geojson'],
     etiqueta: function () { return 'Retiro de corriente hídrica'; } },
-  { capa: 'amenaza', color: '#FF3B30', archivos: ['AmenazasNaturales.geojson'],
+  { capa: 'amenaza', color: '#FF3B30', z: 3, archivos: ['AmenazasNaturales.geojson'],
     etiqueta: function (p) { return p.Fenomeno || p.FENOMENO || p.fenomeno || 'Amenaza natural'; } },
-  { capa: 'proteccion', color: '#34C759', archivos: ['SueloProteccion.geojson'],
+  { capa: 'proteccion', color: '#34C759', z: 2, archivos: ['SueloProteccion.geojson'],
     etiqueta: function (p) { return p.CATEGORIA || p.categoria || p.SIMBOLO || 'Suelo de protección'; } },
-  { capa: 'drmi', color: '#AF52DE', archivos: ['DRMI_Quitasol_LaHolanda.geojson'],
+  { capa: 'drmi', color: '#AF52DE', z: 1, archivos: ['DRMI_Quitasol_LaHolanda.geojson'],
     etiqueta: function (p) { return 'DRMI ' + (p.NOMBRE || p.nombre || 'Quitasol-La Holanda'); } },
 ];
 const _bboxGeom = new WeakMap();
@@ -1835,7 +1838,7 @@ async function afectacionesPOTCerca(lat, lon, radioM) {
                   .map(function (p) { return p.filter(function (a) { return a.length >= 4; }); })
                   .filter(function (p) { return p.length; }) };
             if (limpio.coordinates.length) {
-              feats.push({ type: 'Feature', geometry: limpio, properties: { _tipo: 'relleno', _color: def.color } });
+              feats.push({ type: 'Feature', geometry: limpio, properties: { _tipo: 'relleno', _color: def.color, _z: def.z } });
             }
           }
           if (!feats.length) return;
@@ -1844,7 +1847,7 @@ async function afectacionesPOTCerca(lat, lon, radioM) {
             const utiles = lineas.filter(function (l) { return l.length >= 2; });
             if (utiles.length) {
               feats.push({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: utiles },
-                properties: { _tipo: 'borde', _color: def.color } });
+                properties: { _tipo: 'borde', _color: def.color, _z: def.z } });
             }
           }
           const etiqueta = def.etiqueta(feat.properties || {});

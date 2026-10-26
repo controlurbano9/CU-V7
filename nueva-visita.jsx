@@ -1600,8 +1600,8 @@ function _dibujarAnillos(map, anillos, color) {
       fillColor: color, fillOpacity: 0.15,
       // No clicable: tocar dentro del predio tiene que seguir moviendo el pin.
       clickable: false,
-      // Encima de las afectaciones POT (zIndex 1): el lindero manda.
-      zIndex: 2,
+      // Encima de las afectaciones POT (zIndex 1–8): el lindero manda.
+      zIndex: 10,
     });
   });
 }
@@ -1626,10 +1626,13 @@ function _pintarAfectacionesPOT(map, capaRef, lat, lon, onLeyenda) {
     capa.setStyle(function (f) {
       const borde = f.getProperty('_tipo') === 'borde';
       const c = f.getProperty('_color');
+      const z = f.getProperty('_z') || 1;
+      // Bordes por encima de todos los rellenos; el retiro (z 4) se rellena
+      // más fuerte para que el azul no se pierda bajo el verde.
       return {
-        clickable: false, zIndex: 1,
-        strokeColor: c, strokeOpacity: borde ? 0.95 : 0, strokeWeight: borde ? 2 : 0,
-        fillColor: c, fillOpacity: borde ? 0 : 0.22,
+        clickable: false, zIndex: borde ? 4 + z : z,
+        strokeColor: c, strokeOpacity: borde ? 0.95 : 0, strokeWeight: borde ? (z === 4 ? 3 : 2) : 0,
+        fillColor: c, fillOpacity: borde ? 0 : (z === 4 ? 0.35 : 0.18),
       };
     });
     capaRef.current = capa;
