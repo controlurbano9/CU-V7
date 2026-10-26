@@ -198,6 +198,381 @@ function _fotosSinDescripcion(fotos) {
   return (fotos || []).filter(function(f) { return f.descBusy || !String(f.descripcion || '').trim(); }).length;
 }
 
+// ── Registro fotográfico: revisión antes de generar (2026-10-26) ─────
+// Pantalla completa: la foto en grande con zoom, el pie ya sugerido para
+// editar y el orden en una tira de miniaturas (una fila si caben, si no dos).
+// Maqueta: propuesta-registro-fotografico.html. Antes era una lista de
+// miniaturas de 64 px donde no se veía lo que se describía.
+// Quitar saca la foto del documento, nunca la borra de Drive.
+const RFM_MINI_MIN = 72;        // ancho mínimo de miniatura (escritorio)
+const RFM_MINI_MIN_MOVIL = 30;  // en <900 px: 17 fotos en dos filas caben a 360 px
+const RFM_MINI_GAP = 6;
+const RFM_ZOOM_MAX = 8;         // veces el tamaño ajustado
+
+function _rfmThumb(id, w) { return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + w; }
+
+function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGenerar, puedeGenerar, etiquetaGenerar }) {
+  const [sel, setSel] = React.useState(0);
+  const [cols, setCols] = React.useState(0);
+  const [quitada, setQuitada] = React.useState(null);   // { foto, idx } para «Deshacer»
+  const [arrastre, setArrastre] = React.useState(null); // { desde, hasta } al reordenar
+  const [grande, setGrande] = React.useState(null);     // { id, w, h } de la versión grande ya cargada
+  const visorRef = React.useRef(null);
+  const imgRef = React.useRef(null);
+  const pctRef = React.useRef(null);
+  const tiraRef = React.useRef(null);
+  const txtRef = React.useRef(null);
+  const vistaRef = React.useRef({ e: 1, x: 0, y: 0, a: 1 });
+  const punterosRef = React.useRef({});
+  const gestoRef = React.useRef(null);      // arrastre o pellizco en el visor
+  const toqueRef = React.useRef(0);         // hora del último toque (doble toque = zoom)
+  const miniGestoRef = React.useRef(null);  // reordenar en la tira
+  const sinClicRef = React.useRef(false);
+  const toastRef = React.useRef(null);
+
+  const n = fotos.length;
+  const idx = Math.min(sel, Math.max(0, n - 1));
+  const foto = fotos[idx] || null;
+  const fotoId = foto ? foto.id : '';
+  const listaGrande = !!(grande && foto && grande.id === foto.id);
+
+  // Posición del zoom: en un ref y aplicada directo al DOM (re-renderizar en
+  // cada movimiento del dedo se nota en un Android barato).
+  function aplicar() {
+    const v = vistaRef.current, el = visorRef.current, img = imgRef.current;
+    if (!el || !img || !grande) return;
+    const r = el.getBoundingClientRect(), w = grande.w * v.e, h = grande.h * v.e;
+    v.x = w <= r.width ? (r.width - w) / 2 : Math.min(0, Math.max(r.width - w, v.x));
+    v.y = h <= r.height ? (r.height - h) / 2 : Math.min(0, Math.max(r.height - h, v.y));
+    img.style.transform = 'translate(' + v.x + 'px,' + v.y + 'px) scale(' + v.e + ')';
+    if (pctRef.current) pctRef.current.textContent = Math.round(v.e / v.a * 100) + ' %';
+  }
+  function ajustar() {
+    const el = visorRef.current;
+    if (!el || !grande) return;
+    const r = el.getBoundingClientRect();
+    const a = Math.min(r.width / grande.w, r.height / grande.h) || 1;
+    vistaRef.current = { e: a, x: 0, y: 0, a: a };
+    aplicar();
+  }
+  function zoomEn(px, py, factor) {
+    const v = vistaRef.current;
+    const nueva = Math.min(v.a * RFM_ZOOM_MAX, Math.max(v.a, v.e * factor));
+    v.x = px - (px - v.x) * nueva / v.e;
+    v.y = py - (py - v.y) * nueva / v.e;
+    v.e = nueva;
+    aplicar();
+  }
+  function zoomCentro(factor) {
+    const el = visorRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    zoomEn(r.width / 2, r.height / 2, factor);
+  }
+
+  React.useEffect(function() { ajustar(); }, [listaGrande, grande]);
+  React.useEffect(function() {
+    const el = visorRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(function() { ajustar(); });
+    ro.observe(el);
+    return function() { ro.disconnect(); };
+  });
+  // Rueda: listener propio porque React registra wheel como pasivo.
+  React.useEffect(function() {
+    const el = visorRef.current; if (!el) return;
+    function rueda(e) {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomEn(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+    }
+    el.addEventListener('wheel', rueda, { passive: false });
+    return function() { el.removeEventListener('wheel', rueda); };
+  });
+
+  // Una fila si todas caben al ancho mínimo; si no, dos.
+  React.useEffect(function() {
+    const el = tiraRef.current;
+    if (!el) return;
+    function medir() {
+      const min = window.innerWidth < 900 ? RFM_MINI_MIN_MOVIL : RFM_MINI_MIN;
+      const cabeUna = n * min + (n - 1) * RFM_MINI_GAP <= el.clientWidth - 24;
+      setCols(cabeUna ? n : Math.ceil(n / 2));
+    }
+    medir();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return function() { ro.disconnect(); };
+  }, [n]);
+
+  // El pie crece con el texto, hasta 120 px.
+  React.useEffect(function() {
+    const t = txtRef.current; if (!t) return;
+    t.style.height = 'auto';
+    t.style.height = Math.min(120, t.scrollHeight + 2) + 'px';
+  }, [foto && foto.descripcion, fotoId]);
+
+  // La miniatura elegida siempre a la vista.
+  React.useEffect(function() {
+    const b = tiraRef.current && tiraRef.current.querySelector('[data-rfi="' + idx + '"]');
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [idx]);
+
+  React.useEffect(function() {
+    function tecla(e) {
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+      if (e.key === 'ArrowRight') setSel(function(s) { return Math.min(s + 1, n - 1); });
+      else if (e.key === 'ArrowLeft') setSel(function(s) { return Math.max(s - 1, 0); });
+      else if (e.key === '+' || e.key === '=') zoomCentro(1.6);
+      else if (e.key === '-') zoomCentro(1 / 1.6);
+    }
+    document.addEventListener('keydown', tecla);
+    return function() { document.removeEventListener('keydown', tecla); };
+  });
+
+  React.useEffect(function() { return function() { clearTimeout(toastRef.current); }; }, []);
+
+  // ── Gestos del visor: arrastrar, pellizcar, doble toque, deslizar ──
+  function _dist() {
+    const p = punterosRef.current, k = Object.keys(p);
+    return Math.hypot(p[k[0]].x - p[k[1]].x, p[k[0]].y - p[k[1]].y);
+  }
+  function visorDown(e) {
+    if (e.target.closest('button')) return;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* sin captura el gesto sigue */ }
+    punterosRef.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+    const v = vistaRef.current;
+    gestoRef.current = Object.keys(punterosRef.current).length === 2
+      ? { pellizco: true, d: _dist(), e: v.e }
+      : { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y, movio: false };
+  }
+  function visorMove(e) {
+    const g = gestoRef.current;
+    if (!g || !punterosRef.current[e.pointerId]) return;
+    punterosRef.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+    const v = vistaRef.current;
+    if (g.pellizco) {
+      if (Object.keys(punterosRef.current).length < 2) return;
+      zoomCentro(Math.min(v.a * RFM_ZOOM_MAX, Math.max(v.a, g.e * _dist() / g.d)) / v.e);
+      return;
+    }
+    if (Math.abs(e.clientX - g.x) + Math.abs(e.clientY - g.y) > 6) g.movio = true;
+    v.x = g.vx + e.clientX - g.x;
+    v.y = g.vy + e.clientY - g.y;
+    aplicar();
+  }
+  function visorUp(e) {
+    const g = gestoRef.current;
+    delete punterosRef.current[e.pointerId];
+    if (!g || g.pellizco) { if (!Object.keys(punterosRef.current).length) gestoRef.current = null; return; }
+    gestoRef.current = null;
+    const v = vistaRef.current, dx = e.clientX - g.x;
+    const ajustada = v.e / v.a < 1.05;
+    // Sin zoom, deslizar de lado cambia de foto (en el celular no hay flechas).
+    if (ajustada && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(e.clientY - g.y)) {
+      setSel(function(s) { return Math.max(0, Math.min(n - 1, s + (dx < 0 ? 1 : -1))); });
+      return;
+    }
+    if (g.movio) return;
+    const ahora = Date.now();
+    if (ahora - toqueRef.current < 320) {
+      toqueRef.current = 0;
+      if (!ajustada) ajustar();
+      else { const r = visorRef.current.getBoundingClientRect(); zoomEn(e.clientX - r.left, e.clientY - r.top, 3); }
+    } else toqueRef.current = ahora;
+  }
+
+  // ── Reordenar en la tira: con el mouse al mover; con el dedo, mantener presionado ──
+  function _soltarMini() {
+    const g = miniGestoRef.current;
+    miniGestoRef.current = null;
+    window.removeEventListener('pointermove', _moverMini);
+    window.removeEventListener('pointerup', _soltarMini);
+    window.removeEventListener('pointercancel', _soltarMini);
+    if (!g) return;
+    clearTimeout(g.timer);
+    if (g.activo) {
+      // El clic que sigue al soltar no debe elegir otra foto; si el navegador
+      // no lo dispara (soltó sobre otra miniatura), la marca se borra sola.
+      sinClicRef.current = true;
+      setTimeout(function() { sinClicRef.current = false; }, 0);
+      const desde = g.desde, hasta = g.hasta;
+      setArrastre(null);
+      if (hasta != null && hasta !== desde) {
+        onCambiar(function(prev) {
+          if (!prev) return prev;
+          const next = prev.slice();
+          const it = next.splice(desde, 1)[0];
+          next.splice(hasta, 0, it);
+          return next;
+        });
+        setSel(hasta);
+      }
+    }
+  }
+  function _moverMini(e) {
+    const g = miniGestoRef.current; if (!g) return;
+    const lejos = Math.abs(e.clientX - g.x) + Math.abs(e.clientY - g.y) > 8;
+    if (!g.activo) {
+      if (!lejos) return;
+      if (g.tipo !== 'mouse') { _soltarMini(); return; }  // el dedo se movió antes: era scroll
+      g.activo = true;
+      setArrastre({ desde: g.desde, hasta: g.desde });
+    }
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const b = el && el.closest && el.closest('[data-rfi]');
+    if (b) { g.hasta = +b.dataset.rfi; setArrastre({ desde: g.desde, hasta: g.hasta }); }
+  }
+  function miniDown(e, i) {
+    if (e.button > 0) return;
+    const g = { desde: i, hasta: i, x: e.clientX, y: e.clientY, tipo: e.pointerType, activo: false, timer: null };
+    if (e.pointerType !== 'mouse') {
+      g.timer = setTimeout(function() {
+        if (miniGestoRef.current !== g) return;
+        g.activo = true;
+        if (navigator.vibrate) navigator.vibrate(15);
+        setArrastre({ desde: i, hasta: i });
+      }, 350);
+    }
+    miniGestoRef.current = g;
+    window.addEventListener('pointermove', _moverMini);
+    window.addEventListener('pointerup', _soltarMini);
+    window.addEventListener('pointercancel', _soltarMini);
+  }
+
+  function editar(val) {
+    const id = fotoId;
+    onCambiar(function(prev) {
+      return prev && prev.map(function(f) { return f.id === id ? Object.assign({}, f, { descripcion: val, descError: false }) : f; });
+    });
+  }
+  function quitar() {
+    if (!foto) return;
+    const q = { foto: foto, idx: idx };
+    onCambiar(function(prev) { return prev && prev.filter(function(f) { return f.id !== q.foto.id; }); });
+    setQuitada(q);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(function() { setQuitada(null); }, 5000);
+  }
+  function deshacer() {
+    const q = quitada; if (!q) return;
+    onCambiar(function(prev) {
+      if (!prev) return prev;
+      const next = prev.slice();
+      next.splice(Math.min(q.idx, next.length), 0, q.foto);
+      return next;
+    });
+    setSel(q.idx);
+    setQuitada(null);
+  }
+
+  const minMini = (typeof window !== 'undefined' && window.innerWidth < 900) ? RFM_MINI_MIN_MOVIL : RFM_MINI_MIN;
+
+  return (
+    <div className="rfm" role="dialog" aria-modal="true" aria-labelledby="rfm-titulo">
+      <header className="rfm-top">
+        {/* Sin cierre al tocar afuera ni con Esc: un toque accidental perdía el orden y los pies editados. */}
+        <button type="button" className="btn-icono" onClick={onCancelar} aria-label="Cerrar sin generar">
+          <Icon.Close size={20} />
+        </button>
+        <h2 id="rfm-titulo" className="rfm-titulo">Registro fotográfico</h2>
+        <button type="button" className="btn-principal rfm-generar" onClick={onGenerar} disabled={!puedeGenerar}>
+          {etiquetaGenerar}
+        </button>
+      </header>
+
+      <div className="rfm-foto">
+        <div className="rfm-visor" ref={visorRef}
+          onPointerDown={visorDown} onPointerMove={visorMove} onPointerUp={visorUp} onPointerCancel={visorUp}>
+          {foto && !listaGrande && (
+            <img className="rfm-previa" src={_rfmThumb(foto.id, 400)} alt="" draggable={false} />
+          )}
+          {foto && (
+            <img key={foto.id} ref={imgRef} className="rfm-img" src={_rfmThumb(foto.id, 2000)} alt=""
+              draggable={false}
+              style={listaGrande ? { width: grande.w, height: grande.h } : { visibility: 'hidden' }}
+              onLoad={function(e) {
+                const id = foto.id, w = e.currentTarget.naturalWidth, h = e.currentTarget.naturalHeight;
+                setGrande({ id: id, w: w, h: h });
+              }} />
+          )}
+          {idx > 0 && (
+            <button type="button" className="rfm-nav izq" aria-label="Foto anterior" onClick={function() { setSel(idx - 1); }}>
+              <Icon.ArrowLeft size={20} />
+            </button>
+          )}
+          {idx < n - 1 && (
+            <button type="button" className="rfm-nav der" aria-label="Foto siguiente" onClick={function() { setSel(idx + 1); }}>
+              <span className="rfm-espejo"><Icon.ArrowLeft size={20} /></span>
+            </button>
+          )}
+          <div className="rfm-zoom">
+            <button type="button" aria-label="Alejar" onClick={function() { zoomCentro(1 / 1.6); }}>−</button>
+            <span ref={pctRef}>100 %</span>
+            <button type="button" aria-label="Acercar" onClick={function() { zoomCentro(1.6); }}>+</button>
+          </div>
+        </div>
+
+        {foto && (
+          <div className="rfm-pie">
+            <span className="rfm-num">{(idx + 1) + ' / ' + n}</span>
+            <textarea ref={txtRef} rows={1} className="input-campo rfm-txt" aria-label={'Pie de la foto ' + (idx + 1)}
+              value={foto.descripcion || ''} disabled={!!foto.descBusy}
+              placeholder={foto.descBusy ? 'Describiendo…' : 'Escribe el pie'}
+              onChange={function(e) { editar(e.target.value); }}
+              onKeyDown={function(e) {
+                // Enter pasa a la siguiente: el pie es de una línea.
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (idx < n - 1) setSel(idx + 1);
+                }
+              }} />
+            <button type="button" className="btn-icono" title="Otra descripción" aria-label="Otra descripción"
+              disabled={!!foto.descBusy} onClick={function() { onDescribir([foto.id], true); }}>
+              <Icon.Refresh size={18} />
+            </button>
+            <button type="button" className="btn-icono peligro" title="Quitar del registro" aria-label="Quitar del registro"
+              onClick={quitar}>
+              <Icon.Close size={18} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <nav className="rfm-tira" ref={tiraRef} aria-label="Orden de las fotos">
+        <div className="rfm-grid" style={{ gridTemplateColumns: 'repeat(' + (cols || n || 1) + ', minmax(' + minMini + 'px, 96px))' }}>
+          {fotos.map(function(f, i) {
+            const estado = f.descBusy ? 'run' : String(f.descripcion || '').trim() ? 'ok' : 'falta';
+            const estadoTxt = estado === 'run' ? 'describiendo' : estado === 'ok' ? 'con pie' : 'sin pie';
+            const clase = 'rfm-mini' + (i === idx ? ' sel' : '') +
+              (arrastre && arrastre.desde === i ? ' arrastra' : '') +
+              (arrastre && arrastre.hasta === i && arrastre.desde !== i ? ' destino' : '');
+            return (
+              <button key={f.id} type="button" className={clase} data-rfi={i}
+                aria-current={i === idx} aria-label={'Foto ' + (i + 1) + ', ' + estadoTxt}
+                onPointerDown={function(e) { miniDown(e, i); }}
+                onContextMenu={function(e) { e.preventDefault(); }}
+                onClick={function() { if (sinClicRef.current) { sinClicRef.current = false; return; } setSel(i); }}>
+                <img src={_rfmThumb(f.id, 160)} alt="" draggable={false} />
+                <span className="rfm-n">{i + 1}</span>
+                <span className={'rfm-dot ' + estado} title={estadoTxt} />
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {quitada && (
+        <div className="rfm-toast" role="status">
+          <span>Foto quitada del registro</span>
+          <button type="button" onClick={deshacer}>Deshacer</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 Object.keys(_BARRIO_A_COMUNA).forEach(k => {
   _BARRIO_A_COMUNA_NORM[_quitarTildes(k).toUpperCase()] = _BARRIO_A_COMUNA[k];
 });
@@ -2393,8 +2768,6 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // de confirmar necesita el total original para avisar cuántas se excluyeron.
   const [modalFotosTotal, setModalFotosTotal] = React.useState(0);
   const [cargandoFotos, setCargandoFotos] = React.useState(false);
-  const [dragIdx, setDragIdx]   = React.useState(null); // indice de la foto siendo arrastrada
-  const [dropTarget, setDropTarget] = React.useState(null); // {idx, pos:'above'|'below'} — indicador de inserción
   const [busyGeo, setBusyGeo]   = React.useState(false);
   const [gpsAccuracy, setGpsAccuracy] = React.useState(null); // precisión en metros
   const geoWatchRef = React.useRef(null); // id del watchPosition activo
@@ -5133,10 +5506,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // Paso 2 del F-GGO-46: Doc REGISTRO FOTOGRÁFICO con las fotos
   // ya subidas a la subcarpeta Fotos de la visita.
   // Abre el modal de fotos: carga la lista de Drive con la descripción ya
-  // guardada en cada archivo. Al abrir, la IA no corre: la pide el inspector
-  // con «Describir fotografías» (solo las que no tienen) o con ↻ por foto
-  // (describirFotosModal). Lo único automático es la pre-descripción al
-  // terminar una subida, y solo si ya hay situación encontrada (SeccionFotos).
+  // guardada en cada archivo; las que no tienen se describen al abrir y ↻ pide
+  // otra para una foto (describirFotosModal). La pre-descripción al terminar
+  // una subida sigue igual (SeccionFotos).
 
   async function abrirModalFotos() {
     if (!filaEditando) {
@@ -5160,21 +5532,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       });
       // Nueva sesión: las descripciones en vuelo de una apertura anterior se descartan.
       _modalFotosSesionRef.current++;
-      const sesion = _modalFotosSesionRef.current;
       setModalFotos(lista);
       setModalFotosTotal(lista.length);
       setCargandoFotos(false);
-      // Si la pre-descripción de la última subida sigue corriendo, sus
-      // resultados llenan los pies vacíos al llegar (nunca pisan lo escrito).
-      const enCurso = descripcionesEnCurso(d.idCarpetaFotos);
-      if (enCurso) {
-        const idsVacias = lista.filter(function(f) { return !f.descripcion; }).map(function(f) { return f.id; });
-        idsVacias.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
-        enCurso.then(function(res) {
-          if (_modalFotosSesionRef.current !== sesion) return;
-          _aplicarDescripcionesModal(res, idsVacias, false);
-        });
-      }
+      // Las fotos sin pie se describen solas al abrir (2026-10-26): el
+      // inspector edita la sugerencia en vez de pedirla. Si la pre-descripción
+      // de la última subida sigue corriendo, describirFotosModal la espera.
+      const idsVacias = lista.filter(function(f) { return !f.descripcion; }).map(function(f) { return f.id; });
+      if (idsVacias.length) describirFotosModal(idsVacias, false);
     } catch (e) {
       await appAlert('Error cargando fotos: ' + e.message, { tono: 'error', titulo: 'Error' });
       setCargandoFotos(false);
@@ -5196,6 +5561,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   function _aplicarDescripcionesModal(res, ids, pisar) {
     const porId = {};
     ((res && res.ok && res.resultados) || []).forEach(function(r) { porId[r.id] = r; });
+    // Rastro de cada foto que quedó sin pie: el backend manda en `debug` el
+    // código HTTP de cada modelo, y sin esto el fallo no quedaba en ninguna parte.
+    if (!res || !res.ok) console.warn('[RF] describirFotos falló:', res && res.error);
+    ids.forEach(function(id) {
+      const r = porId[id];
+      if (r && !r.ok) console.warn('[RF] foto sin pie', id, r.error || '', r.debug || '');
+    });
     const limitadas = [];
     setModalFotos(function(prev) {
       if (!prev) return prev;
@@ -6419,295 +6791,27 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         </>)}
       </div>
 
-      {/* Modal de revision de fotos antes de generar RF */}
-      {modalFotos && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999,
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          padding: 16, overflowY: 'auto',
-        }}>{/* Sin cierre al clic afuera: un toque accidental perdía el orden y las descripciones editadas. Solo cierra «Cancelar». */}
-          <div style={{
-            background: 'white', borderRadius: 12, padding: 20, width: '100%',
-            maxWidth: 600, margin: 'auto',
-          }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand-accent)', marginBottom: 4 }}>
-              Registro fotográfico
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 16 }}>
-              Arrastra desde el icono ≡ para reordenar. La línea indica donde se insertará la foto.
-            </div>
-            {(function() {
-              // Solo describe las que no tienen descripción; el ↻ por foto es
-              // el único que reescribe una existente.
-              var faltan = modalFotos.filter(function(f) { return !f.descBusy && !(f.descripcion || '').trim(); });
-              var ocupado = modalFotos.some(function(f) { return f.descBusy; });
-              if (!faltan.length && !ocupado) return null;
-              return (
-                <button type="button" className="btn-neutro" style={{ width: '100%', marginBottom: 12 }}
-                  disabled={ocupado} aria-busy={ocupado}
-                  onClick={function() { describirFotosModal(faltan.map(function(f) { return f.id; }), false); }}>
-                  {ocupado ? 'Describiendo…' : '✨ Describir fotografías'}
-                </button>
-              );
-            })()}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-              {modalFotos.map(function(foto, idx) {
-                var isDragging = dragIdx === idx;
-                // Indicador de inserción: línea azul arriba o abajo de este elemento
-                var showLineAbove = dropTarget && dropTarget.idx === idx && dropTarget.pos === 'above' && dragIdx !== idx;
-                var showLineBelow = dropTarget && dropTarget.idx === idx && dropTarget.pos === 'below' && dragIdx !== idx;
-
-                return React.createElement(React.Fragment, { key: foto.id },
-                  // ── Línea de inserción ARRIBA ──
-                  showLineAbove && React.createElement('div', { style: {
-                    height: 3, background: 'var(--brand-accent)', borderRadius: 2, margin: '0 8px',
-                    boxShadow: '0 0 6px var(--brand-glow)',
-                  }}),
-                  React.createElement('div', {
-                    draggable: false,
-                    onDragStart: function(e) {
-                      // Solo arrastrar desde el handle ≡. Eso ya lo garantiza que
-                      // la fila solo se vuelve draggable en el mousedown del
-                      // handle. Antes se buscaba el handle en e.target, pero en
-                      // dragstart el target es la FILA arrastrada, no donde se
-                      // agarró: nunca lo encontraba y cancelaba todo arrastre
-                      // en escritorio. Lo que sí se descarta es arrastrar texto
-                      // de un hijo (el input de la descripción).
-                      if (e.target !== e.currentTarget) { e.preventDefault(); return; }
-                      setDragIdx(idx);
-                      e.dataTransfer.effectAllowed = 'move';
-                      try { e.dataTransfer.setData('text/plain', String(idx)); } catch(ex) {}
-                      if (e.dataTransfer.setDragImage) {
-                        var ghost = e.currentTarget.cloneNode(true);
-                        ghost.style.opacity = '0.85';
-                        ghost.style.transform = 'scale(0.95)';
-                        ghost.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
-                        ghost.style.position = 'fixed';
-                        ghost.style.top = '-1000px';
-                        document.body.appendChild(ghost);
-                        e.dataTransfer.setDragImage(ghost, 40, 30);
-                        setTimeout(function() { document.body.removeChild(ghost); }, 0);
-                      }
-                    },
-                    onDragOver: function(e) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (dragIdx == null || dragIdx === idx) { setDropTarget(null); return; }
-                      // Calcular si el cursor está en la mitad superior o inferior del elemento
-                      var rect = e.currentTarget.getBoundingClientRect();
-                      var mid = rect.top + rect.height / 2;
-                      var pos = e.clientY < mid ? 'above' : 'below';
-                      setDropTarget({ idx: idx, pos: pos });
-                    },
-                    onDragLeave: function(e) {
-                      // Solo limpiar si se sale del elemento (no de un hijo)
-                      if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(null);
-                    },
-                    onDrop: function(e) {
-                      e.preventDefault();
-                      setDropTarget(null);
-                      if (dragIdx == null || dragIdx === idx) return;
-                      var fromIdx = dragIdx;
-                      var toIdx = idx;
-                      // Ajustar índice según posición (arriba/abajo)
-                      setModalFotos(function(prev) {
-                        var next = prev.slice();
-                        var item = next.splice(fromIdx, 1)[0];
-                        var insertAt = toIdx;
-                        // Si venía de antes, al sacar uno los índices bajan
-                        if (fromIdx < toIdx) insertAt--;
-                        // Si se suelta abajo, insertar después
-                        if (dropTarget && dropTarget.pos === 'below') insertAt++;
-                        if (insertAt < 0) insertAt = 0;
-                        if (insertAt > next.length) insertAt = next.length;
-                        next.splice(insertAt, 0, item);
-                        return next;
-                      });
-                      setDragIdx(null);
-                    },
-                    onDragEnd: function(e) { e.currentTarget.draggable = false; setDragIdx(null); setDropTarget(null); },
-                    // ── Touch events (móvil) ──
-                    onTouchStart: function(e) {
-                      if (!e.target.dataset.draghandle) return;
-                      setDragIdx(idx);
-                    },
-                    onTouchMove: function(e) {
-                      if (dragIdx == null) return;
-                      e.preventDefault();
-                      var touch = e.touches[0];
-                      var el = document.elementFromPoint(touch.clientX, touch.clientY);
-                      if (el) {
-                        var row = el.closest('[data-fotoidx]');
-                        if (row) {
-                          var targetIdx = parseInt(row.dataset.fotoidx);
-                          // Calcular si estamos en mitad superior o inferior para mostrar indicador
-                          var rect = row.getBoundingClientRect();
-                          var mid = rect.top + rect.height / 2;
-                          var pos = touch.clientY < mid ? 'above' : 'below';
-                          if (targetIdx !== dragIdx && !isNaN(targetIdx)) {
-                            setDropTarget({ idx: targetIdx, pos: pos });
-                          }
-                        }
-                      }
-                    },
-                    onTouchEnd: function() {
-                      // Ejecutar el drop con el dropTarget actual
-                      if (dragIdx != null && dropTarget && dropTarget.idx !== dragIdx) {
-                        var fromIdx = dragIdx;
-                        var toIdx = dropTarget.idx;
-                        var dropPos = dropTarget.pos;
-                        setModalFotos(function(prev) {
-                          var next = prev.slice();
-                          var item = next.splice(fromIdx, 1)[0];
-                          var insertAt = toIdx;
-                          if (fromIdx < toIdx) insertAt--;
-                          if (dropPos === 'below') insertAt++;
-                          if (insertAt < 0) insertAt = 0;
-                          if (insertAt > next.length) insertAt = next.length;
-                          next.splice(insertAt, 0, item);
-                          return next;
-                        });
-                      }
-                      setDragIdx(null);
-                      setDropTarget(null);
-                    },
-                    'data-fotoidx': idx,
-                    style: {
-                      display: 'flex', gap: 10, alignItems: 'flex-start',
-                      padding: '10px 8px', margin: '2px 0', borderRadius: 8,
-                      border: isDragging ? '2px solid var(--brand-accent)' : '1px solid var(--borde)',
-                      background: isDragging ? 'var(--brand-bg)' : 'var(--superficie)',
-                      opacity: isDragging ? 0.5 : 1,
-                      transform: isDragging ? 'scale(0.97)' : 'none',
-                      boxShadow: isDragging ? 'inset 0 0 0 1px var(--brand-accent)' : 'none',
-                      cursor: 'default',
-                      transition: 'transform 0.15s, opacity 0.15s, background 0.15s, border-color 0.15s',
-                    },
-                  },
-                    // Handle de arrastre
-                    React.createElement('div', {
-                      'data-draghandle': '1',
-                      onMouseDown: function(e) {
-                        // Activar draggable en la fila al sostener el handle
-                        var row = e.currentTarget.parentElement;
-                        if (row) row.draggable = true;
-                      },
-                      onMouseUp: function(e) {
-                        var row = e.currentTarget.parentElement;
-                        if (row) row.draggable = false;
-                      },
-                      style: {
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        justifyContent: 'center', width: 28, flexShrink: 0,
-                        color: isDragging ? 'var(--brand-accent)' : 'var(--texto-suave)',
-                        fontSize: 18, cursor: 'grab',
-                        userSelect: 'none', touchAction: 'none',
-                        borderRight: '1px solid var(--borde)',
-                        paddingRight: 6, marginRight: 2,
-                      }
-                    },
-                      React.createElement('span', { 'data-draghandle': '1', style: { lineHeight: 1 } }, '≡'),
-                      React.createElement('span', { 'data-draghandle': '1', style: {
-                        fontSize: 11, fontWeight: 700, marginTop: 3,
-                        color: isDragging ? 'var(--brand-ink)' : 'var(--texto)',
-                        background: isDragging ? 'var(--brand-bg)' : 'var(--gris-bg)',
-                        borderRadius: '50%', width: 20, height: 20,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}, String(idx + 1))
-                    ),
-                    // Thumbnail
-                    React.createElement('img', {
-                      src: 'https://drive.google.com/thumbnail?id=' + foto.id + '&sz=w160',
-                      alt: '', draggable: false,
-                      style: {
-                        width: 64, height: 64, objectFit: 'cover', borderRadius: 6,
-                        flexShrink: 0, background: 'var(--gris-bg)',
-                      }
-                    }),
-                    // Descripcion
-                    React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-                      React.createElement('input', {
-                        type: 'text',
-                        value: foto.descripcion,
-                        placeholder: foto.descBusy ? 'Describiendo…'
-                          : foto.descError ? 'No se pudo describir, escríbela o prueba ↻'
-                          : 'Descripción (opcional)',
-                        disabled: foto.descBusy,
-                        onChange: function(e) {
-                          var val = e.target.value;
-                          setModalFotos(function(prev) {
-                            return prev.map(function(f) {
-                              return f.id === foto.id ? Object.assign({}, f, { descripcion: val, descError: false }) : f;
-                            });
-                          });
-                        },
-                        // Reimplementaba .input-campo a ~28px de alto, justo al
-                        // lado del botón de eliminar la foto.
-                        className: 'input-campo',
-                        style: { width: '100%', fontSize: 14, padding: '9px 12px' }
-                      })
-                    ),
-                    // Describir de nuevo con IA (salta la caché de Drive)
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'btn-icono',
-                      title: 'Describir de nuevo',
-                      'aria-label': 'Describir de nuevo la foto ' + (idx + 1),
-                      disabled: foto.descBusy,
-                      onClick: function(e) { e.stopPropagation(); describirFotosModal([foto.id], true); },
-                      style: { marginLeft: 4 }
-                    }, '↻'),
-                    // Eliminar foto
-                    React.createElement('button', {
-                      type: 'button',
-                      className: 'btn-icono peligro',
-                      title: 'Quitar del registro',
-                      'aria-label': 'Quitar del registro la foto ' + (idx + 1),
-                      onClick: function(e) {
-                        e.stopPropagation();
-                        setModalFotos(function(prev) {
-                          return prev.filter(function(_, i) { return i !== idx; });
-                        });
-                      },
-                      style: { marginLeft: 4 }
-                    }, React.createElement(Icon.Close, { size: 18 }))
-                  ),
-                  // ── Línea de inserción ABAJO ──
-                  showLineBelow && React.createElement('div', { style: {
-                    height: 3, background: 'var(--brand-accent)', borderRadius: 2, margin: '0 8px',
-                    boxShadow: '0 0 6px var(--brand-glow)',
-                  }})
-                );
-              })}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              {/* La acción principal del modal iba en outline y el cancelar sin
-                  borde al lado. Ahora el peso corresponde a la consecuencia. */}
-              <button onClick={function() { setModalFotos(null); }}
-                className="btn-neutro" style={{ flex: 1 }}>Cancelar</button>
-              <button onClick={confirmarYGenerarRF}
-                disabled={modalFotos.length === 0 || _fotosSinDescripcion(modalFotos) > 0}
-                className="btn-principal" style={{ flex: 2, margin: 0, padding: 12, fontSize: 14 }}>
-                {modalFotos.length === 0
-                  ? 'No hay fotos'
-                  : modalFotos.some(function(f) { return f.descBusy; })
-                    ? 'Describiendo…'
-                  // Sin pie no se genera: el texto dice por qué está deshabilitado.
-                  : _fotosSinDescripcion(modalFotos) > 0
-                    ? (function(n) { return n === 1 ? 'Falta 1 descripción' : 'Faltan ' + n + ' descripciones'; })(_fotosSinDescripcion(modalFotos))
-                    // Si se quitaron fotos, el texto lo dice: sin esto el inspector
-                    // quitaba 13 de 25 y el botón seguía igual — nada confirmaba
-                    // que la exclusión surtiría efecto en el documento.
-                    : modalFotos.length < modalFotosTotal
-                      ? 'Generar con ' + modalFotos.length + ' de ' + modalFotosTotal + ' fotos'
-                      : 'Confirmar y generar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Revisión de fotos antes de generar el RF (ModalRegistroFotos) */}
+      {modalFotos && (function() {
+        const faltan = _fotosSinDescripcion(modalFotos);
+        const describiendo = modalFotos.some(function(f) { return f.descBusy; });
+        return (
+          <ModalRegistroFotos
+            fotos={modalFotos}
+            onCambiar={setModalFotos}
+            onDescribir={describirFotosModal}
+            onCancelar={function() { setModalFotos(null); }}
+            onGenerar={confirmarYGenerarRF}
+            puedeGenerar={modalFotos.length > 0 && faltan === 0}
+            etiquetaGenerar={modalFotos.length === 0 ? 'Sin fotos'
+              : describiendo ? 'Describiendo…'
+              // Sin pie no se genera: el texto dice por qué está deshabilitado.
+              : faltan > 0 ? (faltan === 1 ? 'Falta 1 pie' : 'Faltan ' + faltan + ' pies')
+              // Si se quitaron fotos, el botón lo dice: confirma que la exclusión surte efecto.
+              : modalFotos.length < modalFotosTotal ? 'Generar con ' + modalFotos.length + ' de ' + modalFotosTotal
+              : 'Generar'} />
+        );
+      })()}
 
       {/* El acceso a la carpeta de Drive ya no se duplica al final del
           formulario: vive como renglón de la zona de entregables. */}

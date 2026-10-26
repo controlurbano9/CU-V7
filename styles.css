@@ -4498,3 +4498,56 @@ tr.clic:hover td { background: var(--surface-2); }
 
 /* Ficha v2: las coordenadas ya están en el predio, no se repiten bajo el mapa. */
 .fv .mv-mapa-pie { display: none; }
+
+/* ── Registro fotográfico: revisión a pantalla completa (2026-10-26) ──
+   ModalRegistroFotos (nueva-visita.jsx). Foto grande con zoom, pie editable
+   y la tira del orden: una fila si caben, si no dos (las columnas las fija
+   el componente). Maqueta: propuesta-registro-fotografico.html. */
+.rfm { position: fixed; inset: 0; z-index: 9999; display: grid; grid-template-rows: auto 1fr auto; background: var(--paper); }
+.rfm-top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.rfm-titulo { flex: 1; margin: 0; font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--ink); }
+.rfm-generar { width: auto; margin: 0; min-height: 0; height: 40px; padding: 0 16px; font-size: 14px; }
+.rfm-foto { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+.rfm-visor { position: relative; overflow: hidden; background: #191612; touch-action: none; user-select: none; cursor: grab; }
+.rfm-visor:active { cursor: grabbing; }
+.rfm-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; }
+.rfm-previa { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; filter: blur(2px); }
+.rfm-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 0; border-radius: var(--r-card); background: rgba(25,22,18,.55); color: #EDE6DA; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.rfm-nav:hover { background: rgba(25,22,18,.85); }
+.rfm-nav.izq { left: 12px; }
+.rfm-nav.der { right: 12px; }
+.rfm-espejo { display: inline-flex; transform: scaleX(-1); }
+.rfm-zoom { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: var(--r-panel); background: rgba(25,22,18,.85); color: #EDE6DA; }
+.rfm-zoom button { width: 36px; height: 36px; border: 0; border-radius: var(--r-ctl); background: transparent; color: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.rfm-zoom button:hover { background: rgba(255,255,255,.12); }
+.rfm-zoom span { min-width: 48px; text-align: center; font-size: 12px; font-weight: 600; }
+.rfm-pie { display: flex; align-items: flex-start; gap: 8px; padding: 10px 16px; background: var(--surface); border-top: 1px solid var(--line); }
+.rfm-num { min-width: 44px; padding-top: 12px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.rfm .rfm-txt { flex: 1; min-height: 44px; max-height: 120px; resize: none; font-size: 15px; line-height: 1.4; padding: 10px 12px; }
+.rfm-pie .btn-icono { width: 44px; height: 44px; flex-shrink: 0; }
+.rfm-tira { background: var(--carril); padding: 10px 12px; overflow-x: auto; }
+.rfm-grid { display: grid; gap: 6px; justify-content: center; }
+.rfm-mini { position: relative; aspect-ratio: 4 / 3; padding: 0; border: 0; border-radius: var(--r-card); overflow: hidden; background: var(--surface-3); outline: 2px solid transparent; outline-offset: 1px; cursor: pointer; touch-action: pan-x; -webkit-touch-callout: none; }
+.rfm-mini img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.rfm-mini.sel { outline-color: var(--ink); }
+.rfm-mini.arrastra { opacity: .35; }
+.rfm-mini.destino { outline-color: var(--brand); }
+.rfm-n { position: absolute; left: 3px; top: 3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 99px; background: rgba(25,22,18,.78); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.rfm-dot { position: absolute; right: 4px; top: 5px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(25,22,18,.55); }
+.rfm-dot.ok { background: #9DB15A; }
+.rfm-dot.run { background: #E2B566; animation: rfm-pulso 1s ease-in-out infinite; }
+.rfm-dot.falta { background: #E0705F; }
+@keyframes rfm-pulso { 50% { opacity: .4; } }
+.rfm-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10000; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: var(--r-card); background: var(--ink); color: #fff; font-size: 13px; }
+.rfm-toast button { height: 36px; border: 0; background: none; color: #F2C9B6; font-weight: 600; cursor: pointer; }
+@media (max-width: 899px) {
+  .rfm-top { padding: 8px 12px; }
+  .rfm-titulo { font-size: 18px; }
+  .rfm-nav, .rfm-num { display: none; }
+  .rfm-pie { padding: 8px 12px; }
+  .rfm-tira { padding: 8px; }
+  .rfm-n { min-width: 15px; height: 15px; font-size: 10px; left: 2px; top: 2px; }
+  .rfm-dot { width: 7px; height: 7px; right: 3px; top: 4px; }
+  .rfm-toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .rfm-dot.run { animation: none; } }
