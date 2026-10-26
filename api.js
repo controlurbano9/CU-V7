@@ -1955,7 +1955,7 @@ function _indiceDireccionesCatastro() {
 
 // Busca el predio de una dirección en catastro.
 //   null → la dirección no se reconoce (rural, referencia, sin placa)
-//   { exacta: true,  terrenos: [...] } → misma dirección en catastro (1 a 4 terrenos)
+//   { exacta: true,  terrenos: [...] } → misma dirección en catastro (todos los terrenos; con unidad, solo los que la tienen)
 //   { exacta: false, terrenos: [...] } → no está, pero hay placas a ±10 en la
 //     misma cuadra: son candidatos, el inspector elige (nunca se preseleccionan)
 //   { exacta: false, terrenos: [] }    → ni eso
@@ -1975,6 +1975,15 @@ async function buscarCatastroPorDireccion(dir) {
       (idx.get(c.base) || []).forEach(function (h) { hits.push(Object.assign({ dif: c.dif }, h)); });
     });
   }
+  // Con unidad escrita (`AP 402`, `(129)`), los terrenos son solo los que
+  // la tienen: en una misma placa catastro reparte interiores en terrenos
+  // distintos (CR 62 # 52-27: IN 129 e IN 131 son predios aparte).
+  let conUnidad = [];
+  if (exacta && clave.unidad) {
+    conUnidad = hits.filter(function (h) { return unidadCatastroCalza(h.unidad, clave.unidad); });
+    const conAnillo = conUnidad.filter(function (h) { return _anilloPorTcod.get(h.tcod); });
+    if (conAnillo.length) hits = conAnillo;
+  }
   const porTcod = new Map();
   hits.forEach(function (h) {
     if (porTcod.has(h.tcod) || !_anilloPorTcod.get(h.tcod)) return;
@@ -1985,12 +1994,14 @@ async function buscarCatastroPorDireccion(dir) {
       dif: h.dif,
     });
   });
+  // Exacta, sin tope: con el pin, compararUbicacion toma el terreno donde cae
+  // si es uno de estos. Con tope 4, el del pin podía quedar fuera y se tomaba
+  // el vecino de la misma placa a 2 m.
   const terrenos = Array.from(porTcod.values())
     .sort(function (a, b) { return a.dif - b.dif; })
-    .slice(0, exacta ? 4 : 6);
+    .slice(0, exacta ? Infinity : 6);
   let fichaUnidad = null;
   if (exacta && clave.unidad) {
-    const conUnidad = hits.filter(function (h) { return unidadCatastroCalza(h.unidad, clave.unidad); });
     if (conUnidad.length === 1) {
       const h = conUnidad[0];
       fichaUnidad = h.tcod + data.f[h.tcod][h.k][1];

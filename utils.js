@@ -921,9 +921,12 @@ function terrenoVecinoPreferido(clave, terrenos) {
 // agregar el piso (`AP 102 PI2`) que el inspector no escribe (`APTO 102`):
 // calza si la de catastro empieza por la del inspector y lo que sigue es otra
 // etiqueta (letra), nunca otro dígito (`AP10` no es `AP102`).
+// Solo el número (`CR 62 52-27 (129)`): vale con cualquier tipo de catastro
+// (`IN 129`, `AP 129`).
 function unidadCatastroCalza(unidadCatastro, unidadInspector) {
   var c = String(unidadCatastro || ''), u = String(unidadInspector || '');
   if (!u || !c) return false;
+  if (/^\d+$/.test(u)) c = c.replace(/^[A-Z]+/, '');
   if (c === u) return true;
   return c.indexOf(u) === 0 && /^[A-Z]/.test(c.slice(u.length));
 }

@@ -69,6 +69,16 @@ test('unidad: catastro agrega el piso que el inspector no escribe', () => {
   assert.equal(unidadCatastroCalza('', 'AP102'), false);
 });
 
+test('unidad solo con número, entre paréntesis: vale con cualquier tipo', () => {
+  const u = d => claveDireccionCatastro(d).unidad;
+  assert.equal(base('CR 62 52-27 (129)'), 'CR|62|52|27');
+  assert.equal(u('CR 62 52-27 (129)'), '129');
+  assert.equal(unidadCatastroCalza(u('CR 62 N 52-27 INT 129'), '129'), true);
+  assert.equal(unidadCatastroCalza(u('CR 62 N 52-27 IN 131'), '129'), false);
+  assert.equal(unidadCatastroCalza('IN1290', '129'), false);    // otro dígito: otra unidad
+  assert.equal(unidadCatastroCalza('AP129PI2', '129'), true);
+});
+
 test('consecutivo pegado delante (visto en BD) se descarta', () => {
   assert.equal(base('12 - CR 50 # 32-10 INT 201'), 'CR|50|32|10');
 });
