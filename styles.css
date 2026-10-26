@@ -1134,6 +1134,8 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   width: 12px; height: 9px; border: 2px solid; border-radius: 2px;
   background: var(--surface-2);
 }
+/* Afectación POT que cae en el pin: es la que pesa en la visita. */
+.mapa-leyenda .mapa-leyenda-pot-en { color: var(--ink); font-weight: 600; }
 
 /* Panel «Predio»: dirección ↔ catastro ↔ pin (plan 2026-09-29). Mismo
    lenguaje que la confirmación de dirección: punto ámbar/verde + una acción. */

@@ -216,6 +216,15 @@ function ConsultaNormaScreen() {
       punto ? punto.lat : null, punto ? punto.lon : null);
   }, [punto, gmListoCN]);
 
+  // Afectaciones POT alrededor del pin (helper en nueva-visita.jsx).
+  const potCNRef = useRefCN(null);
+  const [leyendaPOT, setLeyendaPOT] = useStateCN([]);
+  useEffectCN(() => {
+    if (gmListoCN !== true || !mapRef.current) return;
+    return _pintarAfectacionesPOT(mapRef.current, potCNRef,
+      punto ? punto.lat : null, punto ? punto.lon : null, setLeyendaPOT);
+  }, [punto, gmListoCN]);
+
   function colocarPin(lat, lon, consultar) {
     setError(''); setAviso('');
     setPunto({ lat, lon });
@@ -575,6 +584,11 @@ function ConsultaNormaScreen() {
       {/* Mapa Google Maps */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
         <div ref={mapDivRef} className="mapa-norma"></div>
+        {punto && leyendaPOT.length > 0 && (
+          <div className="mapa-leyenda" aria-hidden="true" style={{ padding: '6px 12px 0', marginTop: 0 }}>
+            <_LeyendaPOT items={leyendaPOT} />
+          </div>
+        )}
         {punto && (
           <div style={{
             padding: '8px 12px', borderTop: '1px solid var(--borde)',

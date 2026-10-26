@@ -1600,7 +1600,58 @@ function _dibujarAnillos(map, anillos, color) {
       fillColor: color, fillOpacity: 0.15,
       // No clicable: tocar dentro del predio tiene que seguir moviendo el pin.
       clickable: false,
+      // Encima de las afectaciones POT (zIndex 1): el lindero manda.
+      zIndex: 2,
     });
+  });
+}
+
+// Afectaciones POT (retiro de quebrada, amenaza, suelo de protección, DRMI)
+// alrededor del pin, recortadas por afectacionesPOTCerca (api.js). Va debajo
+// del contorno catastral y no es clicable: tocar sigue moviendo el pin.
+// onLeyenda recibe [{ etiqueta, color, contiene }] para pintar la leyenda.
+function _pintarAfectacionesPOT(map, capaRef, lat, lon, onLeyenda) {
+  if (capaRef.current) { capaRef.current.setMap(null); capaRef.current = null; }
+  if (!map || lat == null || lon == null || typeof afectacionesPOTCerca !== 'function') {
+    if (onLeyenda) onLeyenda([]);
+    return function () {};
+  }
+  let vigente = true;
+  afectacionesPOTCerca(Number(lat), Number(lon)).then(function (items) {
+    if (!vigente) return;
+    const capa = new google.maps.Data({ map: map });
+    items.forEach(function (it) {
+      it.features.forEach(function (f) { try { capa.addGeoJson(f); } catch (e) {} });
+    });
+    capa.setStyle(function (f) {
+      const borde = f.getProperty('_tipo') === 'borde';
+      const c = f.getProperty('_color');
+      return {
+        clickable: false, zIndex: 1,
+        strokeColor: c, strokeOpacity: borde ? 0.95 : 0, strokeWeight: borde ? 2 : 0,
+        fillColor: c, fillOpacity: borde ? 0 : 0.22,
+      };
+    });
+    capaRef.current = capa;
+    if (onLeyenda) onLeyenda(items.map(function (it) {
+      return { etiqueta: it.etiqueta, color: it.color, contiene: it.contiene };
+    }));
+  }).catch(function (e) {
+    // Sin capas POT (offline sin precarga) el mapa sigue sirviendo sin ellas.
+    console.warn('[Mapa] sin afectaciones POT:', e.message);
+  });
+  return function () { vigente = false; };
+}
+
+// Renglones de la leyenda POT, a continuación de los del predio.
+function _LeyendaPOT({ items }) {
+  return (items || []).map(function (it) {
+    return (
+      <span key={it.etiqueta} className={it.contiene ? 'mapa-leyenda-pot-en' : ''}>
+        <i style={{ borderColor: it.color, background: it.color + '38' }} />
+        {it.etiqueta}{it.contiene ? ' · en el pin' : ''}
+      </span>
+    );
   });
 }
 function _resaltarPredioCatastral(map, polysRef, lat, lon, excluir) {
@@ -1795,6 +1846,18 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir, conflicto }) {
       tieneCoords ? lat : null, tieneCoords ? lon : null, _tcodsDir);
   }, [lat, lon, gmListo, _claveDir]);
 
+  // Afectaciones POT alrededor del pin (se redibujan al moverlo).
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  const potRef = React.useRef(null);
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  const [leyendaPOT, setLeyendaPOT] = React.useState([]);
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
+  useEffectNV(() => {
+    if (gmListo !== true || !gMapRef.current) return;
+    return _pintarAfectacionesPOT(gMapRef.current, potRef,
+      tieneCoords ? lat : null, tieneCoords ? lon : null, setLeyendaPOT);
+  }, [lat, lon, gmListo]);
+
   // Limpieza de listeners al desmontar (mapa/marker persisten toda la vida
   // del componente, se crean una sola vez arriba — solo falta esto al final).
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_MapaGPS`
@@ -1838,6 +1901,7 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir, conflicto }) {
         <div className="mapa-leyenda" aria-hidden="true">
           <span><i style={{ borderColor: COLOR_PREDIO_DIR }} />Predio de la dirección</span>
           <span><i style={{ borderColor: COLOR_PREDIO_PIN }} />Predio bajo el pin</span>
+          <_LeyendaPOT items={leyendaPOT} />
         </div>
       )}
     </div>

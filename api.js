@@ -1764,6 +1764,107 @@ async function consultarPOT(lat, lon) {
   return result;
 }
 
+// ── Afectaciones POT alrededor de un punto (para pintarlas en los mapas) ──
+// Mismas capas que consultarPOT usa para los SI/NO de la norma, recortadas a
+// una caja de `radioM` alrededor del punto: SueloProteccion pesa 16 MB y un
+// solo polígono de retiro recorre el municipio entero; pintarlos completos
+// traba el mapa en un Android barato. El relleno va sin borde y el borde se
+// dibuja aparte, recortado de los anillos reales, para que el corte de la caja
+// no aparezca como un lindero que no existe.
+const AFECTACIONES_POT = [
+  { capa: 'retiro', color: '#2F80ED',
+    archivos: ['RetirosCorrientesHidricas.geojson', 'Retiros_Corrientes_Hidricas.geojson', 'RetiroQuebradas.geojson'],
+    etiqueta: function () { return 'Retiro de corriente hídrica'; } },
+  { capa: 'amenaza', color: '#FF3B30', archivos: ['AmenazasNaturales.geojson'],
+    etiqueta: function (p) { return p.Fenomeno || p.FENOMENO || p.fenomeno || 'Amenaza natural'; } },
+  { capa: 'proteccion', color: '#34C759', archivos: ['SueloProteccion.geojson'],
+    etiqueta: function (p) { return p.CATEGORIA || p.categoria || p.SIMBOLO || 'Suelo de protección'; } },
+  { capa: 'drmi', color: '#AF52DE', archivos: ['DRMI_Quitasol_LaHolanda.geojson'],
+    etiqueta: function (p) { return 'DRMI ' + (p.NOMBRE || p.nombre || 'Quitasol-La Holanda'); } },
+];
+const _bboxGeom = new WeakMap();
+
+async function _cargarPrimerGeoJSON(nombres) {
+  for (const n of nombres) {
+    const gj = await _cargarGeoJSON(n);
+    if (gj) return gj;
+  }
+  return null;
+}
+
+// Polígonos sueltos de una geometría (las GeometryCollection de Amenazas
+// traen polígonos mezclados); puntos y líneas no se pintan.
+function _poligonosDeGeom(g) {
+  if (!g) return [];
+  if (g.type === 'Polygon' || g.type === 'MultiPolygon') return [g];
+  if (g.type === 'GeometryCollection') {
+    return (g.geometries || []).reduce(function (acc, x) { return acc.concat(_poligonosDeGeom(x)); }, []);
+  }
+  return [];
+}
+
+async function afectacionesPOTCerca(lat, lon, radioM) {
+  if (!(await cargarTurf()) || typeof turf.bboxClip !== 'function') return [];
+  // 500 m: a zoom 17 el borde de la caja queda fuera de la vista del formulario.
+  const r = radioM || 500;
+  const dLat = r / 111320, dLon = r / (111320 * Math.cos(lat * Math.PI / 180));
+  const caja = [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
+  const punto = turf.point([lon, lat]);
+  const capas = await Promise.all(AFECTACIONES_POT.map(function (c) { return _cargarPrimerGeoJSON(c.archivos); }));
+  const porEtiqueta = {};
+  const salida = [];
+  capas.forEach(function (gj, i) {
+    if (!gj) return;
+    const def = AFECTACIONES_POT[i];
+    gj.features.forEach(function (feat) {
+      _poligonosDeGeom(feat.geometry).forEach(function (geom) {
+        try {
+          let bb = _bboxGeom.get(geom);
+          if (!bb) { bb = turf.bbox(geom); _bboxGeom.set(geom, bb); }
+          if (bb[0] > caja[2] || bb[2] < caja[0] || bb[1] > caja[3] || bb[3] < caja[1]) return;
+          const relleno = turf.bboxClip(turf.feature(geom), caja).geometry;
+          const anillos = geom.type === 'Polygon' ? geom.coordinates
+            : geom.coordinates.reduce(function (acc, p) { return acc.concat(p); }, []);
+          const borde = turf.bboxClip(turf.multiLineString(anillos), caja).geometry;
+          const feats = [];
+          if (relleno && relleno.coordinates && relleno.coordinates.length) {
+            // bboxClip deja anillos degenerados donde el polígono solo roza la caja.
+            const limpio = relleno.type === 'Polygon'
+              ? { type: 'Polygon', coordinates: relleno.coordinates.filter(function (a) { return a.length >= 4; }) }
+              : { type: 'MultiPolygon', coordinates: relleno.coordinates
+                  .map(function (p) { return p.filter(function (a) { return a.length >= 4; }); })
+                  .filter(function (p) { return p.length; }) };
+            if (limpio.coordinates.length) {
+              feats.push({ type: 'Feature', geometry: limpio, properties: { _tipo: 'relleno', _color: def.color } });
+            }
+          }
+          if (!feats.length) return;
+          if (borde && borde.coordinates && borde.coordinates.length) {
+            const lineas = borde.type === 'LineString' ? [borde.coordinates] : borde.coordinates;
+            const utiles = lineas.filter(function (l) { return l.length >= 2; });
+            if (utiles.length) {
+              feats.push({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: utiles },
+                properties: { _tipo: 'borde', _color: def.color } });
+            }
+          }
+          const etiqueta = def.etiqueta(feat.properties || {});
+          const clave = def.capa + '|' + etiqueta;
+          let item = porEtiqueta[clave];
+          if (!item) {
+            item = { capa: def.capa, etiqueta: etiqueta, color: def.color, contiene: false, features: [] };
+            porEtiqueta[clave] = item;
+            salida.push(item);
+          }
+          item.features = item.features.concat(feats);
+          if (!item.contiene && turf.booleanPointInPolygon(punto, geom)) item.contiene = true;
+        } catch (e) {}
+      });
+    });
+  });
+  // Lo que toca el punto primero: es lo que pesa en la visita; el resto es contexto.
+  return salida.sort(function (a, b) { return (b.contiene ? 1 : 0) - (a.contiene ? 1 : 0); });
+}
+
 // limite: solo las últimas N filas (más el encabezado). total = filas de la
 // hoja; un backend anterior a @134 no lo manda y se toma lo recibido.
 async function leerLogAuditoria(limite) {
