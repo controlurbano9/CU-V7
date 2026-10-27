@@ -1,9 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-// v6/home.jsx — Pantalla Inicio: dashboard tipo Asana
+// v6/home.jsx — Pantalla Inicio (admin y supervisor), tres bloques
+// (revisión de arquitectura 2026-10-27, decisión 2):
 //   - Indicadores: el recorrido de una visita (por realizar → por completar
 //     → completadas del mes anterior y del actual)
-//   - Semana de visitas
-//   - Alertas (audiencia en ≤3 días hábiles, +5 días sin iniciar o completar)
+//   - Semana de visitas, con un punto en las que están en Atención
+//   - Atención: audiencia en ≤3 días hábiles, +5 días sin iniciar o completar
+// Salieron la franja «N urgentes» y «Audiencias de la semana»: repetían la
+// misma visita de Atención.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateH, useEffect: useEffectH, useMemo: useMemoH } = React;
 
@@ -32,16 +35,6 @@ function _abrirAgendaEnDia(fecha, onNavegar) {
   onNavegar('agenda');
 }
 
-// Rotulo corto de día para las Audiencias de la semana (lun=1 … vie=5).
-const _AUD_ROTULOS = ['lun', 'mar', 'mié', 'jue', 'vie'];
-// «DANIEL PEDRAZA» → «Daniel P.» (mismo recorte que _svNombreCorto de la Semana).
-function _audNombreCorto(f) {
-  const n = titleCaseNombre(primerVisitador(visitadoresBD(f)));
-  if (!n) return '';
-  const p = n.split(/\s+/);
-  return p.length > 1 ? p[0] + ' ' + p[1].charAt(0) + '.' : p[0];
-}
-
 function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const [datos, setDatos] = useStateH([]);
   const [cargando, setCargando] = useStateH(true);
@@ -52,14 +45,12 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const veTodo = veTodasLasVisitas(usuario.rol);
   const miNombre = usuario.usuario.toUpperCase();
 
-  // Filtro de inspector: uno solo para la Semana y para Alertas, en la barra
+  // Filtro de inspector: uno solo para la Semana y para Atención, en la barra
   // común a las dos (no toca los indicadores). Arranca del que la Semana
   // recordaba. La semana visible también vive aquí: su navegación va en esa
   // misma barra.
   const [inspector, setInspector] = useStateH(() => _svPrefs().inspector || '');
   const [offsetSemana, setOffsetSemana] = useStateH(() => _svPrefs().offset || 0);
-  // Filtro por tipo de alerta: '' | 'urgente' | 'sinIniciar' | 'sinCompletar'.
-  const [filtroAlerta, setFiltroAlerta] = useStateH('');
 
   useEffectH(() => { cargar(); }, []);
   // La lista sale de la copia local al instante; si la red trae cambios se
@@ -125,118 +116,12 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
     return r;
   }, [datos, veTodo, miNombre]);
 
-  // ── Alertas urgentes ──
-  const alertas = useMemoH(() => {
-    const amarillas = []; // +5 días sin iniciar o sin completar
-
-    datos.forEach(f => {
-      const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-
-      // Filtro por rol (regla diligenciador, ver CLAUDE.md):
-      //  PENDIENTE/ASIGNADO → cualquier co-asignado ve la alerta.
-      //  INICIADO/COMPLETADO → solo el primero en VISITADOR(ES).
-      if (!veTodo) {
-        const vis = visitadoresBD(f).toUpperCase();
-        if (!vis.includes(miNombre)) return;
-        if (e === 'INICIADO' || e === 'COMPLETADO') {
-          const principal = primerVisitador(vis);
-          if (principal !== miNombre) return;
-        }
-        // Tampoco alerta por una visita que todavía no se le ha entregado.
-        if (!asignadaVisibleHoy(f)) return;
-      } else if (inspector && !_esVisitaDe(f, inspector)) {
-        // Admin/supervisor con un inspector elegido en la Semana: misma regla
-        // del diligenciador que aplica la rejilla (agruparSemana).
-        return;
-      }
-
-      // Urgente es solo la audiencia cercana (decisión del usuario 2026-10-02).
-      // La alerta de «PQR por vencer» se quitó: comparaba ATENCION PQR con
-      // 'SI' y esa columna es una fórmula que trae días, así que nunca disparó.
-
-      // Alerta: asignada que nadie inicia. Va ANTES del corte de abajo a
-      // propósito: ese `return` descarta todo lo que no esté en INICIADO, así
-      // que hasta 2026-09-19 una visita entregada y olvidada no podía alertar
-      // nunca. Umbral 5 días hábiles, el mismo de "lleva N días sin completar":
-      // una sola noción de "se está demorando" en toda la pantalla.
-      const sinIniciar = diasSinIniciar(f);
-      if (sinIniciar !== null && sinIniciar >= DIAS_ALERTA_DEMORA) {
-        amarillas.push({
-          f: f,
-          cat: 'sinIniciar',
-          mensaje: 'Sin iniciar · ' + sinIniciar + ' días',
-          detalle: 'asignada ' + formatearFecha(f['FECHA ASIGNACION VISITA'] || ''),
-          dias: sinIniciar,
-          // La alerta NO mueve la visita a hoy: lleva al usuario a la semana
-          // en que está programada.
-          irSemana: f['FECHA ASIGNACION VISITA'] || '',
-        });
-      }
-
-      if (e !== 'INICIADO') return;
-
-      // Alerta: iniciada hace ≥5 días hábiles sin completar. Hábiles, igual
-      // que «sin iniciar»: las dos se ordenan juntas por días.
-      const sinCompletar = diasSinCompletar(f);
-      if (sinCompletar !== null && sinCompletar >= DIAS_ALERTA_DEMORA) {
-        amarillas.push({
-          f: f,
-          cat: 'sinCompletar',
-          mensaje: 'Sin completar · ' + sinCompletar + ' días',
-          detalle: 'visita ' + formatearFecha(f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || ''),
-          dias: sinCompletar,
-          // Iniciada: la Semana la pone en su fecha de visita.
-          irSemana: f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || '',
-        });
-      }
-    });
-
-    // Alerta roja: audiencia/citación en ≤3 días hábiles. La regla vive en
-    // utils.js (audienciasProximas) porque Mis visitas la comparte — es la
-    // franja roja del inicio del inspector. Con nombre vacío no filtra, que es
-    // lo que quiere el admin sin inspector elegido.
-    const rojas = audienciasProximas(datos, veTodo ? (inspector || '') : miNombre).map(a => ({
-      f: a.f,
-      mensaje: a.dias === 0
-        ? 'Tiene audiencia HOY'
-        : 'Audiencia en ' + a.dias + ' día' + (a.dias > 1 ? 's' : ''),
-      diasH: a.dias,
-    }));
-
-    // Ordenar: más urgentes primero
-    amarillas.sort((a, b) => b.dias - a.dias);
-
-    // Una misma visita puede disparar varias alertas a la vez (PQR por vencer
-    // + audiencia próxima + días sin completar). Antes se renderizaba una
-    // tarjeta por alerta, con keys React duplicadas ('r' + mismo _idx) y el
-    // mismo predio repetido 2-3 veces en pantalla. Se conserva solo la alerta
-    // más urgente de cada visita: la roja mejor rankeada; y ninguna amarilla
-    // si la visita ya tiene una roja.
-    const vistas = new Set();
-    const rojasU = rojas.filter(a => {
-      const k = a.f._idx || a.f['RADICADO'] || a.f;
-      if (vistas.has(k)) return false;
-      vistas.add(k);
-      return true;
-    });
-    const amarillasU = amarillas.filter(a => !vistas.has(a.f._idx || a.f['RADICADO'] || a.f));
-
-    // Una sola lista, urgentes primero. El conteo por tipo alimenta los chips.
-    const lista = rojasU.map(a => Object.assign({ cat: 'urgente' }, a)).concat(amarillasU);
-    const conteo = { urgente: 0, sinIniciar: 0, sinCompletar: 0 };
-    lista.forEach(a => { conteo[a.cat]++; });
-    return { lista, conteo, total: lista.length };
-  }, [datos, veTodo, miNombre, inspector]);
-
-  // Un filtro que se quedó sin alertas (cambió el inspector o llegaron datos
-  // nuevos) no deja la lista vacía: vuelve a «Todas».
-  const filtroAl = alertas.conteo[filtroAlerta] ? filtroAlerta : '';
-  const alertasVisibles = filtroAl ? alertas.lista.filter(a => a.cat === filtroAl) : alertas.lista;
-
-  // Audiencias de la semana (bloque de quien ve todo): calendario completo
-  // lunes-viernes de las citaciones de visitas iniciadas, sin filtro de
-  // inspector — las Alertas ya avisan las urgentes por persona.
-  const audiencias = useMemoH(() => (veTodo ? audienciasSemana(datos, new Date()) : []), [datos, veTodo]);
+  // ── Atención ── La regla (qué entra, en qué orden, una tarjeta por visita)
+  // vive en utils.js: atencionInicio, tests/atencion-inicio.test.js. La Semana
+  // marca con un punto las visitas que están aquí, sin repetirlas.
+  const atencion = useMemoH(() => atencionInicio(datos, { veTodo, miNombre, inspector }),
+    [datos, veTodo, miNombre, inspector]);
+  const enAtencion = useMemoH(() => new Set(atencion.map(a => a.f._idx)), [atencion]);
 
   // Inspectores activos para los chips de filtro de la semana. Misma fuente
   // que Buscar (USUARIOS vía listarInspectoresActivos, cacheado 60 s): sacar
@@ -308,35 +193,6 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       </div>
 
-      {/* ── Urgentes (audiencia en ≤3 días): franja solo cuando hay ── */}
-      {!cargando && alertas.conteo.urgente > 0 && (
-        <div className="home-urg" role="status">
-          <span><b>{alertas.conteo.urgente} urgente{alertas.conteo.urgente === 1 ? '' : 's'}:</b> audiencia en 3 días o menos</span>
-          <button type="button" className="al-btn" onClick={() => setFiltroAlerta('urgente')}>Ver urgentes</button>
-        </div>
-      )}
-
-      {/* ── Audiencias de la semana (admin/supervisor): una línea por
-          citación; clic abre la visita si puede diligenciarse ── */}
-      {!cargando && veTodo && audiencias.length > 0 && (
-        <div className="home-aud">
-          <div className="home-aud-t">Audiencias de la semana</div>
-          {audiencias.map((a, i) => (
-            <button key={a.f._idx != null ? a.f._idx : 'aud' + i} type="button" className="home-aud-fila"
-              onClick={() => puedeDiligenciar(a.f)
-                ? onContinuar(a.f._idx, a.f)
-                : (window.abrirVisitaDetail && window.abrirVisitaDetail(a.f))}>
-              <span className="home-aud-rot">{_AUD_ROTULOS[a.fecha.getDay() - 1]} {a.fecha.getDate()}</span>
-              <span className="home-aud-dir">{[
-                a.hora,
-                String(a.f['DIRECCION INFRACCION'] || a.f['DIRECCION'] || '').trim(),
-                _audNombreCorto(a.f),
-              ].filter(Boolean).join(' · ')}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {error && (
         <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
           {error} · <button onClick={() => cargar(true)} style={{ background: 'none', border: 'none', color: 'var(--brand-accent)', cursor: 'pointer', textDecoration: 'underline' }}>Reintentar</button>
@@ -344,7 +200,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
       )}
 
       {/* ── Barra del área de trabajo: semana visible a la izquierda y filtro
-          de inspector a la derecha. Va encima de la Semana y de Alertas
+          de inspector a la derecha. Va encima de la Semana y de Atención
           porque el filtro afecta a las dos (y a los indicadores no). ── */}
       <div className="home-barra">
         <div className="sv-nav">
@@ -367,8 +223,8 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         )}
       </div>
 
-      {/* ── Semana + Alertas: carriles del mismo alto ≥1440 (ver .home-2col
-          en styles.css); por debajo, Alertas va debajo de la semana ── */}
+      {/* ── Semana + Atención: carriles del mismo alto ≥1440 (ver .home-2col
+          en styles.css); por debajo, Atención va debajo de la semana ── */}
       <div className="home-2col">
       {/* ── Semana de visitas: sustituye a «Asignadas por hacer», que era
           exactamente su columna de hoy. Cada visita se queda en SU día —
@@ -389,39 +245,30 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
             offset={offsetSemana}
             onOffset={setOffsetSemana}
             onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
+            enAtencion={enAtencion}
           />
         )}
       </div>
 
-      {/* ── Alertas ── Con un inspector elegido la columna se queda aunque
-          no tenga alertas: si desapareciera, la rejilla saltaría de ancho al
-          cambiar de chip. Es un carril como los días: la cabecera queda fija
-          y la lista desplaza dentro. */}
-      {!cargando && (alertas.total > 0 || (veTodo && inspector)) && (
+      {/* ── Atención (decisión 2 de la revisión de arquitectura): una sola
+          lista, una tarjeta por visita — audiencias a ≤3 días hábiles primero,
+          luego lo que lleva ≥5 días sin iniciar o sin completar. Sin chips: la
+          tarjeta dice el motivo. Con un inspector elegido la columna se queda
+          aunque esté vacía: si desapareciera, la rejilla saltaría de ancho al
+          cambiar de chip. Es un carril como los días: la cabecera queda fija y
+          la lista desplaza dentro. */}
+      {!cargando && (atencion.length > 0 || (veTodo && inspector)) && (
         <div className="home-al">
           <div className="al-head">
             <h2 className="home-al-tit">
-              Alertas
-              <span className={'home-al-n' + (alertas.conteo.urgente > 0 ? ' urg' : '')}>{alertas.total}</span>
+              Atención
+              <span className={'home-al-n' + (atencion.some(a => a.cat === 'urgente') ? ' urg' : '')}>{atencion.length}</span>
             </h2>
-            {alertas.total > 0 && (
-              <div className="sv-chips al-chips">
-                {[['', 'Todas', alertas.total],
-                  ['urgente', 'Urgentes', alertas.conteo.urgente],
-                  ['sinIniciar', 'Sin iniciar', alertas.conteo.sinIniciar],
-                  ['sinCompletar', 'Sin completar', alertas.conteo.sinCompletar],
-                ].filter(c => c[2] > 0).map(c => (
-                  <button key={c[0]} type="button" aria-pressed={filtroAl === c[0]}
-                    className={'sv-chip' + (filtroAl === c[0] ? ' activo' : '')}
-                    onClick={() => setFiltroAlerta(c[0])}>{c[1]} <span className="sv-chip-n">{c[2]}</span></button>
-                ))}
-              </div>
-            )}
           </div>
-          {alertas.total === 0 && (
-            <div className="sv-vacio">Sin alertas para {titleCaseNombre(inspector).split(/\s+/)[0]}</div>
+          {atencion.length === 0 && (
+            <div className="sv-vacio">Nada pendiente de {titleCaseNombre(inspector).split(/\s+/)[0]}</div>
           )}
-          {alertasVisibles.map((a, i) => (
+          {atencion.map((a, i) => (
             <AlertaCard key={a.cat + (a.f._idx || i)} alerta={a}
               mostrarInspector={veTodo && !inspector} onContinuar={onContinuar} />
           ))}
@@ -444,16 +291,15 @@ function irASemana(fecha) {
   if (rejilla && rejilla.scrollIntoView) rejilla.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-// Alerta = tarjeta única en renglón (visita-card.jsx). El tiempo es el motivo:
-// la urgente dice el suyo (audiencia) en rojo; el resto, los días que lleva
-// sin iniciar o sin completar (la palabra de estado ya dice cuál de los dos).
-// Una visita ajena (supervisor) no ofrece acción: tocarla abre la ficha.
+// Tarjeta de Atención = tarjeta única en renglón (visita-card.jsx). El tiempo
+// es el motivo (atencionInicio): «Audiencia mañana · 9:00 a. m.» en rojo, o
+// «132 días sin iniciar». Una visita ajena (supervisor) no ofrece acción:
+// tocarla abre la ficha.
 function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   const urgente = alerta.cat === 'urgente';
   return (
     <TarjetaVisita f={alerta.f} densidad="renglon" opts={{ veTodo: !!mostrarInspector }}
-      onAccion={onContinuar} urgente={urgente}
-      tiempo={urgente ? alerta.mensaje : alerta.dias + (alerta.dias === 1 ? ' día' : ' días')}
+      onAccion={onContinuar} urgente={urgente} tiempo={alerta.motivo}
       extra={alerta.irSemana ? (
         <button type="button" className="al-icono" title="Ver en su semana"
           aria-label="Ver en su semana" onClick={() => irASemana(alerta.irSemana)}>

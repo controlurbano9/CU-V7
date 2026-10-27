@@ -4687,3 +4687,9 @@ tr.clic:hover td { background: var(--surface-2); }
 .mv-sig-acc .tv-btn { flex: 1; min-height: 44px; font-size: var(--fs-2); }
 .mv-sig-acc .vc-btn { min-height: 44px; padding: 0 var(--s-4); }
 .mv-chips { margin-bottom: var(--s-3); }
+
+/* ── Inicio: la Semana señala lo que está en Atención (decisión 2) ── */
+.tv-marca {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: 2px;
+  border-radius: 50%; background: var(--red);
+}

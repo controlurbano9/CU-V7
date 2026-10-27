@@ -47,9 +47,11 @@ const { useState: useStateVC, useEffect: useEffectVC } = React;
 //   inspector   nodo que reemplaza el nombre (la Semana: reasignar)
 //   n, extra, pie, sel, arrastre  número de parada, botones extra (↑↓),
 //               panel debajo, seleccionada, props de arrastre
+//   marca       punto rojo antes de la dirección: la visita está en Atención
+//               (la Semana de Inicio la señala sin repetirla)
 // ═══════════════════════════════════════════════════════════════
 function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, urgente, sinTiempo,
-  ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre }) {
+  ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre, marca }) {
   const t = tarjetaVisita(f, Object.assign({ puede: puedeDiligenciar(f) }, opts));
   const renglon = densidad === 'renglon';
   const acc = accion === null ? null
@@ -79,7 +81,9 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
         {!renglon && <div className="tv-est">{estadoNodo}</div>}
         {/* La dirección es el control de teclado de la tarjeta. */}
         <button type="button" className="tv-dir" title={t.dir} aria-pressed={sel != null ? !!sel : undefined}
-          onClick={sinPropagar(abrir)}>{t.dirVisible}</button>
+          onClick={sinPropagar(abrir)}>
+          {marca && <span className="tv-marca" role="img" aria-label="En Atención" title="Está en Atención"></span>}
+          {t.dirVisible}</button>
         <div className="tv-meta">
           {meta.map((m, i) => <React.Fragment key={i}>{i > 0 && <span className="tv-sep"> · </span>}{m}</React.Fragment>)}
         </div>

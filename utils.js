@@ -1874,48 +1874,6 @@ function audienciasProximas(filas, nombre, hoy) {
   return out;
 }
 
-// «9:00 a. m.» → minutos desde medianoche; null si el texto no trae hora.
-// Para ordenar las audiencias del mismo día: como texto, «10:30» saldría
-// antes que «9:00».
-function _minutosHoraTexto(t) {
-  var m = /(\d{1,2}):(\d{2})/.exec(t || '');
-  if (!m) return null;
-  var h = +m[1];
-  if (/\bp\.?\s*m/i.test(t)) h = h % 12 + 12;
-  else if (/\ba\.?\s*m/i.test(t) && h === 12) h = 0;
-  return h * 60 + (+m[2]);
-}
-
-// Audiencias (FECHA CITACION) de lunes a viernes de la semana de `ref`, para
-// el bloque de Inicio de quien ve todo. A diferencia de audienciasProximas no
-// filtra por inspector ni por cercanía: es el calendario de la semana entera.
-// `hora` es lo que sigue al « · » del texto de la celda («9:00 a. m.»), o ''.
-function audienciasSemana(filas, ref) {
-  var base = ref instanceof Date ? ref : (parsearFecha(ref) || new Date());
-  var dias = rangoSemana(base, 0).dias;
-  var out = [];
-  (filas || []).forEach(function (f) {
-    if (!f || _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') !== 'INICIADO') return;
-    var d = parsearFecha(f['FECHA CITACION'] || '');
-    if (!d) return;
-    var enSemana = dias.some(function (x) {
-      return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
-    });
-    if (!enSemana) return;
-    var t = String(f['FECHA CITACION'] || '');
-    var sep = t.indexOf(' · ');
-    out.push({ f: f, fecha: d, hora: sep === -1 ? '' : t.slice(sep + 3).trim() });
-  });
-  // Por fecha y por hora; sin hora (celda de solo-fecha) al principio del día.
-  out.sort(function (a, b) {
-    if (a.fecha.getTime() !== b.fecha.getTime()) return a.fecha - b.fecha;
-    var ma = _minutosHoraTexto(a.hora); if (ma == null) ma = -1;
-    var mb = _minutosHoraTexto(b.hora); if (mb == null) mb = -1;
-    return ma - mb;
-  });
-  return out;
-}
-
 // ── Barrio oficial del POT de cada visita (E5 «Buscar» y E7 «Tablero», 2026-10-08) ──
 // Base compartida; salió de herramientas/barrio-pot (ver su INFORME.md: regla, cifras y
 // casos a revisar). Lógica pura. Regla:
@@ -4644,6 +4602,55 @@ function citaVisitaTexto(f, hoy) {
   };
 }
 
+// ── Inicio: Atención (arquitectura 2026-10-27, decisión 2) ──
+// Una sola lista, una tarjeta por visita: primero las audiencias a ≤3 días
+// hábiles (urgentes, por cercanía) y después lo que lleva ≥5 días hábiles sin
+// iniciar o sin completar, de lo más atrasado a lo menos. Reemplaza a las
+// Alertas con chips, la franja «N urgentes» y «Audiencias de la semana», que
+// repetían la misma visita hasta tres veces.
+//   opts.veTodo    admin/supervisor: todo el equipo (o `inspector`, si eligió uno)
+//   opts.miNombre  sin veTodo: regla del diligenciador y solo lo ya entregado
+//   opts.inspector filtro de inspector de la Semana
+// Cada ítem: { f, cat: 'urgente'|'sinIniciar'|'sinCompletar', dias, motivo,
+// irSemana } — `motivo` es lo que dice la tarjeta en lugar del tiempo.
+var DIAS_DEMORA_ATENCION = 5;
+function atencionInicio(datos, opts) {
+  opts = opts || {};
+  var ref = opts.hoy instanceof Date ? opts.hoy : new Date();
+  var yo = String(opts.miNombre || '').toUpperCase();
+  var entra = function (f) {
+    if (opts.veTodo) return !opts.inspector || _esVisitaDe(f, opts.inspector);
+    return _esVisitaDe(f, yo) && asignadaVisibleHoy(f, ref);
+  };
+  var vistas = {};
+  var clave = function (f) { return f._idx != null ? 'i' + f._idx : 'r' + (f['RADICADO'] || ''); };
+  var urgentes = audienciasProximas(datos, opts.veTodo ? (opts.inspector || '') : yo, ref)
+    .filter(function (a) { return entra(a.f); })
+    .map(function (a) {
+      vistas[clave(a.f)] = true;
+      var c = citaVisitaTexto(a.f, ref);
+      return { f: a.f, cat: 'urgente', dias: a.dias, motivo: c ? c.texto : 'Audiencia próxima',
+        irSemana: a.f['FECHA DE VISITA'] || a.f['FECHA ASIGNACION VISITA'] || '' };
+    });
+  var demoras = [];
+  (datos || []).forEach(function (f) {
+    if (!f || vistas[clave(f)] || !entra(f)) return;
+    var si = diasSinIniciar(f, ref);
+    if (si != null && si >= DIAS_DEMORA_ATENCION) {
+      demoras.push({ f: f, cat: 'sinIniciar', dias: si, motivo: si + ' días sin iniciar',
+        irSemana: f['FECHA ASIGNACION VISITA'] || '' });
+      return;
+    }
+    var sc = diasSinCompletar(f, ref);
+    if (sc != null && sc >= DIAS_DEMORA_ATENCION) {
+      demoras.push({ f: f, cat: 'sinCompletar', dias: sc, motivo: sc + ' días sin completar',
+        irSemana: f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || '' });
+    }
+  });
+  demoras.sort(function (a, b) { return b.dias - a.dias; });
+  return urgentes.concat(demoras);
+}
+
 // ¿Le sale la pestaña «Mis visitas» a un admin o supervisor? Solo si figura
 // como inspector en alguna visita por hacer o en curso, o en una completada
 // este año (arquitectura 2026-10-27, punto 9): antes un supervisor la veía
@@ -4664,6 +4671,7 @@ function tieneVisitasPropias(filas, nombre, hoy) {
 var _cuUtilsExports = {
   tieneVisitasPropias: tieneVisitasPropias,
   pendientesMisVisitas: pendientesMisVisitas,
+  atencionInicio: atencionInicio,
   citaVisitaTexto: citaVisitaTexto,
   tarjetaVisita: tarjetaVisita,
   nombreCortoVisita: nombreCortoVisita,
@@ -4739,7 +4747,6 @@ var _cuUtilsExports = {
   recorridoVisita: recorridoVisita,
   completadasMesesVisita: completadasMesesVisita,
   audienciasProximas: audienciasProximas,
-  audienciasSemana: audienciasSemana,
   DIAS_ALERTA_AUDIENCIA: DIAS_ALERTA_AUDIENCIA,
   claveBarrio: claveBarrio,
   UMBRAL_REVISAR_BARRIO_M: UMBRAL_REVISAR_BARRIO_M,

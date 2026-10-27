@@ -157,7 +157,7 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
 }
 
 // ── Tarjeta de visita ──────────────────────────────────────────
-function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar, inspectores, onReasignar }) {
+function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar, inspectores, onReasignar, marca }) {
   // Reasignar (solo ADMIN): tocar el nombre del inspector abre la lista.
   const [reasignando, setReasignando] = useStateSV(false);
   const [ocupada, setOcupada] = useStateSV(false);
@@ -176,7 +176,7 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
   // (supervisor) no ofrece acción: tocarla abre la ficha.
   const arr = !!arrastrable && !movil;
   return (
-    <TarjetaVisita f={f} densidad="renglon" sinTiempo n={n}
+    <TarjetaVisita f={f} densidad="renglon" sinTiempo n={n} marca={marca}
       opts={{ veTodo: !!(inspectores && inspectores.length) }}
       onAccion={onAbrir}
       inspector={puedeReasignar ? (
@@ -204,7 +204,7 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
 
 // ── Componente principal ───────────────────────────────────────
 function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasignar, inspector: inspectorExt, onInspector, onAbrirDia,
-  offset: offsetExt, onOffset }) {
+  offset: offsetExt, onOffset, enAtencion }) {
   const prefs0 = _svPrefs();
   // Con onOffset la semana la maneja Inicio, que pinta navegación y filtro en
   // una barra común a la Semana y a Alertas; la cabecera propia no se pinta.
@@ -505,7 +505,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
           {porDia[sel].map((f, i) => {
             const ord = puedeOrdenar(f) && porDia[sel].length > 1;
             return (
-              <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1}
+              <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1} marca={!!enAtencion && enAtencion.has(f._idx)}
                 inspectores={inspectores} onReasignar={onReasignar}
                 onSubir={ord && i > 0 ? () => mover(dias[sel], porDia[sel], i, -1) : null}
                 onBajar={ord && i < porDia[sel].length - 1 ? () => mover(dias[sel], porDia[sel], i, 1) : null} />
@@ -552,7 +552,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
             )}
             {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
-              <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} n={j + 1}
+              <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} n={j + 1} marca={!!enAtencion && enAtencion.has(f._idx)}
                 inspectores={inspectores} onReasignar={onReasignar}
                 arrastrable={puedeOrdenar(f) || puedeMover(f)}
                 onDragStart={(e) => { setArrastre(f._idx); try { e.dataTransfer.setData('text/plain', String(f._idx)); } catch (x) {} }}
