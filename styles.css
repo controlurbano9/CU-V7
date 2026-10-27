@@ -5059,3 +5059,23 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   .rfm-zoom button { width: 44px; height: 44px; }
   .rfm-generar { min-height: 44px; }
 }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 05 — Buscar y ficha (TASK-valla-05)            ║
+   ╚════════════════════════════════════════════════════════════╝ */
+.bq-omni input { height: 48px; border-radius: var(--r-ctl); }
+.bq-omni input:focus { border-color: var(--ink); }
+.bq-est.on, .bq-op.on { background: var(--ink); border-color: var(--ink); }
+.bq-sec-tit { font-family: var(--font-cond); font-weight: 700; }
+.bq-com.on { stroke: var(--ink); }
+.bq-tag { background: transparent; border: 1px solid var(--line-2); border-radius: var(--r-ctl); font-family: var(--font-sans); }
+/* Ficha: dirección en condensada; rótulos y valores con más contraste; la
+   acción principal llena en tinta, el resto neutro. */
+.fv-dir { font: 800 var(--fs-4)/1.15 var(--font-cond); letter-spacing: 0; }
+.fv-hechos .l { color: var(--ink-3); }
+.fv-hechos .v { color: var(--ink); }
+.fv-fija-acc .vc-btn-cta { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+@media (pointer: coarse) {
+  .fv-fija-acc .vc-btn { min-height: 44px; }
+  .pqr-chip::after { inset: -14px -8px; }
+}

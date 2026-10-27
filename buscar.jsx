@@ -1457,7 +1457,10 @@ function _contarPorBQ(base, clavesDe) {
   }));
   return m;
 }
-const BQ_ESCALA = ['#F1EADF', '#EBD3C2', '#DDAE93', '#C9805F', '#AC5031'];
+// Rampa del mapa de calor en tintas de la Valla (TASK-valla-05): de --surface-2
+// a --ink-2, sin el amarillo de la firma ni colores de estado. Luminancias
+// 0,83 · 0,56 · 0,31 · 0,13 · 0,02 (medidas): se distinguen los cinco pasos.
+const BQ_ESCALA = ['#ECEAE4', '#C9C6BD', '#9B978D', '#6B675E', '#2B2923'];
 const _tonoBQ = (n, max) => !n ? 0 : Math.min(4, 1 + Math.floor(Math.sqrt(n / Math.max(1, max)) * 3.999));
 const _normLugarBQ = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
 
