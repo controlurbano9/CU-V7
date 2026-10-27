@@ -205,7 +205,7 @@ function _fotosSinDescripcion(fotos) {
 // miniaturas de 64 px donde no se veía lo que se describía.
 // Quitar saca la foto del documento, nunca la borra de Drive.
 const RFM_MINI_MIN = 72;        // ancho mínimo de miniatura (escritorio)
-const RFM_MINI_MIN_MOVIL = 30;  // en <900 px: 17 fotos en dos filas caben a 360 px
+const RFM_MINI_MIN_MOVIL = 59;  // en <900 px: 4:3 → 44 px de alto (toque en campo, crítica P1 2026-10-26)
 const RFM_MINI_GAP = 6;
 const RFM_ZOOM_MAX = 8;         // veces el tamaño ajustado
 
@@ -1615,7 +1615,10 @@ function _googleMapsYaEsta() {
 // repite el contorno cuando pin y dirección son el mismo predio).
 // Colores de contorno: amarillo = predio bajo el pin, celeste = predio de la
 // dirección. Los dos se leen sobre la foto aérea ('hybrid') y el callejero.
-var COLOR_PREDIO_PIN = '#FFD400', COLOR_PREDIO_DIR = '#00E5FF';
+// El amarillo es el VALOR de --valla (styles.css): Google Maps no resuelve
+// var(--…), así que va copiado aquí — si cambia el token, se repite. El
+// celeste no es de la Valla: es un color de mapa (trazo de catastro).
+var COLOR_PREDIO_PIN = '#F2C200', COLOR_PREDIO_DIR = '#00E5FF';
 function _dibujarAnillos(map, anillos, color) {
   return anillos.map(function (anillo) {
     return new google.maps.Polygon({

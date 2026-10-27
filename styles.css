@@ -4947,3 +4947,92 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 }
 .home-al-n.urg { background: var(--red-bg); color: var(--red); }
 .al-icono { background: transparent; color: var(--ink-3); }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 04 — Formulario: barra «Falta», secciones y    ║
+   ║ entregables (TASK-valla-04)                                   ║
+   ╚════════════════════════════════════════════════════════════╝
+   El formulario queda todo visible (decisión 5 de la revisión de
+   arquitectura): cada sección es una placa con filete de 1 px y lo
+   que falta se nombra en la cabecera fija. Sin amarillo --valla:
+   en el formulario no hay nada activo que señalar ni selección. */
+
+/* Cabecera: el estado con el código de la tarjeta (palabra + barra
+   de 3 px en su color), no píldora de tinte — un solo lenguaje de
+   estado desde la Semana hasta aquí. El radicado, que es lo que
+   identifica la visita, pasa a condensada 700 a 17: la Semi
+   Condensed cierra más que la Barlow que reemplaza, así que chip +
+   11 dígitos siguen cabiendo en el renglón del celular. */
+.nv-header .estado-badge {
+  background: none; border: 0; border-left: 3px solid var(--ink-4);
+  border-radius: 0; padding: 0 8px 0 7px;
+  font-family: var(--font-cond); font-weight: 700; letter-spacing: .03em;
+  color: var(--ink);
+}
+.nv-header .estado-badge.ep-amarillo { border-left-color: var(--amber); }
+.nv-header .estado-badge.ep-azul     { border-left-color: var(--info); }
+.nv-header .estado-badge.ep-verde    { border-left-color: var(--green); }
+.nv-header .estado-id {
+  font-family: var(--font-cond); font-weight: 700;
+  font-size: var(--fs-3); color: var(--ink);
+}
+/* 360 px (Android barato): a 17 el radicado no cabe con el chip y la
+   cabecera crecía un renglón; a 15 en condensada sigue siendo más
+   corto que la Barlow de antes. */
+@media (max-width: 380px) {
+  .nv-header .estado-id { font-size: var(--fs-2); }
+}
+/* Barra «Falta en:»: el rótulo en --red 600 y la píldora del conteo
+   en --red-bg ya estaban (bloque de arquitectura); los nombres de
+   sección pasan a condensada, como los rótulos de grupo de Mis
+   visitas (TASK 02). */
+.nv-falta-ir { font-family: var(--font-cond); font-weight: 600; }
+
+/* Secciones: placa blanca con filete de 1 px — la sombra suave era
+   del mundo crema. Título en condensada 700 a 17, como los títulos
+   de panel de las demás pantallas; el ✓ de sección completa en
+   --green (5,35:1 sobre blanco, pasa AA; el comentario viejo que lo
+   enviaba a --green-ink era del verde anterior). El punto pendiente
+   crece con .ent-dot (abajo). */
+.form-seccion { border-color: var(--line-2); box-shadow: none; }
+.form-seccion-titulo {
+  font-family: var(--font-cond); font-weight: 700;
+  font-size: var(--fs-3); letter-spacing: 0;
+}
+.sec-ind-ok { color: var(--green); }
+.sec-ind-pend { width: 12px; height: 12px; }
+
+/* Campos: etiqueta a 13 — la jerarquía la marca ahora el título de
+   sección en condensada; el campo es lo que se lee de cerca. Filete
+   de 1 px --line-2 y anillo --brand-glow al foco ya estaban en la
+   base de .input-campo. */
+.input-label { font-size: var(--fs-1); }
+
+/* Chips de opción: marcados en tinta --ink con texto blanco (no el
+   --ink-2 del sistema de 2026-10-13: un solo negro). En el celular
+   suben a 44 px SOLO los del formulario — se marcan en campo, con
+   una mano (crítica P1 2026-10-26); los de filtros (Buscar, Agenda)
+   son controles densos de fila y siguen a 36 (--tap-min). */
+.radio-opcion.sel,
+.radio-opcion.sel:disabled,
+.chip.activo,
+.chip-inf.activo,
+.chip-vis.activo {
+  background: var(--ink); border-color: var(--ink); color: var(--surface);
+}
+@media (max-width: 1199px), (pointer: coarse) {
+  .nv-pantalla .chip,
+  .nv-pantalla .chip-vis { min-height: var(--tap); }
+}
+
+/* Entregables: punto de 12 px — a 10 no se distinguía al sol — y la
+   acción principal llena de tinta: «Generar»/«Abrir» es lo que
+   produce el documento oficial. ↻ sigue neutro (.btn-icono ya es
+   fondo transparente + icono --ink-3): regenerar es secundario. */
+.ent-dot { width: 12px; height: 12px; }
+.nv-entregables .ent-btn {
+  background: var(--ink); color: var(--surface);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nv-entregables .ent-btn:hover { background: var(--brand-ink); }
+}
