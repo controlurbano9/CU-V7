@@ -2379,6 +2379,14 @@ const CONTRAVENCION_GRUPOS = [
   ]},
 ];
 const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
+// 2026-10-27 (decisión del usuario): cuando en Verificación documental «¿Las
+// obras requieren licencia?» = No se pudo determinar, no se puede afirmar que
+// no hay infracción ni marcar A4. Excluyente con todo, como la anterior; solo
+// se ofrece con esa respuesta (R17/R18 en reglasBloqueoActa). En el acta, F36
+// lleva además el motivo (infraccionParaActa). Sin seguimiento aparte: basta
+// lo que dice el acta.
+const CONTRAVENCION_INDETERMINADA = 'No se pudo determinar';
+const _CONTRAVENCION_EXCLUYENTES = [CONTRAVENCION_ESPECIAL, CONTRAVENCION_INDETERMINADA];
 
 // Deja en TIPO DE INFRACCION solo lo que es un chip del catálogo. Filas
 // migradas de V2 o editadas a mano traen textos como "#9,11 Y 12" que no se
@@ -2386,7 +2394,7 @@ const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
 // salían en el acta y el informe. Lo que llega a los documentos tiene que ser
 // exactamente lo que está marcado en pantalla.
 const _CONTRAVENCION_VALIDAS = new Set(
-  CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(CONTRAVENCION_ESPECIAL)
+  CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(_CONTRAVENCION_EXCLUYENTES)
 );
 function _infraccionSoloCatalogo(v) {
   const chips = String(v || '').split(' | ').map(s => s.trim())
@@ -2396,19 +2404,31 @@ function _infraccionSoloCatalogo(v) {
 }
 
 // Marca o desmarca `val` en la lista de chips y devuelve la lista nueva.
-// «No se evidencia infracción» desmarca todo lo demás, y viceversa.
+// «No se evidencia infracción» y «No se pudo determinar» desmarcan todo lo
+// demás, y viceversa.
 // A1 tiene prioridad (decisión del usuario 2026-10-21): va siempre primero,
 // también en el acta y el informe, que toman el orden de aquí. A1 + A4 en
 // un lote mixto se permite con justificación (R16, revisarTextoLocal); que
 // A1 sea obligatorio cuando aplica lo exige R11 (reglasBloqueoActa).
 function alternarContravencion(seleccionados, val) {
   const sel = (seleccionados || []).slice();
-  if (val === CONTRAVENCION_ESPECIAL) {
-    return sel.includes(CONTRAVENCION_ESPECIAL) ? [] : [CONTRAVENCION_ESPECIAL];
+  if (_CONTRAVENCION_EXCLUYENTES.includes(val)) {
+    return sel.includes(val) ? [] : [val];
   }
-  const base = sel.filter(s => s !== CONTRAVENCION_ESPECIAL);
+  const base = sel.filter(s => !_CONTRAVENCION_EXCLUYENTES.includes(s));
   if (base.includes(val)) return base.filter(s => s !== val);
   return /^A1:/.test(val) ? [val].concat(base) : base.concat(val);
+}
+
+// Texto de F36 del acta. «No se pudo determinar» suelto no dice qué: se le
+// suma el motivo que el inspector escribió en Verificación documental
+// (REQUIERE_LICENCIA_DETALLE). Solo en el acta; en BD queda el chip tal cual.
+// `infraccion` ya pasado por _infraccionSoloCatalogo; `motivo` = texto libre.
+function infraccionParaActa(infraccion, motivo) {
+  const v = String(infraccion || '').trim();
+  if (v !== CONTRAVENCION_INDETERMINADA) return v;
+  const m = String(motivo || '').trim().replace(/[.\s]+$/, '');
+  return 'No se pudo determinar si las obras requieren licencia' + (m ? ': ' + m : '') + '.';
 }
 
 // ── Tablero territorial (E7): lógica pura (2026-10-16) ────────
@@ -3324,12 +3344,17 @@ function citaArt135(literal, numeral) {
   return 'literal ' + literal + ' «' + enc + '», numeral ' + n + ' «' + txt + '»';
 }
 
+var COMPORTAMIENTO_INDETERMINADO_IA = 'Ninguno: el inspector marcó «No se pudo determinar» ' +
+  '(no pudo determinar si las obras requieren licencia). No hay comportamiento calificado ni se ' +
+  'puede afirmar que no hay infracción.';
+
 // Los chips de «Tipificación y medidas» (TIPO DE INFRACCION, separados por
 // ' | ', p. ej. 'A3: Bienes uso público (Antejardín) | D13: Materiales en
 // vía') en la forma que necesita «Mejorar con IA» para comparar la
 // calificación del texto contra lo marcado:
 //   []                → no hay nada marcado todavía
 //   ['NINGUNO']       → se marcó «No se evidencia infracción»
+//   [COMPORTAMIENTO_INDETERMINADO_IA] → se marcó «No se pudo determinar»
 //   ['A3 — literal A «…», numeral 3 «…»', …] → un renglón por comportamiento
 // Lo que no es un chip con código (textos de V2) se ignora: la IA solo
 // compara contra lo que el inspector ve marcado en pantalla.
@@ -3337,6 +3362,9 @@ function comportamientosParaIA(infraccion) {
   var chips = String(infraccion || '').split(' | ')
     .map(function(s) { return s.trim(); }).filter(Boolean);
   if (chips.indexOf('No se evidencia infracción') >= 0) return ['NINGUNO'];
+  // El backend pinta cada elemento como un renglón del bloque «comportamientos
+  // marcados»: este se explica solo, sin cambio en el backend.
+  if (chips.indexOf(CONTRAVENCION_INDETERMINADA) >= 0) return [COMPORTAMIENTO_INDETERMINADO_IA];
   var out = [];
   chips.forEach(function(c) {
     var m = /^([ABCD])(\d{1,2}):/.exec(c);
@@ -3591,6 +3619,7 @@ function reglasBloqueoActa(e) {
   var chips = String(e.infraccion || '').split(' | ')
     .map(function(s) { return s.trim(); }).filter(Boolean);
   var ninguno = chips.indexOf('No se evidencia infracción') >= 0;
+  var indeterminado = chips.indexOf(CONTRAVENCION_INDETERMINADA) >= 0;
   var cod = {};
   chips.forEach(function(c) {
     var m = /^([ABCD])(\d{1,2}):/.exec(c);
@@ -3603,6 +3632,20 @@ function reglasBloqueoActa(e) {
   // R02: «No se evidencia infracción» es excluyente con cualquier otro chip.
   if (ninguno && codigos.length) {
     add('R02', 'Tipificación: «No se evidencia infracción» no puede ir junto con otros comportamientos.');
+  }
+  if (indeterminado && (codigos.length || ninguno)) {
+    add('R02', 'Tipificación: «No se pudo determinar» no puede ir junto con otra opción.');
+  }
+  // R17 / R18 (2026-10-27): la tipificación contra «¿Las obras requieren
+  // licencia?». Sin la respuesta (visitas viejas, acción sin el dato) no se
+  // juzga: la pregunta ya es obligatoria para el acta.
+  var req = String(e.requiereLicencia || '').trim().toUpperCase();
+  if (indeterminado && req && req !== REQUIERE_INDETERMINADO) {
+    add('R17', 'Tipificación: «No se pudo determinar» solo vale si en Verificación documental «¿Las obras requieren licencia?» = No se pudo determinar.');
+  }
+  if (req === REQUIERE_INDETERMINADO && (ninguno || cod.A4)) {
+    add('R18', 'En Verificación documental no se pudo determinar si las obras requieren licencia, y en Tipificación está ' +
+      (ninguno ? '«No se evidencia infracción»' : 'A4 (sin licencia)') + ': marca «No se pudo determinar» o corrige la respuesta.');
   }
   // R03: con un comportamiento marcado, el área no es «No aplica».
   if (codigos.length && e.areaNoAplica) {
@@ -3897,7 +3940,8 @@ function revisarTextoLocal(e) {
   }
   var lista = comportamientosParaIA(e.infraccion);
   var ninguno = lista[0] === 'NINGUNO';
-  var marcados = ninguno ? [] : lista.map(function(c) { return c.split(' — ')[0]; });
+  var indeterminado = lista[0] === COMPORTAMIENTO_INDETERMINADO_IA;
+  var marcados = (ninguno || indeterminado) ? [] : lista.map(function(c) { return c.split(' — ')[0]; });
   // `nombre` encabeza el mensaje («En la descripción: …») para no tener que
   // concordar el verbo con cada casilla.
   var textos = [
@@ -3926,6 +3970,13 @@ function revisarTextoLocal(e) {
     if (ninguno) {
       if (citados.length || /\b(configura|constituye)n?\b[^.]{0,80}\b(comportamiento|infraccion|contravencion)/.test(n)) {
         add('califica-sin-chip', x.donde, x.nombre + ' se califica un comportamiento, pero se marcó «No se evidencia infracción».');
+      }
+    } else if (indeterminado) {
+      if (citados.length || /\b(configura|constituye)n?\b[^.]{0,80}\b(comportamiento|infraccion|contravencion)/.test(n)) {
+        add('califica-sin-chip', x.donde, x.nombre + ' se califica un comportamiento, pero se marcó «No se pudo determinar».');
+      }
+      if (/no se evidencia (ninguna )?(infraccion|comportamiento)|no presenta(n)? (ninguna )?infraccion/.test(n)) {
+        add('niega-con-chips', x.donde, x.nombre + ' dice que no hay infracción, pero se marcó «No se pudo determinar».');
       }
     } else if (marcados.length) {
       var sobran = citados.filter(function(c) { return marcados.indexOf(c) < 0; });
@@ -4975,8 +5026,10 @@ var _cuUtilsExports = {
   calidadTablero: calidadTablero,
   CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
+  CONTRAVENCION_INDETERMINADA: CONTRAVENCION_INDETERMINADA,
   _infraccionSoloCatalogo: _infraccionSoloCatalogo,
   alternarContravencion: alternarContravencion,
+  infraccionParaActa: infraccionParaActa,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
