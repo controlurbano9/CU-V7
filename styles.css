@@ -4864,3 +4864,86 @@ tr.clic:hover td { background: var(--surface-2); }
 @media (max-width: 1199px), (pointer: coarse) {
   .mv-chips .sv-chip { height: var(--tap); }
 }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 03 — Inicio: indicadores, Semana y Atención     ║
+   ╚════════════════════════════════════════════════════════════╝
+   Pisa el bloque «Inicio v2» (2026-10-13), que vestía el mundo
+   crema: «hoy» en tinte terracota, chips rellenos y sombras. Los
+   indicadores pasan a placa con filete de 1 px y número en
+   condensada, y «hoy» se marca con la raya de la pestaña activa de
+   la TASK 01, no con fondo. Inicio es de admin y supervisor (pieza
+   4); la Semana de Mis visitas comparte .sv-* y toma lo mismo. */
+
+/* Indicadores: placa blanca con filete de 1 px, sin sombra. El
+   número en condensada 700; el rótulo ya iba en --fs-1 --ink-3. La
+   flecha → de los que abren Buscar va en --ink-3: en --brand (tinta)
+   parecía un botón. */
+.home-pantalla .ind-fila {
+  border: 1px solid var(--line-2); border-radius: var(--r-panel);
+  box-shadow: none;
+}
+.home-pantalla .ind-num {
+  font-family: var(--font-cond); font-weight: 700;
+  letter-spacing: 0; line-height: 1.05;
+}
+.ind-flecha { color: var(--ink-3); }
+@media (hover: hover) and (pointer: fine) {
+  .home-pantalla button.ind:hover { background: var(--surface-2); }
+}
+
+/* Barra de semana. Rango en condensada 700, como los rótulos de
+   pantalla; «Hoy» y los chips de inspector con el idioma de los
+   chips de Mis visitas (TASK 02): placa con filete de 1 px y el
+   activo en tinta. */
+.sv-rango { font-family: var(--font-cond); font-weight: 700; font-size: var(--fs-3); }
+.sv-hoy { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); }
+.sv-nav-btn:hover { background: var(--surface-2); }
+.home-insp .sv-chip {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+}
+.home-insp .sv-chip.activo { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+@media (hover: hover) and (pointer: fine) {
+  .home-insp .sv-chip:not(.activo):hover { background: var(--surface-2); color: var(--ink); }
+}
+@media (max-width: 1199px), (pointer: coarse) {
+  .home-insp .sv-chip { height: var(--tap); }
+}
+
+/* Semana: todos los días sobre el carril neutro; «hoy» con la raya
+   superior de 3 px --valla (el gesto de la pestaña activa), no con
+   fondo amarillo entero. Sombra interior y no border-top: no corre
+   la cabecera del día 3 px respecto a los otros días. Cabecera en
+   condensada; el conteo en un círculo neutro del alto del renglón
+   (20 px), para no desalinear cabeceras entre columnas. */
+.sv-col,
+.sv-col.hoy { background: var(--carril); border-radius: var(--r-panel); }
+.sv-col.hoy { box-shadow: inset 0 3px 0 0 var(--valla); }
+.sv-col-head,
+button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
+.sv-col-head.hoy { color: var(--ink); }
+.sv-pill-hoy { background: var(--ink); }
+.sv-col-n {
+  min-width: 20px; height: 20px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-full);
+  background: var(--surface-2); color: var(--ink-2);
+  font-family: var(--font-sans); font-weight: 600;
+}
+/* Tira del celular: activo en tinta y «hoy» con la misma raya. */
+.sv-dia.activo { background: var(--ink); }
+.sv-dia.hoy:not(.activo) { box-shadow: inset 0 3px 0 0 var(--valla); }
+.sv-dia.hoy:not(.activo) .sv-dia-rot { color: var(--ink); }
+
+/* Atención: título en condensada 700; el conteo en rojo SOLO si hay
+   urgentes (.urg) y neutro si no. El icono «Ver en su semana» es
+   neutro: acción secundaria, sin borde ni relleno. */
+.home-pantalla .home-al { border-radius: var(--r-panel); }
+.home-al-tit { font-family: var(--font-cond); font-weight: 700; font-size: var(--fs-3); }
+.home-al-n {
+  min-width: 20px; height: 20px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--ink-2);
+}
+.home-al-n.urg { background: var(--red-bg); color: var(--red); }
+.al-icono { background: transparent; color: var(--ink-3); }
