@@ -2910,10 +2910,97 @@ function categoriaLog(usuario, accion) {
 // la fila queda como dato de la época. Lo que no se reconoce va tal cual.
 var _ESTADO_LOG = { PENDIENTE: 'pendiente', PENDIENTES: 'pendiente', ASIGNADO: 'asignada',
   INICIADO: 'iniciada', COMPLETADO: 'completada', COMPLETADA: 'completada', REITERADO: 'reiterado' };
+// Desde 2026-10-27 (revisión de arquitectura, punto 8) cubre todas las clases
+// de mensaje que escribe el backend (registrarLog en apps_script_unificado.js)
+// y devuelve además `tipo`: 'visita' (lo que la persona hizo con una visita o
+// su cita: lo único que muestra el panel de cada persona), 'gestion', 'acceso',
+// 'seguridad' (lo que el sistema evitó) o 'sistema' (automático y
+// mantenimiento). Si el backend agrega un mensaje nuevo, sale tal cual.
 function describirLog(accion) {
-  var a = String(accion || '').trim();
-  if (/^login v\d+$/i.test(a)) return { texto: 'Inició sesión', detalle: '' };
-  if (/^logout v\d+$/i.test(a)) return { texto: 'Cerró sesión', detalle: '' };
+  var r = _describirLogBase(String(accion || '').trim());
+  if (!r.tipo) r.tipo = 'otro';
+  return r;
+}
+var _MANT_LOG = { normalizarDireccionesBD: 'direcciones normalizadas', repararCoordenadasBD: 'coordenadas reparadas',
+  emparejarReiterados: 'reiterados emparejados', regenerarPdfsActas: 'PDF de actas regenerados' };
+function _describirLogBase(a) {
+  var x;
+  if (/^login v\d+$/i.test(a)) return { texto: 'Inició sesión', detalle: '', tipo: 'acceso' };
+  if (/^logout v\d+$/i.test(a)) return { texto: 'Cerró sesión', detalle: '', tipo: 'acceso' };
+  if (/^(Eligió su PIN|Cambió su PIN)/.test(a)) return { texto: 'Cambió su PIN', detalle: '', tipo: 'acceso' };
+  // Lo que el sistema evitó (seguridad). Siempre se nombra el caso esperado.
+  if ((x = a.match(/^Guardado BLOQUEADO: fila \d+ tiene el radicado (.+?), el formulario esperaba (.+)$/)))
+    return { texto: 'Se evitó guardar en el caso equivocado', detalle: 'Radicado ' + x[2] + ' (la fila ya tenía ' + x[1] + ')', tipo: 'seguridad' };
+  // Formato viejo del mismo bloqueo (filas antiguas de LOG_AUDITORIA).
+  if ((x = a.match(/^Guardado BLOQUEADO: fila \d+ tiene el radicado (\S+) y llegó (\S+)/)))
+    return { texto: 'Se evitó guardar en el caso equivocado', detalle: 'Radicado ' + x[2] + ' (la fila ya tenía ' + x[1] + ')', tipo: 'seguridad' };
+  if ((x = a.match(/^Reintento offline BLOQUEADO: la fila \d+ ya no es del radicado (.+?) y/)))
+    return { texto: 'Se evitó repetir un guardado sin señal en el caso equivocado', detalle: 'Radicado ' + x[1], tipo: 'seguridad' };
+  if ((x = a.match(/^DUPLICADO bloqueado: radicado (\S+) \(visita N°(\d+)\)/)))
+    return { texto: 'Se evitó duplicar una visita', detalle: 'Radicado ' + x[1] + ' · visita N° ' + x[2], tipo: 'seguridad' };
+  if ((x = a.match(/^\w+ BLOQUEADO: fila \d+ tiene el radicado (.+?), se esperaba (.+)$/)))
+    return { texto: 'Se evitó escribir en el caso equivocado', detalle: 'Radicado ' + x[2] + ' (la fila ya tenía ' + x[1] + ')', tipo: 'seguridad' };
+  if (/^\w+ BLOQUEADO: no existe la visita/.test(a))
+    return { texto: 'Se evitó escribir en una visita que ya no existe', detalle: '', tipo: 'seguridad' };
+  if ((x = a.match(/^\w+: la visita \S+ pasó de la fila (\d+) a la (\d+)/)))
+    return { texto: 'Encontró la visita en su fila nueva y escribió ahí', detalle: 'Fila ' + x[1] + ' → ' + x[2], tipo: 'sistema' };
+  // Visitas.
+  if ((x = a.match(/^Visita reescrita por reintento offline — fila (\d+)(?: \(radicado ([^)]+)\))?$/)))
+    return { texto: 'Guardó una visita hecha sin señal', detalle: x[2] ? 'Radicado ' + x[2] : 'Fila ' + x[1] + ' de la hoja', tipo: 'visita' };
+  if ((x = a.match(/^Revisión del texto cerrada con justificación — fila (\d+)(?: \(radicado ([^)]+)\))?: ([\s\S]*)$/)))
+    return { texto: 'Cerró la revisión del texto con justificación', detalle: (x[2] ? 'Radicado ' + x[2] : 'Fila ' + x[1] + ' de la hoja') + ' · ' + x[3], tipo: 'visita' };
+  if ((x = a.match(/^Reiterado AGREGADO: (\S+) (?:\(radicado el [^)]+\) al caso|en) (\S+)/)))
+    return { texto: 'Agregó un reiterado', detalle: 'Radicado ' + x[2] + ' · reiterado ' + x[1], tipo: 'visita' };
+  if ((x = a.match(/^Reiterado QUITADO: (\S+) del caso (\S+)/)))
+    return { texto: 'Quitó un reiterado', detalle: 'Radicado ' + x[2] + ' · reiterado ' + x[1], tipo: 'visita' };
+  if ((x = a.match(/^Cupo RESERVADO \S+ \((.+)\) para el (radicado|orden) (.+)$/)))
+    return { texto: 'Pidió una cita', detalle: (x[2] === 'radicado' ? 'Radicado ' : 'Orden ') + x[3] + ' · ' + x[1], tipo: 'visita' };
+  if ((x = a.match(/^Cupo LIBERADO \S+ \((.+?)\)(?: del (radicado|orden) (\S+))?(?: · motivo: ([\s\S]+))?$/)))
+    return { texto: 'Liberó una cita', detalle: [x[2] ? (x[2] === 'radicado' ? 'Radicado ' : 'Orden ') + x[3] : '', x[1], x[4] ? 'motivo: ' + x[4] : ''].filter(Boolean).join(' · '), tipo: 'visita' };
+  // Gestión.
+  if ((x = a.match(/^Usuario (ACTIVADO|DESACTIVADO): (.+)$/)))
+    return { texto: (x[1] === 'ACTIVADO' ? 'Activó a ' : 'Desactivó a ') + titleCaseNombre(x[2]), detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^PIN temporal generado para: (.+)$/)))
+    return { texto: 'Generó un PIN temporal para ' + titleCaseNombre(x[1]), detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^Rol de (.+?): (.+?) → (.+)$/)))
+    return { texto: 'Cambió el rol de ' + titleCaseNombre(x[1]), detalle: x[2].toLowerCase() + ' → ' + x[3].toLowerCase(), tipo: 'gestion' };
+  if ((x = a.match(/^Hallazgo pendiente del radicado (\S+) marcado (.+)$/)))
+    return { texto: 'Revisó un hallazgo para el catálogo', detalle: 'Radicado ' + x[1] + ' · ' + x[2].toLowerCase(), tipo: 'gestion' };
+  if ((x = a.match(/^Orden del día (\S+): (\d+) visitas/)))
+    return { texto: 'Ordenó las visitas del ' + x[1], detalle: x[2] + ' visitas', tipo: 'gestion' };
+  if ((x = a.match(/^CONFIG_AGENDA actualizada: (\d+) visitas por inspector/)))
+    return { texto: 'Cambió las reglas de la agenda', detalle: x[1] + ' visitas por inspector', tipo: 'gestion' };
+  if (/^CONFIG_AGENDA actualizada/.test(a))   // formato viejo (jornadas)
+    return { texto: 'Cambió las reglas de la agenda', detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^PIN reseteado para: (.+)$/)))   // antes del PIN temporal (2026-10-04)
+    return { texto: 'Reseteó el PIN de ' + titleCaseNombre(x[1]), detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^Agenda confirmada: ([\s\S]*)$/)))
+    return { texto: 'Confirmó la agenda', detalle: x[1], tipo: 'gestion' };
+  if ((x = a.match(/^EXPORTAR Buscar: (\d+) filas/)))
+    return { texto: 'Exportó ' + x[1] + ' casos de Buscar a Excel', detalle: /DATOS PERSONALES/.test(a) ? 'con datos personales' : '', tipo: 'gestion' };
+  if ((x = a.match(/^Novedad agenda DESACTIVADA: (.+?) \(/)))
+    return { texto: 'Quitó días sin audiencias de ' + titleCaseNombre(x[1]), detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^Novedad agenda: (.+?) · (.+?) a (.+?) · /)))
+    return { texto: 'Marcó días sin audiencias de ' + titleCaseNombre(x[1]), detalle: x[2] + ' a ' + x[3], tipo: 'gestion' };
+  // Automático y mantenimiento.
+  if (/^Cupos APARTADOS para reservar sin señal: /.test(a))
+    return { texto: 'Apartó cupos para pedir citas sin señal', detalle: '', tipo: 'sistema' };
+  if ((x = a.match(/^Forms → Radicado: (\S+) \| .*? \| (.*)$/)))
+    return { texto: 'Entró una PQR por el formulario', detalle: 'Radicado ' + x[1] + ' · ' + x[2], tipo: 'sistema' };
+  if ((x = a.match(/^PDF radicado (\S+) copiado/)))
+    return { texto: 'Copió el PDF de la PQR a la carpeta de la visita', detalle: 'Radicado ' + x[1], tipo: 'sistema' };
+  if ((x = a.match(/^Error copiando PDF radicado (\S+): ([\s\S]*)$/)))
+    return { texto: 'No se pudo copiar el PDF de la PQR', detalle: 'Radicado ' + x[1] + ' · ' + x[2], tipo: 'sistema' };
+  if ((x = a.match(/^DUPLICADO ignorado: (\S+)/)))
+    return { texto: 'Se ignoró una PQR repetida', detalle: 'Radicado ' + x[1], tipo: 'sistema' };
+  if (/^onFormSubmit ABORTADO/.test(a))
+    return { texto: 'No se pudo registrar una PQR del formulario', detalle: 'cambiaron las columnas de la hoja', tipo: 'sistema' };
+  if ((x = a.match(/^(\w+): ([\s\S]*)$/)) && _MANT_LOG[x[1]])
+    return { texto: 'Mantenimiento: ' + _MANT_LOG[x[1]], detalle: x[2], tipo: 'sistema' };
+  if (/^ID_VISITA: /.test(a))
+    return { texto: 'Mantenimiento: identificadores de visita', detalle: a.replace(/^ID_VISITA: /, ''), tipo: 'sistema' };
+  if (/^\[SYNC_SITUACION\]/.test(a))
+    return { texto: 'Mantenimiento: situación encontrada sincronizada', detalle: a.replace(/^\[SYNC_SITUACION\]\s*/, ''), tipo: 'sistema' };
   var est = function (e) {
     var k = String(e || '').trim().toUpperCase();
     return _ESTADO_LOG[k] || String(e || '').trim().toLowerCase();
@@ -2929,20 +3016,22 @@ function describirLog(accion) {
         : (nuevo === 'COMPLETADO' || nuevo === 'COMPLETADA') ? 'Completó una visita'
         : 'Visita pasó a ' + est(nuevo);
       var paso = e[1] && e[1] !== '(vacío)' ? ' · ' + est(e[1]) + ' → ' + est(nuevo) : '';
-      return { texto: texto, detalle: cual(m[1], m[2]) + paso };
+      return { texto: texto, detalle: cual(m[1], m[2]) + paso, tipo: 'visita' };
     }
     var r = resto.match(/^(?:REASIGNADA de (.+?)|ASIGNADA) → (.+?)(?: \(estado .*\))?$/);
     if (r) {
       return {
         texto: r[1] ? 'Reasignó una visita de ' + titleCaseNombre(r[1]) + ' a ' + titleCaseNombre(r[2])
                     : 'Asignó una visita a ' + titleCaseNombre(r[2]),
-        detalle: cual(m[1], m[2]),
+        detalle: cual(m[1], m[2]), tipo: 'visita',
       };
     }
-    return { texto: 'Visita: ' + resto, detalle: cual(m[1], m[2]) };
+    if (/^ASIGNADA$/i.test(resto.trim()))   // formato viejo, sin «→ inspector»
+      return { texto: 'Asignó una visita', detalle: cual(m[1], m[2]), tipo: 'visita' };
+    return { texto: 'Visita: ' + resto, detalle: cual(m[1], m[2]), tipo: 'visita' };
   }
   var c = a.match(/^Visita creada — fila (\d+)(?: \(radicado ([^)]+)\))?$/);
-  if (c) return { texto: 'Creó una visita', detalle: cual(c[1], c[2]) };
+  if (c) return { texto: 'Creó una visita', detalle: cual(c[1], c[2]), tipo: 'visita' };
   return { texto: a, detalle: '' };
 }
 

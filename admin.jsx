@@ -684,7 +684,12 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
   const mesActual = _MESES_ES[hoy.getMonth()];
   const mesAnterior = _MESES_ES[hoy.getMonth() === 0 ? 11 : hoy.getMonth() - 1];
   const recibeAgenda = cfg && (cfg.inspectoresAgenda || []).some(k => _casa(u.nombre, k));
-  const suLog = (logDesc || []).filter(f => String(f[1] || '').trim().toUpperCase() === String(u.nombre || '').trim().toUpperCase()).slice(0, 5);
+  // Solo lo que hizo con visitas (revisión de arquitectura 2026-10-27, punto
+  // 8): los accesos y los avisos del sistema se ven en la pestaña Actividad, y
+  // los guardados bloqueados ya tienen su lugar en la Bandeja.
+  const suLog = (logDesc || []).filter(f =>
+    String(f[1] || '').trim().toUpperCase() === String(u.nombre || '').trim().toUpperCase() &&
+    describirLog(f[2]).tipo === 'visita').slice(0, 5);
 
   return (
     <section className="adm-panel" ref={cajaRef} aria-label={'Detalle de ' + titleCaseNombre(u.nombre)}>
@@ -731,12 +736,12 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
           )}
 
           <div className="adm-bloque">
-            <h3 className="mv-sub">Actividad reciente</h3>
+            <h3 className="mv-sub">Lo último que hizo con visitas</h3>
             {suLog.length === 0 && <div className="adm-nota">Sin registros recientes.</div>}
             {suLog.map((f, i) => {
               const dsc = describirLog(f[2]);
               return (
-                <div key={i} className="adm-log-fila adm-log-compacta">
+                <div key={i} className="adm-log-fila adm-log-compacta" title={f[2]}>
                   <div className="adm-log-txt">
                     <div className="adm-log-acc">{dsc.texto || '—'}</div>
                     {dsc.detalle && <div className="adm-log-meta">{dsc.detalle}</div>}
@@ -880,7 +885,8 @@ function TabActividad({ log, total }) {
           {g.items.map(({ f, d }, i) => {
             const dsc = describirLog(f[2]);
             return (
-              <div key={i} className={'adm-log-fila' + (cat(f) === 'seguridad' ? ' seg' : '')}>
+              // El texto original al pasar el mouse: para revisar un error.
+              <div key={i} className={'adm-log-fila' + (cat(f) === 'seguridad' ? ' seg' : '')} title={f[2]}>
                 <div className="adm-log-acc">{dsc.texto || '—'}</div>
                 <div className="adm-log-meta">
                   {titleCaseNombre(f[1]) || 'Sistema'}{d ? ' · ' + hhmm(d) : ''}{dsc.detalle ? ' · ' + dsc.detalle : ''}

@@ -173,24 +173,97 @@ test('validarPinNuevo — una regla por rama, en el orden en que se muestran', (
 });
 
 // ── describirLog ───────────────────────────────────────────────
+// texto y detalle (el tipo se prueba aparte, más abajo).
+const _dl = s => { const r = describirLog(s); return { texto: r.texto, detalle: r.detalle }; };
 
 test('describirLog — frases internas del log como hechos, sin inventar el radicado', () => {
-  assert.deepEqual(describirLog('Login V6'), { texto: 'Inició sesión', detalle: '' });
-  assert.deepEqual(describirLog('Logout V6'), { texto: 'Cerró sesión', detalle: '' });
+  assert.deepEqual(_dl('Login V6'), { texto: 'Inició sesión', detalle: '' });
+  assert.deepEqual(_dl('Logout V6'), { texto: 'Cerró sesión', detalle: '' });
   // Registro viejo: solo la fila, que NO se traduce a radicado (la fila pudo correrse).
-  assert.deepEqual(describirLog('Visita fila 1614: ESTADO ASIGNADO → INICIADO'),
+  assert.deepEqual(_dl('Visita fila 1614: ESTADO ASIGNADO → INICIADO'),
     { texto: 'Inició una visita', detalle: 'Fila 1614 de la hoja · asignada → iniciada' });
-  assert.deepEqual(describirLog('Visita fila 12 (radicado 20261094702): ESTADO INICIADO → COMPLETADO'),
+  assert.deepEqual(_dl('Visita fila 12 (radicado 20261094702): ESTADO INICIADO → COMPLETADO'),
     { texto: 'Completó una visita', detalle: 'Radicado 20261094702 · iniciada → completada' });
-  assert.deepEqual(describirLog('Visita fila 12: ESTADO → COMPLETADO'),
+  assert.deepEqual(_dl('Visita fila 12: ESTADO → COMPLETADO'),
     { texto: 'Completó una visita', detalle: 'Fila 12 de la hoja' });
-  assert.deepEqual(describirLog('Visita fila 12: ESTADO (vacío) → INICIADO'),
+  assert.deepEqual(_dl('Visita fila 12: ESTADO (vacío) → INICIADO'),
     { texto: 'Inició una visita', detalle: 'Fila 12 de la hoja' });
-  assert.deepEqual(describirLog('Visita fila 40 (radicado 20261000001): REASIGNADA de NELSON CUERVO → MAURICIO HERRERA (estado INICIADO → INICIADO)'),
+  assert.deepEqual(_dl('Visita fila 40 (radicado 20261000001): REASIGNADA de NELSON CUERVO → MAURICIO HERRERA (estado INICIADO → INICIADO)'),
     { texto: 'Reasignó una visita de Nelson Cuervo a Mauricio Herrera', detalle: 'Radicado 20261000001' });
-  assert.deepEqual(describirLog('Visita fila 40: ASIGNADA → MAURICIO HERRERA (estado PENDIENTE → ASIGNADO)'),
+  assert.deepEqual(_dl('Visita fila 40: ASIGNADA → MAURICIO HERRERA (estado PENDIENTE → ASIGNADO)'),
     { texto: 'Asignó una visita a Mauricio Herrera', detalle: 'Fila 40 de la hoja' });
-  assert.deepEqual(describirLog('Visita creada — fila 1700 (radicado 20261099999)'),
+  assert.deepEqual(_dl('Visita creada — fila 1700 (radicado 20261099999)'),
     { texto: 'Creó una visita', detalle: 'Radicado 20261099999' });
-  assert.deepEqual(describirLog('Cambió su PIN'), { texto: 'Cambió su PIN', detalle: '' });
+  assert.deepEqual(_dl('Cambió su PIN'), { texto: 'Cambió su PIN', detalle: '' });
+});
+
+// ── describirLog: todo lo que escribe el backend (arquitectura 2026-10-27) ──
+// Un caso por clase de mensaje de registrarLog (apps_script_unificado.js),
+// con el texto tal como lo escribe. Si el backend cambia un texto, la prueba
+// lo avisa; si agrega uno nuevo, sale tal cual (último caso).
+
+test('describirLog — cada mensaje del backend en lenguaje del oficio, con su tipo', () => {
+  const casos = [
+    ['Guardado BLOQUEADO: fila 252 tiene el radicado 20261041285, el formulario esperaba 20261026273',
+      'Se evitó guardar en el caso equivocado', 'Radicado 20261026273 (la fila ya tenía 20261041285)', 'seguridad'],
+    ['generarActa BLOQUEADO: fila 12 tiene el radicado (vacío), se esperaba 20261000001',
+      'Se evitó escribir en el caso equivocado', 'Radicado 20261000001 (la fila ya tenía (vacío))', 'seguridad'],
+    ['actualizar BLOQUEADO: no existe la visita abc (fila enviada 12)',
+      'Se evitó escribir en una visita que ya no existe', '', 'seguridad'],
+    ['Reintento offline BLOQUEADO: la fila 300 ya no es del radicado 20261000002 y no se encontró adónde se movió',
+      'Se evitó repetir un guardado sin señal en el caso equivocado', 'Radicado 20261000002', 'seguridad'],
+    ['DUPLICADO bloqueado: radicado 20261000003 (visita N°2) ya existe en fila 40',
+      'Se evitó duplicar una visita', 'Radicado 20261000003 · visita N° 2', 'seguridad'],
+    ['actualizar: la visita abc pasó de la fila 12 a la 11 — se escribió en la 11',
+      'Encontró la visita en su fila nueva y escribió ahí', 'Fila 12 → 11', 'sistema'],
+    ['Visita reescrita por reintento offline — fila 99 (radicado 20261000004)',
+      'Guardó una visita hecha sin señal', 'Radicado 20261000004', 'visita'],
+    ['Revisión del texto cerrada con justificación — fila 235 (radicado 20251084835): el área no se pudo medir',
+      'Cerró la revisión del texto con justificación', 'Radicado 20251084835 · el área no se pudo medir', 'visita'],
+    ['Reiterado AGREGADO: 20261054116 (radicado el 02/09/2026) al caso 20261049145 — 2 fila(s)',
+      'Agregó un reiterado', 'Radicado 20261049145 · reiterado 20261054116', 'visita'],
+    ['Reiterado QUITADO: 20261054116 del caso 20261049145',
+      'Quitó un reiterado', 'Radicado 20261049145 · reiterado 20261054116', 'visita'],
+    ['Cupo RESERVADO 05/04/2027-0900-PATRICIA (05/04/2027 9:00 a. m. PATRICIA LOPEZ) para el orden 2026-09-430',
+      'Pidió una cita', 'Orden 2026-09-430 · 05/04/2027 9:00 a. m. PATRICIA LOPEZ', 'visita'],
+    ['Cupo LIBERADO x (05/04/2027 9:00 a. m. PATRICIA LOPEZ) del radicado 20261000005 · motivo: se reprogramó',
+      'Liberó una cita', 'Radicado 20261000005 · 05/04/2027 9:00 a. m. PATRICIA LOPEZ · motivo: se reprogramó', 'visita'],
+    ['Usuario DESACTIVADO: NELSON DARIO', 'Desactivó a Nelson Dario', '', 'gestion'],
+    ['PIN temporal generado para: VICTOR HUGO', 'Generó un PIN temporal para Victor Hugo', '', 'gestion'],
+    ['Eligió su PIN (reemplaza el temporal)', 'Cambió su PIN', '', 'acceso'],
+    ['Rol de VICTOR HUGO: INSPECTOR → SUPERVISOR', 'Cambió el rol de Victor Hugo', 'inspector → supervisor', 'gestion'],
+    ['Hallazgo pendiente del radicado 20261000006 marcado REVISADO',
+      'Revisó un hallazgo para el catálogo', 'Radicado 20261000006 · revisado', 'gestion'],
+    ['Orden del día 27/10/2026: 4 visitas', 'Ordenó las visitas del 27/10/2026', '4 visitas', 'gestion'],
+    ['CONFIG_AGENDA actualizada: 3 visitas por inspector · inspectores [ALEJANDRO,MAURICIO]',
+      'Cambió las reglas de la agenda', '3 visitas por inspector', 'gestion'],
+    ['Agenda confirmada: ALEJANDRO 3 (28/10/2026)', 'Confirmó la agenda', 'ALEJANDRO 3 (28/10/2026)', 'gestion'],
+    ['EXPORTAR Buscar: 120 filas · 5 columnas (Radicado, Dirección) · DATOS PERSONALES: Atiende',
+      'Exportó 120 casos de Buscar a Excel', 'con datos personales', 'gestion'],
+    ['Novedad agenda: PATRICIA LOPEZ · 05/04/2027 a 09/04/2027 · todo el día · vacaciones — 2 citaciones caen dentro',
+      'Marcó días sin audiencias de Patricia Lopez', '05/04/2027 a 09/04/2027', 'gestion'],
+    ['Novedad agenda DESACTIVADA: PATRICIA LOPEZ (n1)', 'Quitó días sin audiencias de Patricia Lopez', '', 'gestion'],
+    ['Cupos APARTADOS para reservar sin señal: a, b, c', 'Apartó cupos para pedir citas sin señal', '', 'sistema'],
+    ['Forms → Radicado: 20261000007 | Prado (C3) | CL 52 # 38-90',
+      'Entró una PQR por el formulario', 'Radicado 20261000007 · CL 52 # 38-90', 'sistema'],
+    ['PDF radicado 20261000008 copiado a carpeta de visita',
+      'Copió el PDF de la PQR a la carpeta de la visita', 'Radicado 20261000008', 'sistema'],
+    ['DUPLICADO ignorado: 20261000009', 'Se ignoró una PQR repetida', 'Radicado 20261000009', 'sistema'],
+    ['normalizarDireccionesBD: 286 direcciones normalizadas',
+      'Mantenimiento: direcciones normalizadas', '286 direcciones normalizadas', 'sistema'],
+    ['Visita fila 12 (radicado 20261094702): ESTADO INICIADO → COMPLETADO',
+      'Completó una visita', 'Radicado 20261094702 · iniciada → completada', 'visita'],
+    ['Login V6', 'Inició sesión', '', 'acceso'],
+    // Formatos viejos que siguen en LOG_AUDITORIA.
+    ['Guardado BLOQUEADO: fila 252 tiene el radicado 20261041285 y llegó 20261026273 — el link del acta no se escribió',
+      'Se evitó guardar en el caso equivocado', 'Radicado 20261026273 (la fila ya tenía 20261041285)', 'seguridad'],
+    ['CONFIG_AGENDA actualizada: máx 4/jornada, mañana C1-C6', 'Cambió las reglas de la agenda', '', 'gestion'],
+    ['PIN reseteado para: MAURICIO GOMEZ', 'Reseteó el PIN de Mauricio Gomez', '', 'gestion'],
+    ['Visita fila 16: ASIGNADA', 'Asignó una visita', 'Fila 16 de la hoja', 'visita'],
+    ['Reiterado AGREGADO: 20261054116 en 20261049145 (fila 1369)', 'Agregó un reiterado', 'Radicado 20261049145 · reiterado 20261054116', 'visita'],
+    ['Algo nuevo del backend', 'Algo nuevo del backend', '', 'otro'],
+  ];
+  casos.forEach(([entrada, texto, detalle, tipo]) => {
+    assert.deepEqual(describirLog(entrada), { texto, detalle, tipo }, entrada);
+  });
 });
