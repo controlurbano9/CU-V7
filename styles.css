@@ -4666,3 +4666,24 @@ tr.clic:hover td { background: var(--surface-2); }
 .fab-menu button { font-weight: 600; }
 /* «Pedir cita» bajo «+ Nueva visita» en la barra lateral: acción, no destino. */
 .sidebar-pedir { margin-bottom: var(--s-2); }
+
+/* ── Mis visitas: siguiente visita (arquitectura 2026-10-27, decisión 3) ──
+   Placa de la primera visita de hoy en la ruta. Borde de tinta de 2 px: es
+   la única que se destaca en la pantalla. El amarillo de la Valla llega con
+   el rediseño visual. */
+.mv-sig {
+  margin: 0 0 var(--s-3); padding: var(--s-3) var(--s-4);
+  background: var(--surface); border: 2px solid var(--ink); border-radius: var(--r-card);
+  cursor: pointer;
+}
+.mv-sig.sel { box-shadow: 0 0 0 3px var(--valla); }
+.mv-sig-est { font-size: var(--fs-1); color: var(--ink-3); }
+.mv-sig-dir {
+  display: block; padding: 0; margin: 2px 0; border: 0; background: none; cursor: pointer;
+  font: 700 var(--fs-4)/1.2 var(--font-sans); color: var(--ink); text-align: left;
+  overflow-wrap: anywhere;
+}
+.mv-sig-acc { display: flex; gap: var(--s-2); margin-top: var(--s-3); }
+.mv-sig-acc .tv-btn { flex: 1; min-height: 44px; font-size: var(--fs-2); }
+.mv-sig-acc .vc-btn { min-height: 44px; padding: 0 var(--s-4); }
+.mv-chips { margin-bottom: var(--s-3); }

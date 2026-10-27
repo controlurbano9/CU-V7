@@ -4581,6 +4581,69 @@ function tarjetaVisita(f, opts) {
   return t;
 }
 
+// ── Mis visitas: lo pendiente (arquitectura 2026-10-27, decisión 3) ──
+// A partir de los grupos de agruparMisVisitas:
+//   siguiente   la primera visita asignada para HOY, en el orden de la ruta
+//               del día (ordenarVisitasDia: orden a mano o recorrido desde la
+//               Alcaldía), con su puesto («1 de 3»). Sin visitas hoy, null.
+//   lista       el resto de lo propio por hacer y en curso, de lo más
+//               atrasado a lo más reciente (sin la siguiente)
+//   acompanas   las asignadas en las que figura pero que diligencia otro
+// «Propia» = el primer nombre de VISITADOR(ES) es el suyo (regla del
+// diligenciador); por nombre y no por rol, para que el admin también vea aparte
+// lo que acompaña.
+function pendientesMisVisitas(grupos, nombre, hoy) {
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var yo = String(nombre || '').toUpperCase().trim();
+  var propia = function (x) {
+    var p = primerVisitador(visitadoresBD(x.f)).toUpperCase();
+    return !p || p === yo;
+  };
+  var hacer = ((grupos && grupos.hacer) || []).map(function (x) { return Object.assign({ tipo: 'hacer' }, x); });
+  var curso = ((grupos && grupos.curso) || []).map(function (x) { return Object.assign({ tipo: 'curso' }, x); });
+  var mismoDia = function (d) {
+    return d && d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate();
+  };
+  var deHoy = hacer.filter(function (x) {
+    return propia(x) && mismoDia(parsearFecha(x.f['FECHA ASIGNACION VISITA'] || ''));
+  });
+  var ruta = ordenarVisitasDia(deHoy.map(function (x) { return x.f; }), formatearFecha(ref));
+  var siguiente = ruta.length
+    ? { x: deHoy.filter(function (x) { return x.f === ruta[0]; })[0], n: 1, de: ruta.length }
+    : null;
+  var lista = hacer.concat(curso).filter(function (x) {
+    return propia(x) && !(siguiente && x.f === siguiente.x.f);
+  });
+  lista.sort(function (a, b) { return (b.dias == null ? -1 : b.dias) - (a.dias == null ? -1 : a.dias); });
+  return {
+    siguiente: siguiente,
+    lista: lista,
+    acompanas: hacer.concat(curso).filter(function (x) { return !propia(x); }),
+  };
+}
+
+// La cita de una visita para su tarjeta: «Audiencia mié 28 · 9:00 a. m.»,
+// «Audiencia mañana · …», «Audiencia hoy · …». Solo de hoy en adelante;
+// urgente (en rojo) a ≤3 días hábiles, la regla de las alertas. null si no hay.
+var _DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+function citaVisitaTexto(f, hoy) {
+  var raw = String((f && f['FECHA CITACION']) || '').trim();
+  var d = parsearFecha(raw.split(' · ')[0]);
+  if (!d) return null;
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var base = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  var dia = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var dc = Math.round((dia - base) / 86400000);
+  if (dc < 0) return null;
+  var cuando = dc === 0 ? 'hoy' : dc === 1 ? 'mañana' : _DIAS_CORTOS[dia.getDay()] + ' ' + dia.getDate();
+  var hora = raw.split(' · ')[1] || '';
+  var habiles = _diasHabilesEntre(base, dia);
+  return {
+    texto: 'Audiencia ' + cuando + (hora ? ' · ' + hora : ''),
+    urgente: habiles != null && habiles <= DIAS_ALERTA_AUDIENCIA,
+  };
+}
+
 // ¿Le sale la pestaña «Mis visitas» a un admin o supervisor? Solo si figura
 // como inspector en alguna visita por hacer o en curso, o en una completada
 // este año (arquitectura 2026-10-27, punto 9): antes un supervisor la veía
@@ -4600,6 +4663,8 @@ function tieneVisitasPropias(filas, nombre, hoy) {
 
 var _cuUtilsExports = {
   tieneVisitasPropias: tieneVisitasPropias,
+  pendientesMisVisitas: pendientesMisVisitas,
+  citaVisitaTexto: citaVisitaTexto,
   tarjetaVisita: tarjetaVisita,
   nombreCortoVisita: nombreCortoVisita,
   ubicacionCortaVisita: ubicacionCortaVisita,

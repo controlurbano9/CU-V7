@@ -15,6 +15,7 @@ const assert = require('node:assert/strict');
 const {
   ordenPoliciaDe, idArchivoDrive, entregablesFaltantes, agruparMisVisitas,
   mesesMisVisitas, recorridoVisita, diasSinIniciar, diasSinCompletar,
+  pendientesMisVisitas, citaVisitaTexto,
 } = require('../utils.js');
 
 const HOY = new Date(2026, 8, 18); // viernes 18/09/2026
@@ -238,4 +239,59 @@ test('recorridoVisita — completada: nada en espera; sin fecha de devolución s
   assert.equal(vieja[3].hecho, true);
   assert.equal(vieja[3].valor, '');
   assert.deepEqual(recorridoVisita(null, HOY), []);
+});
+
+// ── pendientesMisVisitas / citaVisitaTexto (arquitectura 2026-10-27) ──
+
+test('pendientes — la siguiente es una asignada de hoy; el resto va por demora, sin repetirla', () => {
+  const datos = [
+    fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '18/09/2026', 'RADICADO': 'HOY' }),
+    fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '01/09/2026', 'RADICADO': 'VIEJA' }),
+    fila({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '10/09/2026', 'RADICADO': 'CURSO' }),
+  ];
+  const p = pendientesMisVisitas(agruparMisVisitas(datos, YO, HOY), YO, HOY);
+  assert.equal(p.siguiente.x.f['RADICADO'], 'HOY');
+  assert.equal(p.siguiente.n, 1);
+  assert.equal(p.siguiente.de, 1);
+  assert.deepEqual(p.lista.map(x => x.f['RADICADO']), ['VIEJA', 'CURSO']);
+  assert.deepEqual(p.lista.map(x => x.tipo), ['hacer', 'curso']);
+});
+
+test('pendientes — sin visitas para hoy no hay siguiente', () => {
+  const datos = [fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '01/09/2026' })];
+  const p = pendientesMisVisitas(agruparMisVisitas(datos, YO, HOY), YO, HOY);
+  assert.equal(p.siguiente, null);
+  assert.equal(p.lista.length, 1);
+});
+
+test('pendientes — la siguiente respeta el orden del día guardado a mano', () => {
+  const datos = [
+    fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '18/09/2026', 'RADICADO': 'A', 'ORDEN_DIA': '18/09/2026#2' }),
+    fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '18/09/2026', 'RADICADO': 'B', 'ORDEN_DIA': '18/09/2026#1' }),
+  ];
+  const p = pendientesMisVisitas(agruparMisVisitas(datos, YO, HOY), YO, HOY);
+  assert.equal(p.siguiente.x.f['RADICADO'], 'B');
+  assert.equal(p.siguiente.de, 2);
+  assert.deepEqual(p.lista.map(x => x.f['RADICADO']), ['A']);
+});
+
+test('pendientes — la que diligencia otro va aparte, aunque sea de hoy', () => {
+  const datos = [fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '18/09/2026',
+    'VISITADOR(ES)': 'ALEJANDRO HENAO / ' + YO })];
+  const p = pendientesMisVisitas(agruparMisVisitas(datos, YO, HOY), YO, HOY);
+  assert.equal(p.siguiente, null);
+  assert.equal(p.lista.length, 0);
+  assert.equal(p.acompanas.length, 1);
+});
+
+test('citaVisitaTexto — hoy, mañana, día de la semana; pasadas no; urgente a ≤3 días hábiles', () => {
+  assert.deepEqual(citaVisitaTexto({ 'FECHA CITACION': '18/09/2026 · 9:00 a. m.' }, HOY),
+    { texto: 'Audiencia hoy · 9:00 a. m.', urgente: true });
+  assert.equal(citaVisitaTexto({ 'FECHA CITACION': '19/09/2026' }, HOY).texto, 'Audiencia mañana');
+  const lejos = citaVisitaTexto({ 'FECHA CITACION': '30/09/2026 · 2:00 p. m.' }, HOY);
+  assert.equal(lejos.texto, 'Audiencia mié 30 · 2:00 p. m.');
+  assert.equal(lejos.urgente, false);
+  assert.equal(citaVisitaTexto({ 'FECHA CITACION': '10/09/2026' }, HOY), null);
+  assert.equal(citaVisitaTexto({ 'FECHA CITACION': 'No se deja citación' }, HOY), null);
+  assert.equal(citaVisitaTexto({}, HOY), null);
 });

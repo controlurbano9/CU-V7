@@ -1,9 +1,11 @@
 // ═══════════════════════════════════════════════════════════════
 // mis-visitas.jsx — Pantalla "Mis visitas" del inspector logueado
 //
-// Lista de deuda, no archivador por estado (2026-10-02): lo que el inspector
-// debe va primero y ordenado por antigüedad — por hacer, en curso (con lo que
-// le falta a cada una) y, al final, las completadas por mes.
+// Pantalla de entrada del inspector (arquitectura 2026-10-27, decisión 3):
+// chips Pendientes · Semana · Completadas, abre en Pendientes. Arriba la
+// siguiente visita de hoy (en el orden de la ruta del día); luego lo propio por
+// hacer y en curso, de lo más atrasado a lo más reciente, y al final lo que
+// acompaña a otros. Las completadas, por mes, en su chip.
 //   - Desde 1200 px la lista ocupa un tercio y el resto es la ficha de la
 //     visita elegida (FichaVisita, ficha-visita.jsx): lo básico fijo arriba
 //     y un solo scroll con el caso entero, la PQR al lado y el mapa. Por
@@ -12,9 +14,6 @@
 //     utils.js y se prueba en tests/mis-visitas.test.js; aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateMV, useEffect: useEffectMV, useMemo: useMemoMV, useRef: useRefMV } = React;
-
-// Lista (deuda) o Semana (calendario): se recuerda por equipo.
-const MV_VISTA = 'cu_mv_vista_v1';
 
 // Cantidad inicial de completadas visibles
 const COMPLETADAS_INICIAL = 20;
@@ -41,11 +40,6 @@ function useAnchoPanelMV() {
   return ancho;
 }
 
-// Nombre del mes (0 = actual, -1 = anterior) para la línea de completadas.
-const _mesNombreMV = (delta) => {
-  const h = new Date();
-  return new Date(h.getFullYear(), h.getMonth() + delta, 1).toLocaleDateString('es-CO', { month: 'long' });
-};
 const _plural = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
 // ¿Pasó el umbral de demora? Mismo umbral de las alertas de Inicio
 // (DIAS_ALERTA_DEMORA, home.jsx). Lo usa la ficha (ficha-visita.jsx).
@@ -56,17 +50,10 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const [cargando, setCargando] = useStateMV(true);
   const [error, setError]       = useStateMV('');
 
-  // Lista / Semana (la Semana es la misma de Inicio, filtrada a lo propio).
-  const [vista, setVista] = useStateMV(() => {
-    try { return localStorage.getItem(MV_VISTA) === 'semana' ? 'semana' : 'lista'; } catch (e) { return 'lista'; }
-  });
-  function cambiarVista(v) {
-    setVista(v);
-    try { localStorage.setItem(MV_VISTA, v); } catch (e) {}
-  }
-
-  // Chip de estado activo ('' = todas) y visita elegida para el panel.
-  const [filtro, setFiltro] = useStateMV('');
+  // Pendientes · Semana · Completadas (arquitectura 2026-10-27, decisión 3).
+  // Siempre abre en Pendientes: es la pantalla de entrada del inspector y lo
+  // que importa al abrirla es lo que hay por hacer, no lo último que miró.
+  const [vista, setVista] = useStateMV('pend');
   const [selIdx, setSelIdx] = useStateMV(null);
 
   // Paginación para completadas
@@ -94,29 +81,23 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   }
 
   // Regla del diligenciador, visibilidad por fecha de asignación y orden por
-  // demora: agruparMisVisitas (utils.js).
+  // demora: agruparMisVisitas; la siguiente visita y los grupos de Pendientes:
+  // pendientesMisVisitas (utils.js, tests/mis-visitas.test.js).
   const grupos = useMemoMV(() => agruparMisVisitas(datos, usuario.usuario), [datos, usuario]);
+  const pend = useMemoMV(() => pendientesMisVisitas(grupos, usuario.usuario), [grupos, usuario]);
   const meses = useMemoMV(() => mesesMisVisitas(grupos.hechas, limiteCompletadas), [grupos, limiteCompletadas]);
 
-  // Lo mismo que Inicio (utils.js): completadas por mes y audiencias a ≤3 días.
-  const completadas = useMemoMV(() => completadasMesesVisita(grupos.hechas), [grupos]);
-  const audiencias = useMemoMV(() => audienciasProximas(datos, usuario.usuario), [datos, usuario]);
+  const nPend = pend.lista.length + (pend.siguiente ? 1 : 0);
+  const nHechas = grupos.hechas.length;
+  const ocultas = nHechas - limiteCompletadas;
 
-  const conteo = { hacer: grupos.hacer.length, curso: grupos.curso.length, hecha: grupos.hechas.length };
-  const total = conteo.hacer + conteo.curso + conteo.hecha;
-  // Un filtro que se quedó sin visitas (llegaron datos nuevos) vuelve a «Todas».
-  const filtroOk = filtro && conteo[filtro] ? filtro : '';
-  const ver = (g) => !filtroOk || filtroOk === g;
-  const gruposConVisitas = ['hacer', 'curso', 'hecha'].filter(g => conteo[g] > 0).length;
-  const ocultas = conteo.hecha - limiteCompletadas;
-
-  // La elegida es siempre una de las que están a la vista: si el filtro la
-  // esconde (o es la primera carga), pasa a la primera — la más demorada.
-  const visibles = []
-    .concat(ver('hacer') ? grupos.hacer : [])
-    .concat(ver('curso') ? grupos.curso : [])
-    .concat(ver('hecha') ? grupos.hechas.slice(0, limiteCompletadas) : [])
-    .map(x => x.f);
+  // Con panel (≥1200), la elegida es siempre una de las que están a la vista;
+  // si no hay ninguna elegida, la primera.
+  const visibles = vista === 'hechas'
+    ? grupos.hechas.slice(0, limiteCompletadas).map(x => x.f)
+    : vista === 'pend'
+      ? [].concat(pend.siguiente ? [pend.siguiente.x.f] : [], pend.lista.map(x => x.f), pend.acompanas.map(x => x.f))
+      : [];
   const sel = conPanel ? (visibles.find(f => f._idx === selIdx) || visibles[0] || null) : null;
   const elegir = (f) => setSelIdx(f._idx);
 
@@ -129,38 +110,10 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   // ── Render ──
   return (
     <div className="pantalla activa pad-bottom mv-pantalla">
-      {/* Título y, al lado, lo completado por mes. El «Actualizar» vive en la
-          barra superior (app.jsx). */}
       <div className="titulo-fijo mv-cab">
         <div className="page-title">Mis visitas</div>
-        {listo && (completadas.anterior + completadas.actual) > 0 && (
-          <span className="mv-resumen">
-            Completadas: <b>{completadas.anterior}</b> en {_mesNombreMV(-1)} · <b>{completadas.actual}</b> en {_mesNombreMV(0)}
-          </span>
-        )}
       </div>
 
-      {/* Audiencia en ≤3 días hábiles: la única alerta urgente (la regla es la
-          de Inicio). Las demoras ya van en rojo en cada fila. */}
-      {listo && audiencias.length > 0 && (
-        <div className="home-urg mv-urg" role="status">
-          <span>
-            <b>{audiencias[0].dias === 0 ? 'Audiencia HOY' : 'Audiencia en ' + _plural(audiencias[0].dias, 'día', 'días')}:</b>{' '}
-            <span title={audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || ''}>
-              {direccionVisible(audiencias[0].f['DIRECCION INFRACCION'] || audiencias[0].f['DIRECCION'] || 'Sin dirección')}
-            </span>
-            {audiencias[0].f['FECHA CITACION'] && ' · ' + audiencias[0].f['FECHA CITACION']}
-            {audiencias.length > 1 && ' · y ' + (audiencias.length - 1) + ' más'}
-          </span>
-          <button type="button" className="al-btn" onClick={() => {
-            const f = audiencias[0].f;
-            if (conPanel) { cambiarVista('lista'); setFiltro(''); setSelIdx(f._idx); }
-            else if (window.abrirVisitaDetail) window.abrirVisitaDetail(f);
-          }}>Ver</button>
-        </div>
-      )}
-
-      {/* Error */}
       {error && (
         <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
           {error} &middot;{' '}
@@ -171,45 +124,20 @@ function MisVisitasScreen({ usuario, onContinuar }) {
         </div>
       )}
 
-      {/* Cargando */}
       {cargando && (
         <div className="cargando"><div className="spinner"></div>Cargando visitas...</div>
       )}
 
-      {/* Sin visitas */}
-      {listo && total === 0 && vista === 'lista' && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 32, fontSize: 13 }}>
-          No tienes visitas asignadas.
-        </div>
-      )}
-
-      {/* Chips de estado: mismos de Alertas; el de conteo 0 no sale, y con un
-          solo grupo no hay nada que filtrar. */}
+      {/* Una sola fila de chips: la Semana es una vista más, no otra capa. */}
       {listo && (
-        <div className="mv-barra">
-          {/* Cambio de vista = control segmentado (el de Administración), no
-              chips: con el mismo estilo que los filtros de estado se leían
-              como un solo grupo (revisión GLM 2026-10-13). */}
-          <div className="adm-tabs mv-vista" role="group" aria-label="Vista">
-            {[['lista', 'Lista'], ['semana', 'Semana']].map(v => (
-              <button key={v[0]} type="button" aria-pressed={vista === v[0]}
-                className={'adm-tab' + (vista === v[0] ? ' activo' : '')}
-                onClick={() => cambiarVista(v[0])}>{v[1]}</button>
+        <div className="sv-chips mv-chips" role="group" aria-label="Vista">
+          {[['pend', 'Pendientes', nPend], ['semana', 'Semana', null], ['hechas', 'Completadas', nHechas]]
+            .filter(c => c[0] !== 'hechas' || nHechas > 0)
+            .map(c => (
+              <button key={c[0]} type="button" aria-pressed={vista === c[0]}
+                className={'sv-chip' + (vista === c[0] ? ' activo' : '')}
+                onClick={() => setVista(c[0])}>{c[1]}{c[2] != null && <> {c[2]}</>}</button>
             ))}
-          </div>
-          {vista === 'lista' && gruposConVisitas > 1 && (
-            <div className="sv-chips mv-chips" role="group" aria-label="Filtrar por estado">
-              {[['', 'Todas', total],
-                ['hacer', 'Por hacer', conteo.hacer],
-                ['curso', 'En curso', conteo.curso],
-                ['hecha', 'Completadas', conteo.hecha],
-              ].filter(c => c[2] > 0).map(c => (
-                <button key={c[0]} type="button" aria-pressed={filtroOk === c[0]}
-                  className={'sv-chip' + (filtroOk === c[0] ? ' activo' : '')}
-                  onClick={() => setFiltro(c[0])}>{c[1]} {c[2]}</button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -220,33 +148,40 @@ function MisVisitasScreen({ usuario, onContinuar }) {
           inspectores={[]} onAbrir={onContinuar} />
       )}
 
-      {listo && vista === 'lista' && total > 0 && (
+      {listo && vista !== 'semana' && (
         <div className="mv-2col">
           <div className="mv-lista">
-            {ver('hacer') && conteo.hacer > 0 && (
-              <>
-                <div className="mv-grupo">Por hacer{conteo.hacer > 1 && <span>la más antigua primero</span>}</div>
-                {grupos.hacer.map(x => fila(x, 'hacer'))}
-              </>
-            )}
+            {vista === 'pend' && (<>
+              {!nPend && !pend.acompanas.length && (
+                <div className="card" style={{ textAlign: 'center', color: 'var(--texto-suave)', padding: 32, fontSize: 13 }}>
+                  No tienes visitas pendientes.
+                </div>
+              )}
+              {pend.siguiente && (<>
+                <div className="mv-grupo">Siguiente visita</div>
+                <SiguienteVisitaMV s={pend.siguiente} conPanel={conPanel} elegida={sel === pend.siguiente.x.f}
+                  onElegir={elegir} onContinuar={onContinuar} />
+              </>)}
+              {pend.lista.length > 0 && (<>
+                <div className="mv-grupo">Pendientes{pend.lista.length > 1 && <span>lo más atrasado primero</span>}</div>
+                {pend.lista.map(x => fila(x, x.tipo))}
+              </>)}
+              {pend.acompanas.length > 0 && (<>
+                <div className="mv-grupo">Acompañas a otros<span>{pend.acompanas.length}</span></div>
+                {pend.acompanas.map(x => fila(x, 'acompana'))}
+              </>)}
+            </>)}
 
-            {ver('curso') && conteo.curso > 0 && (
-              <>
-                <div className="mv-grupo">En curso<span>con lo que le falta a cada una</span></div>
-                {grupos.curso.map(x => fila(x, 'curso'))}
-              </>
-            )}
-
-            {ver('hecha') && meses.map(g => (
+            {vista === 'hechas' && meses.map(g => (
               <React.Fragment key={g.clave || 'sin-fecha'}>
                 <div className="mv-grupo">{g.rotulo}<span>{g.total}</span></div>
                 {g.items.map(x => fila(x, 'hecha'))}
               </React.Fragment>
             ))}
-            {ver('hecha') && ocultas > 0 && (
+            {vista === 'hechas' && ocultas > 0 && (
               <button type="button" className="vc-btn mv-mas"
                 onClick={() => setLimiteCompletadas(l => l + COMPLETADAS_PASO)}>
-                Mostrar más <span>({limiteCompletadas} de {conteo.hecha})</span>
+                Mostrar más <span>({limiteCompletadas} de {nHechas})</span>
               </button>
             )}
           </div>
@@ -263,28 +198,60 @@ function MisVisitasScreen({ usuario, onContinuar }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Siguiente visita: la primera de hoy en la ruta del día, destacada arriba
+// (recoge la «placa de la siguiente visita» de TASK-valla-inicio-movil).
+// «Iniciar» y «Cómo llegar» con texto, a 44 px: es lo que se toca en la calle.
+// Tocar la placa abre la ficha (o la elige, con panel).
+// ═══════════════════════════════════════════════════════════════
+function SiguienteVisitaMV({ s, conPanel, elegida, onElegir, onContinuar }) {
+  const f = s.x.f;
+  const t = tarjetaVisita(f, { puede: puedeDiligenciar(f) });
+  const cita = citaVisitaTexto(f);
+  const abrir = () => conPanel ? onElegir(f) : (window.abrirVisitaDetail && window.abrirVisitaDetail(f));
+  return (
+    <article className={'mv-sig' + (conPanel && elegida ? ' sel' : '')} onClick={abrir}>
+      <div className="mv-sig-est">Asignada para hoy{s.de > 1 && <> · {s.n} de {s.de} en la ruta</>}</div>
+      <button type="button" className="mv-sig-dir" title={t.dir}
+        onClick={(e) => { e.stopPropagation(); abrir(); }}>{t.dirVisible}</button>
+      <div className="tv-meta">{[t.ident.principal, t.ubic].filter(Boolean).join(' · ')}</div>
+      {cita && <div className={'tv-meta' + (cita.urgente ? ' tv-demora' : '')}>{cita.texto}</div>}
+      <div className="mv-sig-acc" onClick={(e) => e.stopPropagation()}>
+        {t.accion && <button type="button" className="tv-btn" onClick={() => onContinuar(f._idx, f)}>{t.accion}</button>}
+        <BotonMapaVisita f={f} variante="vc" />
+      </div>
+    </article>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Fila de la lista = tarjeta única (visita-card.jsx). Tarjeta en el celular;
 // con panel (≥1200) es renglón y tocarla elige la visita en vez de abrir la
 // ficha aparte. «Ver datos», el chip PQR y los enlaces de acta e informe se
 // fueron a la ficha (arquitectura 2026-10-27, decisión 1).
-// Lo propio de Mis visitas va en `aviso`: quién la lleva cuando la diligencia
-// otro (regla del diligenciador) y, para admin y supervisor, la prioridad alta.
+// Lo propio de Mis visitas va en `aviso`: la cita (en rojo a ≤3 días hábiles),
+// quién la lleva si la diligencia otro y, para admin y supervisor, la prioridad
+// alta. `tipo` 'acompana' = la diligencia otro: sin acción (ni para el admin).
 // ═══════════════════════════════════════════════════════════════
 function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinuar }) {
   const f = x.f;
-  const ajena = tipo !== 'hecha' && !puedeDiligenciar(f);
+  const ajena = tipo === 'acompana';
   const alta = tipo === 'hacer' && verPrioridad && /CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''));
-  const aviso = (ajena || alta) ? (
-    <div className="tv-meta">
-      {ajena && <>La lleva {titleCaseNombre(primerVisitador(visitadoresBD(f)))}</>}
-      {ajena && alta && ' · '}
-      {alta && <b>Prioridad alta</b>}
-    </div>
-  ) : null;
+  const cita = tipo !== 'hecha' ? citaVisitaTexto(f) : null;
+  const aviso = (cita || ajena || alta) ? (<>
+    {cita && <div className={'tv-meta tv-cita' + (cita.urgente ? ' tv-demora' : '')}>{cita.texto}</div>}
+    {(ajena || alta) && (
+      <div className="tv-meta">
+        {ajena && <>La lleva {titleCaseNombre(primerVisitador(visitadoresBD(f)))}</>}
+        {ajena && alta && ' · '}
+        {alta && <b>Prioridad alta</b>}
+      </div>
+    )}
+  </>) : null;
   return (
-    <TarjetaVisita f={f} densidad={conPanel ? 'renglon' : 'tarjeta'}
+    <TarjetaVisita f={f} densidad={conPanel || ajena ? 'renglon' : 'tarjeta'}
       sel={conPanel ? elegida : undefined}
       onAbrir={conPanel ? () => onElegir(f) : undefined}
+      accion={ajena ? null : undefined}
       onAccion={onContinuar} aviso={aviso} />
   );
 }
