@@ -97,9 +97,10 @@ var _AU_SVG_COPIAR = (
 // Caso (agenda de hoy del inspector o escrito) y uno de los 5 cupos más
 // próximos; sin señal, sus cupos apartados. Al reservar, la fecha, la hora y
 // el sustanciador en grande para copiarlos a la citación de papel.
-function PedirCitaHoja({ usuario, agenda, cuposIniciales, onCerrar, onReservada }) {
+// `casoInicial` (opcional): el caso ya puesto, cuando se pide desde la visita.
+function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar, onReservada }) {
   const [filas, setFilas] = useStateAU([]);
-  const [caso, setCaso] = useStateAU(null);
+  const [caso, setCaso] = useStateAU(casoInicial || null);
   const [texto, setTexto] = useStateAU('');
   const [cupos, setCupos] = useStateAU(cuposIniciales || null);    // null = cargando
   const [sinSenal, setSinSenal] = useStateAU(!navigator.onLine);
@@ -247,6 +248,28 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, onCerrar, onReservada 
       </div>
     </div>
   );
+}
+
+// «Pedir cita» fuera de la pantalla de Audiencias: desde el «+» (y, en las
+// piezas siguientes, desde la ficha y el formulario). El inspector ya no tiene
+// esa pestaña (arquitectura 2026-10-27, decisión 4). La agenda, que la hoja usa
+// para avisar «Ya tiene cita», sale de la copia local de Audiencias y se
+// refresca por detrás; sin señal, la hoja ofrece los cupos apartados.
+function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
+  const [agenda, setAgenda] = useStateAU(function () {
+    const c = _auLeerCopia(usuario.rol);
+    return (c && c.cupos) || [];
+  });
+  useEffectAU(function () {
+    if (!navigator.onLine) return;
+    let vivo = true;
+    agendaAudiencias({}).then(function (r) {
+      if (vivo && r && r.ok && !r.sinCambios) setAgenda(r.cupos || []);
+    }).catch(function () {});
+    return function () { vivo = false; };
+  }, []);
+  return <PedirCitaHoja usuario={usuario} agenda={agenda} casoInicial={casoInicial}
+    onCerrar={onCerrar} onReservada={function () {}} />;
 }
 
 // ── Detalle de una cita ────────────────────────────────────────

@@ -4340,7 +4340,9 @@ button.sv-col-head {
 .au-vacio b { display: block; font: 600 var(--fs-2) var(--font-serif); color: var(--ink-2); }
 
 /* Ventana «Días sin audiencias»: ventana en escritorio, hoja inferior en celular */
-.au-hoj-ovl { position: fixed; inset: 0; z-index: 70; background: rgba(31,27,22,.45); }
+/* Sobre la barra de pestañas y el «+» (200): desde que «Pedir cita» se abre
+   desde el «+», la barra tapaba «Reservar». Bajo la ficha (9000) y los avisos (9999). */
+.au-hoj-ovl { position: fixed; inset: 0; z-index: 8000; background: rgba(31,27,22,.45); }
 .au-hoj { width: min(560px, 100%); max-height: 90vh; overflow: auto; background: var(--surface);
   border-radius: var(--r-panel); padding: 14px 18px 18px; }
 .au-hoj-cab { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
@@ -4626,3 +4628,41 @@ tr.clic:hover td { background: var(--surface-2); }
   .tv .tv-btn { min-height: 44px; }
   .tv .tv-acc .sv-icono { width: 44px; height: 44px; }
 }
+
+/* ── Marco: cabecera móvil, menú de perfil y «+» (arquitectura 2026-10-27,
+   pieza 2) ── Un renglón: marca, ↻ e iniciales. El nombre, el cargo,
+   Administración, el PIN y «Salir» viven en el menú de las iniciales. La
+   cabecera solo existe <900; en escritorio esto está en la barra lateral. */
+.header { padding: 4px 8px 4px 12px; }
+.cab-movil { justify-content: flex-start; gap: var(--s-2); }
+.cab-logo {
+  width: 32px; height: 32px; border-radius: var(--r-ctl); object-fit: contain;
+  background: var(--surface); padding: 2px; flex-shrink: 0;
+}
+.cab-titulo { flex: 1; min-width: 0; font: 700 var(--fs-3) var(--font-cond); color: var(--ink); }
+.cab-movil .btn-actualizar { min-width: 44px; justify-content: center; }
+.cab-perfil {
+  width: 40px; height: 40px; margin: 2px; flex-shrink: 0; border: 0; border-radius: var(--r-full);
+  background: var(--ink); color: var(--surface); cursor: pointer;
+  font: 600 var(--fs-1) var(--font-sans); letter-spacing: .5px;
+}
+.cab-velo { position: fixed; inset: 0; z-index: 300; }
+.cab-menu, .fab-menu {
+  position: fixed; z-index: 301; min-width: 220px; padding: var(--s-1) 0;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
+  box-shadow: var(--shadow-md);
+}
+.cab-menu { top: calc(var(--header-h) + 4px); right: 8px; }
+.cab-menu-yo { padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line); }
+.cab-menu-yo b { display: block; font-weight: 600; color: var(--ink); }
+.cab-menu-yo small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
+.cab-menu button, .fab-menu button {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 48px;
+  padding: 0 var(--s-4); background: none; border: 0; cursor: pointer; text-align: left;
+  font: 500 var(--fs-2) var(--font-sans); color: var(--ink);
+}
+.cab-menu button:active, .fab-menu button:active { background: var(--surface-2); }
+.fab-menu { right: 16px; bottom: calc(140px + env(safe-area-inset-bottom)); }
+.fab-menu button { font-weight: 600; }
+/* «Pedir cita» bajo «+ Nueva visita» en la barra lateral: acción, no destino. */
+.sidebar-pedir { margin-bottom: var(--s-2); }

@@ -4581,7 +4581,25 @@ function tarjetaVisita(f, opts) {
   return t;
 }
 
+// ¿Le sale la pestaña «Mis visitas» a un admin o supervisor? Solo si figura
+// como inspector en alguna visita por hacer o en curso, o en una completada
+// este año (arquitectura 2026-10-27, punto 9): antes un supervisor la veía
+// siempre vacía. Misma regla de pertenencia que Mis visitas (_esVisitaDe).
+function tieneVisitasPropias(filas, nombre, hoy) {
+  if (!String(nombre || '').trim()) return false;
+  var anio = (hoy instanceof Date ? hoy : new Date()).getFullYear();
+  return (filas || []).some(function (f) {
+    if (!f || !visitadoresBD(f) || !_esVisitaDe(f, nombre)) return false;
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '');
+    if (e === 'PENDIENTE' || e === 'ASIGNADO' || e === 'INICIADO') return true;
+    if (e !== 'COMPLETADO') return false;
+    var d = parsearFecha(f['FECHA DE VISITA'] || '');
+    return !!d && d.getFullYear() === anio;
+  });
+}
+
 var _cuUtilsExports = {
+  tieneVisitasPropias: tieneVisitasPropias,
   tarjetaVisita: tarjetaVisita,
   nombreCortoVisita: nombreCortoVisita,
   ubicacionCortaVisita: ubicacionCortaVisita,

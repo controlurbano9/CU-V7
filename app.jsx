@@ -440,12 +440,40 @@ function AppV6() {
   // evento) lleva a elegir el PIN propio. Cubre a quien cerró la app sin
   // cambiarlo y volvió con la sesión temporal guardada.
   const [debeCambiarPin, setDebeCambiarPin] = useStateApp(false);
-  const [cambiandoPin, setCambiandoPin] = useStateApp(false); // «Cambiar mi PIN» de la cabecera
+  const [cambiandoPin, setCambiandoPin] = useStateApp(false); // «Cambiar mi PIN» del menú de perfil
+  const [menuPerfil, setMenuPerfil] = useStateApp(false);    // cabecera móvil: iniciales → menú
+  const [menuMas, setMenuMas] = useStateApp(false);          // «+» → Nueva visita / Pedir cita
+  const [pidiendoCita, setPidiendoCita] = useStateApp(false);
+  // Admin y supervisor: «Mis visitas» solo si figuran en alguna (punto 9 de la
+  // revisión de arquitectura). Arranca oculta; la copia local responde al instante.
+  const [conMisVisitas, setConMisVisitas] = useStateApp(false);
   useEffectApp(() => {
     const f = () => setDebeCambiarPin(true);
     window.addEventListener('cu-debe-cambiar-pin', f);
     return () => window.removeEventListener('cu-debe-cambiar-pin', f);
   }, []);
+  useEffectApp(() => {
+    if (!usuario || !veTodasLasVisitas(usuario.rol)) return;
+    let vivo = true;
+    const revisar = () => leerVisitas()
+      .then(r => { if (vivo) setConMisVisitas(tieneVisitasPropias((r && r.datos) || [], usuario.usuario)); })
+      .catch(() => {});
+    revisar();
+    // Si esa primera lectura falló (sin copia local y sin red), la pantalla que
+    // sí logra bajar la BD no dispara la suscripción: se revisa al terminar la
+    // primera descarga y con cada «Actualizar».
+    esperarPrimeraCargaVisitas().then(revisar, () => {});
+    const off = suscribirVisitas(revisar);
+    window.addEventListener('cu-visitas-estado', revisar);
+    return () => { vivo = false; off(); window.removeEventListener('cu-visitas-estado', revisar); };
+  }, [usuario]);
+  // Cupos apartados para pedir citas sin señal. Antes los apartaba la pestaña
+  // Citaciones al abrirse; el inspector ya no la tiene, así que va al arranque
+  // (se repite sin daño: el backend no aparta dos veces).
+  useEffectApp(() => {
+    if (!usuario || veTodasLasVisitas(usuario.rol) || !navigator.onLine) return;
+    apartarCuposAudiencias().catch(() => {});
+  }, [usuario]);
 
   // ── Botón "atrás" del navegador / gesto atrás de Android ──────
   // La navegación es puro state, sin History API: el botón atrás sacaba al
@@ -761,61 +789,71 @@ function AppV6() {
     navegar('nueva-visita');
   }
 
-  // Pestañas según rol — Icono es un componente de Icon.* (icons.jsx)
+  // Pestañas según rol (revisión de arquitectura 2026-10-27, punto 9) — Icono
+  // es un componente de Icon.* (icons.jsx).
+  //   inspector:  Mis visitas · Buscar · Norma
+  //   supervisor: Inicio · Buscar · Audiencias · Norma
+  //   admin:      Inicio · Buscar · Agenda · Audiencias · Norma (+ Administración)
+  // Admin y supervisor suman «Mis visitas» solo si tienen visitas propias. El
+  // inspector ya no tiene «Citaciones»: pide la cita desde el «+» (decisión 4).
   const tabs = [];
   if (veTodas) tabs.push({ k: 'home', label: 'Inicio', Icono: Icon.Home });
-  tabs.push({ k: 'mis-visitas',   label: 'Mis visitas',Icono: Icon.Visits });
+  if (!veTodas || conMisVisitas) tabs.push({ k: 'mis-visitas', label: 'Mis visitas', Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
   if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
-  // Audiencias: los 3 roles; para el inspector se llama «Citaciones» (ahí pide la cita).
-  tabs.push({ k: 'audiencias', label: veTodas ? 'Audiencias' : 'Citaciones', Icono: Icon.Audiencia });
+  if (veTodas) tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
   const enFormulario = pantalla === 'nueva-visita';
+  // El supervisor no pide citas (como hoy en Audiencias): su «+» es solo Nueva visita.
+  const puedePedirCita = !veTodas || esAdmin;
+  const iniciales = titleCaseNombre(usuario.usuario).split(/\s+/).filter(Boolean)
+    .slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase() || '?';
+  function abrirMas() {
+    if (puedePedirCita) setMenuMas(!menuMas);
+    else irNueva();
+  }
 
   return (
     <div id="app-principal" style={{ display: 'block' }}>
       <OfflineBanner />
       <OfflineColaBadge />
       <div id="app-wrapper">
-        {/* ── HEADER ── */}
+        {/* ── HEADER (solo <900; en escritorio todo esto vive en la barra
+            lateral) ── Un renglón (decisión 6 de la revisión de arquitectura):
+            marca, «Actualizar» como icono y las iniciales, que abren el menú
+            con nombre, Administración, PIN y Salir. «Salir» queda a dos toques
+            a propósito: al lado de Actualizar se tocaba por error. */}
         <div className="header">
-          <div className="header-top">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="logo.jpg" alt="Alcaldía de Bello" style={{
-                width: 36, height: 36, borderRadius: 8, objectFit: 'contain',
-                background: 'white', padding: 2, flexShrink: 0,
-              }} />
-              <div>
-                <h1>Control Urbano · Insp. N°9</h1>
-                <p>{usuario.usuario} · {usuario.cargo}</p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {/* En escritorio la Administración ya tiene su entrada en la
-                  barra lateral; este atajo del encabezado solo se muestra en
-                  móvil/tablet, donde no hay sidebar. */}
-              {esAdmin && !isDesktop && (
-                <button type="button" onClick={() => navegar('admin')} title="Administración" style={{
-                  background: pantalla === 'admin' ? 'var(--brand-bg)' : 'none',
-                  border: pantalla === 'admin' ? '1px solid var(--brand-accent)' : '1px solid transparent',
-                  borderRadius: 8, padding: 6, cursor: 'pointer',
-                  color: pantalla === 'admin' ? 'var(--brand-accent)' : 'var(--texto-suave)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Icon.Admin size={20} />
-                </button>
-              )}
-              {/* En escritorio la barra no se muestra: esto vive al pie del menú. */}
-              {!enFormulario && !isDesktop && <ActualizarDatos ancho={false} />}
-              <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
-                aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
-                <Icon.Lock size={16} />{isDesktop && <span>PIN</span>}
-              </button>
-              <button type="button" className="btn-logout" onClick={salir}>Salir</button>
-            </div>
+          <div className="header-top cab-movil">
+            <img src="logo.jpg" alt="Alcaldía de Bello" className="cab-logo" />
+            <b className="cab-titulo">Control Urbano</b>
+            {!enFormulario && !isDesktop && <ActualizarDatos ancho={false} soloIcono />}
+            <button type="button" className="cab-perfil" aria-haspopup="menu" aria-expanded={menuPerfil}
+              aria-label={'Menú de ' + titleCaseNombre(usuario.usuario)} title={titleCaseNombre(usuario.usuario)}
+              onClick={() => setMenuPerfil(!menuPerfil)}>{iniciales}</button>
           </div>
         </div>
+        {menuPerfil && !isDesktop && (<>
+          <div className="cab-velo" onClick={() => setMenuPerfil(false)}></div>
+          <div className="cab-menu" role="menu">
+            <div className="cab-menu-yo">
+              <b>{titleCaseNombre(usuario.usuario)}</b>
+              {usuario.cargo && <small>{usuario.cargo}</small>}
+            </div>
+            {esAdmin && (
+              <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('admin'); }}>
+                <Icon.Admin size={18} /> Administración
+              </button>
+            )}
+            <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); setCambiandoPin(true); }}>
+              <Icon.Lock size={18} /> Cambiar mi PIN
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); salir(); }}>
+              Salir
+            </button>
+          </div>
+        </>)}
 
         {/* ── SIDEBAR DESKTOP ──
             Desde 2026-10-13 es todo el marco en escritorio: la barra superior
@@ -835,6 +873,11 @@ function AppV6() {
             {!enFormulario && (
               <button type="button" className="sidebar-nueva" onClick={irNueva}>
                 <Icon.Plus size={18} /> Nueva visita
+              </button>
+            )}
+            {!enFormulario && puedePedirCita && (
+              <button type="button" className="sidebar-btn sidebar-pedir" onClick={() => setPidiendoCita(true)}>
+                <Icon.Audiencia size={18} /> Pedir cita
               </button>
             )}
             {tabs.map(t => (
@@ -898,14 +941,32 @@ function AppV6() {
           </div>
         )}
 
-        {/* ── FAB "+" (nueva visita): solo sin barra lateral ── */}
+        {/* ── FAB «+»: solo sin barra lateral. Abre Nueva visita / Pedir cita
+            (decisión 4: el oficio en campo pide la cita solo con el N° de
+            orden, sin abrir el formulario). Al supervisor lo lleva directo a
+            Nueva visita: no pide citas. ── */}
+        {!isDesktop && !enFormulario && menuMas && (<>
+          <div className="cab-velo" onClick={() => setMenuMas(false)}></div>
+          <div className="fab-menu" role="menu">
+            <button type="button" role="menuitem" onClick={() => { setMenuMas(false); irNueva(); }}>
+              <Icon.Plus size={18} /> Nueva visita
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setMenuMas(false); setPidiendoCita(true); }}>
+              <Icon.Audiencia size={18} /> Pedir cita
+            </button>
+          </div>
+        </>)}
         {!isDesktop && !enFormulario && (
-          <button type="button" className="fab-nueva" onClick={irNueva}
-            title="Nueva visita" aria-label="Nueva visita">
+          <button type="button" className="fab-nueva" onClick={abrirMas}
+            title={puedePedirCita ? 'Nueva visita o pedir cita' : 'Nueva visita'}
+            aria-label={puedePedirCita ? 'Nueva visita o pedir cita' : 'Nueva visita'}
+            aria-haspopup={puedePedirCita ? 'menu' : undefined} aria-expanded={puedePedirCita ? menuMas : undefined}>
             <Icon.Plus size={26} />
           </button>
         )}
       </div>
+
+      {pidiendoCita && <PedirCitaGlobal usuario={usuario} onCerrar={() => setPidiendoCita(false)} />}
 
       {cambiandoPin && (
         <CambiarPinScreen modo="voluntario" nombre={usuario.usuario}
@@ -942,7 +1003,9 @@ function AppV6() {
 // las pantallas se re-pintan solas con suscribirVisitas si algo cambió. La hora
 // es la de la última confirmación contra la red (ultimaDescargaVisitas), no la
 // del último clic: el refresco silencioso del arranque también cuenta.
-function ActualizarDatos({ ancho }) {
+// `soloIcono`: la cabecera móvil de un renglón solo muestra el ↻; el texto
+// aparece únicamente si falló (eso sí tiene que verse).
+function ActualizarDatos({ ancho, soloIcono }) {
   const [, setLatido] = useStateApp(0);
   const [girando, setGirando] = useStateApp(false);
   useEffectApp(() => {
@@ -976,7 +1039,7 @@ function ActualizarDatos({ ancho }) {
     <button type="button" className={'btn-actualizar' + (fallo ? ' btn-actualizar-fallo' : '') + (girando ? ' icono-girando' : '')}
       onClick={actualizar} disabled={girando} aria-busy={girando}
       title={detalle} aria-label={'Actualizar datos. ' + detalle}>
-      <span>{texto}</span><Icon.Refresh size={14} />
+      {(!soloIcono || fallo) && <span>{texto}</span>}<Icon.Refresh size={soloIcono ? 18 : 14} />
     </button>
   );
 }
