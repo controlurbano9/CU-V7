@@ -4732,3 +4732,14 @@ tr.clic:hover td { background: var(--surface-2); }
   display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: var(--r-full);
   background: var(--red-bg); color: var(--red); font-weight: 600; text-align: center; text-decoration: none;
 }
+
+/* Escritorio sin panel (900–1199): Mis visitas usaba la tarjeta del celular,
+   con la acción en su propio renglón a 44 px, en una columna de ~740 px. Desde
+   900 la tarjeta se acomoda como el renglón (acción al lado). */
+@media (min-width: 900px) {
+  .tv-tarjeta { flex-wrap: nowrap; }
+  .tv-tarjeta .tv-acc { width: auto; }
+  .tv-tarjeta .tv-btn { min-height: 36px; padding: 0 var(--s-4); font-size: var(--fs-1); }
+  .tv-tarjeta .tv-acc .sv-icono { width: 36px; height: 36px; margin-left: 0; }
+  .tv-tarjeta .tv-dir { font-size: var(--fs-2); }
+}
