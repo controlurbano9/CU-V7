@@ -101,7 +101,9 @@ var _AU_SVG_COPIAR = (
 function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar, onReservada }) {
   const [filas, setFilas] = useStateAU([]);
   const [caso, setCaso] = useStateAU(casoInicial || null);
-  const [texto, setTexto] = useStateAU('');
+  // Con el caso de la visita, la casilla lo muestra (si no está en la agenda de
+  // hoy, no habría otra señal de cuál quedó elegido).
+  const [texto, setTexto] = useStateAU(casoInicial ? (casoInicial.radicado || casoInicial.ordenPolicia || '') : '');
   const [cupos, setCupos] = useStateAU(cuposIniciales || null);    // null = cargando
   const [sinSenal, setSinSenal] = useStateAU(!navigator.onLine);
   const [elegido, setElegido] = useStateAU(null);

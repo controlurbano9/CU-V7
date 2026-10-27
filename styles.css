@@ -1463,12 +1463,13 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
 /* ── Escritorio ancho: formulario + tablero de entregables ──────
    El escritorio es la oficina: revisar, corregir y generar. En una sola
    tira vertical hay que recorrer las diez secciones para llegar a los
-   entregables en cada vuelta. Desde 1440 px el tablero pasa a una
+   entregables en cada vuelta. Desde 1200 px el tablero pasa a una
    columna fija a la derecha; por debajo todo queda exactamente igual.
-   1440 y no 1200: descontando la barra lateral (272) y el padding (96),
-   a 1200 el formulario caería a ~510 px, más estrecho que un móvil
-   ancho, y el formulario manda sobre el tablero. */
-@media (min-width: 1440px) {
+   Era 1440 (a 1200 el formulario cae a ~510 px); se bajó a 1200 por la
+   revisión de arquitectura 2026-10-27 (decisión 5): el estado de los
+   entregables tiene que verse mientras se llena, y los campos cortos van
+   en columnas que se acomodan al ancho (2 a 1200, 3 a 1440, 4 más arriba). */
+@media (min-width: 1200px) {
   /* .pantalla.activa fija display:block con dos clases: hay que igualar
      esa especificidad o el grid no se aplica. */
   .pantalla.nv-pantalla {
@@ -4693,3 +4694,40 @@ tr.clic:hover td { background: var(--surface-2); }
   display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: 2px;
   border-radius: 50%; background: var(--red);
 }
+
+/* ── Formulario todo visible (arquitectura 2026-10-27, decisión 5) ──
+   Ni plegado ni por pasos (decisión del usuario): lo que falta se nombra en
+   la cabecera fija y los campos cortos comparten renglón en escritorio. */
+.nv-falta {
+  display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+  margin-top: var(--s-2); font-size: var(--fs-1); color: var(--ink-3);
+}
+.nv-falta b { color: var(--red); font-weight: 600; }
+.nv-falta-ir {
+  padding: 2px 0; border: 0; background: none; cursor: pointer;
+  font: 500 var(--fs-1) var(--font-sans); color: var(--ink);
+  text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 3px;
+}
+.nv-falta-ir + .nv-falta-ir::before { content: '· '; color: var(--ink-4); text-decoration: none; display: inline-block; margin-right: 4px; }
+/* En el celular un solo renglón que se desplaza: la cabecera fija no puede crecer. */
+@media (max-width: 899px) {
+  .nv-falta { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .nv-falta-ir { min-height: 36px; }
+}
+/* Barrio y comuna que dio el POT: texto, no desplegable de ~120 barrios. */
+.barrio-pot { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; min-height: var(--tap); padding-top: 6px; }
+.barrio-pot b { font-weight: 600; color: var(--ink); }
+.barrio-pot-nota { font-size: var(--fs-1); color: var(--ink-4); }
+.barrio-pot button {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: 600 var(--fs-1) var(--font-sans); color: var(--ink); text-decoration: underline;
+}
+/* Escritorio: los campos cortos en columnas que se acomodan al ancho, con
+   tope de 4 (medido en qa-centro-control: 2 a 1200 con los entregables al
+   lado, 4 desde 1440, donde la sección deja ~690 px útiles). Lo que no es un
+   campo (mapa, avisos, bloques propios) va siempre a lo ancho. */
+@media (min-width: 1200px) {
+  .form-grid-2col { grid-template-columns: repeat(auto-fill, minmax(max(160px, calc((100% - 48px) / 4)), 1fr)); }
+  .form-grid-2col > :not(.input-grupo) { grid-column: 1 / -1; }
+}
+.nv-pedir-cita { margin-top: var(--s-2); }

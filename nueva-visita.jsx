@@ -2872,6 +2872,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   const [advertTipifIgnorada, setAdvertTipifIgnorada] = React.useState(false);
   // Estado auxiliar para barrio "Otro" (texto libre)
   const [barrioOtro, setBarrioOtro] = React.useState('');
+  // Barrio que puso el POT con el punto (arquitectura 2026-10-27, decisión 5):
+  // mientras siga siendo ese, se muestra como texto con «Cambiar» en vez del
+  // desplegable de ~120 barrios. Es estado de pantalla: al reabrir la visita
+  // vuelve el desplegable hasta que el pin consulte el POT otra vez.
+  const [barrioDelPot, setBarrioDelPot] = React.useState('');
+  const [editandoBarrio, setEditandoBarrio] = React.useState(false);
   // Confirmación de dirección en línea: la dirección bautiza la carpeta de
   // Drive en el PRIMER guardado, así que el inspector la confirma («Confirmar
   // dirección») antes de que exista la carpeta. dirEnfoque esconde la fila
@@ -3505,6 +3511,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // Audiencias (TASK 3b): la cita se pide en campo por radicado o N° de orden.
   // Si hay una reserva, la fecha y la hora de citación salen de ella (fijas).
   const [citaReservada, setCitaReservada] = React.useState(null);
+  // «Pedir cita» desde la sección Citación; al cerrarla se vuelve a buscar la
+  // reserva del caso (citaVuelta) para fijar la fecha y la hora del cupo.
+  const [pidiendoCitaNV, setPidiendoCitaNV] = React.useState(false);
+  const [citaVuelta, setCitaVuelta] = React.useState(0);
   React.useEffect(() => {
     const caso = { radicado: d.radicado || '', ordenPolicia: normOrdenAudiencias(d.orden) ? d.orden : '' };
     if (!caso.radicado && !caso.ordenPolicia) { setCitaReservada(null); return; }
@@ -3534,7 +3544,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       }).catch(() => {});
     }, 800);
     return () => { vivo = false; clearTimeout(t); };
-  }, [d.radicado, d.orden]);
+  }, [d.radicado, d.orden, citaVuelta]);
   // Acta ↔ informe cambia qué se revisa (con informe no hay conclusiones): una
   // revisión abierta deja de valer y se cierra. Antes, pasar a informe sin
   // elegir las conclusiones dejaba «Aplicar» deshabilitado para siempre
@@ -4539,6 +4549,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (r.barrioSugerido) {
         const match = _barrioDeLista(r.barrioSugerido, r.ambito === 'Rural');
         setCampo('barrio', match || r.barrioSugerido.trim());
+        setBarrioDelPot(match || r.barrioSugerido.trim());
+        setEditandoBarrio(false);
         // La comuna del punto (capa Comunas) antes que la de la lista: un
         // barrio partido entre dos comunas (Guasimalito) no tiene una sola.
         const com = r.comuna || (match && _BARRIO_A_COMUNA[match.toUpperCase()]);
@@ -5886,7 +5898,29 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             </button>
           </div>
         </div>
+        {/* Barra «Falta:» (arquitectura 2026-10-27, decisión 5): el formulario
+            se queda todo visible — ni plegado ni por pasos —, así que lo que
+            falta se nombra aquí, en la cabecera fija, y cada nombre lleva a su
+            sección. Desde el primer guardado; antes falta todo y la lista sería
+            ruido. Los mismos faltantes de _evaluarFormulario (sin duplicar
+            reglas). */}
+        {filaEditando != null && evaluacion.faltan.length > 0 && (
+          <div className="nv-falta" role="navigation" aria-label="Campos que faltan">
+            <b>Falta:</b>
+            {evaluacion.faltan.slice(0, 8).map((fa, i) => (
+              <button key={i} type="button" className="nv-falta-ir"
+                onClick={() => _irASeccion(fa.seccion)}>{fa.nombre.replace(/\s*\([^)]*\)\s*$/, '')}</button>
+            ))}
+            {evaluacion.faltan.length > 8 && <span className="nv-falta-mas">y {evaluacion.faltan.length - 8} más</span>}
+          </div>
+        )}
       </div>
+
+      {pidiendoCitaNV && (
+        <PedirCitaGlobal usuario={usuario}
+          casoInicial={{ radicado: d.radicado || '', ordenPolicia: normOrdenAudiencias(d.orden) ? d.orden : '' }}
+          onCerrar={() => { setPidiendoCitaNV(false); setCitaVuelta(n => n + 1); }} />
+      )}
 
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
       <_Seccion titulo="Identificación del caso"
@@ -6022,6 +6056,16 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           motivo="direccion"
           ofrecerSeguimiento={_ofrecerSeguimiento} onAbrir={_abrirCasoRelacionado}
           onOcultar={() => setCasosRelacVistos(_casosRelacClave)} />
+        {barrioDelPot && d.barrio === barrioDelPot && !editandoBarrio ? (
+          <div className="input-grupo full-width">
+            <span className="input-label">Barrio y comuna</span>
+            <div className="barrio-pot">
+              <b>{d.barrio}</b>{d.comuna && <> · Comuna {d.comuna}</>}
+              <span className="barrio-pot-nota">del POT</span>
+              <button type="button" className="btn-link" onClick={() => setEditandoBarrio(true)}>Cambiar</button>
+            </div>
+          </div>
+        ) : (<>
         <_Campo label="Barrio / Vereda">
           <_SelectBarrio
             barrio={d.barrio}
@@ -6036,6 +6080,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Input value={d.comuna} onChange={v => setCampo('comuna', v)}
             placeholder="4" />
         </_Campo>
+        </>)}
 
         {/* Escritorio: el mapa en la columna izquierda del formulario y, a su
             derecha, el panel «Predio» — lo que cambia al mover el pin queda a
@@ -6516,7 +6561,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Campo label="Citación" fullWidth>
             <div className="cita-reservada fallo">
               <span className="est">✕ No se pudo reservar la cita del {citaReservada.fecha}</span>
-              <small>El cupo lo tomó otra persona. Pide otra cita en la pestaña Citaciones.</small>
+              <small>El cupo lo tomó otra persona. Pide otra con «Pedir cita».</small>
             </div>
           </_Campo>
         )}
@@ -6534,6 +6579,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             />
             No se deja citación
           </label>
+          {/* «Pedir cita» con el caso ya puesto (decisión 4 de la revisión de
+              arquitectura): la misma hoja del «+». Al reservar, la fecha y la
+              hora de abajo quedan fijas con la del cupo. */}
+          {!d.noCitacion && (d.radicado || normOrdenAudiencias(d.orden)) && (
+            <button type="button" className="btn-accion nv-pedir-cita" onClick={() => setPidiendoCitaNV(true)}>
+              Pedir cita
+            </button>
+          )}
         </_Campo>
         <_Campo label="Fecha de citación">
           <_Input type="date" value={d.citacionFecha}
