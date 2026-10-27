@@ -24,6 +24,12 @@ test('comportamientosParaIA: «No se evidencia infracción» → NINGUNO', () =>
   assert.deepEqual(comportamientosParaIA('No se evidencia infracción'), ['NINGUNO']);
 });
 
+test('comportamientosParaIA: «No se pudo determinar» → un renglón que se explica solo', () => {
+  const r = comportamientosParaIA('No se pudo determinar');
+  assert.equal(r.length, 1);
+  assert.match(r[0], /^Ninguno: el inspector marcó «No se pudo determinar»/);
+});
+
 test('comportamientosParaIA: un renglón con código y cita por chip', () => {
   const r = comportamientosParaIA('A3: Bienes uso público (Antejardín) | D13: Materiales en vía');
   assert.equal(r.length, 2);

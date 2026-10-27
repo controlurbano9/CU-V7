@@ -872,7 +872,8 @@ function _contextoVisitaD(dObj) {
     : dObj.licenciaAportada;
   return [
     linea('Documento', documentoVisita(dObj.documento) === 'INFORME' ? 'informe técnico' : 'acta de inspección ocular'),
-    linea('Tipificación', _infraccionSoloCatalogo(dObj.infraccion)),
+    linea('Tipificación', infraccionParaActa(_infraccionSoloCatalogo(dObj.infraccion),
+      (dObj.reqLicencia || {}).motivoIndeterminado)),
     linea('Área en contravención', _areaTexto(dObj)),
     linea('Estado de la obra', dObj.estadoObra),
     linea('¿Las obras requieren licencia?', (function () {
@@ -1425,7 +1426,7 @@ function _ChipsMulti({ opciones, value, onChange, separador, otroLabel }) {
 }
 
 // ── Chips contravención (multi-select por grupos de literal) ──
-function _ChipsContravencion({ value, onChange }) {
+function _ChipsContravencion({ value, onChange, ofrecerIndeterminada }) {
   const sep = ' | ';
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_ChipsContravencion`, convención guion bajo del archivo
   const seleccionados = useMemoNV(() => {
@@ -1434,6 +1435,7 @@ function _ChipsContravencion({ value, onChange }) {
   }, [value]);
 
   const esNoInfraccion = seleccionados.includes(CONTRAVENCION_ESPECIAL);
+  const esIndeterminada = seleccionados.includes(CONTRAVENCION_INDETERMINADA);
 
   // «No se evidencia» y A1 primero, en utils.js.
   function toggle(val) {
@@ -1467,6 +1469,16 @@ function _ChipsContravencion({ value, onChange }) {
             onClick={() => toggle(CONTRAVENCION_ESPECIAL)}>
             {CONTRAVENCION_ESPECIAL}
           </button>
+          {/* Solo con «¿Requiere licencia?» = No se pudo determinar; si ya
+              estaba marcada se deja ver para poder quitarla (R17 avisa). */}
+          {(ofrecerIndeterminada || esIndeterminada) && (
+            <button type="button"
+              className={'chip' + (esIndeterminada ? ' activo' : '')}
+              title="Excluyente: en Verificación documental no se pudo determinar si las obras requieren licencia"
+              onClick={() => toggle(CONTRAVENCION_INDETERMINADA)}>
+              {CONTRAVENCION_INDETERMINADA}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -3869,6 +3881,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       setCampo('areaNoAplica', true);
       setCampo('areaNoMedible', false);
       setCampo('area', '');
+    } else if (chips.includes(CONTRAVENCION_INDETERMINADA)) {
+      // No se sabe si hay algo que medir: el área queda a criterio del inspector.
     } else if (chips.length && d.areaNoAplica) {
       setCampo('areaNoAplica', false);
     }
@@ -3877,8 +3891,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   function _aplicarSugerenciasTipif() {
     // Quitar chips de literal A; conservar el resto (C, D, "No se evidencia...")
     const noA = _chipsActuales.filter(v => !/^A\d/.test(v));
-    // Quitar también "No se evidencia infracción" si estaba — ahora SÍ hay infracción.
-    const noNoInfr = noA.filter(v => v !== CONTRAVENCION_ESPECIAL);
+    // Quitar también "No se evidencia infracción" / "No se pudo determinar" si
+    // estaban — ahora SÍ hay infracción.
+    const noNoInfr = noA.filter(v => v !== CONTRAVENCION_ESPECIAL && v !== CONTRAVENCION_INDETERMINADA);
     // Lo sugerido (A1/A3) primero: A1 tiene prioridad.
     const final = [..._vSugeridos, ...noNoInfr];
     _setInfraccion(final.join(' | '));
@@ -5035,7 +5050,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       amenaza:        d.amenaza,
       sueloProt:      d.sueloProt,
       retiroQuebrada: d.quebrada,
-      infraccion:     _infraccionSoloCatalogo(d.infraccion),
+      // F36: «No se pudo determinar» va con su motivo.
+      infraccion:     infraccionParaActa(_infraccionSoloCatalogo(d.infraccion),
+                        (d.reqLicencia || {}).motivoIndeterminado),
       area:           _areaTexto(d),
       // A38: el texto revisado del inspector (comportamiento y área van en F36/F37).
       obsConclusion:  _conclusionesActaD(d),
@@ -5169,6 +5186,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       repLocativa: d.repLocativa, licenciaAportada: d.licenciaAportada,
       estadoObra: d.estadoObra, suspension: d.suspension,
       sueloProt: d.sueloProt, quebrada: d.quebrada,
+      requiereLicencia: formatearRequiereLicencia(d.reqLicencia).requiere,
     }).forEach(function(r) { req(false, r.mensaje); });
 
     // Suspensión / citación
@@ -6433,6 +6451,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_ChipsContravencion
             value={d.infraccion}
             onChange={_setInfraccion}
+            ofrecerIndeterminada={(d.reqLicencia || {}).respuesta === REQUIERE_INDETERMINADO}
           />
         </_Campo>
         <_Campo label="Área de contravención (m²)">

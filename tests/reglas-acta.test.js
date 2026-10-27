@@ -14,6 +14,54 @@ test('R02: «No se evidencia infracción» con otro chip', () => {
   assert.deepEqual(ids(reglasBloqueoActa({ infraccion: 'No se evidencia infracción | ' + A4 })), ['R02']);
 });
 
+// ── «No se pudo determinar» (2026-10-27) ─────────────────────
+const ND = 'No se pudo determinar';
+const REQ_ND = 'NO SE PUDO DETERMINAR';
+
+test('«No se pudo determinar»: excluyente al marcar, en los dos sentidos', () => {
+  assert.deepEqual(alternarContravencion([A4, 'D13: Materiales en vía'], ND), [ND]);
+  assert.deepEqual(alternarContravencion([ND], A4), [A4]);
+  assert.deepEqual(alternarContravencion([ND], 'No se evidencia infracción'), ['No se evidencia infracción']);
+  assert.deepEqual(alternarContravencion([ND], ND), []);
+  assert.equal(_infraccionSoloCatalogo(ND), ND);
+});
+
+test('R02: «No se pudo determinar» con otra opción', () => {
+  assert.deepEqual(ids(reglasBloqueoActa({ infraccion: ND + ' | ' + A3, requiereLicencia: REQ_ND })), ['R02']);
+});
+
+test('R17: «No se pudo determinar» sin esa respuesta en Verificación documental', () => {
+  assert.deepEqual(ids(reglasBloqueoActa({ infraccion: ND, requiereLicencia: 'SI' })), ['R17']);
+  assert.deepEqual(ids(reglasBloqueoActa({ infraccion: ND, requiereLicencia: 'NO' })), ['R17']);
+  assert.deepEqual(reglasBloqueoActa({ infraccion: ND, requiereLicencia: REQ_ND }), []);
+  // Sin la respuesta no se juzga (la pide su propio faltante).
+  assert.deepEqual(reglasBloqueoActa({ infraccion: ND }), []);
+});
+
+test('R18: licencia sin determinar con A4 o «No se evidencia infracción»', () => {
+  assert.deepEqual(ids(reglasBloqueoActa({ infraccion: A4, requiereLicencia: REQ_ND })), ['R18']);
+  assert.deepEqual(ids(reglasBloqueoActa({ infraccion: 'No se evidencia infracción', requiereLicencia: REQ_ND })), ['R18']);
+  // Lo que no depende de la licencia se puede marcar.
+  assert.deepEqual(reglasBloqueoActa({ infraccion: 'D13: Materiales en vía', requiereLicencia: REQ_ND }), []);
+});
+
+test('infraccionParaActa: F36 con el motivo', () => {
+  const { infraccionParaActa } = require('../utils.js');
+  assert.equal(infraccionParaActa(ND, 'No se permitió el ingreso al predio.'),
+    'No se pudo determinar si las obras requieren licencia: No se permitió el ingreso al predio.');
+  assert.equal(infraccionParaActa(ND, ''), 'No se pudo determinar si las obras requieren licencia.');
+  assert.equal(infraccionParaActa(A4, 'x'), A4);
+});
+
+test('revisarTextoLocal: con «No se pudo determinar» el texto no califica ni niega', () => {
+  const s = revisarTextoLocal({ infraccion: ND, requiereLicencia: REQ_ND,
+    actuacion: 'Se observó una ampliación en el segundo piso. No se evidencia infracción.',
+    conclusion: 'Las obras constituyen un comportamiento contrario a la integridad urbanística.' });
+  const sigs = s.map(x => x.id + ':' + x.donde).sort();
+  assert.ok(sigs.includes('niega-con-chips:descripcion'));
+  assert.ok(sigs.includes('califica-sin-chip:conclusion'));
+});
+
 test('R03: comportamiento marcado con área «No aplica»', () => {
   assert.deepEqual(ids(reglasBloqueoActa({ infraccion: A4, areaNoAplica: true })), ['R03']);
   assert.deepEqual(reglasBloqueoActa({ infraccion: 'No se evidencia infracción', areaNoAplica: true }), []);
