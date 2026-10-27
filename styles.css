@@ -4805,3 +4805,62 @@ tr.clic:hover td { background: var(--surface-2); }
 }
 .tv-btn { background: var(--ink); }
 .tv-btn:hover { background: var(--brand-ink); }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 02 — Mis visitas: placa de la siguiente visita  ║
+   ╚════════════════════════════════════════════════════════════╝
+   La firma de la app: el amarillo --valla solo vive en esta placa
+   (y en lo activo y la selección, TASK 01). Todo su texto es
+   --valla-ink sobre --valla: 10,97:1. El rojo de lo urgente no
+   llega sobre el amarillo (3,33:1): la cita urgente va en tinta a
+   700. Pisa las reglas de la placa de la pieza 3, más arriba. */
+
+/* La placa: amarillo de obra, radio de panel, sin filete. */
+.mv-sig {
+  padding: var(--s-4);
+  background: var(--valla); border: 0; border-radius: var(--r-panel);
+  color: var(--valla-ink);
+}
+.mv-sig-est { font-weight: 600; color: var(--valla-ink); }
+.mv-sig-dir { font: 800 var(--fs-5)/1.1 var(--font-cond); color: var(--valla-ink); }
+/* Radicado · barrio · comuna; la cita (si hay) es un renglón propio. */
+.mv-sig .tv-meta { font-size: var(--fs-3); font-weight: 600; color: var(--valla-ink); }
+.mv-sig .tv-demora { color: var(--valla-ink); font-weight: 700; }
+/* Acciones a 52 px: «Iniciar» lleno de tinta, flexible; «Cómo llegar»
+   al 12 % de tinta (fondo compuesto sobre el amarillo: 8,69:1). */
+.mv-sig-acc .tv-btn {
+  min-height: 52px; background: var(--ink); color: var(--surface);
+  font-weight: 700; font-size: var(--fs-3);
+}
+.mv-sig-acc .vc-btn {
+  min-height: 52px; border: 0; border-radius: var(--r-ctl);
+  background: rgba(21,20,15,.12); color: var(--ink);
+  font-weight: 700; font-size: var(--fs-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mv-sig-acc .tv-btn:hover { background: var(--brand-ink); }
+  .mv-sig-acc .vc-btn:hover { background: rgba(21,20,15,.2); color: var(--ink); }
+}
+/* Elegida en escritorio: filete de tinta; el amarillo de selección
+   no se vería sobre la placa amarilla. */
+.mv-sig.sel { box-shadow: 0 0 0 3px var(--ink); }
+
+/* Rótulos de grupo («Siguiente visita», «Pendientes»…): condensada, como
+   los títulos de pantalla; el complemento (conteo, «lo más atrasado
+   primero») se queda en Barlow. Vale también para los grupos de
+   Administración, que usan la misma clase. */
+.mv-grupo { font: 700 var(--fs-2) var(--font-cond); color: var(--ink); }
+.mv-grupo span { font: 500 var(--fs-2) var(--font-sans); color: var(--ink-3); }
+
+/* Chips de vista: el activo en tinta con texto blanco; los demás, placa
+   blanca con filete de 1 px. En el celular suben a 44 px. */
+.mv-chips .sv-chip {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+}
+.mv-chips .sv-chip.activo { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+@media (hover: hover) and (pointer: fine) {
+  .mv-chips .sv-chip:not(.activo):hover { background: var(--surface-2); color: var(--ink); }
+}
+@media (max-width: 1199px), (pointer: coarse) {
+  .mv-chips .sv-chip { height: var(--tap); }
+}
