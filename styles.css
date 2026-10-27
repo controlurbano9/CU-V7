@@ -5046,3 +5046,16 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 @media (pointer: coarse) {
   .tv-meta .sv-insp::after { content: ''; position: absolute; left: -4px; right: -4px; top: -13px; bottom: -13px; }
 }
+
+/* Medición de la TASK 04 (Claude, 2026-10-28): los campos del formulario
+   medían 42 px en el celular; en campo el mínimo es 44. */
+@media (pointer: coarse) {
+  .input-campo, select.input-campo { min-height: 44px; }
+}
+/* Registro fotográfico (medido a 390): zoom − / + de 36 px y «Generar» de 40
+   → 44 en táctil; el fondo del zoom en la tinta de la Valla. */
+.rfm-zoom { background: rgba(21,20,15,.85); color: var(--surface); }
+@media (pointer: coarse) {
+  .rfm-zoom button { width: 44px; height: 44px; }
+  .rfm-generar { min-height: 44px; }
+}
