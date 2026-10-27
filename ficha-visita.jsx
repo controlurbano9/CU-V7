@@ -58,6 +58,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   // ¿La ficha es ancha? (≥860 px de contenedor, la misma frontera del CSS):
   // el mapa y el predio pasan a su columna derecha.
   const [dosCols, setDosCols] = useStateFV(false);
+  // «Pedir cita» desde la ficha (decisión 4 de la revisión de arquitectura):
+  // la misma hoja del «+», con el caso ya puesto.
+  const [pidiendoCita, setPidiendoCita] = useStateFV(false);
 
   // Estado como lo agrupa Buscar (estadoBuscarDe, utils.js): las variantes de
   // V2 se pliegan a las de la app y lo cerrado por otra vía o NO COMPETENCIA
@@ -157,16 +160,23 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   const fAsignada = est === 'ASIGNADO' ? formatearFecha(f['FECHA ASIGNACION VISITA'] || '') : '';
   const fVisita = formatearFecha(f['FECHA DE VISITA'] || '');
 
-  // Campos crudos de la BD (solo admin, diagnóstico): pares no vacíos.
-  const crudoPares = esAdmin
-    ? Object.keys(f)
-        .filter(k => isNaN(Number(k)) && k !== '_idx')
-        .map(k => [k, f[k]])
-        .filter(p => p[1] != null && p[1] !== '')
-    : null;
+  // «Todos los campos de la BD» salió de la ficha (revisión de arquitectura
+  // 2026-10-27, punto 4): era una herramienta de diagnóstico; se revisa en el Sheet.
+
+  // Pedir cita: visita viva, sin cita por delante, y no para el supervisor
+  // (no pide citas, como en Audiencias).
+  const ordenCita = ordenPoliciaDe(f);
+  const puedePedirCita = !terminada && usuario &&
+    (usuario.rol === 'ADMIN' || !veTodasLasVisitas(usuario.rol)) &&
+    !citaVisitaTexto(f) && !!(rad || normOrdenAudiencias(ordenCita));
 
   return (
     <div className="fv" ref={raizRef}>
+      {pidiendoCita && (
+        <PedirCitaGlobal usuario={usuario}
+          casoInicial={{ radicado: rad, ordenPolicia: normOrdenAudiencias(ordenCita) ? ordenCita : '' }}
+          onCerrar={() => setPidiendoCita(false)} />
+      )}
       {/* ── Cabecera: 1 estado · 2 dirección · 3 lugar · 4 datos del caso ── */}
       <div className={'fv-fija' + (onCerrar ? ' con-cerrar' : '')} ref={fijaRef}>
         {onCerrar && (
@@ -221,6 +231,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 title="Abrir el PDF de la PQR radicada (pestaña nueva)">Ver PQR</a>
             )}
             <BotonMapaVisita f={f} variante="vc" sinIcono />
+            {puedePedirCita && (
+              <button type="button" className="vc-btn" onClick={() => setPidiendoCita(true)}>Pedir cita</button>
+            )}
           </div>
         </div>
       </div>
@@ -263,17 +276,6 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
           {/* Gestión de reiterados (agregar/quitar): solo el admin; los
               demás los ven en la banda. */}
           {esAdmin && <ReiteradosVD key={String(f._idx) + '|' + f['RADICADO']} f={f} />}
-
-          {crudoPares && crudoPares.length > 0 && (
-            <details className="fv-crudo">
-              <summary>Todos los campos de la BD <small>admin · diagnóstico</small></summary>
-              <dl className="mv-datos">
-                {crudoPares.map(p => (
-                  <div key={p[0]}><dt>{p[0]}</dt><dd>{String(p[1]).slice(0, 200)}</dd></div>
-                ))}
-              </dl>
-            </details>
-          )}
 
           {/* Ficha angosta: el mapa cierra la lista, como siempre. */}
           {!dosCols && <MapaPanelMV f={f} />}

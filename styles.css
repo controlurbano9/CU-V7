@@ -3087,10 +3087,6 @@ button.sv-col-head {
 .fv-lugar .mv-bloque { margin-top: 18px; }
 .fv-lugar .mv-datos { grid-template-columns: 1fr; margin-top: 14px; }
 .fv-lugar .mv-datos dd { font-size: var(--fs-1); word-break: break-all; }
-.fv-crudo { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
-.fv-crudo summary { cursor: pointer; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); min-height: 32px; display: flex; align-items: center; gap: 6px; }
-.fv-crudo summary small { font-weight: 400; color: var(--ink-4); }
-.fv-crudo dt { font-family: var(--font-mono); }
 /* Celular (contenedor <600 px): los botones bajan al final de la cabecera,
    repartidos a 44 px; la banda a dos columnas con los reiterados abajo. */
 @container (max-width: 600px) {
@@ -4342,8 +4338,9 @@ button.sv-col-head {
 
 /* Ventana «Días sin audiencias»: ventana en escritorio, hoja inferior en celular */
 /* Sobre la barra de pestañas y el «+» (200): desde que «Pedir cita» se abre
-   desde el «+», la barra tapaba «Reservar». Bajo la ficha (9000) y los avisos (9999). */
-.au-hoj-ovl { position: fixed; inset: 0; z-index: 8000; background: rgba(31,27,22,.45); }
+   desde el «+», la barra tapaba «Reservar». Sobre la ficha en ventana (9000):
+   también se pide desde ahí. Bajo los avisos (9999). */
+.au-hoj-ovl { position: fixed; inset: 0; z-index: 9500; background: rgba(31,27,22,.45); }
 .au-hoj { width: min(560px, 100%); max-height: 90vh; overflow: auto; background: var(--surface);
   border-radius: var(--r-panel); padding: 14px 18px 18px; }
 .au-hoj-cab { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }

@@ -30,10 +30,12 @@ const BQ_EST_L = {
   CERRADO: 'Cerradas sin visita',
 };
 const BQ_EST_DOT = { PENDIENTE: 'pend', ASIGNADO: 'asig', INICIADO: 'curso', COMPLETADO: 'hecha', CERRADO: 'cerr' };
-const BQ_TIPO_L = { PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado (V2)' };
+const BQ_TIPO_L = { PQR: 'PQR', OFICIO: 'De oficio', V2: 'Sin radicado' };
+// Por radicado y por dirección ya lo resuelve la casilla de búsqueda (revisión
+// de arquitectura 2026-10-27, punto 4). ordenarCasosBuscar sigue aceptando
+// 'rad' y 'dir' (enlaces copiados con #f=… viejos).
 const BQ_ORDENES = [
-  ['urg', 'Más urgente'], ['rec', 'Más reciente'], ['rad', 'Radicado'],
-  ['dir', 'Dirección'], ['mod', 'Última edición'],
+  ['urg', 'Más urgente'], ['rec', 'Más reciente'], ['mod', 'Última edición'],
 ];
 
 // Vistas propias y preferencia de Inicio («Ver en Buscar» con estados).
@@ -122,6 +124,12 @@ function _interpretarFechaBQ(t, hoy) {
   return null;
 }
 
+// «QUEJA VERBAL» → «Queja verbal»; vacío o «SIN RADICADO» → «Sin radicado».
+function _etiquetaV2BQ(rad) {
+  const t = String(rad || '').trim().toLowerCase();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Sin radicado';
+}
+
 // Resalta la parte que coincidió. El índice se calcula sobre el texto
 // normalizado con un mapa de posiciones: los acentos no descuadran el corte.
 function MarcarBQ({ texto, q }) {
@@ -178,21 +186,18 @@ function _nGruposBQ(universo, pred) {
 }
 
 // ── Vistas ────────────────────────────────────────────────────
-// Las fijas de uso diario, SIN «Suspensiones sin vigilancia» (se quita en
-// E5c1 por decisión del TASK). `soloTodo`: solo para quien ve todo.
+// Las de fábrica son solo las que un chip no resuelve (revisión de
+// arquitectura 2026-10-27, punto 4): «Todos los casos» es no marcar chips
+// (o «Limpiar todo»), «Lo vivo» y «Por asignar» son chips de estado y «Mías en
+// curso» es Mis visitas. Quedan las dos que cruzan estado con otra condición.
 function _vistasBaseBQ(veTodo, hoy) {
   const pm = _iniMesBQ(hoy.getFullYear(), hoy.getMonth() - 1);
-  const v = [
-    { id: 'todo', n: 'Todos los casos', s: {} },
-    { id: 'vivo', n: 'Lo vivo', s: { estados: BUSCAR_ESTADOS_VIVOS.slice() } },
-    { id: 'asignar', n: 'Por asignar', s: { estados: ['PENDIENTE'] }, soloTodo: true },
+  return [
     // Ocupa el lugar de «Completadas sin informe» (2026-10-13): el informe ya
     // no es un faltante. Iniciadas con acta, registro y orden escaneada.
     { id: 'cerrar', n: 'Listas para cerrar', s: { estados: ['INICIADO'], listas: true } },
     { id: 'mes', n: 'Completadas en ' + _MESES_ES[pm.getMonth()], s: { estados: ['COMPLETADO'], campo: 'cierre', desde: _isoBQ(pm), hasta: _isoBQ(_finMesBQ(pm.getFullYear(), pm.getMonth())) } },
-    { id: 'mias', n: 'Mías en curso', s: { estados: ['ASIGNADO', 'INICIADO'], mias: true } },
   ];
-  return v.filter(x => !x.soloTodo || veTodo);
 }
 function _leerVistasPropiasBQ() {
   try { return JSON.parse(localStorage.getItem(BQ_VISTAS_KEY)) || []; } catch (e) { return []; }
@@ -847,7 +852,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
     S.tipo.forEach(v => ch.push({ k: 'tipo' + v, l: BQ_TIPO_L[v] || v, quitar: () => parcharS({ tipo: S.tipo.filter(x => x !== v) }) }));
     S.nvis.forEach(v => ch.push({ k: 'nvis' + v, l: v === 'seg' ? 'Seguimiento' : 'Primera visita', quitar: () => parcharS({ nvis: S.nvis.filter(x => x !== v) }) }));
     if (S.reit) ch.push({ k: 'reit', l: 'Con reiterados', quitar: () => parcharS({ reit: false }) });
-    S.prio.forEach(v => ch.push({ k: 'prio' + v, l: 'Prioridad ' + v.toLowerCase(), quitar: () => parcharS({ prio: S.prio.filter(x => x !== v) }) }));
+    S.prio.forEach(v => ch.push({ k: 'prio' + v, l: v === 'Sin análisis' ? 'Sin prioridad' : 'Prioridad ' + v.toLowerCase(), quitar: () => parcharS({ prio: S.prio.filter(x => x !== v) }) }));
     S.infr.forEach(v => ch.push({ k: 'infr' + v, l: (v.split(':')[0] || v).trim(), quitar: () => parcharS({ infr: S.infr.filter(x => x !== v) }) }));
     if (S.susp) ch.push({ k: 'susp', l: 'Con suspensión', quitar: () => parcharS({ susp: false }) });
     if (S.orden) ch.push({ k: 'orden', l: 'Con orden', quitar: () => parcharS({ orden: false }) });
@@ -1045,7 +1050,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                   {['Crítica', 'Alta', 'Media', 'Baja', 'Sin análisis'].map(v => (
                     <button key={v} type="button" className={'bq-op' + (S.prio.includes(v) ? ' on' : '')} aria-pressed={S.prio.includes(v)}
                       onClick={() => parcharS({ prio: toggleEnArr(S.prio, v) })}>
-                      <span>{v}</span><i>{_n0BQ(conteoGrupo(v, 'prio', (c, x) => c.prio === x))}</i>
+                      <span>{v === 'Sin análisis' ? 'Sin prioridad' : v}</span><i>{_n0BQ(conteoGrupo(v, 'prio', (c, x) => c.prio === x))}</i>
                     </button>
                   ))}
                 </div>
@@ -1274,8 +1279,11 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
   }
   if (conPanel && !(accion && accion.texto === 'Asignar')) accion = null;
 
+  // Filas de V2 sin número: lo que traen en RADICADO («OPERATIVO», «QUEJA
+  // VERBAL»…) en minúscula y sin la etiqueta «V2», que no le dice nada al
+  // inspector (revisión de arquitectura 2026-10-27, punto 4).
   const ident = c.tipo === 'V2'
-    ? <span className="bq-v2" title="Fila migrada de V2 sin número de radicado"><span className="bq-tag">V2</span> <MarcarBQ texto={c.rad} q={q} /></span>
+    ? <span className="bq-v2" title="Caso sin número de radicado (migrado de la versión anterior)"><MarcarBQ texto={_etiquetaV2BQ(c.rad)} q={q} /></span>
     // Con expediente se ve «Exp. N» y el radicado pasa al title (2026-10-19).
     : (c.exp
       ? <span className="tv-rad exp-tag" title={'Radicado ' + c.rad}>Exp. {c.exp}</span>
@@ -1312,7 +1320,8 @@ function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, on
 // el texto (orden, persona que atiende, reiterado).
 function AvisoFilaBQ({ c, q, veTodo, donde }) {
   const partes = [];
-  if (c.estado === 'PENDIENTE' && veTodo && c.prio) {
+  // «Sin análisis» no se dice: la prioridad sale solo si existe.
+  if (c.estado === 'PENDIENTE' && veTodo && c.prio && c.prio !== 'Sin análisis') {
     const vencida = c.exceso != null && c.exceso > 0 && c.tier >= 2;
     partes.push(
       <b key="p" className={vencida ? 'tv-demora' : ''}>
