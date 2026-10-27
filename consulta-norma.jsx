@@ -502,7 +502,7 @@ function ConsultaNormaScreen() {
           mapa a la izquierda, resultados (alerta municipal, catastro y
           norma POT) a la derecha. Solo JSX movido, la lógica no cambia. */}
       <div className="page-title" style={{ marginBottom: 6 }}>Consultar norma POT</div>
-      <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 14 }}>
+      <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 14 }}>
         Busca por dirección, coordenadas, ficha, matrícula o código catastral; captura tu ubicación GPS o toca el mapa.
       </div>
 
@@ -510,7 +510,7 @@ function ConsultaNormaScreen() {
 
       {/* Campo unificado: dirección, coordenadas o dato catastral */}
       <div className="card" style={{ marginBottom: 12 }}>
-        <label htmlFor="cn-direccion-coordenadas" style={{ display: 'block', fontSize: 12, color: 'var(--texto-suave)', marginBottom: 4 }}>
+        <label htmlFor="cn-direccion-coordenadas" style={{ display: 'block', fontSize: 13, color: 'var(--texto-suave)', marginBottom: 4 }}>
           Dirección, coordenadas o dato catastral
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -524,7 +524,7 @@ function ConsultaNormaScreen() {
             style={{
               flex: 1, padding: '10px 12px', borderRadius: 8,
               border: '1px solid var(--borde)', background: 'var(--superficie)',
-              fontFamily: 'inherit', fontSize: 14,
+              fontFamily: 'inherit', fontSize: 15,
             }}
           />
           <button onClick={buscar} disabled={busyGeo} className="btn-principal"
@@ -532,7 +532,7 @@ function ConsultaNormaScreen() {
             {busyGeo ? '...' : 'Buscar'}
           </button>
         </div>
-        <div id="cn-busqueda-ayuda" style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
+        <div id="cn-busqueda-ayuda" style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 4 }}>
           Catastro: ficha, matrícula (con o sin 01N-) o código de 30 dígitos. Coordenadas: decimales, DMS, DMM o link de Google Maps.
         </div>
         <button type="button" onClick={capturarGPS} disabled={busyGPS} className="btn-accion"
@@ -543,7 +543,7 @@ function ConsultaNormaScreen() {
         </button>
         {/* Precisión solo se muestra tras una captura exitosa */}
         {!busyGPS && gpsAccCN != null && React.createElement('div', {
-          style: { textAlign: 'center', marginTop: 4, fontSize: 12, fontWeight: 600,
+          style: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: 600,
             color: gpsAccCN <= 10 ? 'var(--verde-dark)' : gpsAccCN <= 25 ? 'var(--cafe)' : 'var(--rojo)' }
         }, 'Precisión: ±' + gpsAccCN + 'm')}
       </div>
@@ -554,7 +554,7 @@ function ConsultaNormaScreen() {
         <div className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px 10px' }}>
             <div className="card-titulo" style={{ margin: 0 }}>{candidatos.titulo}</div>
-            <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 2 }}>
               Elige el predio que buscas.
             </div>
           </div>
@@ -592,13 +592,13 @@ function ConsultaNormaScreen() {
         {punto && (
           <div style={{
             padding: '8px 12px', borderTop: '1px solid var(--borde)',
-            fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--texto-suave)',
+            fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--texto-suave)',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
           }}>
             <span>{punto.lat.toFixed(6)}, {punto.lon.toFixed(6)}</span>
             <a href={`https://maps.google.com/?q=${punto.lat},${punto.lon}`} target="_blank"
               rel="noopener noreferrer"
-              style={{ color: 'var(--brand-accent)', textDecoration: 'none', fontSize: 11 }}>
+              style={{ color: 'var(--brand-accent)', textDecoration: 'none', fontSize: 13 }}>
               Abrir en Google Maps ↗
             </a>
           </div>
@@ -653,7 +653,7 @@ function ConsultaNormaScreen() {
               <span className="card-titulo" style={{ margin: 0 }}>Consulta Catastro</span>
               {catastro && catastro.length > 0 && (
                 <span style={{
-                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                  fontSize: 13, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                   background: 'var(--surface-2)', color: 'var(--ink-2)',
                 }}>{catastro.length} {catastro.length === 1 ? 'ficha' : 'fichas'}</span>
               )}
@@ -796,12 +796,12 @@ function CampoResultado({ label, valor, span }) {
       padding: '10px 12px', borderRadius: 8, background: 'var(--gris-bg)',
       border: '1px solid var(--borde)', gridColumn: span === 2 ? 'span 2' : undefined,
     }}>
-      <div style={{ fontSize: 10, color: 'var(--texto-suave)', textTransform: 'uppercase',
+      <div style={{ fontSize: 13, color: 'var(--texto-suave)', textTransform: 'uppercase',
         letterSpacing: 0.4, marginBottom: 4 }}>
         {label}
       </div>
       <div style={{
-        fontSize: 14, fontWeight: 600,
+        fontSize: 15, fontWeight: 600,
         color: positivo ? 'var(--rojo)' : negativo ? 'var(--verde)' : 'var(--texto)',
       }}>
         {valor}

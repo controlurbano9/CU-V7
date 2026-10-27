@@ -167,7 +167,7 @@ function ReiteradosVD({ f }) {
   const estiloChipPdf = {
     display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 8,
     background: 'var(--brand-bg)', color: 'var(--brand-ink)', border: '1px solid var(--brand-accent)',
-    fontSize: 10, fontWeight: 700, textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
+    fontSize: 13, fontWeight: 700, textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
   };
 
   return (
@@ -183,7 +183,7 @@ function ReiteradosVD({ f }) {
             {links[r]
               ? <a href={links[r]} target="_blank" rel="noopener noreferrer" style={estiloChipPdf}
                   title="Abrir el PDF de la PQR reiterada (pestaña nueva)"><Icon.File size={11} /> PQR</a>
-              : <span style={{ fontSize: 11, color: 'var(--texto-suave, #5C5142)' }}>
+              : <span style={{ fontSize: 13, color: 'var(--texto-suave, #5C5142)' }}>
                   {buscandoPdf ? 'Buscando PDF…' : 'PDF aún sin descargar'}
                 </span>}
             {esAdmin && (
@@ -202,28 +202,28 @@ function ReiteradosVD({ f }) {
           <div style={{ borderTop: lista.length ? '1px solid var(--borde, rgba(31,27,22,0.08))' : 'none',
             paddingTop: lista.length ? 10 : 0, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
             <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-              <label htmlFor="vd-rei-rad" style={{ display: 'block', fontSize: 11, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
+              <label htmlFor="vd-rei-rad" style={{ display: 'block', fontSize: 13, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
                 Radicado reiterado
               </label>
               <input id="vd-rei-rad" type="text" className="input-campo" inputMode="numeric" autoComplete="off"
                 placeholder="20261012345" value={rad} disabled={ocupado}
                 onChange={e => setRad(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && agregar()}
-                style={{ width: '100%', minHeight: 44, fontSize: 16, padding: 10 }} />
+                style={{ width: '100%', minHeight: 44, fontSize: 17, padding: 10 }} />
             </div>
             <div style={{ flex: '0 1 170px' }}>
-              <label htmlFor="vd-rei-fecha" style={{ display: 'block', fontSize: 11, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
+              <label htmlFor="vd-rei-fecha" style={{ display: 'block', fontSize: 13, marginBottom: 3, color: 'var(--texto-suave, #5C5142)' }}>
                 Fecha de ese radicado
               </label>
               <input id="vd-rei-fecha" type="date" className="input-campo" value={fecha} disabled={ocupado}
                 onChange={e => setFecha(e.target.value)}
-                style={{ width: '100%', minHeight: 44, fontSize: 16, padding: 10 }} />
+                style={{ width: '100%', minHeight: 44, fontSize: 17, padding: 10 }} />
             </div>
             <button type="button" className="btn-principal" onClick={agregar} disabled={!puedeAgregar}
-              style={{ margin: 0, width: 'auto', minHeight: 44, padding: '0 16px', fontSize: 14 }}>
+              style={{ margin: 0, width: 'auto', minHeight: 44, padding: '0 16px', fontSize: 15 }}>
               {ocupado ? '…' : 'Agregar'}
             </button>
-            <div style={{ flexBasis: '100%', fontSize: 11, color: 'var(--texto-suave, #5C5142)', lineHeight: 1.4 }}>
+            <div style={{ flexBasis: '100%', fontSize: 13, color: 'var(--texto-suave, #5C5142)', lineHeight: 1.4 }}>
               Solo si se radicó hasta 3 meses después del caso principal; pasado ese plazo es un
               radicado nuevo y se ingresa con su propia fila.
             </div>
@@ -231,7 +231,7 @@ function ReiteradosVD({ f }) {
         )}
 
         {msg && (
-          <div role={msg.error ? 'alert' : 'status'} style={{ fontSize: 12, lineHeight: 1.4,
+          <div role={msg.error ? 'alert' : 'status'} style={{ fontSize: 13, lineHeight: 1.4,
             color: msg.error ? 'var(--rojo, #B42318)' : 'var(--verde-dark, #1B6B3A)' }}>
             {msg.texto}
           </div>

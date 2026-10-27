@@ -141,7 +141,7 @@ function LoginScreen({ onLogin }) {
 
         {error && (
           <div role="alert" style={{
-            color: '#E89B85', fontSize: 12, textAlign: 'center', marginTop: 8,
+            color: '#E89B85', fontSize: 13, textAlign: 'center', marginTop: 8,
           }}>{error}</div>
         )}
       </form>

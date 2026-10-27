@@ -109,7 +109,7 @@ function InformeIframeUI({ params, onCerrar }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Informe de inspección</div>
           <div style={{
-            fontSize: 12, color: 'var(--ink-3)',
+            fontSize: 13, color: 'var(--ink-3)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {params.radicado || '—'} {params.direccion && '· ' + params.direccion}

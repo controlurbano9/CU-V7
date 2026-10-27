@@ -185,7 +185,7 @@ function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaD
     position: 'fixed', bottom: 'calc(' + bottom + 'px + env(safe-area-inset-bottom))', right: right, zIndex: 9000,
     background: completado ? 'var(--verde-bg)' : 'var(--superficie)',
     border: '1px solid ' + (completado ? 'rgba(107,122,58,0.30)' : 'var(--borde-med)'),
-    borderRadius: 10, padding: '8px 14px', fontSize: 11,
+    borderRadius: 10, padding: '8px 14px', fontSize: 13,
     boxShadow: 'var(--sombra-sm)', maxWidth: 240,
     transition: 'opacity 0.5s', opacity: 1,
     display: 'flex', flexDirection: 'column', gap: 4,
@@ -301,7 +301,7 @@ function OfflineColaBadge() {
     <div style={{
       position: 'fixed', top: 60, right: 12, zIndex: 8500,
       background: bgPrincipal, border: '1px solid ' + bordePrincipal,
-      borderRadius: 10, padding: '8px 12px', fontSize: 12,
+      borderRadius: 10, padding: '8px 12px', fontSize: 13,
       boxShadow: 'var(--sombra-sm)',
       maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 6,
     }}>
@@ -323,7 +323,7 @@ function OfflineColaBadge() {
       {detalleAbierto && (
         <>
           <div style={{
-            maxHeight: 220, overflowY: 'auto', fontSize: 11,
+            maxHeight: 220, overflowY: 'auto', fontSize: 13,
             background: 'var(--superficie)', borderRadius: 6,
             border: '1px solid rgba(184,135,58,0.30)',
             padding: 6,
@@ -346,13 +346,13 @@ function OfflineColaBadge() {
                       </span>
                     </span>
                     {it.intentos > 0 && (
-                      <span style={{ color: stuck ? 'var(--rojo)' : 'var(--cafe)', fontSize: 10 }}>
+                      <span style={{ color: stuck ? 'var(--rojo)' : 'var(--cafe)', fontSize: 13 }}>
                         ×{it.intentos}{stuck ? '/' + OFFLINE_MAX_INTENTOS : ''}
                       </span>
                     )}
                   </div>
                   {stuck && it.ultimoError && (
-                    <div style={{ fontSize: 10, color: 'var(--rojo)', fontStyle: 'italic',
+                    <div style={{ fontSize: 13, color: 'var(--rojo)', fontStyle: 'italic',
                                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                          title={it.ultimoError}>
                       {it.ultimoError}
@@ -372,7 +372,7 @@ function OfflineColaBadge() {
               flex: 1,
               background: navigator.onLine ? 'var(--amarillo)' : 'rgba(184,135,58,0.30)',
               color: 'var(--superficie)', border: 'none', borderRadius: 6,
-              padding: '6px 10px', fontSize: 11, fontWeight: 600,
+              padding: '6px 10px', fontSize: 13, fontWeight: 600,
               cursor: sincronizando || !navigator.onLine ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit',
             }}>
@@ -381,7 +381,7 @@ function OfflineColaBadge() {
             {atascados > 0 && (
               <button onClick={eliminarAtascados} style={{
                 background: 'var(--rojo)', color: 'var(--superficie)', border: 'none', borderRadius: 6,
-                padding: '6px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                padding: '6px 10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
               }} title="Elimina los items que llevan 5 intentos fallidos (error persistente del servidor)">
                 Eliminar atascados
               </button>

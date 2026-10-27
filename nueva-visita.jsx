@@ -795,7 +795,7 @@ function _MedidorActa({ texto, celda, onUsarInforme }) {
   const n = Math.abs(c.caracteres).toLocaleString('es-CO');
   const nombre = celda === 'conclusiones' ? 'las conclusiones' : 'la situación encontrada';
   return (
-    <div role="status" style={{ gridColumn: '1 / -1', fontSize: 12, marginTop: 2 }}>
+    <div role="status" style={{ gridColumn: '1 / -1', fontSize: 13, marginTop: 2 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
         <span style={{ color: 'var(--texto-suave)' }}>Espacio en el acta</span>
         <span style={{ marginLeft: 'auto', fontWeight: 600, color: c.cabe ? 'var(--texto)' : 'var(--rojo)' }}>
@@ -825,7 +825,7 @@ function _MedidorActa({ texto, celda, onUsarInforme }) {
               {onUsarInforme && (
                 <div style={{ marginTop: 6 }}>
                   <button type="button" className="btn-neutro" onClick={onUsarInforme}
-                    style={{ minHeight: 36, fontSize: 12, padding: '6px 12px' }}>Usar informe técnico</button>
+                    style={{ minHeight: 36, fontSize: 13, padding: '6px 12px' }}>Usar informe técnico</button>
                 </div>
               )}
           </div>
@@ -850,7 +850,7 @@ function _DocumentoVisita({ valor, onCambiar, bloqueado }) {
       <span className="input-label" id="nv-doc-label">Esta visita se documenta en</span>
       <_Radio value={valor} onChange={onCambiar} disabled={bloqueado}
         opciones={[{ v: 'ACTA', l: 'Acta de inspección ocular' }, { v: 'INFORME', l: 'Informe técnico' }]} />
-      <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 6 }}>
+      <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 6 }}>
         {bloqueado
           ? 'El acta ya se generó, así que la visita se documenta con acta.'
           : valor === 'INFORME'
@@ -1280,7 +1280,7 @@ function _Campo({ label, children, hint, fullWidth }) {
     <div className={'input-grupo' + (fullWidth ? ' full-width' : '')}>
       <label className="input-label" htmlFor={inputId || undefined}>{label}</label>
       {child}
-      {hint && <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
@@ -1288,7 +1288,7 @@ function _Campo({ label, children, hint, fullWidth }) {
 function _CheckNoAporta({ checked, onChange }) {
   return (
     <span style={{ float: 'right', fontWeight: 400 }}>
-      <label className="check-tap" style={{ fontSize: 12, gap: 6, padding: '2px 0' }}>
+      <label className="check-tap" style={{ fontSize: 13, gap: 6, padding: '2px 0' }}>
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
         No aporta
       </label>
@@ -1444,7 +1444,7 @@ function _ChipsContravencion({ value, onChange }) {
     <div>
       {CONTRAVENCION_GRUPOS.map(grupo => (
         <div key={grupo.literal} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--texto-suave)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--texto-suave)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
             {grupo.literal}
           </div>
           <div className="chips">
@@ -1890,7 +1890,7 @@ function _MapaGPS({ lat, lon, onMove, direccion, terrenosDir, conflicto }) {
       {/* Bajo el mapa, no encima: así el mapa arranca a la altura del panel
           «Predio» de la derecha. */}
       {gmListo === true && (
-        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 4 }}>
+        <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 4 }}>
           {tieneCoords
             ? 'Toca el mapa o arrastra el pin para corregir la ubicación'
             : (terrenosDir && terrenosDir.length)
@@ -1928,16 +1928,16 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
       <button type="button" className="btn-cabecera" style={{ padding: '10px 12px' }} onClick={() => setAbierta(!abierta)}>
         <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
               Ficha <span style={{ fontFamily: 'var(--font-mono)' }}>{r.ficha}</span>
-              <span style={{ fontWeight: 400, color: 'var(--texto-suave)', marginLeft: 8, fontSize: 11 }}>
+              <span style={{ fontWeight: 400, color: 'var(--texto-suave)', marginLeft: 8, fontSize: 13 }}>
                 · {r.destinacion || 'Sin destinación'}
               </span>
             </span>
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--texto-suave)' }}>
+            <span style={{ display: 'block', fontSize: 13, color: 'var(--texto-suave)' }}>
               {r.direccion || 'Sin dirección'}
             </span>
-            <span style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
+            <span style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
               <span style={{ color: 'var(--texto-suave)' }}>{r.esRazonSocial ? 'Razón social: ' : 'Titular: '}</span>
               <span style={{ fontWeight: 500 }}>{titular}</span>
             </span>
@@ -1950,7 +1950,7 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
       {abierta && (
         <div style={{
           borderTop: '1px solid var(--borde)', padding: '10px 12px',
-          background: 'var(--gris-bg)', fontSize: 11,
+          background: 'var(--gris-bg)', fontSize: 13,
           display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', alignItems: 'baseline',
         }}>
           <span style={{ color: 'var(--texto-suave)' }}>NPN:</span>
@@ -1964,7 +1964,7 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
               <span></span>
               <button type="button" onClick={(e) => { e.stopPropagation(); onSeleccionar(); }}
                 className="btn-principal secundario"
-                style={{ margin: 0, marginTop: 6, padding: '6px 14px', fontSize: 12, justifySelf: 'start' }}>
+                style={{ margin: 0, marginTop: 6, padding: '6px 14px', fontSize: 13, justifySelf: 'start' }}>
                 Usar esta ficha
               </button>
             </>
@@ -2019,13 +2019,13 @@ function _ListaFichasCatastrales({ fichas, onSeleccionar, maxAlto }) {
           style={{
             width: '100%', padding: '8px 12px', borderRadius: 8,
             border: '1px solid var(--borde)', background: 'var(--superficie)',
-            fontFamily: 'inherit', fontSize: 12, marginBottom: 8,
+            fontFamily: 'inherit', fontSize: 13, marginBottom: 8,
           }}
         />
       )}
       <div style={{ maxHeight: maxAlto || 420, overflowY: 'auto', paddingRight: 4 }}>
         {fichasFiltradas.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--texto-suave)', textAlign: 'center', padding: 20 }}>
+          <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', padding: 20 }}>
             Sin coincidencias para "{filtro}".
           </div>
         ) : (
@@ -2036,7 +2036,7 @@ function _ListaFichasCatastrales({ fichas, onSeleccionar, maxAlto }) {
         )}
       </div>
       {mostrarFiltro && filtroNorm && (
-        <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginTop: 6, textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 6, textAlign: 'center' }}>
           {fichasFiltradas.length} de {fichas.length} fichas
         </div>
       )}
@@ -2345,7 +2345,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
     cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600,
     color: 'var(--texto)', textAlign: 'left',
   };
-  const textoAyuda = { fontSize: 12, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2, lineHeight: 1.35 };
+  const textoAyuda = { fontSize: 13, fontWeight: 400, color: 'var(--texto-suave)', marginTop: 2, lineHeight: 1.35 };
   const QUE_SE_BUSCO = { orden: 'esa orden de policía', oficio: 'ese radicado de oficio', direccion: 'esa dirección' };
 
   const botonOficioNuevo = (
@@ -2367,10 +2367,10 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
         {/* PASO 1: buscar un caso existente o abrir uno de oficio */}
         {paso === 'inicio' && (
           <>
-            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>
               Nueva visita
             </div>
-            <label htmlFor="nv-buscar-caso" style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+            <label htmlFor="nv-buscar-caso" style={{ display: 'block', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
               Buscar un caso existente
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -2384,7 +2384,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                 onKeyDown={e => e.key === 'Enter' && buscarCaso()}
                 autoFocus
                 autoComplete="off"
-                style={{ flex: 1, minWidth: 0, fontSize: 16, padding: 12 }}
+                style={{ flex: 1, minWidth: 0, fontSize: 17, padding: 12 }}
               />
               <button type="button" onClick={() => buscarCaso()} disabled={buscando || !texto.trim()}
                 className="btn-principal" aria-label="Buscar"
@@ -2397,7 +2397,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
               (ej. <span className="mono">20251143210</span>, <span className="mono">2026-09-239</span> o <span className="mono">CL 50 # 32-10</span>).
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0', color: 'var(--texto-suave)', fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0', color: 'var(--texto-suave)', fontSize: 13 }}>
               <span style={{ flex: 1, height: 1, background: 'var(--borde)' }} />o
               <span style={{ flex: 1, height: 1, background: 'var(--borde)' }} />
             </div>
@@ -2412,7 +2412,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
         {/* Varios casos coinciden (orden sin año, dirección): elegir */}
         {paso === 'lista' && (
           <>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>
               {casos.length} casos coinciden
             </div>
             <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 14 }}>
@@ -2431,7 +2431,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                       {/^OFICIO-/.test(c.radicado) ? <Icon.Flag size={18} /> : <Icon.File size={18} />}
                     </span>
                     <div style={{ minWidth: 0 }}>
-                      <div className="mono" style={{ fontSize: 14 }}>{c.radicado}</div>
+                      <div className="mono" style={{ fontSize: 15 }}>{c.radicado}</div>
                       <div style={textoAyuda}>
                         Visita N°{u['N° VISITA'] || u['N VISITA'] || 1} · {est || '—'}
                         {dir ? ' · ' + dir : ''}{orden ? ' · Orden ' + orden : ''}
@@ -2456,7 +2456,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8, color: 'var(--texto-suave)' }}><Icon.Search size={36} /></div>
             {tipoBusq === 'radicado' ? (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
                   Radicado no encontrado
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 20 }}>
@@ -2465,7 +2465,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <button type="button" onClick={iniciarSinDatos}
-                    className="btn-principal" style={{ margin: 0, fontSize: 14 }}>
+                    className="btn-principal" style={{ margin: 0, fontSize: 15 }}>
                     Continuar sin datos precargados
                   </button>
                   <button type="button" onClick={volverABuscar} className="btn-neutro" style={{ width: '100%' }}>Buscar otro</button>
@@ -2473,7 +2473,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
               </>
             ) : (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
                   No hay casos con {QUE_SE_BUSCO[tipoBusq] || 'ese dato'}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--texto-suave)', textAlign: 'center', marginBottom: 20 }}>
@@ -2508,7 +2508,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
                     {esCompletada ? <Icon.Check size={36} /> : esIniciada ? <Icon.Refresh size={36} /> : <Icon.File size={36} />}
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>
                     Radicado <span className="mono">{resultado.radicado}</span>
                   </div>
                   {resultado.reiterado && (
@@ -3568,7 +3568,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           ))}
         </div>
         {lic.otros.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--texto-3)' }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--texto-3)' }}>
             Valor anterior: {lic.otros.join(', ')}
           </div>
         )}
@@ -4152,7 +4152,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         {dictando && (
-          <span style={{ fontSize: 12, color: 'var(--rojo)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 13, color: 'var(--rojo)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--rojo)',
               display: 'inline-block', animation: 'pulsar 1s infinite' }} />
             Grabando…
@@ -4195,12 +4195,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
           {/* Con informe el título de la sección ya lo dice. */}
           {esActa && <div style={{ fontWeight: 600, fontSize: 15 }}>Revisión del texto</div>}
-          <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginTop: 2 }}>
+          <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 2 }}>
             {esActa
               ? 'Revisa la situación encontrada y las conclusiones con todo lo diligenciado. Te propone una versión de cada una —y la conclusión, si no escribiste— y tú eliges.'
               : 'Revisa la situación encontrada con todo lo diligenciado. Te propone una versión y tú eliges. Las conclusiones se escriben en el informe.'}
           </div>
-          <div role="status" style={{ fontSize: 12, marginTop: 6, color: estado.tono, fontWeight: vigente ? 600 : 400 }}>
+          <div role="status" style={{ fontSize: 13, marginTop: 6, color: estado.tono, fontWeight: vigente ? 600 : 400 }}>
             {estado.t}
           </div>
         </div>
@@ -5881,7 +5881,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 : 'Sin cambios'}
             </div>
             <button onClick={guardar} disabled={guardando} aria-busy={guardando} className="btn-principal"
-              style={{ margin: 0, padding: '10px 12px', fontSize: 14 }}>
+              style={{ margin: 0, padding: '10px 12px', fontSize: 15 }}>
               {guardando ? 'Guardando…' : 'Guardar'}
             </button>
           </div>
@@ -5898,7 +5898,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             minHeight: 'var(--tap)',
-            fontSize: 14, fontWeight: 600, color: 'var(--ink)',
+            fontSize: 15, fontWeight: 600, color: 'var(--ink)',
           }}>
             <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }} aria-hidden="true">
               {d.esOficio ? <Icon.Flag size={16} /> : <Icon.File size={16} />}
@@ -5931,7 +5931,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                       minHeight: 'var(--tap)', padding: '10px 12px', borderRadius: 8,
                       background: 'var(--brand-bg)', color: 'var(--brand-ink)',
                       border: '1px solid var(--brand-accent)',
-                      fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                      fontSize: 13, fontWeight: 600, textDecoration: 'none',
                       whiteSpace: 'nowrap',
                     }}>
                     <Icon.File size={14} /> Ver PQR
@@ -5948,7 +5948,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Campo label="N° Orden de policía">
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600,
+                fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600,
                 color: 'var(--texto-suave)', whiteSpace: 'nowrap',
                 padding: '10px 8px', background: 'var(--slate-100)', borderRadius: '8px 0 0 8px',
                 border: '1px solid var(--borde-med)', borderRight: 'none',
@@ -6055,13 +6055,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 var bg = gpsAccuracy <= 8 ? 'var(--verde-bg)'   : gpsAccuracy <= 20 ? 'var(--amarillo-bg)' : 'var(--rojo-bg)';
                 var label = gpsAccuracy <= 8 ? 'Excelente' : gpsAccuracy <= 20 ? 'Buena' : gpsAccuracy <= 50 ? 'Regular' : 'Baja';
                 return React.createElement('span', {
-                  style: { marginLeft: 8, fontSize: 12, fontWeight: 600, color: fg,
+                  style: { marginLeft: 8, fontSize: 13, fontWeight: 600, color: fg,
                     padding: '1px 7px', borderRadius: 8, background: bg }
                 }, '±' + gpsAccuracy + 'm · ' + label);
               })()}
             </div>
             {busyGeo && gpsAccuracy != null && React.createElement('div', {
-              style: { fontSize: 11, color: 'var(--texto-suave)', marginTop: 2 }
+              style: { fontSize: 13, color: 'var(--texto-suave)', marginTop: 2 }
             }, 'Refinando señal GPS… Puedes aceptar la ubicación actual o esperar mayor precisión.')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
@@ -6408,7 +6408,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                   {_chipsAActuales.length > 0 && _chipsAActuales.some(v => !_vSugeridos.includes(v)) && (
                     <div style={{
                       padding: '6px 10px', borderRadius: 6, marginBottom: 8,
-                      background: 'var(--rojo-bg)', color: 'var(--brand-ink)', fontSize: 12,
+                      background: 'var(--rojo-bg)', color: 'var(--brand-ink)', fontSize: 13,
                       border: '1px solid var(--rojo)',
                     }}>
                       Actualmente marcaste: {_chipsAActuales.join(', ')}.
@@ -6480,7 +6480,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               <_Campo label="N° Orden de policía">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600,
+                    fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600,
                     color: 'var(--texto-suave)', whiteSpace: 'nowrap',
                     padding: '10px 8px', background: 'var(--slate-100)', borderRadius: '8px 0 0 8px',
                     border: '1px solid var(--borde-med)', borderRight: 'none',
@@ -7196,7 +7196,7 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
           minHeight: 'var(--tap)', padding: '14px 16px',
           border: '1px solid var(--brand)', borderRadius: 'var(--r)',
           textAlign: 'center', cursor: subiendo ? 'wait' : 'pointer',
-          background: 'var(--brand-bg)', fontSize: 14, fontWeight: 600,
+          background: 'var(--brand-bg)', fontSize: 15, fontWeight: 600,
           color: 'var(--brand-ink)', opacity: subiendo ? 0.55 : 1,
         }}>
           {subiendo

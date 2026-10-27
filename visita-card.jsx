@@ -190,7 +190,7 @@ function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
   // que el co-asignado no pierde acceso a la información.
   if (!puedeDiligenciar(f)) {
     return (
-      <span style={{ fontSize: 12, color: 'var(--texto-suave)', alignSelf: 'center' }}>
+      <span style={{ fontSize: 13, color: 'var(--texto-suave)', alignSelf: 'center' }}>
         Diligencia {_primerVisitador(f)}
       </span>
     );
@@ -205,7 +205,7 @@ function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
     <button type="button" onClick={() => onContinuar(f._idx, f)} disabled={busy}
       className="btn-principal secundario"
       style={esSm
-        ? { flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12 }
+        ? { flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }
         : { margin: 0, padding: '10px 14px', fontSize: 13 }
       }>
       <Icon.Play size={esSm ? 14 : 16} /> {texto}
@@ -224,7 +224,7 @@ function BotonVerDatos({ f }) {
     <button type="button"
       onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}
       className="btn-principal secundario"
-      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12 }}>
+      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
       <Icon.Eye size={14} /> Ver datos
     </button>
   );
@@ -290,7 +290,7 @@ function BotonMapaVisita({ f, variante, sinIcono }) {
   return (
     <a className="btn-principal secundario" href={link} target="_blank" rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()} title={titulo}
-      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12,
+      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         textDecoration: 'none' }}>
       <Icon.Pin size={14} /> Cómo llegar
@@ -338,7 +338,7 @@ function BotonesEntregables({ f }) {
   const btnSty = {
     background: 'var(--gris-bg)', color: 'var(--texto)',
     border: '1px solid var(--borde)', borderRadius: 10,
-    padding: '8px 12px', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+    padding: '8px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', textDecoration: 'none', display: 'inline-flex',
     alignItems: 'center', gap: 6, flex: 1, minWidth: 100,
     justifyContent: 'center',
@@ -476,7 +476,7 @@ function BotonesAdminVisita({ f, esAdmin, busy, abierto,
       background: 'var(--gris-bg)', color: 'var(--texto)',
       border: '1px solid var(--borde)', borderRadius: 10,
       padding: '8px 12px',
-      fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+      fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
       cursor: busy ? 'not-allowed' : 'pointer',
     }, extra || {});
   }
@@ -508,7 +508,7 @@ function BotonesAdminVisita({ f, esAdmin, busy, abierto,
         <button type="button"
           onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])} disabled={busy}
           className="btn-principal secundario"
-          style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 12 }}>
+          style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
           <Icon.Check size={14} /> Completar
         </button>
       )}
@@ -578,7 +578,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
       marginTop: 10, padding: 10, background: 'var(--gris-bg)', borderRadius: 8,
       display: 'flex', flexDirection: 'column', gap: 6,
     }}>
-      <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 2 }}>
+      <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 2 }}>
         {esNueva ? 'Crear nueva visita y asignar a:'
           : est === 'INICIADO' ? 'Reasignar (conserva el avance) a:'
           : 'Asignar a:'}
@@ -618,7 +618,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
             cursor: busy ? 'not-allowed' : 'pointer',
           }}>
           {i.nombre}
-          {i.cargo && <span style={{ color: 'var(--texto-suave)', fontSize: 11 }}> · {i.cargo}</span>}
+          {i.cargo && <span style={{ color: 'var(--texto-suave)', fontSize: 13 }}> · {i.cargo}</span>}
         </button>
       ))}
     </div>

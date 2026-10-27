@@ -561,7 +561,7 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{titulo}</div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>Arrastre las esquinas a los bordes de la hoja</div>
+          <div style={{ fontSize: 13, opacity: 0.75 }}>Arrastre las esquinas a los bordes de la hoja</div>
         </div>
       </div>
 
@@ -925,7 +925,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
           {pendiente && (
             <div style={{
               marginBottom: 12, padding: '10px 12px', background: 'var(--amarillo-bg)',
-              border: '1px dashed var(--amarillo)', borderRadius: 8, fontSize: 12,
+              border: '1px dashed var(--amarillo)', borderRadius: 8, fontSize: 13,
               display: 'flex', alignItems: 'center', gap: 8, color: 'var(--cafe)',
             }}>
               <Icon.ArrowUp size={14} />
@@ -934,12 +934,12 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
           )}
 
           {sesionAbierta && (<>
-            <div style={{ fontSize: 11, color: 'var(--texto-suave)', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 8 }}>
               Formato oficio (8.5 × 13"). Tome la hoja entera sobre una superficie oscura; con ✂ ajusta el recorte.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--texto-suave)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--texto-suave)' }}>
                 {paginas.length} página(s) — revise antes de subir
               </div>
               {paginas.map(function (p, i) {
@@ -955,9 +955,9 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
                       width: 46, height: 60, objectFit: 'contain',
                       borderRadius: 4, border: '1px solid var(--borde-med)', background: '#fff',
                     }} />
-                    <div style={{ flex: '1 1 90px', fontSize: 12, fontWeight: 600 }}>
+                    <div style={{ flex: '1 1 90px', fontSize: 13, fontWeight: 600 }}>
                       Página {i + 1}
-                      <div style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 11 }}>
+                      <div style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 13 }}>
                         {p.cuad ? 'Recortada' : 'Foto completa'}
                       </div>
                     </div>
