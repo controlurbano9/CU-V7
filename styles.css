@@ -5036,3 +5036,13 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 @media (hover: hover) and (pointer: fine) {
   .nv-entregables .ent-btn:hover { background: var(--brand-ink); }
 }
+
+/* Medición de la TASK 03 (Claude, 2026-10-28): el «—» de los días sin visitas
+   en la tira del celular quedaba a 1,16:1 (--surface-3); y el nombre del
+   inspector para reasignar (botón de texto, 18 px) amplía su área de toque a
+   44 px sin cambiar cómo se ve. */
+.sv-dia-num.vacio { color: var(--ink-4); }
+.tv-meta .sv-insp { position: relative; }
+@media (pointer: coarse) {
+  .tv-meta .sv-insp::after { content: ''; position: absolute; left: -4px; right: -4px; top: -13px; bottom: -13px; }
+}
