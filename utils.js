@@ -4433,6 +4433,17 @@ function diasConAudiencias(filas, cupos, desdeTxt, opts) {
   }).sort(function (a, b) { return parsearFecha(a) - parsearFecha(b); });
 }
 
+// Vista «Agenda» de Audiencias (arquitectura 2026-10-27, punto 5): une «Hoy» y
+// «Programadas». De `desdeTxt` en adelante, un grupo por día con audiencias
+// (cupos del bloque + FECHA CITACION de las visitas, mismas reglas de
+// audienciasDelDia: una visita en las dos fuentes sale una vez). Si hoy no
+// hay, el primer grupo es el siguiente día con audiencias.
+function agendaAudienciasDias(filas, cupos, desdeTxt, opts) {
+  return diasConAudiencias(filas, cupos, desdeTxt, opts).map(function (f) {
+    return { fecha: f, citas: audienciasDelDia(filas, cupos, f, opts) };
+  }).filter(function (g) { return g.citas.length > 0; });
+}
+
 // ── Orden del día en la Semana (2026-10-22) ──────────────────────
 // ORDEN_DIA = 'DD/MM/YYYY#n': el orden que el admin o el inspector le dieron a
 // la visita ese día. Solo vale para ese día: si la visita cambia de día, se ignora.
@@ -4672,6 +4683,7 @@ var _cuUtilsExports = {
   tieneVisitasPropias: tieneVisitasPropias,
   pendientesMisVisitas: pendientesMisVisitas,
   atencionInicio: atencionInicio,
+  agendaAudienciasDias: agendaAudienciasDias,
   citaVisitaTexto: citaVisitaTexto,
   tarjetaVisita: tarjetaVisita,
   nombreCortoVisita: nombreCortoVisita,

@@ -9,7 +9,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { audienciasDelDia, diasConAudiencias } = require('../utils.js');
+const { audienciasDelDia, diasConAudiencias, agendaAudienciasDias } = require('../utils.js');
 
 // Fila de BD VISITAS con cita manual (FECHA CITACION).
 function visita(extra) {
@@ -115,4 +115,22 @@ test('diasConAudiencias: sin repetidos, de hoy en adelante, con los filtros', ()
   assert.deepEqual(
     diasConAudiencias(filas, cupos, '05/04/2027', { soloDe: 'ALEJANDRO HERNANDEZ' }),
     ['05/04/2027']);
+});
+
+// ── agendaAudienciasDias: vista «Agenda» (arquitectura 2026-10-27) ──
+
+test('agendaAudienciasDias: un grupo por día desde la fecha pedida, en orden; sin hoy arranca en el siguiente', () => {
+  const filas = [visita({ RADICADO: '20272041228', 'FECHA CITACION': '07/04/2027 · 2:00 p. m.' })];
+  const cupos = [
+    cupo({ fecha: '05/04/2027', radicado: '20272041228' }),
+    cupo({ idCupo: 'otro', fecha: '01/04/2027', radicado: '20272040001' }),
+  ];
+  const g = agendaAudienciasDias(filas, cupos, '02/04/2027', {});
+  assert.deepEqual(g.map(x => x.fecha), ['05/04/2027', '07/04/2027']);
+  assert.equal(g[0].citas.length, 1);
+  assert.equal(g[0].citas[0].fuente, 'bloque');
+});
+
+test('agendaAudienciasDias: sin audiencias por delante, lista vacía', () => {
+  assert.deepEqual(agendaAudienciasDias([], [cupo({ fecha: '01/04/2027' })], '02/04/2027', {}), []);
 });
