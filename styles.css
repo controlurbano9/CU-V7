@@ -4731,3 +4731,7 @@ tr.clic:hover td { background: var(--surface-2); }
   .form-grid-2col > :not(.input-grupo) { grid-column: 1 / -1; }
 }
 .nv-pedir-cita { margin-top: var(--s-2); }
+.nv-falta-n {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: var(--r-full);
+  background: var(--red-bg); color: var(--red); font-weight: 600; text-align: center; text-decoration: none;
+}

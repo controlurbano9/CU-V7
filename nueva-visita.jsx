@@ -776,6 +776,19 @@ var SECCIONES_SENAL = {
   R16: ['Tipificación y medidas'],
   area: ['Tipificación y medidas'],
 };
+// Nombre corto de cada sección para la barra «Falta en:» de la cabecera: con
+// los títulos completos la barra ocupaba dos renglones a 1440 px.
+var _SECCION_CORTA = {
+  'Identificación del caso': 'Identificación',
+  'Ubicación del inmueble': 'Ubicación',
+  'Persona que atiende': 'Persona que atiende',
+  'Características de la edificación': 'Edificación',
+  'Verificación documental': 'Licencia',
+  'Descripción de la situación encontrada': 'Descripción',
+  'Tipificación y medidas': 'Tipificación',
+  'Funcionarios que realizan la inspección': 'Funcionarios',
+  'Conclusiones y revisión': 'Conclusiones',
+};
 function _irASeccion(titulo) {
   var el = document.querySelector('[data-seccion="' + titulo + '"]');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5903,15 +5916,22 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             falta se nombra aquí, en la cabecera fija, y cada nombre lleva a su
             sección. Desde el primer guardado; antes falta todo y la lista sería
             ruido. Los mismos faltantes de _evaluarFormulario (sin duplicar
-            reglas). */}
+            reglas). Por SECCIÓN con su número, no campo por campo (decisión
+            del usuario: con 20 campos la barra era una lista que nadie lee);
+            los campos van en el title y la sección los muestra. */}
         {filaEditando != null && evaluacion.faltan.length > 0 && (
-          <div className="nv-falta" role="navigation" aria-label="Campos que faltan">
-            <b>Falta:</b>
-            {evaluacion.faltan.slice(0, 8).map((fa, i) => (
-              <button key={i} type="button" className="nv-falta-ir"
-                onClick={() => _irASeccion(fa.seccion)}>{fa.nombre.replace(/\s*\([^)]*\)\s*$/, '')}</button>
+          <div className="nv-falta" role="navigation" aria-label="Secciones con campos que faltan">
+            <b>Falta en:</b>
+            {evaluacion.faltan.reduce((acc, fa) => {
+              const g = acc.find(x => x.seccion === fa.seccion);
+              if (g) g.campos.push(fa.nombre); else acc.push({ seccion: fa.seccion, campos: [fa.nombre] });
+              return acc;
+            }, []).map(g => (
+              <button key={g.seccion} type="button" className="nv-falta-ir"
+                title={g.campos.join(' · ')} onClick={() => _irASeccion(g.seccion)}>
+                {_SECCION_CORTA[g.seccion] || g.seccion} <span className="nv-falta-n">{g.campos.length}</span>
+              </button>
             ))}
-            {evaluacion.faltan.length > 8 && <span className="nv-falta-mas">y {evaluacion.faltan.length - 8} más</span>}
           </div>
         )}
       </div>
