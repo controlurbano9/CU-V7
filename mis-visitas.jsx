@@ -48,8 +48,7 @@ const _mesNombreMV = (delta) => {
 };
 const _plural = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
 // ¿Pasó el umbral de demora? Mismo umbral de las alertas de Inicio
-// (DIAS_ALERTA_DEMORA, home.jsx): una visita no puede estar «en rojo» aquí y
-// no alertar allá.
+// (DIAS_ALERTA_DEMORA, home.jsx). Lo usa la ficha (ficha-visita.jsx).
 const _demoradaMV = (dias) => dias != null && dias >= DIAS_ALERTA_DEMORA;
 
 function MisVisitasScreen({ usuario, onContinuar }) {
@@ -264,111 +263,32 @@ function MisVisitasScreen({ usuario, onContinuar }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Fila de la lista. Mismo código de estado de la Semana y de Alertas: barra
-// de 3 px (ocre = por hacer, azul = en curso, olivo = completada), sin
-// etiqueta — el grupo ya nombra el estado.
-// Un solo botón lleno por fila. Con panel, la fila entera elige la visita y
-// «Cómo llegar» / «Ver datos» viven allá; sin panel se quedan aquí, con
-// texto (en campo el icono solo se descubre peor y no hay tooltip).
+// Fila de la lista = tarjeta única (visita-card.jsx). Tarjeta en el celular;
+// con panel (≥1200) es renglón y tocarla elige la visita en vez de abrir la
+// ficha aparte. «Ver datos», el chip PQR y los enlaces de acta e informe se
+// fueron a la ficha (arquitectura 2026-10-27, decisión 1).
+// Lo propio de Mis visitas va en `aviso`: quién la lleva cuando la diligencia
+// otro (regla del diligenciador) y, para admin y supervisor, la prioridad alta.
 // ═══════════════════════════════════════════════════════════════
 function FilaMV({ x, tipo, conPanel, elegida, verPrioridad, onElegir, onContinuar }) {
   const f = x.f;
-  const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
-  const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
-  const linkActa = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
-  const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
-  const verDatos = () => window.abrirVisitaDetail && window.abrirVisitaDetail(f);
-  const sinPropagar = (fn) => (e) => { e.stopPropagation(); fn(); };
-  const conCta = tipo !== 'hecha' && !!onContinuar;
-
-  return (
-    <div className={'mv-fila mv-' + tipo + (elegida ? ' sel' : '')}
-      onClick={conPanel ? () => onElegir(f) : undefined}>
-      {tipo === 'hecha' && <span className="mv-fecha">{_fechaCortaMV(x.fecha)}</span>}
-      <div className="mv-txt">
-        {/* La dirección es el control de teclado de la fila: con panel elige
-            la visita, sin panel abre sus datos. */}
-        <button type="button" className="mv-dir" title={dir}
-          aria-pressed={conPanel ? elegida : undefined}
-          onClick={sinPropagar(conPanel ? () => onElegir(f) : verDatos)}>
-          {puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</button>
-        <div className="vc-ident">
-          {/* Con expediente se ve «Exp. N» y el radicado pasa al title (2026-10-19). */}
-          <span className={'vc-rad' + (expedienteDe(f) ? ' exp-tag' : '')} title={identificadorVisita(f).secundario || undefined}>
-            {identificadorVisita(f).principal || '—'}
-          </span>
-          {!conPanel && <BotonPdfRadicado f={f} />}
-          {barrio && <><span className="vc-sep">·</span><span>{barrio}</span></>}
-          {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
-        </div>
-        <NotaFilaMV x={x} tipo={tipo} verPrioridad={verPrioridad} />
-      </div>
-
-      {(conCta || !conPanel) && (
-        <div className="mv-acc">
-          {conCta && (puedeDiligenciar(f)
-            ? <button type="button" className="vc-btn vc-btn-cta"
-                onClick={sinPropagar(() => onContinuar(f._idx, f))}>
-                <Icon.Play size={14} /> {tipo === 'curso' ? 'Continuar' : 'Iniciar'}
-              </button>
-            // Regla del diligenciador: al co-asignado se le dice quién la lleva.
-            : <span className="vc-dilig">La lleva {primerVisitador(visitadoresBD(f))}</span>)}
-          {!conPanel && (
-            <>
-              {tipo !== 'hecha' && <BotonMapaVisita f={f} variante="vc" />}
-              <button type="button" className="vc-btn" onClick={verDatos}>Ver datos</button>
-              {tipo === 'hecha' && linkActa && <a className="vc-btn" href={linkActa} target="_blank" rel="noopener noreferrer">Acta</a>}
-              {tipo === 'hecha' && linkInforme && <a className="vc-btn" href={linkInforme} target="_blank" rel="noopener noreferrer">Informe</a>}
-            </>
-          )}
-        </div>
-      )}
+  const ajena = tipo !== 'hecha' && !puedeDiligenciar(f);
+  const alta = tipo === 'hacer' && verPrioridad && /CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''));
+  const aviso = (ajena || alta) ? (
+    <div className="tv-meta">
+      {ajena && <>La lleva {titleCaseNombre(primerVisitador(visitadoresBD(f)))}</>}
+      {ajena && alta && ' · '}
+      {alta && <b>Prioridad alta</b>}
     </div>
+  ) : null;
+  return (
+    <TarjetaVisita f={f} densidad={conPanel ? 'renglon' : 'tarjeta'}
+      sel={conPanel ? elegida : undefined}
+      onAbrir={conPanel ? () => onElegir(f) : undefined}
+      onAccion={onContinuar} aviso={aviso} />
   );
 }
 
-// «29 sep»: el mes ya lo nombra el grupo, pero la fila se lee sola al filtrar.
-function _fechaCortaMV(d) {
-  return d ? d.getDate() + ' ' + _MESES_ES[d.getMonth()].slice(0, 3) : '—';
-}
-
-// Tercer renglón de la fila: por qué está en la lista.
-//   por hacer   → hace cuánto está asignada (rojo desde el umbral de demora)
-//   en curso    → qué le falta y hace cuánto se visitó
-//   completada  → solo lo que quedó sin generar; si está entera, nada
-function NotaFilaMV({ x, tipo, verPrioridad }) {
-  const f = x.f;
-  const partes = [];
-  if (tipo === 'hacer') {
-    const fAsig = formatearFecha(f['FECHA ASIGNACION VISITA'] || '');
-    if (x.dias > 0) {
-      partes.push(<b key="d" className={_demoradaMV(x.dias) ? 'demora' : ''}>Asignada hace {_plural(x.dias, 'día', 'días')}</b>);
-    } else if (fAsig) {
-      partes.push(<span key="d">Asignada {fAsig === hoyDDMMAAAA() ? 'hoy' : 'el ' + fAsig}</span>);
-    }
-    const fRad = formatearFecha(f['FECHA RADICADO'] || '');
-    if (fRad) partes.push(<span key="r">radicada {fRad}</span>);
-    if (verPrioridad && /CR[IÍ]TICO|ALTO/i.test(String(f['PRIORIDAD'] || ''))) partes.push(<b key="p">prioridad alta</b>);
-  } else if (tipo === 'curso') {
-    partes.push(x.faltan.length
-      ? <b key="f" className="falta">Falta: {x.faltan.join(' · ')}</b>
-      : <b key="f" className="bq-lista-cerrar">✓ Lista para cerrar</b>);
-    const fVis = formatearFecha(f['FECHA DE VISITA'] || '');
-    if (x.dias > 0) {
-      partes.push(<b key="d" className={_demoradaMV(x.dias) ? 'demora' : ''}>visitada hace {_plural(x.dias, 'día', 'días')}</b>);
-    } else if (fVis) {
-      partes.push(<span key="d">visitada {fVis === hoyDDMMAAAA() ? 'hoy' : 'el ' + fVis}</span>);
-    }
-  } else {
-    if (!(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'])) partes.push(<span key="a">Sin acta</span>);
-  }
-  if (!partes.length) return null;
-  return (
-    <div className="mv-nota">
-      {partes.map((p, i) => <React.Fragment key={i}>{i > 0 && ' · '}{p}</React.Fragment>)}
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════════
 // Piezas del panel que FichaVisita (ficha-visita.jsx) reutiliza. El panel

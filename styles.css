@@ -4558,3 +4558,71 @@ tr.clic:hover td { background: var(--surface-2); }
   .rfm-toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) { .rfm-dot.run { animation: none; } }
+
+/* ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──
+   TarjetaVisita (visita-card.jsx) en Semana, Alertas, Mis visitas y Buscar.
+   Estado = barra lateral de 3 px + palabra (el color solo no basta). Sin
+   border-radius: la esquina redondeada contra un borde de un solo lado se ve
+   rota. La completada va atenuada, como en la Semana. */
+.tv {
+  position: relative; display: flex; align-items: flex-start; gap: var(--s-3);
+  margin: 0 0 var(--s-2); padding: var(--s-3);
+  background: var(--surface); border-left: 3px solid var(--line-2);
+  cursor: pointer;
+}
+.tv-e-pendiente  { border-left-color: var(--ink-4); }
+.tv-e-asignado   { border-left-color: var(--amber); }
+.tv-e-iniciado   { border-left-color: var(--info); }
+.tv-e-completado { border-left-color: var(--green); opacity: .62; }
+.tv-e-cerrado    { border-left-color: var(--line-2); }
+.tv.sel { box-shadow: inset 0 0 0 2px var(--valla); }
+.tv-txt { flex: 1; min-width: 0; }
+.tv-est { font-size: var(--fs-1); color: var(--ink-3); }
+.tv-est b { color: var(--ink); font-weight: 600; }
+.tv-dir {
+  display: block; padding: 0; border: 0; background: none; cursor: pointer;
+  font: 600 var(--fs-2)/1.3 var(--font-sans); color: var(--ink); text-align: left;
+  overflow-wrap: anywhere;
+}
+.tv-tarjeta .tv-dir { font-size: var(--fs-3); margin: 2px 0; }
+.tv-meta { font-size: var(--fs-1); color: var(--ink-3); line-height: 1.4; }
+.tv-rad { font-variant-numeric: tabular-nums; }
+.tv-falta { margin-top: 2px; font-size: var(--fs-1); font-weight: 600; color: var(--red); }
+.tv-demora { color: var(--red); font-weight: 600; }
+.tv-acc { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
+.tv-btn {
+  min-height: 36px; padding: 0 var(--s-4); border: 0; border-radius: var(--r-ctl);
+  background: var(--brand); color: var(--surface); cursor: pointer;
+  font: 600 var(--fs-1) var(--font-sans); white-space: nowrap;
+}
+.tv-btn:hover { background: var(--brand-ink); }
+.tv-n {
+  position: absolute; top: 6px; right: 7px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--surface-2); color: var(--ink-2);
+  font: 600 var(--fs-1)/18px var(--font-sans); text-align: center;
+}
+.tv:has(.tv-n) .tv-dir { padding-right: 24px; }
+.tv-pie { flex-basis: 100%; }
+/* Tarjeta (celular): la acción baja a su renglón, a 44 px. */
+.tv-tarjeta { flex-wrap: wrap; }
+.tv-tarjeta .tv-acc { width: 100%; }
+.tv-tarjeta .tv-btn { min-height: 44px; padding: 0 var(--s-5); font-size: var(--fs-2); }
+.tv-tarjeta .tv-acc .sv-icono { width: 44px; height: 44px; margin-left: auto; }
+/* En las columnas de la Semana no cabe texto y acción lado a lado. */
+.sv .tv { flex-wrap: wrap; gap: var(--s-1); padding: 7px 8px; margin-bottom: 5px; }
+.sv .tv-dir { font-size: var(--fs-1); }
+.sv .tv-acc { width: 100%; }
+.sv .tv-btn { min-height: 28px; padding: 0 10px; }
+.sv .tv[draggable="true"] { cursor: grab; }
+/* Celular: el renglón (Alertas, Buscar) baja la acción a su propio renglón,
+   como la tarjeta; al lado del texto lo apretaba a media pantalla. */
+@media (max-width: 599px) {
+  .tv-renglon { flex-wrap: wrap; }
+  .tv-renglon .tv-acc { width: 100%; }
+  .tv-renglon .tv-acc .sv-icono { margin-left: auto; }
+}
+/* Táctil: 44 px también dentro de la Semana (gana a la regla de arriba). */
+@media (pointer: coarse) {
+  .tv .tv-btn { min-height: 44px; }
+  .tv .tv-acc .sv-icono { width: 44px; height: 44px; }
+}

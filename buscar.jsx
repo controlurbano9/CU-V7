@@ -91,7 +91,6 @@ function _normBQ(s) {
   return t.replace(/\s+/g, ' ').trim();
 }
 const _n0BQ = n => Number(n || 0).toLocaleString('es-CO');
-const _pluralBQ = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
 const _isoBQ = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const _iniMesBQ = (y, m) => new Date(y, m, 1);
 const _finMesBQ = (y, m) => new Date(y, m + 1, 0);
@@ -481,7 +480,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
         const j = Math.max(0, Math.min(lista.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
         if (lista[j] && j !== i) {
           setSelClave(lista[j].clave);
-          const f = document.querySelector('.bq-fila.sel');
+          const f = document.querySelector('.tv.sel');
           f && f.scrollIntoView({ block: 'nearest' });
         }
       }
@@ -1253,129 +1252,83 @@ function VistaNuevaBQ({ onGuardar, onCancelar }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Fila de la lista: un caso por fila, con el código de Mis visitas
-// (barra de estado, un solo botón lleno, demora en rojo).
+// Fila de la lista = tarjeta única en renglón (visita-card.jsx), un caso por
+// fila. Lo propio de Buscar entra por las props de la tarjeta:
+//   ident / ubic  con lo buscado resaltado (MarcarBQ), V2, expediente y
+//                 «sin POT»
+//   radicada      la fecha de radicado (en Buscar sí ordena)
+//   accion        «Asignar» para el admin en pendientes; con panel,
+//                 Iniciar/Continuar viven solo en la ficha (decisión del
+//                 usuario 2026-10-13: salía dos veces)
+//   aviso         prioridad de la pendiente, «Lista para cerrar» y en qué
+//                 campo no evidente calzó lo buscado
+// El inspector sale siempre: la lista es de todos.
 // ═══════════════════════════════════════════════════════════════
 function FilaBQ({ c, q, exacta, sel, conPanel, esAdmin, yo, veTodo, onElegir, onContinuar, onVerDatos, onAsignarFila }) {
   const f = c.f;
-  const estCls = { PENDIENTE: 'bq-pend', ASIGNADO: '', INICIADO: 'mv-curso', COMPLETADO: 'mv-hecha', CERRADO: 'bq-cerr' }[c.estado] || '';
   const m = q ? coincideBuscar(c, q) : '';
 
-  // CTA único por estado: Asignar (admin, pendiente), Iniciar o Continuar.
-  // Con panel, Iniciar/Continuar viven solo en la ficha (decisión del usuario
-  // 2026-10-13: salía dos veces); «Asignar» se queda como atajo del admin.
-  let cta = null;
+  let accion;   // undefined = la de la tarjeta (Iniciar/Continuar si puede)
   if (c.estado === 'PENDIENTE') {
-    cta = esAdmin ? { t: 'Asignar', fn: () => onAsignarFila(c) } : { t: 'Iniciar', fn: () => onContinuar(f._idx, f) };
-  } else if ((c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && puedeDiligenciar(f)) {
-    cta = { t: c.estado === 'INICIADO' ? 'Continuar' : 'Iniciar', fn: () => onContinuar(f._idx, f) };
+    accion = esAdmin ? { texto: 'Asignar', fn: () => onAsignarFila(c) } : { texto: 'Iniciar', fn: () => onContinuar(f._idx, f) };
   }
-  if (conPanel && cta && cta.t !== 'Asignar') cta = null;
-  const sinPropagar = fn => e => { e.stopPropagation(); fn(); };
+  if (conPanel && !(accion && accion.texto === 'Asignar')) accion = null;
+
+  const ident = c.tipo === 'V2'
+    ? <span className="bq-v2" title="Fila migrada de V2 sin número de radicado"><span className="bq-tag">V2</span> <MarcarBQ texto={c.rad} q={q} /></span>
+    // Con expediente se ve «Exp. N» y el radicado pasa al title (2026-10-19).
+    : (c.exp
+      ? <span className="tv-rad exp-tag" title={'Radicado ' + c.rad}>Exp. {c.exp}</span>
+      : <span className="tv-rad"><MarcarBQ texto={c.rad} q={q} /></span>);
+  const lugar = c.rural
+    ? <>Vda. <MarcarBQ texto={c.vereda} q={q} /></>
+    : c.barrio
+      ? <MarcarBQ texto={c.barrio} q={q} />
+      : c.barrioTxt
+        ? (c.pot
+          ? <span title="El nombre escrito no calza con ningún barrio del POT"><MarcarBQ texto={c.barrioTxt} q={q} /> <span className="bq-tag">sin POT</span></span>
+          /* Sin barrios-mapa.json (sin red ni caché) no se sabe: no marcar «sin POT». */
+          : <MarcarBQ texto={c.barrioTxt} q={q} />)
+        : null;
+  const ubic = (lugar || (!c.rural && c.comuna))
+    ? <span>{lugar}{lugar && !c.rural && c.comuna && ' · '}{!c.rural && c.comuna && 'C' + c.comuna}</span>
+    : null;
 
   return (
     <React.Fragment>
       {exacta && <div className="bq-exacta">Coincidencia exacta</div>}
-      <div className={'mv-fila bq-fila ' + estCls + (sel ? ' sel' : '')}
-        aria-current={sel || undefined}
-        onClick={conPanel ? () => onElegir(c) : undefined}>
-        {c.estado === 'COMPLETADO' && (
-          <span className="mv-fecha">{c.fCierre ? c.fCierre.getDate() + ' ' + _MESES_ES[c.fCierre.getMonth()].slice(0, 3) : '—'}</span>
-        )}
-        <div className="mv-txt">
-          <button type="button" className="mv-dir" title={c.dir}
-            aria-pressed={conPanel ? sel : undefined}
-            onClick={sinPropagar(conPanel ? () => onElegir(c) : () => onVerDatos(c))}>
-            {/* Una dirección que es una coordenada se dice «Punto GPS», como
-                en la Agenda; la coordenada queda en el title. */}
-            {puntoDesdeTextoCoord(c.dir) ? 'Punto GPS' : <MarcarBQ texto={c.dir} q={q} />}
-          </button>
-          <div className="vc-ident">
-            {c.tipo === 'V2'
-              ? <span className="bq-v2" title="Fila migrada de V2 sin número de radicado"><span className="bq-tag">V2</span> <MarcarBQ texto={c.rad} q={q} /></span>
-              // Con expediente se ve «Exp. N» y el radicado pasa al title
-              // (decisión 2026-10-19). El PDF de la PQR sigue colgado del radicado.
-              : (c.exp
-                ? <span className="vc-rad" title={'Radicado ' + c.rad}>Exp. {c.exp}</span>
-                : <span className="vc-rad"><MarcarBQ texto={c.rad} q={q} /></span>)}
-            {!conPanel && <BotonPdfRadicado f={f} />}
-            {c.rural
-              ? <><span className="vc-sep">·</span><span>Vda. <MarcarBQ texto={c.vereda} q={q} /></span></>
-              : c.barrio
-                ? <><span className="vc-sep">·</span><span><MarcarBQ texto={c.barrio} q={q} /></span></>
-                : c.barrioTxt
-                  ? <><span className="vc-sep">·</span>{c.pot
-                      ? <span title="El nombre escrito no calza con ningún barrio del POT"><MarcarBQ texto={c.barrioTxt} q={q} /> <span className="bq-tag">sin POT</span></span>
-                      /* Sin barrios-mapa.json (sin red ni caché) no se sabe: no marcar «sin POT». */
-                      : <span><MarcarBQ texto={c.barrioTxt} q={q} /></span>}</>
-                  : null}
-            {!c.rural && c.comuna && <><span className="vc-sep">·</span><span>C{c.comuna}</span></>}
-            {c.nVisitasGrupo > 1 && <span className="bq-tag">{c.nVisitasGrupo} visitas</span>}
-          </div>
-          <NotaFilaBQ c={c} q={q} yo={yo} veTodo={veTodo} donde={m} />
-        </div>
-        <div className="mv-acc">
-          {cta
-            ? <button type="button" className="vc-btn vc-btn-cta" onClick={sinPropagar(cta.fn)}>
-                {cta.t !== 'Asignar' && <Icon.Play size={14} />}{cta.t}
-              </button>
-            : (c.estado === 'ASIGNADO' || c.estado === 'INICIADO') && !conPanel && (
-              <span className="vc-dilig">Diligencia {titleCaseNombre(c.vis[0] || '')}</span>)}
-          {!conPanel && c.estado !== 'COMPLETADO' && c.estado !== 'CERRADO' && <BotonMapaVisita f={f} variante="vc" />}
-          {!conPanel && (
-            <button type="button" className="vc-btn" onClick={sinPropagar(() => onVerDatos(c))}>Ver datos</button>
-          )}
-        </div>
-      </div>
+      <TarjetaVisita f={f} densidad="renglon" opts={{ estado: c.estado, veTodo: true }}
+        sel={conPanel ? sel : undefined} accion={accion} onAccion={onContinuar}
+        onAbrir={conPanel ? () => onElegir(c) : () => onVerDatos(c)}
+        tiempo={c.estado === 'CERRADO' ? c.motivoCierre : undefined}
+        ident={ident} ubic={ubic} radicada
+        aviso={<AvisoFilaBQ c={c} q={q} veTodo={veTodo} donde={m} />} />
     </React.Fragment>
   );
 }
 
-// Tercer renglón de la fila: por qué está en la lista y qué le falta.
-function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
+// Lo que solo dice Buscar debajo de la tarjeta: la prioridad de la pendiente
+// (admin y supervisor), «Lista para cerrar» y en qué campo no evidente calzó
+// el texto (orden, persona que atiende, reiterado).
+function AvisoFilaBQ({ c, q, veTodo, donde }) {
   const partes = [];
-  const dias = n => n === 0 ? 'hoy' : 'hace ' + _pluralBQ(n, 'día', 'días');
-  if (c.estado === 'PENDIENTE') {
-    if (veTodo) {
-      const vencida = c.exceso != null && c.exceso > 0 && c.tier >= 2;
-      partes.push(
-        <b key="p" className={vencida ? 'demora' : ''}>
-          {c.prio}{c.exceso != null && c.tier >= 1 ? ' · ' + (vencida ? 'vencida hace ' + c.exceso + ' días' : 'a ' + (-c.exceso) + ' días del plazo') : ''}
-        </b>);
-      partes.push(<span key="s">sin asignar</span>);
-    } else {
-      partes.push(<span key="r">Radicada hace {_pluralBQ(c.dCal, 'día', 'días')} · sin asignar</span>);
-    }
-  } else if (c.estado === 'ASIGNADO') {
-    const d = diasSinIniciar(c.f);
-    partes.push(<span key="q">Asignada a {titleCaseNombre(c.vis[0] || '')}</span>);
-    partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>{dias(d || 0)}</b>);
-  } else if (c.estado === 'INICIADO') {
-    // Primero la siguiente acción: «Lista para cerrar» (pastilla con ✓, no
-    // solo color) o lo que falta. Misma cuenta de Mis visitas.
-    const d = diasSinCompletar(c.f);
-    partes.push(c.lista
-      ? <b key="f" className="bq-lista-cerrar">✓ Lista para cerrar</b>
-      : <b key="f" className="falta">Falta: {c.faltanCierre.join(' · ')}</b>);
-    partes.push(<span key="q">Iniciada por {titleCaseNombre(c.vis[0] || '')}</span>);
-    partes.push(<b key="d" className={d != null && d >= DIAS_ALERTA_DEMORA ? 'demora' : ''}>visitada {dias(d || 0)}</b>);
-  } else if (c.estado === 'CERRADO') {
-    // Por qué está cerrada y de cuándo es: lo que se busca aquí son radicados viejos.
-    partes.push(<b key="m">{c.motivoCierre}</b>);
-    if (c.fRad) partes.push(<span key="r">radicado el {formatearFecha(c.fRad)}</span>);
-  } else {
-    partes.push(<span key="q">{titleCaseNombre(c.vis[0] || '')}{c.vis.length > 1 ? ' +1' : ''}</span>);
-    if (c.susp) partes.push(<span key="s">suspensión</span>);
+  if (c.estado === 'PENDIENTE' && veTodo && c.prio) {
+    const vencida = c.exceso != null && c.exceso > 0 && c.tier >= 2;
+    partes.push(
+      <b key="p" className={vencida ? 'tv-demora' : ''}>
+        {c.prio}{c.exceso != null && c.tier >= 1 ? ' · ' + (vencida ? 'vencida hace ' + c.exceso + ' días' : 'a ' + (-c.exceso) + ' días del plazo') : ''}
+      </b>);
   }
-  // En qué campo no evidente calzó el texto (orden, persona que atiende, reiterado).
+  if (c.estado === 'INICIADO' && c.lista) partes.push(<b key="l" className="bq-lista-cerrar">✓ Lista para cerrar</b>);
   if (donde === 'orden') partes.push(<span key="o">coincide en orden de policía: <MarcarBQ texto={c.orden} q={q} /></span>);
   if (donde === 'atiende') partes.push(<span key="a">coincide en persona que atiende: <MarcarBQ texto={c.atiende} q={q} /></span>);
   if (donde === 'reit') {
     const r = c.reit.find(x => _normBQ(x).indexOf(_normBQ(q)) !== -1) || c.reit[0];
     partes.push(<span key="r">reitera <MarcarBQ texto={r} q={q} /></span>);
   }
+  if (!partes.length) return null;
   return (
-    <div className="mv-nota">
+    <div className="tv-meta">
       {partes.map((p, i) => <React.Fragment key={i}>{i > 0 && ' · '}{p}</React.Fragment>)}
     </div>
   );

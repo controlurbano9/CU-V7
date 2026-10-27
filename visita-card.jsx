@@ -1,39 +1,101 @@
 // ═══════════════════════════════════════════════════════════════
-// visita-card.jsx — Componentes compartidos para "tarjeta de visita"
+// visita-card.jsx — La tarjeta de visita y sus piezas compartidas
 //
-// Antes había 3 implementaciones casi idénticas:
-//   home.jsx (asignadas hoy)        — variante compacta
-//   mis-visitas.jsx (TarjetaVisitaMV) — variante con fecha
-//   buscar.jsx (FilaVisitaBase)     — variante con fecha+inspector+asignado+botones admin
+//   TarjetaVisita             La única tarjeta de visita de la app (Semana,
+//                             Alertas, Mis visitas, Buscar). Arquitectura
+//                             2026-10-27, decisión 1.
+//   BotonPdfRadicado          Chip «PQR» (la ficha lo usa junto al radicado)
+//   BotonMapaVisita           Cómo llegar (Google Maps: GPS, catastro o dirección)
+//   PanelSeleccionInspector   Lista de inspectores para asignar / reasignar
+//   asignarVisitaAdmin        Asignar desde Buscar y desde la Semana
 //
-// Acá los unificamos. VisitaCard solo dibuja header (radicado+dir+badge+meta);
-// los botones se pasan como children. Helpers separados:
-//   BotonContinuarVisita      ▶ Iniciar / Continuar (verde secundario)
-//   BotonesEntregables        👁 Ver datos + 📂 Carpeta + 📄 Acta + 📝 Informe
-//   BotonMapaVisita           📍 Cómo llegar (Google Maps: GPS o dirección)
-//   BotonesAdminVisita        Asignar / Reasignar / Desasignar / Completar / + Nueva visita
-//   PanelSeleccionInspector   Panel inline de elección de inspector (abierto=true)
-//
-// NO wrapper interno — el caller decide cómo envolver (.card / borderTop / borderBottom).
-// Esto permite reusar el mismo componente dentro de acordeones, grupos, listas planas, etc.
+// VisitaCard, BotonContinuarVisita, BotonVerDatos, BotonesEntregables,
+// MenuAccionesVisita, AccionesFilaVisita y BotonesAdminVisita se quitaron
+// el 2026-10-27: ninguna pantalla los usaba ya.
 // ═══════════════════════════════════════════════════════════════
 
 // Aliasing por archivo (regla de la app): cada .jsx desestructura los hooks
 // con su propio sufijo para que el bundle no colisione.
 const { useState: useStateVC, useEffect: useEffectVC } = React;
 
-// ── Tonos por estado para badge-suave ─────────────────────────
-// Capitalizado en español, igual que mis-visitas.jsx
-const TONOS_VISITA = {
-  PENDIENTE:  { cls: 'badge-amarillo', label: 'Pendiente' },
-  ASIGNADO:   { cls: 'badge-amarillo', label: 'Asignada' },
-  INICIADO:   { cls: 'badge-azul',     label: 'Iniciada' },
-  COMPLETADO: { cls: 'badge-verde',    label: 'Completada' },
-};
+// ═══════════════════════════════════════════════════════════════
+// TarjetaVisita — la misma visita dice lo mismo en toda la app, en el mismo
+// orden: estado y tiempo → dirección → radicado · barrio · comuna → lo que
+// falta → una acción. Lo que dice sale de tarjetaVisita (utils.js); aquí
+// solo se pinta.
+//
+//   densidad 'tarjeta' (Mis visitas en el celular) o 'renglon' (Semana,
+//   Alertas, Buscar y Mis visitas con panel). En renglón el estado va al
+//   comienzo del renglón de datos.
+//
+// Tocar la tarjeta abre la ficha (`onAbrir`, por defecto «Ver datos»): ya no
+// hay botón «Ver datos». La acción (Iniciar / Continuar) es la única llena;
+// «Cómo llegar» va como icono y solo en asignadas e iniciadas.
+//
+// Props para lo propio de cada pantalla, sin copiar la tarjeta:
+//   opts        se pasan a tarjetaVisita (estado, veTodo, puede)
+//   accion      { texto, fn } reemplaza la acción (Buscar: «Asignar»);
+//               null la quita (con panel la acción vive en la ficha)
+//   onAccion    (fila, f) para la acción por defecto
+//   tiempo      reemplaza el texto de tiempo (Alertas: el motivo); urgente
+//               lo pinta en rojo
+//   sinTiempo   la Semana: el día ya es el tiempo
+//   ident, ubic nodos que reemplazan radicado y ubicación (Buscar resalta lo
+//               buscado)
+//   radicada    con la fecha de radicado (solo Buscar)
+//   aviso       renglones extra bajo «Falta» (coincidencias, quién la lleva)
+//   inspector   nodo que reemplaza el nombre (la Semana: reasignar)
+//   n, extra, pie, sel, arrastre  número de parada, botones extra (↑↓),
+//               panel debajo, seleccionada, props de arrastre
+// ═══════════════════════════════════════════════════════════════
+function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, urgente, sinTiempo,
+  ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre }) {
+  const t = tarjetaVisita(f, Object.assign({ puede: puedeDiligenciar(f) }, opts));
+  const renglon = densidad === 'renglon';
+  const acc = accion === null ? null
+    : accion ? accion
+    : t.accion ? { texto: t.accion, fn: () => onAccion && onAccion(f._idx, f) } : null;
+  const abrir = () => onAbrir ? onAbrir(f) : (window.abrirVisitaDetail && window.abrirVisitaDetail(f));
+  const sinPropagar = (fn) => (e) => { e.stopPropagation(); fn(); };
+  const tiempoTxt = sinTiempo ? '' : (tiempo != null ? tiempo : t.tiempo);
+  const tiempoNodo = tiempoTxt
+    ? <span className={(urgente || (tiempo == null && t.demora)) ? 'tv-demora' : ''}>{tiempoTxt}</span>
+    : null;
+  const estadoNodo = <><b>{t.estadoTxt}</b>{tiempoNodo && <> · {tiempoNodo}</>}</>;
+  const identNodo = ident || (t.ident.principal
+    ? <span className={'tv-rad' + (t.ident.secundario ? ' exp-tag' : '')} title={t.ident.secundario || undefined}>{t.ident.principal}</span>
+    : null);
+  const ubicNodo = ubic || (t.ubic ? <span>{t.ubic}</span> : null);
+  const inspNodo = inspector || (t.inspector ? <span>{t.inspector}</span> : null);
+  const meta = [renglon && <span key="e" className="tv-est">{estadoNodo}</span>, identNodo, ubicNodo,
+    // En la pendiente el tiempo ya dice desde cuándo está radicada.
+    radicada && t.radicada && t.estado !== 'PENDIENTE' && <span key="r">radicada {t.radicada}</span>, inspNodo].filter(Boolean);
 
-// Diligenciador = primer nombre en VISITADOR(ES); ver visitadoresBD/primerVisitador en utils.js
-function _primerVisitador(f) {
-  return primerVisitador(visitadoresBD(f));
+  return (
+    <article className={'tv tv-' + (renglon ? 'renglon' : 'tarjeta') + ' tv-e-' + t.estado.toLowerCase() + (sel ? ' sel' : '')}
+      aria-current={sel || undefined} onClick={abrir} {...(arrastre || {})}>
+      {n && <span className="tv-n" aria-label={'Parada ' + n}>{n}</span>}
+      <div className="tv-txt">
+        {!renglon && <div className="tv-est">{estadoNodo}</div>}
+        {/* La dirección es el control de teclado de la tarjeta. */}
+        <button type="button" className="tv-dir" title={t.dir} aria-pressed={sel != null ? !!sel : undefined}
+          onClick={sinPropagar(abrir)}>{t.dirVisible}</button>
+        <div className="tv-meta">
+          {meta.map((m, i) => <React.Fragment key={i}>{i > 0 && <span className="tv-sep"> · </span>}{m}</React.Fragment>)}
+        </div>
+        {t.falta.length > 0 && <div className="tv-falta">Falta: {t.falta.join(' · ')}</div>}
+        {aviso}
+      </div>
+      {(acc || t.mapa || extra) && (
+        <div className="tv-acc" onClick={(e) => e.stopPropagation()}>
+          {acc && <button type="button" className="tv-btn" onClick={acc.fn}>{acc.texto}</button>}
+          {t.mapa && <BotonMapaVisita f={f} variante="icono" />}
+          {extra}
+        </div>
+      )}
+      {pie && <div className="tv-pie" onClick={(e) => e.stopPropagation()}>{pie}</div>}
+    </article>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -60,173 +122,6 @@ function BotonPdfRadicado({ f, titulo, onAbrir }) {
       className="pqr-chip">
       <Icon.File size={11} /> PQR
     </a>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// VisitaCard — header de tarjeta de visita (info + badge + meta).
-//
-// NO envuelve en wrapper externo. El caller decide:
-//   <div className="card">...<VisitaCard .../>...</div>
-//   <div style={{ borderBottom: ... }}><VisitaCard ... /></div>
-//
-// Props:
-//   f                fila de datos del Sheet (objeto plano)
-//   mostrarFecha     bool — meta línea "Fecha: dd/mm/yyyy"
-//   mostrarInspector bool — meta línea "Inspector: <primero>"
-//   mostrarAsignado  bool — meta línea "Asignado: dd/mm/yyyy"
-//   mostrarOrden     bool — meta línea "Orden: YYYY-09-XXX" (solo si hay orden real)
-//   mostrarPersonaAtiende bool — meta línea "Atiende: <nombre>" (solo Buscar:
-//                    ahí se busca por ese campo y la tarjeta debe decir
-//                    cuál visita del grupo lo tiene; Home y Mis visitas no)
-//   labelBadge      string opcional override del label del badge
-//                    (ej: en home pasamos 'Asignada' fijo aunque sea PENDIENTE/ASIGNADO)
-//   children         JSX adicional (botones, panel) — se renderiza debajo del header
-//   accionesMt       margin-top del bloque de children (default 12)
-// ═══════════════════════════════════════════════════════════════
-// ordenPoliciaDe(f) vive en utils.js desde 2026-10-02 (la usa también la
-// lista de faltantes de Mis visitas, que se prueba sin el bundle).
-
-function VisitaCard({ f, mostrarFecha, mostrarInspector, mostrarAsignado, mostrarOrden, mostrarPersonaAtiende, mostrarReiterados, labelBadge, children, accionesMt }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  const tono = TONOS_VISITA[est] || { cls: '', label: est || '—' };
-  const textoBadge = labelBadge != null ? labelBadge : tono.label;
-
-  const fechaVisita = mostrarFecha
-    ? formatearFecha(f['FECHA DE VISITA'] || f['FECHA ASIGNACION VISITA'] || '')
-    : '';
-  const fechaAsig = mostrarAsignado
-    ? formatearFecha(f['FECHA ASIGNACION VISITA'] || '')
-    : '';
-  const inspector = mostrarInspector && f['VISITADOR(ES)']
-    ? _primerVisitador(f)
-    : '';
-  const orden = mostrarOrden ? ordenPoliciaDe(f) : '';
-  const personaAtiende = mostrarPersonaAtiende
-    ? ((f['NOMBRE PERSONA ATIENDE'] || '').toString().trim())
-    : '';
-  // Igual que «atiende»: solo cuando la búsqueda coincidió con un reiterado,
-  // para que se vea por qué salió una tarjeta con otro radicado.
-  const reiterados = mostrarReiterados ? radicadosReiterados(f).join(', ') : '';
-  // Fecha del radicado — siempre visible junto al número, no depende de prop.
-  // Para Oficio, FECHA RADICADO = fecha de la visita (mismo valor, ver CLAUDE.md).
-  const fechaRadicado = formatearFecha(f['FECHA RADICADO'] || '');
-
-  const tieneMeta = fechaVisita || inspector || fechaAsig || orden || personaAtiende || reiterados;
-  const mt = (accionesMt != null) ? accionesMt : 12;
-
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Dirección primero: es por lo que el inspector reconoce el caso.
-              El radicado es el identificador, pero no es lo que se busca al
-              barrer la lista con la vista. */}
-          <div className="vc-dir" title={f['DIRECCION INFRACCION'] || f['DIRECCION'] || ''}>
-            {direccionVisible(f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección')}
-          </div>
-
-          {/* Línea de identidad, sin etiquetas: radicado · PQR · barrio · comuna
-              · fecha de radicado. El radicado conserva peso (mono 12/600
-              terracota) frente al resto en 11 regular — es el identificador
-              único y tiene que localizarse de un vistazo. Con expediente se ve
-              «Exp. N» y el radicado queda en el title (decisión 2026-10-19). */}
-          <div className="vc-ident">
-            <span className={'vc-rad' + (expedienteDe(f) ? ' exp-tag' : '')} title={identificadorVisita(f).secundario || undefined}>
-              {identificadorVisita(f).principal || '—'}
-            </span>
-            <BotonPdfRadicado f={f} />
-            <span className="vc-sep">·</span>
-            <span>{f['BARRIO/VEREDA'] || f['BARRIO'] || '—'}</span>
-            {f['COMUNA'] && <><span className="vc-sep">·</span><span>C{f['COMUNA']}</span></>}
-            {fechaRadicado && <><span className="vc-sep">·</span><span>{fechaRadicado}</span></>}
-          </div>
-
-          {/* Línea administrativa: quién la tiene, desde cuándo, con qué orden.
-              Es lo que permite decidir sin abrir "Ver datos". "Editado · quién"
-              se quedó fuera a propósito (vive en el detalle); "Atiende" solo
-              aparece cuando la búsqueda coincidió con ese campo. */}
-          {tieneMeta && (
-            <div className="vc-admin">
-              {inspector   && <span className="vc-insp">{inspector}</span>}
-              {fechaVisita && <span>visita {fechaVisita}</span>}
-              {fechaAsig   && <span>asignada {fechaAsig}</span>}
-              {orden       && <span>Orden {orden}</span>}
-              {personaAtiende && <span>atiende {personaAtiende}</span>}
-              {reiterados  && <span>reitera {reiterados}</span>}
-            </div>
-          )}
-        </div>
-
-        {/* Badge de estado a la derecha */}
-        <span className={'badge-suave ' + tono.cls}>{textoBadge}</span>
-      </div>
-
-      {/* Children: botones, panel admin, lo que sea */}
-      {children && <div style={{ marginTop: mt }}>{children}</div>}
-    </>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BotonContinuarVisita — botón verde-secundario Iniciar/Continuar
-//
-// Visible solo si est ≠ COMPLETADO y onContinuar existe.
-// Texto cambia según estado: INICIADO → "Continuar", resto → "Iniciar".
-//
-// Props:
-//   f, onContinuar       — datos + callback estándar (fila, datos)
-//   busy                 — desactiva el botón
-//   tamaño               — 'sm' (en lista compacta: "Iniciar"/"Continuar") |
-//                          'md' (default — "Iniciar visita"/"Continuar visita")
-// ═══════════════════════════════════════════════════════════════
-function BotonContinuarVisita({ f, onContinuar, busy, tamaño }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  if (!onContinuar) return null;
-  if (est === 'COMPLETADO') return null;
-
-  // Regla del diligenciador aplicada también al CTA (puedeDiligenciar en utils.js):
-  // en vez del botón se dice quién la diligencia. "Ver datos" sigue disponible, así
-  // que el co-asignado no pierde acceso a la información.
-  if (!puedeDiligenciar(f)) {
-    return (
-      <span style={{ fontSize: 13, color: 'var(--texto-suave)', alignSelf: 'center' }}>
-        Diligencia {_primerVisitador(f)}
-      </span>
-    );
-  }
-
-  const esSm = tamaño === 'sm';
-  const texto = est === 'INICIADO'
-    ? (esSm ? 'Continuar' : 'Continuar visita')
-    : (esSm ? 'Iniciar'   : 'Iniciar visita');
-
-  return (
-    <button type="button" onClick={() => onContinuar(f._idx, f)} disabled={busy}
-      className="btn-principal secundario"
-      style={esSm
-        ? { flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }
-        : { margin: 0, padding: '10px 14px', fontSize: 13 }
-      }>
-      <Icon.Play size={esSm ? 14 : 16} /> {texto}
-    </button>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BotonVerDatos — abre el detalle de solo lectura.
-// Extraído de BotonesEntregables para que también las visitas NO
-// completadas tengan una forma de consultar sus datos sin abrir el
-// formulario completo (antes solo existía en COMPLETADO).
-// ═══════════════════════════════════════════════════════════════
-function BotonVerDatos({ f }) {
-  return (
-    <button type="button"
-      onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}
-      className="btn-principal secundario"
-      style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
-      <Icon.Eye size={14} /> Ver datos
-    </button>
   );
 }
 
@@ -295,232 +190,6 @@ function BotonMapaVisita({ f, variante, sinIcono }) {
         textDecoration: 'none' }}>
       <Icon.Pin size={14} /> Cómo llegar
     </a>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MenuAccionesVisita — el "···" de la fila compacta de acciones.
-//
-// Se despliega INLINE (debajo de la fila), no como popover absoluto: la
-// tarjeta del grupo tiene overflow:hidden y un panel posicionado se
-// recortaría; además así funciona igual con el dedo y sin listeners
-// globales de clic-fuera.
-//
-// Props: children = los botones del menú. Se oculta solo si no hay ninguno.
-// ═══════════════════════════════════════════════════════════════
-function MenuAccionesVisita({ children }) {
-  const [abierto, setAbierto] = useStateVC(false);
-  const items = React.Children.toArray(children).filter(Boolean);
-  if (!items.length) return null;
-  return (
-    <>
-      <button type="button" className="vc-btn vc-btn-mas"
-        onClick={() => setAbierto(!abierto)}
-        aria-expanded={abierto} aria-label="Más acciones" title="Más acciones">
-        <Icon.More size={16} />
-      </button>
-      {abierto && <div className="vc-menu">{items}</div>}
-    </>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BotonesEntregables — para visitas COMPLETADO
-// 👁 Ver datos (siempre) + 📂 Carpeta + 📄 Acta + 📝 Informe (si hay link)
-// El informe se genera durante la visita; una vez COMPLETADA solo se consulta.
-// ═══════════════════════════════════════════════════════════════
-function BotonesEntregables({ f }) {
-  const linkDrive   = f['LINK_DRIVE'];
-  const linkActaPdf = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
-  const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
-
-  // Mismo estilo que tenían home/mis-visitas/buscar antes (pill gris-bg)
-  const btnSty = {
-    background: 'var(--gris-bg)', color: 'var(--texto)',
-    border: '1px solid var(--borde)', borderRadius: 10,
-    padding: '8px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-    cursor: 'pointer', textDecoration: 'none', display: 'inline-flex',
-    alignItems: 'center', gap: 6, flex: 1, minWidth: 100,
-    justifyContent: 'center',
-  };
-
-  return (
-    <>
-      <BotonVerDatos f={f} />
-      {linkDrive   && <a href={linkDrive}   target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Folder size={14} /> Carpeta</a>}
-      {linkActaPdf && <a href={linkActaPdf} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.File   size={14} /> Acta</a>}
-      {linkInforme && <a href={linkInforme} target="_blank" rel="noopener noreferrer" style={btnSty}><Icon.Edit   size={14} /> Informe</a>}
-    </>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BotonesAdminVisita — botones admin contextuales según estado
-//
-// Aparecen SIDE-BY-SIDE con BotonContinuarVisita / BotonesEntregables.
-// El caller decide envolverlos en el mismo flex row.
-//
-// Matriz de visibilidad:
-//   PENDIENTE   → Asignar
-//   ASIGNADO    → Reasignar + Desasignar
-//   INICIADO    → Reasignar + Desasignar + Completar
-//   COMPLETADO  → + Nueva visita (solo si onAsignarNuevaVisita existe)
-//
-// Estados:
-//   busy=true   → todos disabled, "..." en Asignar (pendiente)
-//   abierto=true → texto cambia a "Cancelar" en Asignar/Reasignar/Nueva visita
-//
-// Props:
-//   f, esAdmin, busy, abierto
-//   onAbrirAsignar          toggle del panel
-//   onDesasignar(fila, rad) callback
-//   onCompletar(fila, fechaAsig) callback
-//   onAsignarNuevaVisita    callback (presencia define si "+Nueva visita" se muestra)
-// ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════
-// AccionesFilaVisita — la fila compacta de acciones de Buscar.
-//
-// Una sola fila, con TEXTO, no iconos: el inspector la usa en campo y un
-// icono sin rótulo se descubre peor, sobre todo en móvil, donde el tooltip
-// no existe. En móvil envuelve a dos filas; se acepta esa altura.
-//
-//   [ CTA ] [ Ver datos ] [ Acta ] [ Informe ] [ ··· ]
-//
-// El CTA es uno solo según el estado: Asignar (PENDIENTE, admin) o
-// Iniciar/Continuar. Dentro del "···" van Carpeta de Drive y las acciones
-// administrativas — Carpeta no es acción cotidiana y las de admin son
-// secundarias frente a entrar a la visita.
-// ═══════════════════════════════════════════════════════════════
-function AccionesFilaVisita({ f, esAdmin, busy, abierto, onContinuar,
-  onAbrirAsignar, onDesasignar, onCompletar }) {
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  const linkDrive   = f['LINK_DRIVE'];
-  const linkActaPdf = f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'];
-  const linkInforme = f['LINK_DOCX_INFORME'] || f['LINK_INFORME_F43'];
-  const puedeDilig  = puedeDiligenciar(f);
-
-  return (
-    <div className="vc-acciones">
-      {/* CTA: una sola acción principal por estado */}
-      {est === 'PENDIENTE' && esAdmin && (
-        <button type="button" className="vc-btn vc-btn-cta" onClick={onAbrirAsignar} disabled={busy}>
-          {busy ? '...' : (abierto ? 'Cancelar' : 'Asignar')}
-        </button>
-      )}
-      {/* Una PENDIENTE también se puede tomar directamente, sin asignarla antes
-          (2026-09-19): al guardar, el payload estampa FECHA ASIGNACION VISITA con
-          la fecha de visita (nueva-visita.jsx, posición O), así que el conteo de
-          días de gestión de completarRegistro no se queda sin base.
-          Para el admin es la acción secundaria — su CTA sigue siendo Asignar,
-          porque delegar es lo habitual; el inspector solo ve Iniciar. */}
-      {est !== 'COMPLETADO' && onContinuar && puedeDilig && (
-        <button type="button" disabled={busy}
-          className={'vc-btn' + (est === 'PENDIENTE' && esAdmin ? '' : ' vc-btn-cta')}
-          onClick={() => onContinuar(f._idx, f)}>
-          <Icon.Play size={14} /> {est === 'INICIADO' ? 'Continuar' : 'Iniciar'}
-        </button>
-      )}
-      {/* Regla del diligenciador: al co-asignado se le dice quién la lleva
-          en vez del botón. Tiene que caber en esta fila sin romperla. */}
-      {est !== 'COMPLETADO' && onContinuar && !puedeDilig && (
-        <span className="vc-dilig">Diligencia {_primerVisitador(f)}</span>
-      )}
-
-      {/* "Cómo llegar" antes de "Ver datos": mientras la visita no esté
-          completada, lo que decide el inspector desde acá es salir a ella. */}
-      {est !== 'COMPLETADO' && <BotonMapaVisita f={f} variante="vc" />}
-      <button type="button" className="vc-btn"
-        onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(f)}>
-        Ver datos
-      </button>
-      {linkActaPdf && <a className="vc-btn" href={linkActaPdf} target="_blank" rel="noopener noreferrer">Acta</a>}
-      {linkInforme && <a className="vc-btn" href={linkInforme} target="_blank" rel="noopener noreferrer">Informe</a>}
-
-      <MenuAccionesVisita>
-        {linkDrive && (
-          <a key="drive" className="vc-btn" href={linkDrive} target="_blank" rel="noopener noreferrer">
-            <Icon.Folder size={14} /> Carpeta
-          </a>
-        )}
-        {esAdmin && (est === 'ASIGNADO' || est === 'INICIADO') && (
-          <button key="rea" type="button" className="vc-btn" onClick={onAbrirAsignar} disabled={busy}>
-            {abierto ? 'Cancelar' : 'Reasignar'}
-          </button>
-        )}
-        {esAdmin && (est === 'ASIGNADO' || est === 'INICIADO') && (
-          <button key="des" type="button" className="vc-btn" disabled={busy}
-            onClick={() => onDesasignar(f._idx, f['RADICADO'])}>
-            <Icon.Undo size={14} /> Desasignar
-          </button>
-        )}
-        {esAdmin && est === 'INICIADO' && (
-          <button key="com" type="button" className="vc-btn" disabled={busy}
-            onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])}>
-            <Icon.Check size={14} /> Completar
-          </button>
-        )}
-      </MenuAccionesVisita>
-    </div>
-  );
-}
-
-function BotonesAdminVisita({ f, esAdmin, busy, abierto,
-  onAbrirAsignar, onDesasignar, onCompletar, onAsignarNuevaVisita }) {
-  if (!esAdmin) return null;
-  const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-
-  // Estilo base de botón gris (legacy del refactor)
-  function btnGris(extra) {
-    return Object.assign({
-      flex: 1, minWidth: 100,
-      background: 'var(--gris-bg)', color: 'var(--texto)',
-      border: '1px solid var(--borde)', borderRadius: 10,
-      padding: '8px 12px',
-      fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-      cursor: busy ? 'not-allowed' : 'pointer',
-    }, extra || {});
-  }
-
-  return (
-    <>
-      {/* PENDIENTE: Asignar */}
-      {est === 'PENDIENTE' && (
-        <button type="button" onClick={onAbrirAsignar} disabled={busy} style={btnGris()}>
-          {busy ? '...' : (abierto ? 'Cancelar' : 'Asignar')}
-        </button>
-      )}
-
-      {/* ASIGNADO / INICIADO: Reasignar + Desasignar */}
-      {(est === 'ASIGNADO' || est === 'INICIADO') && (
-        <>
-          <button type="button" onClick={onAbrirAsignar} disabled={busy} style={btnGris()}>
-            {abierto ? 'Cancelar' : 'Reasignar'}
-          </button>
-          <button type="button" onClick={() => onDesasignar(f._idx, f['RADICADO'])} disabled={busy}
-            style={btnGris({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 })}>
-            <Icon.Undo size={14} /> Desasignar
-          </button>
-        </>
-      )}
-
-      {/* INICIADO: Completar */}
-      {est === 'INICIADO' && (
-        <button type="button"
-          onClick={() => onCompletar(f._idx, f['FECHA ASIGNACION VISITA'])} disabled={busy}
-          className="btn-principal secundario"
-          style={{ flex: 1, minWidth: 100, margin: 0, padding: '8px 12px', fontSize: 13 }}>
-          <Icon.Check size={14} /> Completar
-        </button>
-      )}
-
-      {/* COMPLETADO: + Nueva visita (solo si la pantalla soporta) */}
-      {est === 'COMPLETADO' && onAsignarNuevaVisita && (
-        <button type="button" onClick={onAbrirAsignar} disabled={busy}
-          style={btnGris({ border: '1px dashed var(--brand-accent)' })}>
-          {abierto ? 'Cancelar' : '+ Nueva visita'}
-        </button>
-      )}
-    </>
   );
 }
 
@@ -688,10 +357,6 @@ function avisoFechaAsignacion(iso) {
 
 
 // Exponer al scope global del bundle (mismo patrón que el resto de los componentes)
-window.VisitaCard              = VisitaCard;
+window.TarjetaVisita           = TarjetaVisita;
 window.BotonPdfRadicado        = BotonPdfRadicado;
-window.BotonContinuarVisita    = BotonContinuarVisita;
-window.BotonesEntregables      = BotonesEntregables;
-window.BotonVerDatos           = BotonVerDatos;
-window.BotonesAdminVisita      = BotonesAdminVisita;
 window.PanelSeleccionInspector = PanelSeleccionInspector;

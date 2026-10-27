@@ -4502,7 +4502,89 @@ function ordenarVisitasDia(lista, fechaTxt) {
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
+// ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──
+// Lo que dice cualquier tarjeta de visita de la app, siempre en el mismo
+// orden: estado y tiempo → dirección → radicado · barrio · comuna → lo que
+// falta → una acción. TarjetaVisita (visita-card.jsx) solo pinta.
+//   opts.estado → estado ya resuelto por la pantalla (Buscar: CERRADO)
+//   opts.veTodo → con el nombre corto del inspector (quien ve a todo el equipo)
+//   opts.puede  → false si no puede diligenciarla: entonces no hay acción
+//   opts.hoy    → fecha de referencia (pruebas)
+// Los días de asignada e iniciada son hábiles (los mismos de las alertas); el
+// texto dice «días» a secas (decisión 2026-10-02).
+var _TV_DEMORA = 5;
+var _TV_ESTADO_TXT = { PENDIENTE: 'Pendiente', ASIGNADO: 'Asignada', INICIADO: 'Iniciada',
+  COMPLETADO: 'Completada', CERRADO: 'Cerrada sin visita' };
+
+// "MAURICIO RESTREPO GOMEZ" → "Mauricio R.": en la tarjeta no cabe el nombre
+// completo y el apellido inicial basta para distinguir a dos.
+function nombreCortoVisita(f) {
+  var n = titleCaseNombre(primerVisitador(visitadoresBD(f)));
+  if (!n) return '';
+  var p = n.split(/\s+/);
+  return p.length > 1 ? p[0] + ' ' + p[1].charAt(0) + '.' : p[0];
+}
+
+// «Hato Viejo · C5»; «Rural» en vereda (la dirección ya dice cuál).
+function ubicacionCortaVisita(f) {
+  var dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+  var barrio = String(f['BARRIO/VEREDA'] || f['BARRIO'] || '').trim();
+  var comuna = String(f['COMUNA'] || '').trim();
+  if (/rural/i.test(comuna) || (!barrio && /^v(da|ereda)\b/i.test(dir))) return 'Rural';
+  return [barrio, /^\d+$/.test(comuna) ? 'C' + comuna : comuna].filter(Boolean).join(' · ');
+}
+
+function _tvHace(n) {
+  if (n == null) return '';
+  return n === 0 ? 'hoy' : 'hace ' + n + (n === 1 ? ' día' : ' días');
+}
+
+function tarjetaVisita(f, opts) {
+  opts = opts || {};
+  var ref = opts.hoy instanceof Date ? opts.hoy : new Date();
+  var estado = opts.estado || _normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') || 'PENDIENTE';
+  var dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+  var t = { estado: estado, estadoTxt: _TV_ESTADO_TXT[estado] || estado, tiempo: '', demora: false,
+    dir: dir || 'Sin dirección', dirVisible: dir ? direccionVisible(dir) : 'Sin dirección',
+    ident: identificadorVisita(f), ubic: ubicacionCortaVisita(f), falta: [], accion: null,
+    mapa: estado === 'ASIGNADO' || estado === 'INICIADO',
+    inspector: opts.veTodo ? nombreCortoVisita(f) : '',
+    radicada: formatearFecha(f['FECHA RADICADO'] || '') };
+  var n = null;
+  if (estado === 'PENDIENTE') {
+    var fr = parsearFecha(f['FECHA RADICADO'] || '');
+    if (fr) {
+      n = Math.max(0, Math.floor((ref - fr) / 86400000));
+      t.tiempo = n === 0 ? 'radicada hoy' : 'radicada ' + _tvHace(n);
+    }
+    // Pendiente que ya tiene inspector (filas viejas, o «Iniciar» sin asignar
+    // en Buscar): para él es una visita por hacer, como una asignada.
+    if (visitadoresBD(f).length) { t.accion = 'Iniciar'; t.mapa = true; }
+  } else if (estado === 'ASIGNADO') {
+    n = diasSinIniciar(f, ref);
+    t.tiempo = _tvHace(n);
+    t.demora = n != null && n >= _TV_DEMORA;
+    t.accion = 'Iniciar';
+  } else if (estado === 'INICIADO') {
+    n = diasSinCompletar(f, ref);
+    t.tiempo = _tvHace(n);
+    t.demora = n != null && n >= _TV_DEMORA;
+    t.falta = entregablesFaltantes(f);
+    t.accion = 'Continuar';
+  } else if (estado === 'COMPLETADO') {
+    var fv = parsearFecha(f['FECHA DE VISITA'] || '');
+    if (fv) t.tiempo = fv.getDate() + ' ' + _MESES_ES[fv.getMonth()].slice(0, 3);
+    // Sin «Falta» en la completada: las de V2 tienen el acta en papel y en
+    // Buscar todas salían en rojo. Los documentos se ven en la ficha.
+  }
+  if (opts.puede === false) t.accion = null;
+  return t;
+}
+
 var _cuUtilsExports = {
+  tarjetaVisita: tarjetaVisita,
+  nombreCortoVisita: nombreCortoVisita,
+  ubicacionCortaVisita: ubicacionCortaVisita,
   ART135_LITERALES: ART135_LITERALES,
   ART135_TEXTO: ART135_TEXTO,
   // Audiencias (TASK 3a)

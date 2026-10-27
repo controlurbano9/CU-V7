@@ -444,58 +444,22 @@ function irASemana(fecha) {
   if (rejilla && rejilla.scrollIntoView) rejilla.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-// Tarjeta de alerta, compacta (3 renglones, acción a la derecha): la columna
-// es una lista de trabajo y deben verse muchas de un vistazo.
-// La barra lateral y la etiqueta dicen el ESTADO con el mismo código de la
-// Semana (ocre = asignada, azul = iniciada); el color solo no basta, por eso
-// la etiqueta va en texto. La urgencia (PQR, audiencia) va en el motivo, en rojo.
+// Alerta = tarjeta única en renglón (visita-card.jsx). El tiempo es el motivo:
+// la urgente dice el suyo (audiencia) en rojo; el resto, los días que lleva
+// sin iniciar o sin completar (la palabra de estado ya dice cuál de los dos).
+// Una visita ajena (supervisor) no ofrece acción: tocarla abre la ficha.
 function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
-  const f = alerta.f;
-  const iniciada = normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'INICIADO';
-  const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
-  // Sin barrio: la dirección ya ubica el caso y el renglón se leía como una
-  // fila de la hoja. Un RADICADO con varios valores muestra el primero + «+N».
-  const rads = String(f['RADICADO'] || '').split(/\s*[\/,;\n]\s*/).filter(Boolean);
-  // Con expediente se ve «Exp. N» en lugar del radicado (el title ya trae el
-  // RADICADO completo); sin expediente, el radicado como siempre (2026-10-19).
-  const exp = expedienteDe(f);
-  const rad = exp
-    ? 'Exp. ' + exp + (rads.length > 1 ? ' +' + (rads.length - 1) : '')
-    : (rads.length ? rads[0] + (rads.length > 1 ? ' +' + (rads.length - 1) : '') : '—');
-  const meta = [mostrarInspector && _svNombreCorto(f), alerta.detalle].filter(Boolean).join(' · ');
-  // «Sin iniciar»/«Sin completar» repetían la etiqueta de estado: queda solo el
-  // conteo. La urgente conserva su motivo (PQR, audiencia), que es lo que importa.
-  const motivo = alerta.cat === 'urgente' ? alerta.mensaje : alerta.dias + ' días';
-  // Un supervisor ve alertas de visitas ajenas: para esas solo consulta.
-  const puede = puedeDiligenciar(f);
-
+  const urgente = alerta.cat === 'urgente';
   return (
-    <article className={'al-card' + (iniciada ? ' al-iniciada' : '') + (alerta.cat === 'urgente' ? ' al-urgente' : '')}>
-      <div className="al-txt">
-        <div className="al-motivo">
-          <span className="al-estado">{iniciada ? 'Iniciada' : 'Asignada'}</span>
-          <span className="al-msg" title={alerta.mensaje}>{motivo}</span>
-        </div>
-        <div className="al-dir" title={dir}>{direccionVisible(dir)}</div>
-        <div className="al-meta" title={[f['RADICADO'], meta].filter(Boolean).join(' · ')}>
-          <span className={'sv-rad' + (exp ? ' exp-tag' : '')}>{rad}</span>
-          {meta && ' · ' + meta}
-        </div>
-      </div>
-      <div className="al-acc">
-        {alerta.irSemana && (
-          <button type="button" className="al-icono" title="Ver en su semana"
-            aria-label="Ver en su semana" onClick={() => irASemana(alerta.irSemana)}>
-            <Icon.Agenda size={14} />
-          </button>
-        )}
-        <button type="button" className={'al-btn' + (puede ? ' al-btn-acc' : '')} onClick={() => puede
-          ? onContinuar(f._idx, f)
-          : (window.abrirVisitaDetail && window.abrirVisitaDetail(f))}>
-          {!puede ? 'Ver datos' : (iniciada ? 'Continuar' : 'Iniciar')}
+    <TarjetaVisita f={alerta.f} densidad="renglon" opts={{ veTodo: !!mostrarInspector }}
+      onAccion={onContinuar} urgente={urgente}
+      tiempo={urgente ? alerta.mensaje : alerta.dias + (alerta.dias === 1 ? ' día' : ' días')}
+      extra={alerta.irSemana ? (
+        <button type="button" className="al-icono" title="Ver en su semana"
+          aria-label="Ver en su semana" onClick={() => irASemana(alerta.irSemana)}>
+          <Icon.Agenda size={14} />
         </button>
-      </div>
-    </article>
+      ) : null} />
   );
 }
 

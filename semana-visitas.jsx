@@ -26,37 +26,6 @@ function _svPrefs() {
   try { return JSON.parse(sessionStorage.getItem(SV_PREFS)) || {}; } catch (e) { return {}; }
 }
 
-// Estado → color de la barra lateral. La completada además va atenuada por
-// CSS: el color solo no basta (misma regla que .ent-dot en los entregables).
-function _svClaseEstado(f) {
-  const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  if (e === 'COMPLETADO') return 'sv-completada';
-  if (e === 'INICIADO') return 'sv-iniciada';
-  return 'sv-asignada';
-}
-
-function _svTextoEstado(f) {
-  const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
-  if (e === 'COMPLETADO') return 'completada';
-  if (e === 'INICIADO') return 'iniciada';
-  return 'asignada';
-}
-
-// "MAURICIO RESTREPO GOMEZ" → "Mauricio R." — en la tarjeta no hay ancho para
-// el nombre completo y el apellido inicial basta para distinguir a dos.
-function _svNombreCorto(fila) {
-  const n = titleCaseNombre(primerVisitador(visitadoresBD(fila)));
-  if (!n) return '';
-  const partes = n.split(/\s+/);
-  return partes.length > 1 ? partes[0] + ' ' + partes[1].charAt(0) + '.' : partes[0];
-}
-
-function _svDDMM(valor) {
-  const d = parsearFecha(valor || '');
-  if (!d) return '';
-  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
-}
-
 // "15 – 19 sep", y "29 sep – 3 oct" cuando la semana cruza de mes.
 function _svRango(dias) {
   const a = dias[0], b = dias[dias.length - 1];
@@ -67,18 +36,6 @@ function _svRango(dias) {
 
 function _svMismoDia(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-// «Barrio · C3», o «Rural». En rural la vereda ya viene dentro de la
-// dirección: repetirla gasta la única línea de contexto que hay. La comuna
-// sola («3 · …») no se entendía sin saber qué era: «C3».
-function _svUbic(f) {
-  const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
-  const barrio = String(f['BARRIO'] || '').trim();
-  const comuna = String(f['COMUNA'] || '').trim();
-  const esRural = /rural/i.test(comuna) || (!barrio && /^v(da|ereda)\b/i.test(dir));
-  const comunaTxt = /^\d+$/.test(comuna) ? 'C' + comuna : comuna;
-  return esRural ? 'Rural' : [barrio, comunaTxt].filter(Boolean).join(' · ');
 }
 
 // ── Ruta del día (2026-10-14) ──────────────────────────────────
@@ -168,8 +125,8 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
                 <div className="ruta-txt">
                   <div className="ruta-dir">{puntoDesdeTextoCoord(p.dir) ? 'Punto GPS' : (p.dir || 'Sin dirección')}</div>
                   <div className="ruta-meta">
-                    {[_svUbic(p.f), alcance === 'equipo' ? _svNombreCorto(p.f) : ''].filter(Boolean).join(' · ')}
-                    {!p.punto && <span className="ruta-aprox">{_svUbic(p.f) || alcance === 'equipo' ? ' · ' : ''}ubicación por dirección</span>}
+                    {[ubicacionCortaVisita(p.f), alcance === 'equipo' ? nombreCortoVisita(p.f) : ''].filter(Boolean).join(' · ')}
+                    {!p.punto && <span className="ruta-aprox">{ubicacionCortaVisita(p.f) || alcance === 'equipo' ? ' · ' : ''}ubicación por dirección</span>}
                   </div>
                 </div>
               </li>
@@ -213,72 +170,35 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
     setOcupada(false);
     if (hecho) setReasignando(false);
   }
-  const dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección';
-  const rad = String(f['RADICADO'] || '').trim();
-  // Con expediente se ve «Exp. N» y el radicado queda en el title (2026-10-19).
-  const ident = identificadorVisita(f);
-  const fRad = _svDDMM(f['FECHA RADICADO']);
-  const ubic = _svUbic(f);
-
-  let accion = 'Iniciar';
-  if (e === 'INICIADO') accion = 'Continuar';
-  else if (e === 'COMPLETADO') accion = movil ? 'Ver datos' : 'Ver';
-  else if (movil) accion = 'Iniciar visita';
-  // Un supervisor ve la semana de todos: en visita ajena solo consulta, no
-  // abre el formulario (se guardaría sobre la fila de otro inspector).
-  const soloVer = e !== 'COMPLETADO' && !puedeDiligenciar(f);
-  if (soloVer) accion = movil ? 'Ver datos' : 'Ver';
-
+  // Tarjeta única (visita-card.jsx). El día ya es el tiempo: sin «hace N
+  // días». El nombre del inspector sale solo donde hay chips de inspector
+  // (Inicio); en la Semana de Mis visitas todo es propio. Una visita ajena
+  // (supervisor) no ofrece acción: tocarla abre la ficha.
+  const arr = !!arrastrable && !movil;
   return (
-    <div className={'sv-card ' + _svClaseEstado(f) + (arrastrable ? ' arrastrable' : '')}
-      aria-label={dir + ', ' + _svTextoEstado(f)}
-      draggable={!!arrastrable && !movil}
-      onDragStart={arrastrable && !movil ? onDragStart : undefined}
-      onDragOver={onDragOver} onDrop={onDrop}>
-      {n && <span className="sv-n" aria-label={'Parada ' + n}>{n}</span>}
-      {/* Coordenada como dirección → «Punto GPS» (title con la original). */}
-      <div className="sv-dir" title={dir}>{direccionVisible(dir)}</div>
-      <div className="sv-meta">
-        {ubic && <span>{ubic} · </span>}
-        {(ident.principal || rad) && (
-          <span className={'sv-rad' + (ident.secundario ? ' exp-tag' : '')} title={ident.secundario || undefined}>{ident.principal}</span>
-        )}
-        {(ident.principal || rad) && fRad && ' · '}
-        {fRad}
-      </div>
-      <div className="sv-pie">
-        {puedeReasignar ? (
-          <button type="button" className="sv-insp" title="Reasignar a otro inspector"
-            aria-expanded={reasignando} onClick={() => setReasignando(!reasignando)}
-            style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit',
-              cursor: 'pointer', textAlign: 'left', textDecoration: 'underline dotted' }}>
-            {_svNombreCorto(f) || 'Reasignar'}
-          </button>
-        ) : (
-          <span className="sv-insp">{_svNombreCorto(f)}</span>
-        )}
-        <span className="sv-acc">
-          {/* Firma (fila, datos): la misma de BotonContinuarVisita y AlertaCard.
-              Con solo (f) el router recibe la fila donde espera el _idx y el
-              formulario abre sin datos. */}
-          <button className={'sv-btn' + (e === 'COMPLETADO' || soloVer ? '' : ' sv-btn-acc')} onClick={() => soloVer
-            ? (window.abrirVisitaDetail && window.abrirVisitaDetail(f))
-            : (onAbrir && onAbrir(f._idx, f))}>{accion}</button>
-          <BotonMapaVisita f={f} variante="icono" />
-          {movil && (onSubir || onBajar) && (<>
-            <button type="button" className="sv-orden" aria-label="Subir en el orden del día"
-              disabled={!onSubir} onClick={onSubir}>↑</button>
-            <button type="button" className="sv-orden" aria-label="Bajar en el orden del día"
-              disabled={!onBajar} onClick={onBajar}>↓</button>
-          </>)}
-        </span>
-      </div>
-      {puedeReasignar && (
+    <TarjetaVisita f={f} densidad="renglon" sinTiempo n={n}
+      opts={{ veTodo: !!(inspectores && inspectores.length) }}
+      onAccion={onAbrir}
+      inspector={puedeReasignar ? (
+        <button type="button" className="sv-insp" title="Reasignar a otro inspector"
+          aria-expanded={reasignando} onClick={(ev) => { ev.stopPropagation(); setReasignando(!reasignando); }}
+          style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit',
+            cursor: 'pointer', textAlign: 'left', textDecoration: 'underline dotted' }}>
+          {nombreCortoVisita(f) || 'Reasignar'}
+        </button>
+      ) : undefined}
+      extra={movil && (onSubir || onBajar) ? (<>
+        <button type="button" className="sv-orden" aria-label="Subir en el orden del día"
+          disabled={!onSubir} onClick={onSubir}>↑</button>
+        <button type="button" className="sv-orden" aria-label="Bajar en el orden del día"
+          disabled={!onBajar} onClick={onBajar}>↓</button>
+      </>) : null}
+      pie={puedeReasignar ? (
         <PanelSeleccionInspector f={f} busy={ocupada} abierto={reasignando}
           inspectores={inspectores.map(n => ({ nombre: n }))}
           accion="asignar" conFecha onAsignar={reasignar} />
-      )}
-    </div>
+      ) : null}
+      arrastre={{ draggable: arr, onDragStart: arr ? onDragStart : undefined, onDragOver, onDrop }} />
   );
 }
 
