@@ -1129,6 +1129,8 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   background: var(--surface-2); color: var(--ink); font-size: var(--fs-1); cursor: pointer;
 }
 .cn-ejemplo-tipo { font-size: var(--fs-1); color: var(--ink-3); }
+/* En el celular son toques de campo: 44 px (revisión final 2026-10-28). */
+@media (max-width: 899px) { .cn-ejemplo { min-height: var(--tap); } }
 @media (hover: hover) and (pointer: fine) { .cn-ejemplo:hover { background: var(--surface-3); } }
 .btn-neutro.cn-limpiar { min-height: 36px; padding: 0 14px; font-size: var(--fs-1); }
 .cn-cand-txt { flex: 1; min-width: 0; }
@@ -2756,7 +2758,7 @@ button.sv-col-head {
   .sv-btn:hover,
   .al-btn:hover { background: var(--surface-3); }
   .sv-btn.sv-btn-acc:hover,
-  .al-btn.al-btn-acc:hover { background: #F6D8C9; }
+  .al-btn.al-btn-acc:hover { background: var(--surface-3); }
   .sv-icono:hover,
   .al-icono:hover { background: rgba(31,27,22,0.06); color: var(--ink); }
 }
@@ -2912,7 +2914,7 @@ button.sv-col-head {
 .mv-acc .vc-btn-cta { min-width: 92px; background: var(--brand-bg); color: var(--brand-ink); }   /* mismo ancho de .ent-btn */
 @media (hover: hover) and (pointer: fine) {
   .mv-acc .vc-btn:hover { background: var(--surface-3); }
-  .mv-acc .vc-btn-cta:hover { background: #F6D8C9; color: var(--brand-ink); filter: none; }
+  .mv-acc .vc-btn-cta:hover { background: var(--surface-3); color: var(--brand-ink); filter: none; }
 }
 .mv-fecha { flex: none; width: 46px; font-size: var(--fs-1); color: var(--ink-3); }
 .mv-mas { display: flex; margin: 10px auto 0; }
@@ -3328,7 +3330,7 @@ button.sv-col-head {
 .adm-b-acc .vc-btn-cta, .adm-pend-acc .vc-btn-cta { background: var(--brand-bg); color: var(--brand-ink); }
 @media (hover: hover) and (pointer: fine) {
   .adm-b-acc .vc-btn:hover, .adm-pend-acc .vc-btn:hover { background: var(--surface-3); }
-  .adm-b-acc .vc-btn-cta:hover, .adm-pend-acc .vc-btn-cta:hover { background: #F6D8C9; color: var(--brand-ink); filter: none; }
+  .adm-b-acc .vc-btn-cta:hover, .adm-pend-acc .vc-btn-cta:hover { background: var(--surface-3); color: var(--brand-ink); filter: none; }
 }
 .adm-b-re { min-width: 40px; min-height: 36px; padding: 0; }
 
@@ -5140,6 +5142,12 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 .fv-hechos .l { color: var(--ink-3); }
 .fv-hechos .v { color: var(--ink); }
 .fv-fija-acc .vc-btn-cta { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+/* En Mis visitas la placa de la siguiente visita ya lleva «Iniciar» lleno:
+   la misma acción en la ficha de al lado va en tinte (un lleno por pantalla). */
+.mv-panel .fv-fija-acc .vc-btn-cta { background: var(--surface-2); color: var(--ink); border-color: transparent; }
+@media (hover: hover) and (pointer: fine) {
+  .mv-panel .fv-fija-acc .vc-btn-cta:hover { background: var(--surface-3); filter: none; }
+}
 @media (pointer: coarse) {
   .fv-fija-acc .vc-btn { min-height: 44px; }
   .pqr-chip::after { inset: -14px -8px; }

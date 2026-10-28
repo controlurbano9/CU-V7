@@ -139,10 +139,17 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     const fr = formatearFecha(f['FECHA RADICADO'] || '');
     estadoTxt = fr ? 'radicado el ' + fr : '';
   } else if (!completa) {
+    // Mismo reloj que la tarjeta (decisión del usuario 2026-10-28): «N días
+    // sin iniciar / sin completar», contado desde la asignación; una
+    // pendiente sin asignar no tiene reloj. Antes decía «hace N días».
     const dias = est === 'INICIADO' ? diasSinCompletar(f) : diasSinIniciar(f);
     if (dias != null) {
-      estadoTxt = dias > 0 ? 'hace ' + _plural(dias, 'día', 'días') : 'hoy';
+      estadoTxt = dias > 0
+        ? _plural(dias, 'día', 'días') + (est === 'INICIADO' ? ' sin completar' : ' sin iniciar')
+        : 'hoy';
       estadoCls = _demoradaMV(dias) ? ' demora' : ' espera';
+    } else if (est === 'PENDIENTE') {
+      estadoTxt = 'sin asignar';
     }
   }
 

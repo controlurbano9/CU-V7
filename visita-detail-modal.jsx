@@ -219,7 +219,7 @@ function ReiteradosVD({ f }) {
                 onChange={e => setFecha(e.target.value)}
                 style={{ width: '100%', minHeight: 44, fontSize: 17, padding: 10 }} />
             </div>
-            <button type="button" className="btn-principal" onClick={agregar} disabled={!puedeAgregar}
+            <button type="button" className="btn-accion" onClick={agregar} disabled={!puedeAgregar}
               style={{ margin: 0, width: 'auto', minHeight: 44, padding: '0 16px', fontSize: 15 }}>
               {ocupado ? '…' : 'Agregar'}
             </button>
@@ -246,11 +246,13 @@ function _SeccionVD({ titulo, children, abierta = true }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: función `_SeccionVD`, convención guion bajo del archivo
   const [open, setOpen] = useStateVD(abierta);
   return (
-    <div style={{ marginBottom: 14, border: '1px solid var(--borde, rgba(31,27,22,0.08))', borderRadius: 10, overflow: 'hidden' }}>
+    // Sin caja: vive dentro de la ficha o del modal, que ya son la tarjeta
+    // (era tarjeta dentro de tarjeta). Una línea arriba la separa.
+    <div style={{ marginBottom: 14, borderTop: '1px solid var(--line)' }}>
       <button type="button" className="btn-cabecera" onClick={() => setOpen(!open)}
         aria-expanded={open}
         style={{
-          padding: '10px 14px', background: 'var(--surface-2)',
+          padding: '10px 0', background: 'transparent',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           fontSize: 13, fontWeight: 600, color: 'var(--ink)',
           userSelect: 'none',
@@ -261,7 +263,7 @@ function _SeccionVD({ titulo, children, abierta = true }) {
         </span>
       </button>
       {open && (
-        <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
+        <div style={{ padding: '4px 0 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
           {children}
         </div>
       )}
