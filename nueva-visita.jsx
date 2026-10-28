@@ -6804,7 +6804,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <FilaEntregable
             icono={<Icon.Folder size={18} />}
             nombre="Carpeta en Drive"
-            meta={d.idCarpetaVisita ? 'Todos los archivos de la visita' : 'Se crea al guardar con conexión'}
+            meta="Todos los archivos de la visita"
             estadoTono={d.idCarpetaVisita ? 'ok' : 'pend'}
             estadoTexto={d.idCarpetaVisita ? 'Creada' : 'Pendiente'}
           >
@@ -6862,7 +6862,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                   ? <span className="spinner-btn" aria-hidden="true" />
                   : <Icon.Refresh size={18} />}
               </button>
-            </>) : (
+            </>) : sinCarpetaVisita ? null : (
+              /* Sin carpeta no hay botón: un «Generar» apagado en cada
+                 renglón repetía lo que ya dice el aviso de arriba. */
               <button onClick={generarActa} disabled={generacionBloqueada} aria-busy={generandoActa}
                 aria-describedby={motivoBloqueo ? 'nv-motivo-generar' : undefined} title={motivoBloqueo || undefined}
                 className="btn-accion ent-btn">
@@ -6888,24 +6890,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                     : (subiendoInforme ? 'Subiendo…' : (abriendoInforme ? 'Abriendo…' : 'Pendiente')))}
               procesando={abriendoInforme || subiendoInforme}
             >
-              {/* Informe hecho por fuera de la app: icono, no tercer botón de
-                  texto. No exige lo diligenciado ni el guardado al día — el
-                  documento ya viene escrito —, solo la carpeta de Drive.
-                  Va en la misma celda que Generar/Abrir (.ent-par): la grilla
-                  de .ent-acciones tiene 2 columnas y con 3 hijos metía el
-                  botón principal en la de 44 px y bajaba ↻ a otro renglón. */}
-              <span className="ent-par">
-              <button type="button" onClick={() => inputInformeRef.current && inputInformeRef.current.click()}
-                disabled={docOcupado || sinCarpetaVisita}
-                className="btn-icono" aria-label="Subir un informe hecho por fuera de la app (Word .docx)"
-                aria-busy={subiendoInforme} title="Subir informe hecho por fuera (.docx)">
-                {subiendoInforme
-                  ? <span className="spinner-btn" aria-hidden="true" />
-                  : <Icon.Upload size={18} />}
-              </button>
-              <input ref={inputInformeRef} type="file"
-                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={subirInformeExterno} style={{ display: 'none' }} />
+              {/* Sin carpeta, nada: el aviso de arriba ya lo dice. Con carpeta,
+                  «Generar»/«Abrir» en la primera celda, alineado con los demás
+                  renglones, y en la de 44 px el ↻. El informe hecho por fuera
+                  de la app (icono de subir) va a la derecha del ↻, o en su
+                  lugar si aún no hay informe: antes iba a la izquierda y
+                  corría «Abrir» 50 px respecto de los otros renglones. */}
+              {!sinCarpetaVisita && (<>
               {d.linkDocxInforme
                 ? <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 : (
@@ -6916,10 +6907,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                   Generar
                 </button>
               )}
-              </span>
-              {d.linkDocxInforme && (<>
-                {/* Mismo patrón de regeneración del acta: el informe ya
-                    generado no vuelve a ofrecer un CTA de texto completo. */}
+              <span className="ent-par">
+              {d.linkDocxInforme && (
+                /* Mismo patrón de regeneración del acta: el informe ya
+                   generado no vuelve a ofrecer un CTA de texto completo. */
                 <button type="button" onClick={generarInforme} disabled={generacionBloqueada}
                   className="btn-icono" aria-label="Regenerar el informe F-GGO-43"
                   aria-busy={abriendoInforme} title="Regenerar informe">
@@ -6927,6 +6918,21 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                     ? <span className="spinner-btn" aria-hidden="true" />
                     : <Icon.Refresh size={18} />}
                 </button>
+              )}
+              {/* No exige lo diligenciado ni el guardado al día — el
+                  documento ya viene escrito —, solo la carpeta de Drive. */}
+              <button type="button" onClick={() => inputInformeRef.current && inputInformeRef.current.click()}
+                disabled={docOcupado}
+                className="btn-icono" aria-label="Subir un informe hecho por fuera de la app (Word .docx)"
+                aria-busy={subiendoInforme} title="Subir informe hecho por fuera (.docx)">
+                {subiendoInforme
+                  ? <span className="spinner-btn" aria-hidden="true" />
+                  : <Icon.Upload size={18} />}
+              </button>
+              <input ref={inputInformeRef} type="file"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={subirInformeExterno} style={{ display: 'none' }} />
+              </span>
               </>)}
             </FilaEntregable>
           )}
@@ -6944,9 +6950,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <FilaEntregable
             icono={<Icon.Camera size={18} />}
             nombre="Registro fotográfico"
-            meta={d.idCarpetaFotos
-              ? 'Fotos de la visita · documento F‑GGO‑46'
-              : 'Disponible al crear la carpeta de Drive'}
+            meta={'Fotos de la visita · documento F‑GGO‑46'}
             estadoTono={d.linkRegistroFotos
               ? 'ok'
               : (sinCarpetaVisita
@@ -7290,6 +7294,28 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
     });
   }, [fotos]);
 
+  // Una sola fila de miniaturas y una celda «+N» que muestra el resto. Con 18
+  // fotos la grilla medía 547 px y era lo que hacía que la columna de
+  // entregables no cupiera en la pantalla. Las columnas las decide el CSS
+  // (auto-fill): se leen de la grilla ya pintada y se vuelven a leer si
+  // cambia su ancho.
+  const grillaRef = React.useRef(null);
+  const [colsGrilla, setColsGrilla] = React.useState(0);
+  const [verTodas, setVerTodas] = React.useState(false);
+  React.useEffect(function() {
+    const el = grillaRef.current;
+    if (!el) return;
+    function medir() {
+      const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length;
+      setColsGrilla(n);
+    }
+    medir();
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return function() { ro.disconnect(); };
+  }, [fotos.length > 0]);
+
   // Va embebido en el renglón "Registro fotográfico" de la zona de
   // entregables: sin tarjeta propia (sería tarjeta dentro de tarjeta) y
   // sin título (el renglón ya nombra la pieza) ni link a Drive (el
@@ -7333,13 +7359,10 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
     <div className="ent-slot-fotos">
       <div>
 
-        <label style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          minHeight: 'var(--tap)', padding: '14px 16px',
-          border: '1px solid var(--brand)', borderRadius: 'var(--r)',
-          textAlign: 'center', cursor: subiendo ? 'wait' : 'pointer',
-          background: 'var(--brand-bg)', fontSize: 15, fontWeight: 600,
-          color: 'var(--brand-ink)', opacity: subiendo ? 0.55 : 1,
+        {/* Mismo tinte que «Generar»/«Abrir»: antes llevaba filete amarillo
+            y 15 px, más fuerte que las acciones de los documentos. */}
+        <label className="btn-accion fotos-elegir" style={{
+          cursor: subiendo ? 'wait' : 'pointer', opacity: subiendo ? 0.55 : 1,
         }}>
           {subiendo
             ? <span className="spinner-btn" aria-hidden="true" />
@@ -7351,9 +7374,26 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
             onChange={alSeleccionar} disabled={subiendo} style={{ display: 'none' }} />
         </label>
 
-        {fotos.length > 0 && (
-          <div className="fotos-grilla">{fotos.map(_celdaFoto)}</div>
-        )}
+        {fotos.length > 0 && (function() {
+          const resumir = !verTodas && colsGrilla > 1 && fotos.length > colsGrilla;
+          const vistas = resumir ? fotos.slice(0, colsGrilla - 1) : fotos;
+          return (<>
+            <div className="fotos-grilla" ref={grillaRef}>
+              {vistas.map(_celdaFoto)}
+              {resumir && (
+                <button type="button" className="fg-celda fg-mas" onClick={function() { setVerTodas(true); }}
+                  aria-label={'Ver las ' + fotos.length + ' fotos'}>
+                  +{fotos.length - vistas.length}
+                </button>
+              )}
+            </div>
+            {verTodas && fotos.length > colsGrilla && (
+              <button type="button" className="btn-texto fotos-menos" onClick={function() { setVerTodas(false); }}>
+                Mostrar menos
+              </button>
+            )}
+          </>);
+        })()}
       </div>
     </div>
   );

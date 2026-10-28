@@ -1690,7 +1690,9 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
    la columna de acciones brincaba entre renglones. El <input> oculto del
    escáner (display:none) no genera celda, así que no cuenta. */
 .ent-acciones {
-  display: grid; grid-template-columns: auto 44px;
+  /* minmax: el informe lleva ↻ + subir Word en la segunda celda; crece a
+     la derecha sin mover «Abrir», que sigue alineado con los demás. */
+  display: grid; grid-template-columns: auto minmax(44px, auto);
   align-items: center; column-gap: 6px; flex-shrink: 0;
 }
 /* Acción de renglón: «Generar»/«Abrir» — .btn-accion ya asegura el alto
@@ -1728,6 +1730,17 @@ body.is-offline .titulo-fijo { top: calc(var(--header-h) + 40px); }
   background: var(--surface-2); border: 1px solid var(--line);
 }
 .fg-celda img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* «+N»: el resto de las fotos (nueva-visita.jsx, SeccionFotos). */
+.fg-celda.fg-mas {
+  display: flex; align-items: center; justify-content: center;
+  font: 600 var(--fs-2) / 1 var(--font-cond, inherit); color: var(--ink);
+  cursor: pointer; padding: 0; appearance: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .fg-celda.fg-mas:hover { background: var(--surface-3); }
+}
+.fotos-menos { margin-top: 6px; min-height: var(--tap); }
+.fotos-elegir { width: 100%; justify-content: center; gap: 8px; }
 /* El número va encima de la miniatura y sobrevive a que la imagen no cargue
    (en campo, sin señal): la cuenta se sigue leyendo aunque no haya foto. */
 .fg-celda .fg-num {
@@ -5058,16 +5071,17 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   .nv-pantalla .chip-vis { min-height: var(--tap); }
 }
 
-/* Entregables: punto de 12 px — a 10 no se distinguía al sol — y la
-   acción principal llena de tinta: «Generar»/«Abrir» es lo que
-   produce el documento oficial. ↻ sigue neutro (.btn-icono ya es
-   fondo transparente + icono --ink-3): regenerar es secundario. */
+/* Entregables: punto de 12 px — a 10 no se distinguía al sol.
+   «Generar»/«Abrir» en tinte, no llenos: con la visita completa eran
+   cinco botones negros más «Guardar», y la regla es un solo botón lleno
+   por pantalla (decisión del usuario 2026-10-28). Lo que distingue la
+   acción es el texto; el estado lo dice el punto. ↻ sigue neutro. */
 .ent-dot { width: 12px; height: 12px; }
 .nv-entregables .ent-btn {
-  background: var(--ink); color: var(--surface);
+  background: var(--surface-2); color: var(--ink); border-color: transparent;
 }
 @media (hover: hover) and (pointer: fine) {
-  .nv-entregables .ent-btn:hover { background: var(--brand-ink); }
+  .nv-entregables .ent-btn:not(:disabled):hover { background: var(--surface-3); }
 }
 
 /* Medición de la TASK 03 (Claude, 2026-10-28): el «—» de los días sin visitas

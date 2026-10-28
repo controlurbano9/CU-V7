@@ -914,9 +914,12 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     <FilaEntregable
       icono={<Icon.File size={18} />}
       nombre={'Orden de policía ' + orden}
-      meta={idCarpetaVisita
-        ? 'Papel firmado (oficio) — suba el PDF de su app de escaneo o tome fotos'
-        : 'Requiere carpeta de Drive'}
+      // La ayuda de cómo escanear solo sirve mientras falta la orden; ya
+      // escaneada (o en cola) el renglón dice qué es y nada más. Sin carpeta
+      // lo explica el aviso de arriba de la zona (`ent-motivo`).
+      meta={!idCarpetaVisita || link || pendiente
+        ? 'Papel firmado · PDF'
+        : 'Suba el PDF de su app de escaneo o tome fotos'}
       estadoTono={link ? 'ok' : (pendiente ? 'pend' : (idCarpetaVisita ? 'pend' : 'apagado'))}
       estadoTexto={pendiente ? 'En cola' : (link ? 'Escaneada' : 'Sin escanear')}
       procesando={bloqueado && !sesionAbierta}
