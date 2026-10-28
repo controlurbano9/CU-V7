@@ -3350,10 +3350,35 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // pintarla. _lastSavedRef muta sin re-render (tras guardar/autoguardar),
   // por eso guardar() y el autoguardado también hacen setDirty(false)
   // explícito.
+  // Hasta el primer toque o tecla del inspector, lo que cambie solo es línea
+  // base, no un cambio suyo (2026-10-28): al abrir una visita se completan
+  // solos la ficha catastral (por dirección y por el pin), las casillas R11
+  // del POT y la suspensión «N/A» de una obra terminada, y todo eso llegaba
+  // después de fijar la línea base → «● Cambios sin guardar» sin tocar nada.
+  // Lo autocompletado se guarda con el siguiente «Guardar».
+  const _usuarioTocoRef = React.useRef(false);
+  React.useEffect(function() {
+    if (fase !== 'formulario') return;
+    _usuarioTocoRef.current = false;
+    function marcar() { _usuarioTocoRef.current = true; }
+    document.addEventListener('pointerdown', marcar, true);
+    document.addEventListener('keydown', marcar, true);
+    return function() {
+      document.removeEventListener('pointerdown', marcar, true);
+      document.removeEventListener('keydown', marcar, true);
+    };
+  }, [fase]);
+
   React.useEffect(function() {
     if (fase !== 'formulario') return;
     if (!_restauradoRef.current) return; // antes de aterrizar la restauración daría falso positivo
-    setDirty(JSON.stringify({ d: _snapshotLimpia(d), b: barrioOtro }) !== _lastSavedRef.current);
+    const snap = JSON.stringify({ d: _snapshotLimpia(d), b: barrioOtro });
+    if (!_usuarioTocoRef.current) {
+      _lastSavedRef.current = snap;
+      setDirty(false);
+      return;
+    }
+    setDirty(snap !== _lastSavedRef.current);
   }, [fase, d, barrioOtro]);
 
   // Alto real de la cabecera fija → --nv-header-h en la pantalla. El panel
