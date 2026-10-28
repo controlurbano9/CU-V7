@@ -1316,7 +1316,14 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    indicador es informativo: no es botón ni foco tabulable. */
 .form-seccion-cabecera {
   display: flex; align-items: center; gap: 8px;
+  /* 26 = los 14 que tenía el título + los 12 del marginTop de la rejilla,
+     que ahora se colapsan con este margen. */
+  margin-bottom: 26px;
 }
+/* El margen inferior del título pasa a la cabecera: dentro del flex, el
+   punto se centraba en título + margen y caía 7 px por debajo del texto
+   (el ✓ de antes también se veía bajo por eso). */
+.form-seccion-cabecera > .form-seccion-titulo { margin-bottom: 0; }
 .sec-ind {
   flex-shrink: 0;
   /* Pisa el padding de la tarjeta en vez de robarle ancho al título: el
@@ -1326,13 +1333,15 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
      la tarjeta (padding 16) y el título conserva su línea. */
   margin-right: -11px;
 }
-/* --green-ink y no --green: el ✓ es texto y la WCAG 1.4.3 pide 4.5:1
-   (el --green se queda corto); el ink de la misma familia pasa de sobra. */
-.sec-ind-ok { color: var(--green-ink); font-size: var(--fs-3); font-weight: 700; }
+/* Completa y pendiente con el mismo punto que los entregables (.ent-dot):
+   verde / ámbar. Antes la completa era un ✓ de la fuente, más alto y más
+   grueso que el título (decisión del usuario 2026-10-28). */
+.sec-ind-ok,
 .sec-ind-pend {
   width: 10px; height: 10px; border-radius: 50%; /* mismo tamaño que .ent-dot */
-  background: var(--amber); /* mismo lenguaje que .ent-dot.ed-pend */
 }
+.sec-ind-ok   { background: var(--green); }
+.sec-ind-pend { background: var(--amber); }
 .form-seccion-titulo,
 .titulo-azul,
 .titulo-cafe,
@@ -5041,16 +5050,14 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 
 /* Secciones: placa blanca con filete de 1 px — la sombra suave era
    del mundo crema. Título en condensada 700 a 17, como los títulos
-   de panel de las demás pantallas; el ✓ de sección completa en
-   --green (5,35:1 sobre blanco, pasa AA; el comentario viejo que lo
-   enviaba a --green-ink era del verde anterior). El punto pendiente
-   crece con .ent-dot (abajo). */
+   de panel de las demás pantallas. Los puntos de sección (verde
+   completa, ámbar pendiente) crecen con .ent-dot (abajo). */
 .form-seccion { border-color: var(--line-2); box-shadow: none; }
 .form-seccion-titulo {
   font-family: var(--font-cond); font-weight: 700;
   font-size: var(--fs-3); letter-spacing: 0;
 }
-.sec-ind-ok { color: var(--green); }
+.sec-ind-ok,
 .sec-ind-pend { width: 12px; height: 12px; }
 
 /* Campos: etiqueta a 13 — la jerarquía la marca ahora el título de

@@ -1260,7 +1260,7 @@ function _construirPayload(d, estado, linkDriveFinal, filaPendiente) {
 // ══════════════════════════════════════════════════════════════
 //   PRIMITIVOS DE FORMULARIO
 // ══════════════════════════════════════════════════════════════
-// `estado`: 'ok' → check verde; 'pend' → punto ámbar (solo tras un intento
+// `estado`: 'ok' → punto verde; 'pend' → punto ámbar (solo tras un intento
 // de generar fallido, ver `mostrarPendientes`); undefined → sin indicador
 // (secciones sin campos obligatorios, p. ej. Observaciones).
 // `accion`: botón opcional a la derecha de la cabecera (p. ej. «Consultar»).
@@ -1270,7 +1270,7 @@ function _Seccion({ titulo, color, estado, accion, children }) {
       <div className="form-seccion-cabecera">
         <span className={'form-seccion-titulo titulo-' + (color || 'azul')}>{titulo}</span>
         {estado === 'ok' && (
-          <span className="sec-ind sec-ind-ok" role="img" aria-label="Sección completa" title="Sección completa">✓</span>
+          <span className="sec-ind sec-ind-ok" role="img" aria-label="Sección completa" title="Sección completa" />
         )}
         {estado === 'pend' && (
           <span className="sec-ind sec-ind-pend" role="img" aria-label="Faltan campos en esta sección" title="Faltan campos en esta sección" />
