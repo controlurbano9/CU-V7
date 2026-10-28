@@ -6007,22 +6007,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 1. IDENTIFICACIÓN ───────────────────────────────── */}
       <_Seccion titulo="Identificación del caso"
         estado={estadosSeccion["Identificación del caso"]} color="azul">
-        {/* Indicador tipo de visita (solo lectura — se eligió en el modal).
-            Texto plano, sin fondo ni borde: con la caja de color parecía un
-            botón (igual a .btn-accion). minHeight lo alinea con el input vecino. */}
-        <_Campo label="Tipo de visita">
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            minHeight: 'var(--tap)',
-            fontSize: 15, fontWeight: 600, color: 'var(--ink)',
-          }}>
-            <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }} aria-hidden="true">
-              {d.esOficio ? <Icon.Flag size={16} /> : <Icon.File size={16} />}
-            </span>
-            {d.esOficio ? 'Visita de oficio' : 'PQR / Radicado'}
-            {_nVisitaNum > 1 && <span style={{ marginLeft: 4, opacity: 0.7 }}>· Visita N°{_nVisitaNum}</span>}
-          </div>
-        </_Campo>
+        {/* Sin «Tipo de visita» (decisión del usuario 2026-10-28): se eligió en
+            el modal, el campo que sigue ya lo dice (Radicado u Orden de policía)
+            y le quitaba la mitad del renglón al radicado, que no se leía. */}
         {!d.esOficio && (
           <>
             {/* Grupo escrito a mano en vez de <_Campo>: _Campo asocia el label
