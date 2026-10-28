@@ -5057,8 +5057,10 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   font-family: var(--font-cond); font-weight: 700;
   font-size: var(--fs-3); letter-spacing: 0;
 }
+/* 10 px (antes 12): a 12 pesaban junto al título (decisión del usuario
+   2026-10-28). Mismo tamaño que .ent-dot. */
 .sec-ind-ok,
-.sec-ind-pend { width: 12px; height: 12px; }
+.sec-ind-pend { width: 10px; height: 10px; }
 
 /* Campos: etiqueta a 13 — la jerarquía la marca ahora el título de
    sección en condensada; el campo es lo que se lee de cerca. Filete
@@ -5083,12 +5085,13 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   .nv-pantalla .chip-vis { min-height: var(--tap); }
 }
 
-/* Entregables: punto de 12 px — a 10 no se distinguía al sol.
+/* Entregables: punto de 10 px (se subió a 12 «porque a 10 no se
+   distinguía al sol»; el usuario lo bajó otra vez el 2026-10-28).
    «Generar»/«Abrir» en tinte, no llenos: con la visita completa eran
    cinco botones negros más «Guardar», y la regla es un solo botón lleno
    por pantalla (decisión del usuario 2026-10-28). Lo que distingue la
    acción es el texto; el estado lo dice el punto. ↻ sigue neutro. */
-.ent-dot { width: 12px; height: 12px; }
+.ent-dot { width: 10px; height: 10px; }
 .nv-entregables .ent-btn {
   background: var(--surface-2); color: var(--ink); border-color: transparent;
 }
