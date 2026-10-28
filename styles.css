@@ -4576,6 +4576,10 @@ tr.clic:hover td { background: var(--surface-2); }
 .rfm-zoom span { min-width: 48px; text-align: center; font-size: var(--fs-1); font-weight: 600; }
 .rfm-pie { display: flex; align-items: flex-start; gap: 8px; padding: 10px 16px; background: var(--surface); border-top: 1px solid var(--line); }
 .rfm-num { min-width: 44px; padding-top: 12px; font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); }
+/* El pie y, debajo, el aviso «Describiendo… · puedes escribir el tuyo»: el
+   campo no se bloquea mientras llega la sugerencia. */
+.rfm-txt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rfm-describiendo { display: flex; align-items: center; gap: 6px; font-size: var(--fs-1); color: var(--ink-3); }
 .rfm .rfm-txt { flex: 1; min-height: 44px; max-height: 120px; resize: none; font-size: var(--fs-2); line-height: 1.4; padding: 10px 12px; }
 .rfm-pie .btn-icono { width: 44px; height: 44px; flex-shrink: 0; }
 .rfm-tira { background: var(--carril); padding: 10px 12px; overflow-x: auto; }

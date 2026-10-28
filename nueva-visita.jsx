@@ -193,7 +193,9 @@ const _BARRIO_A_COMUNA_NORM = {};
 function _quitarTildes(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
 // Fotos del modal del RF que aún no tienen pie definitivo: sin descripción o
-// con la IA trabajando en ella (un ↻ en curso va a reemplazar el texto).
+// con la IA trabajando en ella (un ↻ en curso va a reemplazar el texto). Si
+// el inspector escribe mientras tanto, `editar` le quita el «describiendo»:
+// su pie cuenta y se puede generar sin esperar a la IA.
 function _fotosSinDescripcion(fotos) {
   return (fotos || []).filter(function(f) { return f.descBusy || !String(f.descripcion || '').trim(); }).length;
 }
@@ -441,10 +443,16 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
     window.addEventListener('pointercancel', _soltarMini);
   }
 
+  // Escribir manda sobre la sugerencia: el campo no se bloquea mientras se
+  // describe, y lo que escriba el inspector queda marcado (`descManual`) para
+  // que la respuesta que llegue después no lo pise. Deja de contar como
+  // «describiendo»: su pie ya es el suyo (decisión del usuario 2026-10-28).
   function editar(val) {
     const id = fotoId;
     onCambiar(function(prev) {
-      return prev && prev.map(function(f) { return f.id === id ? Object.assign({}, f, { descripcion: val, descError: false }) : f; });
+      return prev && prev.map(function(f) {
+        return f.id === id ? Object.assign({}, f, { descripcion: val, descError: false, descManual: true, descBusy: false }) : f;
+      });
     });
   }
   function quitar() {
@@ -517,9 +525,11 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
         {foto && (
           <div className="rfm-pie">
             <span className="rfm-num">{(idx + 1) + ' / ' + n}</span>
+            <div className="rfm-txt-col">
             <textarea ref={txtRef} rows={1} className="input-campo rfm-txt" aria-label={'Pie de la foto ' + (idx + 1)}
-              value={foto.descripcion || ''} disabled={!!foto.descBusy}
-              placeholder={foto.descBusy ? 'Describiendo…' : 'Escribe el pie'}
+              value={foto.descripcion || ''}
+              aria-describedby={foto.descBusy ? 'rfm-describiendo' : undefined}
+              placeholder="Escribe el pie"
               onChange={function(e) { editar(e.target.value); }}
               onKeyDown={function(e) {
                 // Enter pasa a la siguiente: el pie es de una línea.
@@ -528,6 +538,12 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
                   if (idx < n - 1) setSel(idx + 1);
                 }
               }} />
+            {foto.descBusy && (
+              <div id="rfm-describiendo" className="rfm-describiendo" role="status">
+                <span className="spinner-btn" aria-hidden="true" /> Describiendo… · puedes escribir el tuyo
+              </div>
+            )}
+            </div>
             <button type="button" className="btn-icono" title="Otra descripción" aria-label="Otra descripción"
               disabled={!!foto.descBusy} onClick={function() { onDescribir([foto.id], true); }}>
               <Icon.Refresh size={18} />
@@ -5727,6 +5743,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         if (ids.indexOf(f.id) < 0) return f;
         const r = porId[f.id];
         const desc = r && r.ok ? String(r.descripcion || '').trim() : '';
+        // Lo que el inspector escribió mientras se describía manda: la
+        // sugerencia que llega tarde se descarta (salvo un ↻ pedido después,
+        // que limpia `descManual`).
+        const escrito = f.descManual && String(f.descripcion || '').trim();
+        if (escrito) return Object.assign({}, f, { descBusy: false, descError: false });
         if (desc) {
           return Object.assign({}, f, { descBusy: false, descError: false,
             descripcion: (pisar || !f.descripcion) ? desc : f.descripcion });
@@ -5746,7 +5767,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!ids.length) return;
     const sesion = _modalFotosSesionRef.current;
     const situacion = d.actuacion || '';
-    ids.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
+    // ↻ (`forzar`) es pedir otra sugerencia para esa foto: esa sí reemplaza
+    // lo escrito, así que se limpia la marca de texto propio.
+    ids.forEach(function(id) {
+      _marcarFotoModal(id, forzar ? { descBusy: true, descError: false, descManual: false }
+                                  : { descBusy: true, descError: false });
+    });
     let restantes = ids.slice();
     // Pre-descripción en curso: esperarla en vez de pedir lo mismo dos veces.
     const enCurso = !forzar && descripcionesEnCurso(d.idCarpetaFotos);
@@ -5772,7 +5798,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     }
     // Cuota por minuto de Gemini: una segunda pasada tras una pausa.
     if (limitadas.length) {
-      limitadas.forEach(function(id) { _marcarFotoModal(id, { descBusy: true, descError: false }); });
+      // Las que el inspector ya escribió no vuelven a «describiendo».
+      setModalFotos(function(prev) {
+        return prev && prev.map(function(f) {
+          return limitadas.indexOf(f.id) >= 0 && !(f.descManual && String(f.descripcion || '').trim())
+            ? Object.assign({}, f, { descBusy: true, descError: false }) : f;
+        });
+      });
       await new Promise(function(r) { setTimeout(r, 6000); });
       if (_modalFotosSesionRef.current !== sesion) return;
       for (let i = 0; i < limitadas.length; i += 6) {
