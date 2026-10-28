@@ -6015,7 +6015,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             {/* Grupo escrito a mano en vez de <_Campo>: _Campo asocia el label
                 clonando su ÚNICO hijo con un id, así que envolver el input en
                 el flex del botón dejaría el <label for> apuntando al div. */}
-            <div className="input-grupo">
+            <div className="input-grupo nv-radicado-grupo">
               <label className="input-label" htmlFor="nv-radicado">Radicado</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input id="nv-radicado" type="text" className="input-campo mono"

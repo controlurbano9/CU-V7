@@ -4770,6 +4770,11 @@ tr.clic:hover td { background: var(--surface-2); }
   .form-grid-2col { grid-template-columns: repeat(auto-fill, minmax(max(160px, calc((100% - 48px) / 4)), 1fr)); }
   .form-grid-2col > :not(.input-grupo) { grid-column: 1 / -1; }
 }
+/* El radicado (11 dígitos) más «Ver PQR» no caben en una columna de la
+   rejilla: con 4 columnas de 173 px se leía «20261(». Ocupa dos. */
+@media (min-width: 900px) {
+  .form-grid-2col > .nv-radicado-grupo { grid-column: span 2; }
+}
 .nv-pedir-cita { margin-top: var(--s-2); }
 .nv-falta-n {
   display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: var(--r-full);
