@@ -5033,6 +5033,8 @@ var _cuUtilsExports = {
   _infraccionSoloCatalogo: _infraccionSoloCatalogo,
   alternarContravencion: alternarContravencion,
   infraccionParaActa: infraccionParaActa,
+  nombrePOTLimpio: nombrePOTLimpio,
+  leyendaPOTPorCapa: leyendaPOTPorCapa,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)
   _festivosColombia: _festivosColombia,
   _calcularPascua: _calcularPascua,
@@ -5048,6 +5050,56 @@ if (typeof window !== 'undefined') {
 // Copia los datos fijos del radicado (dirección, barrio, GPS, denunciante…)
 // y limpia todo lo que pertenece a la visita anterior. Vive acá porque la
 // usan dos entradas distintas: el modal de nueva visita (buscar radicado) y
+// ── Leyenda POT del mapa (formulario y Consulta norma) ──────────
+// Las capas traen las categorías tal cual las escribió quien hizo el POT:
+// «ZRCA-7: Zona de Recuperacion para la Conservacion Ambiental». Para la
+// leyenda: sin el código, en minúscula salvo la primera letra y con tildes.
+var _TILDES_POT = {
+  recuperacion: 'recuperación', proteccion: 'protección', conservacion: 'conservación',
+  hidrologica: 'hidrológica', hidrica: 'hídrica', hidricas: 'hídricas', publicos: 'públicos',
+  publico: 'público', sedimentacion: 'sedimentación', colmatacion: 'colmatación',
+  inundacion: 'inundación', socavacion: 'socavación', area: 'área', areas: 'áreas',
+  geologica: 'geológica', geotecnica: 'geotécnica', erosion: 'erosión', remocion: 'remoción',
+};
+function nombrePOTLimpio(etiqueta) {
+  var t = String(etiqueta || '').trim()
+    // Código al comienzo: «ZRCA-7:», «ZSP-4:», «ZRNPA:».
+    .replace(/^[A-ZÁÉÍÓÚÑ]{2,}[A-Z0-9-]*\s*:\s*/, '')
+    .replace(/\s+/g, ' ').toLowerCase();
+  t = t.replace(/[a-záéíóúñ]+/g, function (w) { return _TILDES_POT[w] || w; });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Una entrada por capa (cada capa se pinta con un solo color, así que una
+// entrada por categoría daba renglones del mismo color imposibles de
+// emparejar con el mapa) y, por capa, solo las categorías que caen en el pin:
+// es lo que pesa en la visita. `items` = salida de afectacionesPOTCerca.
+var _CAPAS_POT_LEYENDA = [
+  { capa: 'retiro', nombre: 'Retiro de corriente hídrica' },
+  { capa: 'amenaza', nombre: 'Amenaza natural' },
+  { capa: 'proteccion', nombre: 'Suelo de protección' },
+  { capa: 'drmi', nombre: 'DRMI Quitasol-La Holanda' },
+];
+function leyendaPOTPorCapa(items) {
+  var porCapa = {};
+  (items || []).forEach(function (it) {
+    if (!it || !it.capa) return;
+    var c = porCapa[it.capa] || (porCapa[it.capa] = { capa: it.capa, color: it.color, enPin: [] });
+    if (!it.contiene) return;
+    var n = nombrePOTLimpio(it.etiqueta);
+    // El retiro solo tiene una categoría, que es el nombre de la capa.
+    if (n && n.toLowerCase() !== 'retiro de corriente hídrica' && c.enPin.indexOf(n) < 0) c.enPin.push(n);
+    c.contiene = true;
+  });
+  var salida = [];
+  _CAPAS_POT_LEYENDA.forEach(function (d) {
+    var c = porCapa[d.capa];
+    if (c) salida.push({ capa: d.capa, nombre: d.nombre, color: c.color, contiene: !!c.contiene, enPin: c.enPin });
+  });
+  // Lo que toca el pin primero.
+  return salida.sort(function (a, b) { return (b.contiene ? 1 : 0) - (a.contiene ? 1 : 0); });
+}
+
 // el botón "+ Nueva visita" de la cabecera de grupo en Buscar. Duplicar la
 // lista de campos a limpiar era garantía de que una se quedara corta.
 function clonarParaSeguimiento(filaBase, nVisita) {

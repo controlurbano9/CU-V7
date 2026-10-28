@@ -1677,13 +1677,17 @@ function _pintarAfectacionesPOT(map, capaRef, lat, lon, onLeyenda) {
   return function () { vigente = false; };
 }
 
-// Renglones de la leyenda POT, a continuación de los del predio.
+// Renglones de la leyenda POT, a continuación de los del predio: uno por
+// capa (un color = un renglón) y, si cae en el pin, qué categoría
+// (leyendaPOTPorCapa, utils.js). Antes, uno por categoría: 4 rojos y 7
+// verdes iguales que no había cómo emparejar con el mapa.
 function _LeyendaPOT({ items }) {
-  return (items || []).map(function (it) {
+  return leyendaPOTPorCapa(items).map(function (c) {
     return (
-      <span key={it.etiqueta} className={it.contiene ? 'mapa-leyenda-pot-en' : ''}>
-        <i style={{ borderColor: it.color, background: it.color + '38' }} />
-        {it.etiqueta}{it.contiene ? ' · en el pin' : ''}
+      <span key={c.capa} className={c.contiene ? 'mapa-leyenda-pot-en' : ''}>
+        <i style={{ borderColor: c.color, background: c.color + '38' }} />
+        {c.nombre}
+        {c.contiene && (c.enPin.length ? ' · en el pin: ' + c.enPin.join('; ') : ' · en el pin')}
       </span>
     );
   });
