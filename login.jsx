@@ -89,7 +89,7 @@ function LoginScreen({ onLogin }) {
       <div className="login-sub">Inspección N°9 · Alcaldía de Bello</div>
 
       <form className="login-form" onSubmit={manejarSubmit} autoComplete="on">
-        <label htmlFor="login-nombre" className="sr-only">Inspector</label>
+        <label htmlFor="login-nombre" className="login-rotulo">Inspector</label>
         <select
           id="login-nombre"
           name="username"
@@ -100,7 +100,7 @@ function LoginScreen({ onLogin }) {
           disabled={cargandoLista}
           style={{
             appearance: 'none',
-            backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23F5F1EB' d='M6 8L1 3h10z'/%3E%3C/svg%3E\")",
+            backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B675E' d='M6 8L1 3h10z'/%3E%3C/svg%3E\")",
             backgroundRepeat: 'no-repeat',
             backgroundPosition: 'right 14px center',
             paddingRight: 36,
@@ -113,7 +113,7 @@ function LoginScreen({ onLogin }) {
           ))}
         </select>
 
-        <label htmlFor="login-pin" className="sr-only">PIN</label>
+        <label htmlFor="login-pin" className="login-rotulo">PIN</label>
         <input
           type="password"
           id="login-pin"
@@ -133,16 +133,12 @@ function LoginScreen({ onLogin }) {
         </button>
 
         {fallóLista && (
-          <button type="button" onClick={cargarInspectores} className="btn-login"
-            style={{ marginTop: 8, background: 'transparent', border: '1px solid rgba(245,241,235,0.35)' }}>
+          <button type="button" onClick={cargarInspectores} className="btn-login btn-login-alt">
             Reintentar
           </button>
         )}
-
         {error && (
-          <div role="alert" style={{
-            color: '#E89B85', fontSize: 13, textAlign: 'center', marginTop: 8,
-          }}>{error}</div>
+          <div role="alert" className="login-error">{error}</div>
         )}
       </form>
 

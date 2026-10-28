@@ -5079,3 +5079,89 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   .fv-fija-acc .vc-btn { min-height: 44px; }
   .pqr-chip::after { inset: -14px -8px; }
 }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 06 — Audiencias, «Pedir cita», Agenda,        ║
+   ║ Administración, Norma y Login (TASK-valla-06)               ║
+   ╚════════════════════════════════════════════════════════════╝
+   Pisa las reglas viejas desde aquí, sin editarlas en su sitio.
+   El amarillo --valla solo en: la placa de la siguiente visita, lo
+   activo (pestaña) y la selección; nunca un estado. */
+
+/* ── Audiencias · vista Agenda: día en condensada; «Hoy» con la
+   barra izquierda amarilla de 3 px de la firma; hora condensada 700. */
+.au-grupo > h3 { margin-bottom: 8px; font: 700 var(--fs-3)/1.25 var(--font-cond); color: var(--ink); }
+.au-grupo > h3 .au-grupo-n { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.au-grupo.hoy > h3 { padding-left: 10px; border-left: 3px solid var(--valla); }
+.au-row .hora { font: 700 var(--fs-2) var(--font-cond); }
+
+/* ── Audiencias · vista Cupos: libre en placa blanca, citado en tinte
+   --info-bg, «Sin audiencia» neutro en --surface-2 (no amarillo). */
+.au-cupo.libre { background: var(--surface); border-color: var(--line); border-left-color: var(--surface-3); }
+.au-cupo.libre .au-estado { background: var(--surface-2); color: var(--ink-2); }
+.au-cupo.citado { background: var(--info-bg); border-color: transparent; border-left-color: var(--info); }
+.au-cupo.citado .au-estado { background: var(--surface); color: var(--info); }
+.au-cupo.citado .sus { color: var(--ink-2); }
+.au-cupo.novedad { background: var(--surface-2); border-color: transparent; border-left-color: var(--ink-4); }
+.au-cupo.novedad .au-estado { background: var(--surface); color: var(--ink-3); }
+
+/* ── «Pedir cita»: caso y cupo elegidos llenos de tinta con texto
+   blanco; radio visible sobre la tinta con el amarillo de la firma
+   (aquí es selección, es su lugar). «Reservar» lleno de 52 px. */
+.au-pcaso.on, .au-pcupo.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.au-pcaso.on small, .au-pcupo.on small { color: rgba(255,255,255,.72); }
+.au-pcupo.on .sus { color: rgba(255,255,255,.85); }
+.au-pcupo.on input { accent-color: var(--valla); }
+.au-preservar { min-height: 52px; }
+.au-pconf .f { font: 700 var(--fs-4)/1.25 var(--font-cond); }
+.au-pconf .h { font: 800 var(--fs-5)/1.1 var(--font-cond); }
+
+/* ── Administración: pestañas con la activa subrayada en --valla
+   (raya inferior de 3 px, como la fila de pestañas de la app);
+   cifras de persona en condensada; tarjeta de persona con filete de
+   1 px como la tarjeta de la TASK 01, selección con filete de tinta
+   de 2 px (el amarillo queda para lo activo). */
+.adm-tabs { background: transparent; padding: 0; gap: 0; border-radius: 0; border-bottom: 1px solid var(--line-2); }
+.adm-tab { height: 40px; border-radius: 0; margin-bottom: -1px; border-bottom: 3px solid transparent; }
+.adm-tab.activo { background: none; box-shadow: none; color: var(--ink); border-bottom-color: var(--valla); }
+.adm-cifra b { font: 700 var(--fs-4) var(--font-cond); }
+.adm-tarjeta { border-color: var(--line-2); box-shadow: none; }
+.adm-tarjeta.sel { background: var(--surface); border-color: transparent; box-shadow: inset 0 0 0 2px var(--ink); }
+
+/* ── Norma: casilla como la de Buscar (48 px, radio de control,
+   foco en tinta). Los resultados ya son .card → placa blanca. */
+#cn-direccion-coordenadas {
+  height: 48px !important; padding: 0 14px !important;
+  border-radius: var(--r-ctl) !important; border: 1px solid var(--line-2) !important;
+  background: var(--surface) !important; font-size: var(--fs-2) !important;
+}
+#cn-direccion-coordenadas:focus { outline: none; border-color: var(--ink) !important; }
+
+/* ── Login: fondo de tinta plana; el formulario sobre placa blanca
+   con radio de panel; rótulos visibles (critica P2); botón lleno de
+   --valla con texto --valla-ink (es la única acción: aquí sí lleva
+   la firma). El error ≥ 13 px (--fs-1). */
+#pantalla-login { background: var(--ink); }
+.login-logo { filter: none; }
+.login-titulo { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0; }
+.login-sub { color: rgba(246,245,242,.6); }
+.login-form {
+  background: var(--surface); border-radius: var(--r-panel);
+  padding: var(--s-4); box-shadow: var(--shadow-md);
+}
+.login-rotulo { display: block; margin-bottom: 4px; text-align: left; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.login-input { background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); }
+.login-input::placeholder { color: var(--ink-4); }
+.login-input:focus { border-color: var(--ink); background: var(--surface); }
+.login-input option { background: var(--surface); color: var(--ink); }
+#pantalla-login .pin-campo label { color: var(--ink-3); }
+#pantalla-login .pin-error-oscuro { color: var(--red); }
+.pin-salir { color: var(--ink-3); }
+.btn-login { background: var(--valla); color: var(--valla-ink); box-shadow: none; font-weight: 700; }
+.btn-login:hover { background: var(--valla); }
+.btn-login:disabled { opacity: .55; }
+.btn-login-alt { margin-top: 8px; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink-2); }
+.login-error { color: var(--red); font-size: var(--fs-1); text-align: center; margin-top: 8px; }
+@media (max-width: 899px) {
+  .adm-tab { height: 44px; }
+}

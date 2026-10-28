@@ -123,8 +123,10 @@ function inicialesInsp(n) {
 }
 
 // Tono por pendientes de la comuna (1 → 21+), del más claro al más oscuro.
+// Misma rampa en tintas de la Valla que BQ_ESCALA de Buscar (TASK-valla-05):
+// luminancias 0,83 · 0,56 · 0,31 · 0,13 · 0,02; sin el mundo crema viejo.
 function _tonoComuna(n) {
-  return n > 20 ? '#C2AB88' : n > 12 ? '#D3C1A6' : n > 5 ? '#E4D8C6' : n > 0 ? '#F1EBE1' : '#F7F3EC';
+  return n > 20 ? '#2B2923' : n > 12 ? '#6B675E' : n > 5 ? '#9B978D' : n > 0 ? '#C9C6BD' : '#ECEAE4';
 }
 
 function AgendaScreen({ usuario }) {
@@ -673,7 +675,7 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, totalPendientes, onComuna, in
       {cab}
       <div className="ag-ley">
         <span className="ag-escala">pendientes
-          <span><i style={{ background: '#F1EBE1' }}></i><i style={{ background: '#E4D8C6' }}></i><i style={{ background: '#D3C1A6' }}></i><i style={{ background: '#C2AB88' }}></i></span>
+          <span><i style={{ background: '#C9C6BD' }}></i><i style={{ background: '#9B978D' }}></i><i style={{ background: '#6B675E' }}></i><i style={{ background: '#2B2923' }}></i></span>
           1 → 21+</span>
         {/* Sin los nombres: en la columna angosta partían la leyenda, y el
             color de cada pin ya lo dice el día de su inspector. */}
@@ -683,14 +685,15 @@ function MapaAgenda({ mapa, comunas, comunaFiltro, totalPendientes, onComuna, in
         {mapa.comunas.map(c => {
           const n = totales[String(c.c)] || 0;
           const etiqueta = 'Comuna ' + c.c + ', ' + n + (n === 1 ? ' pendiente' : ' pendientes');
+          const claro = n > 12; // sobre los dos pasos oscuros de la rampa, el rótulo va en blanco
           return (
             <g key={c.c} className="ag-com" tabIndex={0} role="button" aria-label={etiqueta}
               onClick={() => onComuna(Number(c.c))}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onComuna(Number(c.c)); } }}>
               <title>{etiqueta}</title>
               <path d={c.d} fill={_tonoComuna(n)} />
-              <text x={c.cx} y={c.cy - 2 - (cercaOfi(c) ? 30 : 0)}>C{c.c}</text>
-              <text className="n" x={c.cx} y={c.cy + 12 - (cercaOfi(c) ? 30 : 0)}>{n}</text>
+              <text x={c.cx} y={c.cy - 2 - (cercaOfi(c) ? 30 : 0)} style={claro ? { fill: '#FFFFFF' } : undefined}>C{c.c}</text>
+              <text className="n" x={c.cx} y={c.cy + 12 - (cercaOfi(c) ? 30 : 0)} style={claro ? { fill: '#FFFFFF' } : undefined}>{n}</text>
             </g>
           );
         })}
