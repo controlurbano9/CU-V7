@@ -4265,10 +4265,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         ? { tono: 'var(--texto)', t: 'Cambió el texto, la tipificación o una casilla después de revisar: revisa otra vez antes de generar ' + doc + '.' }
         : { tono: 'var(--texto-suave)', t: 'Sin revisar. Hace falta para generar ' + doc + '.' };
     return (
+      // Sin caja: va dentro de la tarjeta de la sección (era tarjeta dentro de
+      // tarjeta). Una línea arriba lo separa de los campos.
       <div id="nv-revisar-bloque" style={{
         gridColumn: '1 / -1', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
-        padding: '12px 14px', borderRadius: 'var(--r-card, 12px)', background: 'var(--superficie)',
-        border: '1px solid var(--borde)', scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
+        paddingTop: 14, borderTop: '1px solid var(--line)',
+        scrollMarginTop: 'calc(var(--nv-header-h, 0px) + 12px)',
       }}>
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
           {/* Con informe el título de la sección ya lo dice. */}

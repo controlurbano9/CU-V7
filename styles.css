@@ -1161,11 +1161,13 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 
 /* Panel «Predio»: dirección ↔ catastro ↔ pin (plan 2026-09-29). Mismo
    lenguaje que la confirmación de dirección: punto ámbar/verde + una acción. */
+/* «Predio» y «Norma POT» sin caja propia: van dentro de la tarjeta de la
+   sección y con borde eran tarjeta dentro de tarjeta (la ficha catastral,
+   una tercera). Los separa una línea; la única caja que queda es la de la
+   ficha (revisión con skills 2026-10-28). */
 .predio-panel {
   display: flex; flex-direction: column; gap: 8px;
-  margin-top: 10px; padding: 12px 14px;
-  border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--surface, #fff);
+  margin-top: 10px;
 }
 .predio-fila { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .predio-titulo { font-size: var(--fs-1); }
@@ -1254,7 +1256,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 @media not ((hover: hover) and (pointer: fine)) {
   .predio-coords { display: none; }
 }
-.predio-panel.predio-vigente { border-color: var(--green); }
 .predio-titulo { min-height: var(--tap); }
 .predio-confirmar { margin-left: auto; }
 .predio-coords { font-size: var(--fs-1); }
@@ -1275,9 +1276,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    que los SI/NO queden alineados entre filas. */
 .norma-panel {
   display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--surface, #fff);
+  padding-top: 12px; border-top: 1px solid var(--line);
 }
 .norma-panel-titulo { font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }
 .norma-panel-titulo .predio-nota { font-weight: 400; }
