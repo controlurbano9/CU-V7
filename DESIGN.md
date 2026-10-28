@@ -1,6 +1,6 @@
 # DESIGN.md — Sistema visual «Valla de obra»
 
-Rama `rediseno-katana`, worktree `cu-rediseno-k`. Documentado el 2026-10-28 a partir del
+Rama `rediseno` (worktree `cu-v5-dev-rediseno`; nació en `rediseno-katana`). Documentado el 2026-10-28 a partir del
 artefacto construido: `styles.css` (bloques «VALLA DE OBRA 01–08»), `index.html`,
 los INFORME de las TASK 01–08 y la revisión final medida (`INFORME-valla-revision-final.md`).
 El contrato de dirección vive en `.impeccable/surfaces/index-html.md`; la estructura conservada
@@ -40,7 +40,8 @@ Declarados en `:root` (`styles.css:21-167`). Todo valor nuevo sale de aquí; nad
 | `--surface-3` | `#E0DED7` | neutro más marcado | `styles.css:32` |
 | `--carril` | `#EFEEEA` | fondo de carril (columna de día, lista); opaco a propósito | `styles.css:69` |
 | `--brand-ink` | `#2E2C25` | hover de la acción llena de tinta | `styles.css:36` |
-| `--brand-bg` | `#FFF4C2` | tinte pálido de acción secundaria | `styles.css:37` |
+| `--brand-bg` | `var(--surface-2)` | tinte de acción secundaria (botón en tinte): **neutro**, ya no amarillo | `styles.css:39` |
+| `--valla-bg` | `#FFF4C2` | firma pálida: día de hoy, selección y foco — **nunca un botón** (sección 3) | `styles.css:54` |
 | `--info` / `--info-bg` | `#1F5FBF` / `#E4ECF8` | iniciada / informativo | `styles.css:40-41` |
 | `--green` / `--green-bg` / `--green-ink` | `#1E7A46` / `#E2F0E7` / `#17603A` | completada / éxito | `styles.css:42-44` |
 | `--amber` / `--amber-bg` | `#A35200` / `#FBEBD9` | asignada / atención (naranja tostado, **distinto** del amarillo de la valla) | `styles.css:45-46` |
@@ -96,6 +97,12 @@ La revisión final no encontró tamaños fuera de escala en la app (`INFORME-val
 4. El **botón del Login** (`.btn-login`, `styles.css:5160` — es la única acción de esa pantalla).
 5. El **círculo de iniciales del perfil** (`.cab-perfil`, `styles.css:4766`) — decisión de
    `TASK-valla-01-marco-y-tarjeta.md:16`.
+
+**El amarillo pálido `--valla-bg` (`#FFF4C2`)** es la misma firma rebajada y tiene tres usos:
+la cabecera del día de hoy en la Semana, lo seleccionado (día de la tira, chip de inspector,
+sugerencia de Buscar) y el contorno de foco. **Nunca en un botón**: hasta el 2026-10-28 era el
+fondo de «Ver PQR», «Ruta», «Revisar informe»… y gastaba la firma en acciones secundarias
+(decisión del usuario; los botones en tinte pasaron a `--brand-bg` = `--surface-2`).
 
 **Nunca como color de estado.** Para eso están `--info`, `--green`, `--amber`, `--red`
 (comentario en `styles.css:49`). El tinte translúcido `--brand-glow` `rgba(242,194,0,.45)`
@@ -181,6 +188,23 @@ a ~42, y los corrigió todos; re-medición final: 0 toques bajos en los tres rol
 
 El mismo gesto de la raya de 3 px marca «hoy» en la Semana de Inicio (`styles.css:4921`) y en
 Audiencias (`styles.css:5095`): una sola manera de señalar lo activo en toda la app.
+
+## 8b. Decisiones del 2026-10-28 (revisión con skills, resuelta por Claude)
+
+Decisiones del usuario sobre lo que encontró la revisión (`INFORME-revision-skills.md`), todas
+medidas en los bancos a 375/390, 1366/1440 y 1920:
+
+| Regla | Qué quiere decir | Dónde |
+|---|---|---|
+| **Un botón lleno por pantalla** | La acción de cada tarjeta (`.tv-btn`) va en tinte; llena solo en la placa de la siguiente visita. En el formulario el único lleno es «Guardar»: «Generar»/«Abrir» de los entregables van en tinte | `.tv-btn`, `.nv-entregables .ent-btn` |
+| **Rojo solo para lo urgente** | Audiencia en ≤3 días, demora de ≥5 días hábiles y errores. «Falta: …», «vencida», contadores de pestaña van en tinta | `.tv-falta`, `.nv-falta`, `.adm-tab-n` |
+| **Un solo reloj** | Desde la asignación: «N días sin iniciar» / «N días sin completar»; pendiente sin asignar = «sin asignar» | `_tvDias` (`utils.js`) |
+| **Puntos de estado de 10 px** | Mismo punto en secciones del formulario (verde completa / ámbar pendiente, ya no ✓) y entregables; centrado con el título | `.sec-ind-*`, `.ent-dot` |
+| **Sin tarjetas anidadas** | «Predio», «Norma POT» y «Revisión del texto» son bloques planos separados por una línea dentro de su sección; la única caja es la ficha catastral | `.predio-panel`, `.norma-panel`, `#nv-revisar-bloque` |
+| **Por qué está apagado** | Un «Generar» deshabilitado dice el motivo en un solo aviso (`.ent-motivo`); sin carpeta de Drive no se pintan botones apagados | `nueva-visita.jsx` |
+| **Formulario más corto, todo visible** | Art. 135 en rejilla (`.chips-rejilla`), ficha catastral resumida con la ubicación confirmada, mapa con tope de 400 px, fotos en una fila con «+N» | `styles.css`, `nueva-visita.jsx` |
+| **Leyenda del mapa por capa** | Un renglón por color (retiro, amenaza, suelo de protección, DRMI) y solo la categoría que cae en el pin, con nombre limpio | `leyendaPOTPorCapa` (`utils.js`) |
+| **Agenda en el menú del celular** | Abajo, como mucho 5 pestañas | `app.jsx` |
 
 ## 9. Movimiento
 
