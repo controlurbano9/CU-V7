@@ -1322,9 +1322,10 @@ function AvisoFilaBQ({ c, q, veTodo, donde }) {
   const partes = [];
   // «Sin análisis» no se dice: la prioridad sale solo si existe.
   if (c.estado === 'PENDIENTE' && veTodo && c.prio && c.prio !== 'Sin análisis') {
+    // «vencida» en tinta: el rojo es solo de lo urgente y la demora (2026-10-28).
     const vencida = c.exceso != null && c.exceso > 0 && c.tier >= 2;
     partes.push(
-      <b key="p" className={vencida ? 'tv-demora' : ''}>
+      <b key="p">
         {c.prio}{c.exceso != null && c.tier >= 1 ? ' · ' + (vencida ? 'vencida hace ' + c.exceso + ' días' : 'a ' + (-c.exceso) + ' días del plazo') : ''}
       </b>);
   }

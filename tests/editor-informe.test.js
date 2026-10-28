@@ -285,6 +285,11 @@ test('Generar Word: revisión, validador limpio y cierre grave con comportamient
   // la revisión; pedir revisar antes obligaba a revisar dos veces).
   const ambos = ed.condicionGenerarWord(Object.assign({}, limpio, { vigente: false, problemas: ['p1'] }));
   assert.equal(ambos.tipo, 'problema');
+  // Observaciones vacías: bloquea, no «Todo listo».
+  const sinObs = ed.condicionGenerarWord(Object.assign({}, limpio, { observacionesVacias: true }));
+  assert.equal(sinObs.ok, false);
+  assert.equal(sinObs.tipo, 'problema');
+  assert.match(sinObs.motivo, /observaciones/);
   // Con comportamientos marcados, sin la frase de cierre grave no sale.
   const sinCierre = ed.condicionGenerarWord(Object.assign({}, limpio, { requiereCierre: true }));
   assert.equal(sinCierre.ok, false);

@@ -553,6 +553,8 @@ function condicionGenerarWord(o) {
   var problemas = (o.problemas || []).slice();
   var avisos = (o.avisos || []).slice();
   if (o.requiereCierre && !o.tieneCierre) problemas.push('Con comportamientos marcados falta la frase de cierre grave.');
+  // Sin observaciones no hay informe: antes decía «Todo listo para generar» (revisión 2026-10-28).
+  if (o.observacionesVacias) problemas.unshift('Faltan las observaciones de la visita.');
   if (problemas.length) return { ok: false, tipo: 'problema', motivo: problemas[0], problemas: problemas, avisos: avisos };
   if (!o.vigente) return { ok: false, tipo: 'revision', motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final', avisos: avisos };
   return { ok: true, motivo: '', avisos: avisos };
@@ -1383,6 +1385,7 @@ function _condicionWord() {
     problemas: validacion.problemas,
     avisos: validacion.avisos,
     requiereCierre: _requiereCierreGrave(),
+    observacionesVacias: !String(informe.observaciones || '').trim(),
     // El cierre está en la hoja si existe el punto fijo o uno igual del inspector.
     tieneCierre: !!_el('ed-concl').querySelector('.ed-item-fijo') ||
       informe.conclusiones_items.indexOf(CIERRE_GRAVE_TEXTO) >= 0

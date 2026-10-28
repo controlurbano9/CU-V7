@@ -28,7 +28,7 @@ test('asignada: tiempo en días hábiles igual al de las alertas y acción Inici
   const f = fila({ 'ESTADO VISITA': 'ASIGNADO', 'FECHA ASIGNACION VISITA': '13/10/2026' });
   const t = tarjetaVisita(f, { hoy: HOY });
   assert.equal(t.estadoTxt, 'Asignada');
-  assert.equal(t.tiempo, 'hace ' + diasSinIniciar(f, HOY) + ' días');
+  assert.equal(t.tiempo, diasSinIniciar(f, HOY) + ' días sin iniciar');
   assert.equal(t.demora, true);
   assert.equal(t.accion, 'Iniciar');
   assert.equal(t.mapa, true);
@@ -61,11 +61,23 @@ test('completada sin acta (V2 en papel): la tarjeta no dice «Falta»', () => {
   assert.deepEqual(t.falta, []);
 });
 
-test('pendiente sin inspector: días calendario desde el radicado, sin acción propia', () => {
+test('pendiente sin asignar: sin reloj (no cuenta desde el radicado), sin acción propia', () => {
   const t = tarjetaVisita(fila({ 'ESTADO VISITA': 'PENDIENTE', 'FECHA RADICADO': '20/10/2026', 'VISITADOR(ES)': '' }), { hoy: HOY });
-  assert.equal(t.tiempo, 'radicada hace 7 días');
+  assert.equal(t.tiempo, 'sin asignar');
   assert.equal(t.accion, null);
   assert.equal(t.mapa, false);
+});
+
+test('pendiente con fecha de asignación: cuenta desde ella, como Atención', () => {
+  const f = fila({ 'ESTADO VISITA': 'PENDIENTE', 'FECHA ASIGNACION VISITA': '13/10/2026' });
+  const t = tarjetaVisita(f, { hoy: HOY });
+  assert.equal(t.tiempo, diasSinIniciar(f, HOY) + ' días sin iniciar');
+  assert.equal(t.demora, true);
+});
+
+test('iniciada: días sin completar', () => {
+  const t = tarjetaVisita(fila({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '20/10/2026' }), { hoy: HOY });
+  assert.equal(t.tiempo, '5 días sin completar');
 });
 
 test('pendiente con inspector: se inicia y tiene «Cómo llegar», como una asignada', () => {

@@ -676,8 +676,8 @@ function AudienciasScreen({ usuario }) {
         {agendaDias.map(function (g) {
           return (
             <div className={'au-grupo' + (g.fecha === hoyTxt ? ' hoy' : '')} key={g.fecha}>
-              <h3>{g.fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(g.fecha))}
-                <span className="au-grupo-n"> · {g.citas.length} audiencia{g.citas.length === 1 ? '' : 's'}</span></h3>
+              <h2>{g.fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(g.fecha))}
+                <span className="au-grupo-n"> · {g.citas.length} audiencia{g.citas.length === 1 ? '' : 's'}</span></h2>
               {g.citas.map(function (r, i) { return filaCitaAgenda(r, g.fecha + i); })}
             </div>
           );

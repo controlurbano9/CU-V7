@@ -369,7 +369,8 @@ function AgendaScreen({ usuario }) {
       {cargando && !data && <div className="ag-estado">Cargando agenda…</div>}
       {error && (
         <div className="card" style={{ color: 'var(--red)' }}>
-          No se pudo cargar la agenda: {error}{' '}
+          {/* Sin el error crudo en pantalla (revisión 2026-10-28): queda en el title. */}
+          <span title={error}>No se pudo cargar la agenda. Revisa la conexión y vuelve a intentar.</span>{' '}
           <button type="button" className="vc-btn" onClick={() => cargar(true)}>Reintentar</button>
         </div>
       )}

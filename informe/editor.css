@@ -21,7 +21,10 @@ body.embebido .ed-top { display: none; }
 .ed-tit b { display: block; font-family: var(--font-serif); font-size: var(--fs-2); font-weight: 600; letter-spacing: -0.2px; }
 .ed-tit span { display: block; font-size: var(--fs-1); color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-top-acc { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-@media (max-width: 899px) { .ed-top-acc .ed-btn-lleno { display: none; } .ed-top { padding: 8px 12px; } }
+/* Un solo «Generar Word» a la vista (revisión 2026-10-28): ≥1200 está en el
+   panel con su nota y <1200 en la barra inferior; el de la cabecera sobraba. */
+.ed-top-acc .ed-btn-lleno { display: none; }
+@media (max-width: 899px) { .ed-top { padding: 8px 12px; } }
 
 /* ── Botones (mismo lenguaje de la app: lleno / tinte / neutro) ── */
 .ed-btn { min-height: 44px; padding: 0 18px; border-radius: var(--r); border: 0;
@@ -207,7 +210,8 @@ a.ed-btn-abrir { display: inline-flex; align-items: center; justify-content: cen
   text-decoration: none; }
 a.ed-btn-abrir[hidden] { display: none; }
 /* <1200 ya está en la barra inferior. */
-@media (max-width: 1199px) { .ed-top-acc .ed-btn-abrir { display: none; } }
+/* «Abrir Word» tampoco se repite: ≥1200 en el panel, <1200 en la barra. */
+.ed-top-acc .ed-btn-abrir { display: none; }
 
 /* ── Bandeja de sugerencias: estado de la «Propuesta» (ronda 2) ── */
 .ed-sug-estado { font-size: var(--fs-1); color: var(--texto-3); display: flex; align-items: center; gap: 8px;

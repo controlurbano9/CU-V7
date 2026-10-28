@@ -177,12 +177,13 @@ function _precacheMapTiles(onProgress, onDone, cancelRef) {
 function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaDone, posicion }) {
   if (!progreso && !completado) return null;
   var pct = total ? Math.round(progreso / total * 100) : 0;
-  var bottom = (posicion && posicion.bottom != null) ? posicion.bottom : 80;
+  var top = (posicion && posicion.top != null) ? posicion.top : 8;
   var right = (posicion && posicion.right != null) ? posicion.right : 16;
-  // Misma franja de gestos que suma .nav-inferior: con un valor fijo el aviso
-  // quedaba sobre las pestañas en teléfonos con barra de gestos.
-  return React.createElement('div', { style: {
-    position: 'fixed', bottom: 'calc(' + bottom + 'px + env(safe-area-inset-bottom))', right: right, zIndex: 9000,
+  // Arriba, bajo la cabecera, y sin atrapar toques (revisión 2026-10-28): abajo
+  // tapaba la acción de la 3.ª tarjeta en el celular y el «Iniciar» de Atención.
+  return React.createElement('div', { role: 'status', style: {
+    position: 'fixed', top: 'calc(var(--header-h, 0px) + ' + top + 'px)', right: right, zIndex: 9000,
+    pointerEvents: 'none',
     background: completado ? 'var(--verde-bg)' : 'var(--superficie)',
     border: '1px solid ' + (completado ? 'rgba(107,122,58,0.30)' : 'var(--borde-med)'),
     borderRadius: 10, padding: '8px 14px', fontSize: 13,
@@ -805,7 +806,10 @@ function AppV6() {
   if (veTodas) tabs.push({ k: 'home', label: 'Inicio', Icono: Icon.Home });
   if (!veTodas || conMisVisitas) tabs.push({ k: 'mis-visitas', label: 'Mis visitas', Icono: Icon.Visits });
   tabs.push({ k: 'buscar',        label: 'Buscar',     Icono: Icon.Search });
-  if (esAdmin) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
+  // En el celular la Agenda va al menú de usuario, junto a Administración
+  // (2026-10-28, decisión del usuario): con 6 pestañas «Mis visitas» se partía
+  // en dos renglones, y la agenda se arma en el escritorio.
+  if (esAdmin && isDesktop) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
   if (veTodas) tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
@@ -846,6 +850,11 @@ function AppV6() {
               <b>{titleCaseNombre(usuario.usuario)}</b>
               {usuario.cargo && <small>{usuario.cargo}</small>}
             </div>
+            {esAdmin && (
+              <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('agenda'); }}>
+                <Icon.Agenda size={18} /> Agenda
+              </button>
+            )}
             {esAdmin && (
               <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('admin'); }}>
                 <Icon.Admin size={18} /> Administración
@@ -997,7 +1006,7 @@ function AppV6() {
         completado={dataPrecache === 'done'}
         etiqueta="📥 Descargando POT + catastro…"
         etiquetaDone="✓ Datos offline listos"
-        posicion={{ bottom: 140, right: 16 }} />}
+        posicion={{ top: 60, right: 16 }} />}
     </div>
   );
 }

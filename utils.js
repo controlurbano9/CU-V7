@@ -4643,9 +4643,13 @@ function ubicacionCortaVisita(f) {
   return [barrio, /^\d+$/.test(comuna) ? 'C' + comuna : comuna].filter(Boolean).join(' · ');
 }
 
-function _tvHace(n) {
+// Un solo reloj en toda la app (2026-10-28, decisión del usuario): los días
+// cuentan desde la asignación y el texto dice qué cuentan, igual que Atención
+// en Inicio («136 días sin iniciar»). Antes la pendiente decía «radicada hace
+// 278 días» y Atención «136 días sin iniciar» para la misma visita.
+function _tvDias(n, que) {
   if (n == null) return '';
-  return n === 0 ? 'hoy' : 'hace ' + n + (n === 1 ? ' día' : ' días');
+  return n === 0 ? 'hoy' : n + (n === 1 ? ' día ' : ' días ') + que;
 }
 
 function tarjetaVisita(f, opts) {
@@ -4661,22 +4665,21 @@ function tarjetaVisita(f, opts) {
     radicada: formatearFecha(f['FECHA RADICADO'] || '') };
   var n = null;
   if (estado === 'PENDIENTE') {
-    var fr = parsearFecha(f['FECHA RADICADO'] || '');
-    if (fr) {
-      n = Math.max(0, Math.floor((ref - fr) / 86400000));
-      t.tiempo = n === 0 ? 'radicada hoy' : 'radicada ' + _tvHace(n);
-    }
+    // Sin asignación no hay reloj: la antigüedad de la PQR la dice su prioridad.
+    n = diasSinIniciar(f, ref);
+    t.tiempo = n == null ? 'sin asignar' : _tvDias(n, 'sin iniciar');
+    t.demora = n != null && n >= _TV_DEMORA;
     // Pendiente que ya tiene inspector (filas viejas, o «Iniciar» sin asignar
     // en Buscar): para él es una visita por hacer, como una asignada.
     if (visitadoresBD(f).length) { t.accion = 'Iniciar'; t.mapa = true; }
   } else if (estado === 'ASIGNADO') {
     n = diasSinIniciar(f, ref);
-    t.tiempo = _tvHace(n);
+    t.tiempo = _tvDias(n, 'sin iniciar');
     t.demora = n != null && n >= _TV_DEMORA;
     t.accion = 'Iniciar';
   } else if (estado === 'INICIADO') {
     n = diasSinCompletar(f, ref);
-    t.tiempo = _tvHace(n);
+    t.tiempo = _tvDias(n, 'sin completar');
     t.demora = n != null && n >= _TV_DEMORA;
     t.falta = entregablesFaltantes(f);
     t.accion = 'Continuar';

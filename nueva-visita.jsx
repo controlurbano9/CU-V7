@@ -1302,7 +1302,9 @@ function _Campo({ label, children, hint, fullWidth }) {
 function _CheckNoAporta({ checked, onChange }) {
   return (
     <span style={{ float: 'right', fontWeight: 400 }}>
-      <label className="check-tap" style={{ fontSize: 13, gap: 6, padding: '2px 0' }}>
+      {/* 44 px de toque sin agrandar el renglón de la etiqueta: el margen
+          negativo devuelve lo que suma el alto (revisión 2026-10-28). */}
+      <label className="check-tap" style={{ fontSize: 13, gap: 6, padding: '2px 0', minHeight: 44, margin: '-12px 0' }}>
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
         No aporta
       </label>
@@ -1983,7 +1985,7 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
           display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', alignItems: 'baseline',
         }}>
           <span style={{ color: 'var(--texto-suave)' }}>NPN:</span>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>{r.catastral}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere', minWidth: 0 }}>{r.catastral}</span>
           <span style={{ color: 'var(--texto-suave)' }}>Matrícula:</span>
           <span style={{ fontFamily: 'var(--font-mono)' }}>{r.matricula || '—'}</span>
           <span style={{ color: 'var(--texto-suave)' }}>Avalúo:</span>
@@ -2783,7 +2785,9 @@ function PanelEstadoVisita(p) {
                 <span className="rc-dot" aria-hidden="true" />Entregables completos
               </span>
             : <>
-                <span className="resumen-titulo">Falta:</span>
+                {/* «Por generar», no «Falta»: debajo va «Campos por llenar»
+                    y dos «Falta» apilados no decían cuál era cuál. */}
+                <span className="resumen-titulo">Por generar:</span>
                 {pendientes.map(function (t) {
                   return (
                     <span key={t} className="resumen-chip rc-pend">
@@ -5840,6 +5844,14 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // guardar"), así que aquí basta con cerrar la puerta.
   const sinPersistir = dirty || !!errorGuardar;
   const generacionBloqueada = docOcupado || sinCarpetaVisita || sinPersistir;
+  // Por qué «Generar» está apagado, dicho junto a los botones (revisión
+  // 2026-10-28: se deshabilitaba sin explicar). Mientras se genera algo no
+  // hace falta: el spinner ya lo dice.
+  const motivoBloqueo = docOcupado ? ''
+    : sinCarpetaVisita ? 'Para generar documentos hace falta la carpeta en Drive: guarda con conexión.'
+    : errorGuardar ? 'No se pudo guardar: guarda otra vez antes de generar.'
+    : dirty ? 'Hay cambios sin guardar: guarda antes de generar.'
+    : '';
   // Visita sin iniciar (PENDIENTE/ASIGNADO): hasta el primer «Guardar» manual
   // no hay entregables. No basta con `dirty`: un borrador local restaurado, o
   // una fila que ya trae datos de BD, abren con `dirty` en falso sin que nadie
@@ -5943,7 +5955,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             los campos van en el title y la sección los muestra. */}
         {filaEditando != null && evaluacion.faltan.length > 0 && (
           <div className="nv-falta" role="navigation" aria-label="Secciones con campos que faltan">
-            <b>Falta en:</b>
+            <b>Campos por llenar:</b>
             {evaluacion.faltan.reduce((acc, fa) => {
               const g = acc.find(x => x.seccion === fa.seccion);
               if (g) g.campos.push(fa.nombre); else acc.push({ seccion: fa.seccion, campos: [fa.nombre] });
@@ -6753,6 +6765,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             el informe.
           </div>
         ) : (<>
+          {motivoBloqueo && <div id="nv-motivo-generar" className="ent-motivo" role="status">{motivoBloqueo}</div>}
           {/* Carpeta en Drive — único acceso (antes aparecía dos veces: al
               final del formulario y dentro de la sección de fotos).
               El estado sale de `idCarpetaVisita`, la misma condición que
@@ -6814,6 +6827,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               {/* Regenerar rehace el acta en Drive: separado del acceso de
                   solo lectura y reducido a icono con nombre accesible. */}
               <button type="button" onClick={regenerarActa} disabled={generacionBloqueada}
+                aria-describedby={motivoBloqueo ? 'nv-motivo-generar' : undefined}
                 className="btn-icono" aria-label="Regenerar el acta F-GGO-46"
                 aria-busy={generandoActa} title="Regenerar acta">
                 {generandoActa
@@ -6822,6 +6836,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               </button>
             </>) : (
               <button onClick={generarActa} disabled={generacionBloqueada} aria-busy={generandoActa}
+                aria-describedby={motivoBloqueo ? 'nv-motivo-generar' : undefined} title={motivoBloqueo || undefined}
                 className="btn-accion ent-btn">
                 {generandoActa && <span className="spinner-btn" aria-hidden="true" />}
                 Generar
@@ -6867,6 +6882,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 ? <a href={d.linkDocxInforme} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
                 : (
                 <button onClick={generarInforme} disabled={generacionBloqueada} aria-busy={abriendoInforme}
+                  aria-describedby={motivoBloqueo ? 'nv-motivo-generar' : undefined} title={motivoBloqueo || undefined}
                   className="btn-accion ent-btn">
                   {abriendoInforme && <span className="spinner-btn" aria-hidden="true" />}
                   Generar

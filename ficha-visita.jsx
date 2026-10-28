@@ -249,7 +249,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 solo lo que existe (decisión del usuario 2026-10-14). */}
             {entItems.length > 0 && (
               <section className="fv-ent-caja">
-                <h3 className="fv-bt">{terminada ? 'Documentos' : 'Entregables'}</h3>
+                <h2 className="fv-bt">{terminada ? 'Documentos' : 'Entregables'}</h2>
                 {entItems.map(e => (
                   <div className="mv-ent" key={e.n}>
                     <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
@@ -267,7 +267,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 «Se llenan en la visita». */}
             {predio.length > 0 && (
               <section className="fv-bloque">
-                <h3 className="fv-bt">El predio</h3>
+                <h2 className="fv-bt">El predio</h2>
                 <_DatosMV pares={predio} />
               </section>
             )}
@@ -366,7 +366,7 @@ function _BloqueFV({ b }) {
 
   return (
     <section className="fv-bloque">
-      <h3 className="fv-bt">{b.titulo}</h3>
+      <h2 className="fv-bt">{b.titulo}</h2>
       {piezas}
       {b.sinDato.length > 0 && (
         // Tres y «N más»: la lista entera de una visita a medio diligenciar es
