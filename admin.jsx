@@ -163,7 +163,8 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
           {error} &middot;{' '}
           <button onClick={cargar} style={{
             background: 'none', border: 'none', color: 'var(--brand-accent)',
-            cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',
+            cursor: 'pointer', textDecoration: 'underline', font: 'inherit',
+            minHeight: 44, padding: '0 8px',
           }}>Reintentar</button>
         </div>
       )}
