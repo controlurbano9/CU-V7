@@ -525,6 +525,11 @@ function AppV6() {
     pilaRef.current = pilaRef.current.concat([destino]);
     history.pushState({ cuPantalla: destino }, '');
     setPantalla(destino);
+    // Cada pantalla abre arriba: sin esto heredaba el desplazamiento de la
+    // anterior y el formulario abría a media altura, sin su cabecera.
+    window.scrollTo(0, 0);
+    const cont = document.getElementById('content-desktop');
+    if (cont) cont.scrollTop = 0;
   }
 
   useEffectApp(() => {
