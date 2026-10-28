@@ -1528,7 +1528,7 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
 
   return (
     <div>
-      <select className="input-campo" value={valorSelect} onChange={e => handleChange(e.target.value)}>
+      <select className="input-campo" aria-label="Barrio" value={valorSelect} onChange={e => handleChange(e.target.value)}>
         <option value="">Seleccionar barrio...</option>
         {BARRIOS_POR_COMUNA.map(grupo => (
           <optgroup key={grupo.comuna} label={grupo.label}>
@@ -1544,6 +1544,7 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
           type="text"
           className="input-campo"
           style={{ marginTop: 8 }}
+          aria-label="Nombre del barrio"
           placeholder="Escribir nombre del barrio"
           value={esOtro ? (barrioOtro || '') : barrio}
           onChange={e => {
@@ -6321,6 +6322,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <_Input
             value={d.dirNoAporta ? '' : (d.dirNotifIgual ? d.direccion : d.atiendeDir)}
             onChange={v => setCampo('atiendeDir', v)}
+            aria-label="Dirección de notificación"
             disabled={d.dirNoAporta || d.dirNotifIgual}
             placeholder={d.dirNoAporta ? 'No aporta' : (d.dirNotifIgual ? '' : 'Dirección de notificación')}
           />
@@ -6551,6 +6553,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </div>
           <_Input mono value={d.area}
             onChange={v => setCampo('area', v)}
+            aria-label="Área de contravención en metros cuadrados"
             disabled={d.areaNoMedible || d.areaNoAplica}
             placeholder={(d.areaNoMedible || d.areaNoAplica) ? 'N/A' : 'm²'}
           />

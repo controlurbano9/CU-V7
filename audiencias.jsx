@@ -14,7 +14,27 @@
 //   listarNovedades y, solo admin, listaDiariaExcel. La lógica va en
 //   utils.js (tests/audiencias-pantalla.test.js); aquí solo se pinta.
 // ═══════════════════════════════════════════════════════════════
-const { useState: useStateAU, useEffect: useEffectAU, useMemo: useMemoAU } = React;
+const { useState: useStateAU, useEffect: useEffectAU, useMemo: useMemoAU, useRef: useRefAU } = React;
+
+// Hojas de Audiencias con teclado: el foco entra a la hoja al abrir, Escape
+// la cierra y al cerrar vuelve a donde estaba (mismo patrón que la Semana).
+function useHojaTecladoAU(onCerrar) {
+  const ref = useRefAU(null);
+  const cerrarRef = useRefAU(onCerrar);
+  cerrarRef.current = onCerrar;
+  useEffectAU(function () {
+    const previo = document.activeElement;
+    const x = ref.current && ref.current.querySelector('.au-x');
+    if (x) x.focus();
+    const onKey = function (e) { if (e.key === 'Escape') cerrarRef.current(); };
+    window.addEventListener('keydown', onKey);
+    return function () {
+      window.removeEventListener('keydown', onKey);
+      if (previo && previo.focus && document.contains(previo)) previo.focus();
+    };
+  }, []);
+  return ref;
+}
 
 // Copia local de la agenda por rol (2026-10-22): la pestaña abre al instante
 // con lo último que se leyó y se actualiza por detrás; con la firma, el
@@ -99,6 +119,7 @@ var _AU_SVG_COPIAR = (
 // el sustanciador en grande para copiarlos a la citación de papel.
 // `casoInicial` (opcional): el caso ya puesto, cuando se pide desde la visita.
 function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar, onReservada }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
   const [filas, setFilas] = useStateAU([]);
   const [caso, setCaso] = useStateAU(casoInicial || null);
   // Con el caso de la visita, la casilla lo muestra (si no está en la agenda de
@@ -168,7 +189,7 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar,
   };
 
   return (
-    <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Pedir cita"
+    <div ref={hojaRef} className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Pedir cita"
       onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
       <div className="au-hoj au-pedir">
         <div className="au-hoj-cab">
@@ -279,9 +300,10 @@ function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
 // admin libera una cita (antes estaba a un toque en cada fila). El
 // sustanciador abre de aquí el acta y el informe para preparar la audiencia.
 function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
   const c = cita;
   return (
-    <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Cita"
+    <div ref={hojaRef} className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Cita"
       onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
       <div className="au-hoj au-cita">
         <div className="au-hoj-cab">
