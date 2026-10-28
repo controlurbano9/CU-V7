@@ -98,7 +98,9 @@ La revisión final no encontró tamaños fuera de escala en la app (`INFORME-val
    `TASK-valla-01-marco-y-tarjeta.md:16`.
 
 **Nunca como color de estado.** Para eso están `--info`, `--green`, `--amber`, `--red`
-(comentario en `styles.css:49`). `--amber` es naranja tostado (`#A35200`) precisamente para no
+(comentario en `styles.css:49`). El tinte translúcido `--brand-glow` `rgba(242,194,0,.45)`
+(`styles.css:38`) es la misma firma en los anillos de foco — la letra de la regla habla de
+`--valla` pleno; el glow no señala estado, acompaña el foco. `--amber` es naranja tostado (`#A35200`) precisamente para no
 chocar con el amarillo. En el formulario no hay nada activo que señalar: cero `--valla`
 (`styles.css:4957-4958`). La revisión final **verificó la regla midiendo el DOM**: ningún
 amarillo fuera de los cinco usos permitidos (`INFORME-valla-revision-final.md:94-97`).
