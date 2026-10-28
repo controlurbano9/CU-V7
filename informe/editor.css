@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
    editor.css — Editor del F-GGO-43 con forma de documento (ronda 1,
    docs/PLAN_2026-10-15_editor-informe.md). Clases ed-*.
-   Tokens del propio generador (Inter, café de acción, radios 6/8/12);
-   sin monoespaciada; serif solo en el título de la barra.
-   La hoja se ve como el Word: Arial 14, cuerpo justificado.
+   Tokens Valla (los de styles.css, declarados en index.html); la letra
+   es Barlow, condensada en el título de la barra.
+   La hoja se ve como el Word: Arial 14, cuerpo justificado. Intocada:
+   .ed-hoja y sus hijas conservan sus tamaños en px.
 ═══════════════════════════════════════════════════════════════ */
 
 /* El asistente queda vivo y oculto: es el almacén de datos del editor
@@ -17,21 +18,21 @@ body.modo-doc .shell { display: none; }
   border-bottom: 1px solid var(--borde); }
 body.embebido .ed-top { display: none; }
 .ed-tit { min-width: 0; }
-.ed-tit b { display: block; font-family: var(--font-serif); font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
-.ed-tit span { display: block; font-size: 12px; color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-tit b { display: block; font-family: var(--font-serif); font-size: var(--fs-2); font-weight: 600; letter-spacing: -0.2px; }
+.ed-tit span { display: block; font-size: var(--fs-1); color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-top-acc { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 @media (max-width: 899px) { .ed-top-acc .ed-btn-lleno { display: none; } .ed-top { padding: 8px 12px; } }
 
 /* ── Botones (mismo lenguaje de la app: lleno / tinte / neutro) ── */
 .ed-btn { min-height: 44px; padding: 0 18px; border-radius: var(--r); border: 0;
-  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  font-family: inherit; font-size: var(--fs-2); font-weight: 600; cursor: pointer; }
 .ed-btn-lleno { background: var(--texto); color: var(--superficie); }
 .ed-btn-tinte { background: var(--brand-bg); color: var(--brand-ink); }
 .ed-btn-neutro { background: var(--neutro); color: var(--texto-suave); }
 .ed-btn:disabled { opacity: .45; cursor: not-allowed; }
-.ed-btn-chico { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.ed-btn-chico { min-height: 36px; padding: 0 12px; font-size: var(--fs-1); }
 .ed-ico { width: 32px; height: 32px; border: 0; border-radius: var(--r-sm); background: transparent;
-  color: var(--texto-3); font-size: 15px; cursor: pointer; }
+  color: var(--texto-3); font-size: var(--fs-2); cursor: pointer; }
 .ed-ico:hover { background: var(--neutro); color: var(--texto); }
 @media (hover: none) { .ed-ico { width: 44px; height: 44px; } }
 
@@ -48,7 +49,7 @@ body.embebido .ed-top { display: none; }
 .ed-membrete > div { display: flex; align-items: center; justify-content: center; padding: 10px; text-align: center; }
 .ed-membrete > div + div { border-left: 1px solid #333; }
 .ed-m-logo { width: 54px; height: 62px; border-radius: 4px; background: #e7e2d8; color: #6b6255;
-  font-size: 10px; font-family: var(--font-sans); display: flex; align-items: center; justify-content: center; }
+  font-size: 10px; font-family: Arial, Helvetica, sans-serif; display: flex; align-items: center; justify-content: center; }
 .ed-m-tit { font-weight: 700; font-size: 14px; }
 .ed-m-iso { font-size: 10px; color: #555; line-height: 1.5; }
 @media (max-width: 499px) { .ed-membrete { grid-template-columns: 64px 1fr; } .ed-m-iso { display: none; } }
@@ -56,12 +57,12 @@ body.embebido .ed-top { display: none; }
 .ed-h { font-weight: 700; text-transform: uppercase; margin: 26px 0 8px; font-size: 14px; }
 
 /* ── Etiqueta de la app sobre cada bloque (no sale en el Word) ── */
-.ed-ui { font-family: var(--font-sans); font-size: 12px; color: var(--texto-3);
+.ed-ui { font-family: var(--font-sans); font-size: var(--fs-1); color: var(--texto-3);
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 6px; }
 .ed-ui select, .ed-ui input[type="date"] { border: 1px solid var(--borde-med); background: var(--superficie);
-  border-radius: var(--r-sm); padding: 6px 8px; font-family: var(--font-sans); font-size: 12px; min-height: 32px; }
+  border-radius: var(--r-sm); padding: 6px 8px; font-family: var(--font-sans); font-size: var(--fs-1); min-height: 32px; }
 .ed-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; }
+  font-size: var(--fs-1); font-weight: 600; }
 .ed-chip-ok { background: var(--verde-bg); color: var(--verde-dark); }
 .ed-chip-info { background: var(--azul-bg); color: var(--azul); }
 .ed-chip-neutro { background: var(--neutro); color: var(--texto-suave); }
@@ -75,17 +76,17 @@ body.embebido .ed-top { display: none; }
 
 /* ── Localización ── */
 .ed-mapa { border: 1px solid #333; min-height: 200px; display: flex; align-items: center; justify-content: center;
-  color: var(--texto-3); font-family: var(--font-sans); font-size: 13px; font-weight: 600; background: var(--fondo); overflow: hidden; }
+  color: var(--texto-3); font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: 600; background: var(--fondo); overflow: hidden; }
 .ed-mapa img { width: 100%; max-height: 340px; object-fit: contain; display: block; }
 .ed-pie { text-align: center; font-size: 12px; font-weight: 700; margin: 6px 0 0; }
 
 /* ── Licencia y POT (solo lectura) ── */
-.ed-tabla { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 14px; font-family: var(--font-sans); }
+.ed-tabla { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 14px; font-family: Arial, Helvetica, sans-serif; }
 .ed-tabla th, .ed-tabla td { border: 1px solid #333; padding: 4px 8px; text-align: left; font-weight: 400; }
 .ed-tabla th { width: 48%; background: #f3f0ea; }
 .ed-tabla-pot caption { background: #d9d9d9; border: 1px solid #333; border-bottom: 0; font-weight: 700;
   padding: 3px; caption-side: top; }
-.ed-nota-bloque { font-family: var(--font-sans); font-size: 13px; color: var(--texto-3);
+.ed-nota-bloque { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: var(--texto-3);
   background: var(--fondo); border-radius: var(--r); padding: 10px 12px; }
 
 /* ── Registro fotográfico ── */
@@ -93,12 +94,12 @@ body.embebido .ed-top { display: none; }
 @media (max-width: 699px) { .ed-fotos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ed-foto { margin: 0; position: relative; }
 .ed-foto-n { position: absolute; top: 4px; left: 4px; z-index: 1; background: rgba(31,27,22,.75); color: #fff;
-  font-family: var(--font-sans); font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; }
+  font-family: Arial, Helvetica, sans-serif; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; }
 .ed-foto-img { aspect-ratio: 4/3; border: 1px solid #ccc; background: var(--neutro); display: flex;
-  align-items: center; justify-content: center; color: var(--texto-3); font-family: var(--font-sans);
+  align-items: center; justify-content: center; color: var(--texto-3); font-family: Arial, Helvetica, sans-serif;
   font-size: 18px; font-weight: 600; overflow: hidden; }
 .ed-foto-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ed-foto-pie { font-family: var(--font-sans); font-size: 12px; font-weight: 700; text-align: center; margin-top: 4px; }
+.ed-foto-pie { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; text-align: center; margin-top: 4px; }
 .ed-foto-pie:empty::before { content: 'Sin pie — escríbelo'; color: var(--texto-3); font-style: italic; font-weight: 400; }
 .ed-foto-acc { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .ed-foto:hover .ed-foto-acc, .ed-foto:focus-within .ed-foto-acc { opacity: 1; }
@@ -116,27 +117,29 @@ body.embebido .ed-top { display: none; }
 /* Frase de cierre grave: último punto fijo, no editable (decisión 2026-10-14). */
 .ed-item-fijo { grid-template-columns: 26px minmax(0, 1fr) auto; }
 .ed-item-fijo .ed-ed { outline: none; cursor: default; }
-.ed-item-fijo-nota { font-family: var(--font-sans); font-size: 10px; font-weight: 600; color: var(--texto-3);
+.ed-item-fijo-nota { font-family: var(--font-sans); font-size: var(--fs-1); font-weight: 600; color: var(--texto-3);
   border: 1px solid var(--borde); border-radius: 999px; padding: 1px 7px; margin-top: 4px; white-space: nowrap;
   cursor: help; }
 .ed-nuevo { animation: ed-brillo 1.2s ease-out; }
 @keyframes ed-brillo { from { background: var(--amarillo-bg); } to { background: transparent; } }
-.ed-vacio { font-family: var(--font-sans); font-size: 13px; color: var(--texto-3); font-style: italic; padding: 6px 0 4px 26px; }
+.ed-vacio { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: var(--texto-3); font-style: italic; padding: 6px 0 4px 26px; }
 .ed-agregar { margin: 6px 0 0 26px; min-height: 36px; padding: 0 12px; border: 1px dashed var(--borde-med);
   border-radius: var(--r-sm); background: transparent; color: var(--brand-ink); font-family: var(--font-sans);
-  font-size: 13px; font-weight: 600; cursor: pointer; }
+  font-size: var(--fs-1); font-weight: 600; cursor: pointer; }
 .ed-agregar:hover { background: var(--neutro); }
 @media (hover: none) { .ed-agregar { min-height: 44px; } }
 
 /* ── Bandeja de sugerencias: es de la app, no del documento ── */
 .ed-sug { margin: 14px 0 0; padding: 12px; border-radius: var(--r-md); background: var(--fondo); font-family: var(--font-sans); }
-.ed-sug-t { font-size: 13px; font-weight: 600; color: var(--texto-suave); margin-bottom: 8px;
+.ed-sug-t { font-size: var(--fs-1); font-weight: 600; color: var(--texto-suave); margin-bottom: 8px;
   display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.ed-sug-t span { font-weight: 400; color: var(--texto-3); font-size: 12px; }
+.ed-sug-t span { font-weight: 400; color: var(--texto-3); font-size: var(--fs-1); }
 .ed-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
   background: var(--superficie); border-radius: var(--r); padding: 10px 12px; margin-top: 8px; box-shadow: var(--sombra-sm); }
-.ed-card p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; }
-.ed-card-porque { color: var(--texto-3); }
+.ed-card p { margin: 4px 0 0; font-size: var(--fs-2); line-height: 1.45; }
+/* <small>, no <p>: sin tamaño propio heredaba el de la hoja (Arial 14/15)
+   y el navegador lo encogía a ×0.833 (11.7/12.5 px, bajo el piso de 13). */
+.ed-card-porque { color: var(--texto-3); font-size: var(--fs-1); }
 @media (max-width: 499px) {
   .ed-card { grid-template-columns: 1fr; }
   .ed-card .ed-btn, .ed-agregar { min-height: 44px; }   /* piso táctil en campo */
@@ -145,59 +148,59 @@ body.embebido .ed-top { display: none; }
 /* ── Firma (usa el select inspector/cargo del asistente, reubicado) ── */
 .ed-firma { margin-top: 36px; }
 .ed-firma > p { margin: 0 0 6px; }
-.ed-firma-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; font-family: var(--font-sans); }
+.ed-firma-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; font-family: Arial, Helvetica, sans-serif; }
 @media (max-width: 599px) { .ed-firma-cols { grid-template-columns: 1fr; } }
 .ed-firma-col label { display: block; font-size: 11px; color: var(--texto-3); margin-bottom: 4px; }
 .ed-firma-col select { width: 100%; min-height: 44px; border: 1px solid var(--borde-med); border-radius: var(--r-sm);
-  background: var(--superficie); padding: 6px 10px; font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+  background: var(--superficie); padding: 6px 10px; font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: 600; }
 .ed-firma-col input { width: 100%; min-height: 44px; border: 0; border-top: 1px solid #333; border-radius: 0;
-  background: transparent; text-align: center; font-family: var(--font-sans); font-size: 13px; color: var(--texto-2); }
+  background: transparent; text-align: center; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: var(--texto-2); }
 
 /* ── Rail de estado (≥1200) ── */
 .ed-rail { position: sticky; top: 84px; align-self: start; font-family: var(--font-sans); }
 body.embebido .ed-rail { top: 24px; }
 .ed-panel { background: var(--superficie); border-radius: var(--r-md); padding: 16px; box-shadow: var(--sombra-sm); }
-.ed-panel h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.ed-panel h2 { margin: 0 0 10px; font-size: var(--fs-2); font-weight: 600; }
 .ed-est { list-style: none; margin: 0 0 14px; padding: 0; }
 .ed-est li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; padding: 7px 0;
-  border-bottom: 1px solid var(--borde); font-size: 13px; }
+  border-bottom: 1px solid var(--borde); font-size: var(--fs-1); }
 .ed-est li:last-child { border-bottom: 0; }
-.ed-est small { display: block; color: var(--texto-3); font-size: 12px; }
+.ed-est small { display: block; color: var(--texto-3); font-size: var(--fs-1); }
 .ed-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; }
 .ed-dot.ok { background: var(--verde); }
 .ed-dot.pend { background: var(--amarillo); }
 .ed-dot.no { background: var(--neutro-2); }
 .ed-panel .ed-btn { width: 100%; margin-top: 8px; }
-.ed-nota { font-size: 12px; color: var(--texto-3); margin-top: 8px; }
+.ed-nota { font-size: var(--fs-1); color: var(--texto-3); margin-top: 8px; }
 .ed-nota-ok { color: var(--verde-dark); }
 
 /* ── Lo que no deja generar el Word (2026-10-16): antes era una nota gris
    «Falta: …» bajo el botón deshabilitado y no se notaba que bloqueaba. ── */
 .ed-dot.err { background: var(--rojo); }
-.ed-bloqueo { padding: 10px 12px; border-radius: var(--r); background: #fdeceb; color: var(--texto);
-  font-size: 13px; line-height: 1.45; }
-.ed-bloqueo b { display: block; color: var(--rojo); font-size: 13px; margin-bottom: 4px; }
+.ed-bloqueo { padding: 10px 12px; border-radius: var(--r); background: var(--red-bg); color: var(--texto);
+  font-size: var(--fs-1); line-height: 1.45; }
+.ed-bloqueo b { display: block; color: var(--rojo); font-size: var(--fs-1); margin-bottom: 4px; }
 .ed-bloqueo ul { list-style: none; margin: 0; padding: 0; }
-.ed-bloqueo li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(31,27,22,.1); }
+.ed-bloqueo li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(21,20,15,.1); }
 .ed-bloqueo-ir { display: inline-flex; align-items: center; min-height: 32px; margin-top: 4px; padding: 0 10px;
   border: 0; border-radius: var(--r-sm); background: var(--superficie); color: var(--texto);
-  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: var(--sombra-sm); }
+  font-family: var(--font-sans); font-size: var(--fs-1); font-weight: 600; cursor: pointer; box-shadow: var(--sombra-sm); }
 @media (pointer: coarse) { .ed-bloqueo-ir { min-height: 44px; } }
 /* En el documento: borde rojo en el bloque, la frase resaltada y el aviso debajo. */
 .ed-ed.ed-bloquea:not(:focus) { outline: 2px solid var(--rojo); outline-offset: 3px; }
 ::highlight(ed-bloqueo) { background-color: #f6c9c3; }
-.ed-bloqueo-linea { font-family: var(--font-sans); font-size: 12.5px; line-height: 1.45; text-align: left;
-  color: var(--texto); background: #fdeceb; border-radius: var(--r-sm); padding: 6px 10px; margin: 10px 0 0; }
+.ed-bloqueo-linea { font-family: var(--font-sans); font-size: var(--fs-1); line-height: 1.45; text-align: left;
+  color: var(--texto); background: var(--red-bg); border-radius: var(--r-sm); padding: 6px 10px; margin: 10px 0 0; }
 .ed-bloqueo-linea b { color: var(--rojo); }
 .ed-item .ed-bloqueo-linea { grid-column: 2 / -1; margin-top: 4px; }
 
 /* ── Avisos de redacción (2026-10-16): no impiden generar el Word, van en
    ámbar debajo de la nota (del bloqueo o de «todo listo»). ── */
-.ed-nota-avisos { padding: 10px 12px; border-radius: var(--r); background: var(--amarillo-bg, #faf1dd);
-  color: var(--texto); font-size: 13px; line-height: 1.45; margin-top: 8px; }
-.ed-nota-avisos b { display: block; color: var(--amarillo); font-size: 13px; margin-bottom: 4px; }
+.ed-nota-avisos { padding: 10px 12px; border-radius: var(--r); background: var(--amarillo-bg);
+  color: var(--texto); font-size: var(--fs-1); line-height: 1.45; margin-top: 8px; }
+.ed-nota-avisos b { display: block; color: var(--amarillo); font-size: var(--fs-1); margin-bottom: 4px; }
 .ed-nota-avisos ul { list-style: none; margin: 0; padding: 0; }
-.ed-nota-avisos li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(31,27,22,.1); }
+.ed-nota-avisos li + li { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(21,20,15,.1); }
 
 /* ── Abrir el Word ya generado ── */
 a.ed-btn-abrir { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
@@ -207,29 +210,29 @@ a.ed-btn-abrir[hidden] { display: none; }
 @media (max-width: 1199px) { .ed-top-acc .ed-btn-abrir { display: none; } }
 
 /* ── Bandeja de sugerencias: estado de la «Propuesta» (ronda 2) ── */
-.ed-sug-estado { font-size: 12.5px; color: var(--texto-3); display: flex; align-items: center; gap: 8px;
+.ed-sug-estado { font-size: var(--fs-1); color: var(--texto-3); display: flex; align-items: center; gap: 8px;
   flex-wrap: wrap; }
 .ed-sug-estado .ed-btn { min-height: 32px; }
 
 /* ── Banner de error de «Generar Word» (el modal de emisión no sirve: su
    «Reintentar» llama a la IA y pisaría el documento editado) ── */
 .ed-error { display: flex; align-items: center; gap: 12px; margin: 12px 24px 0; padding: 10px 14px;
-  background: #fdeceb; color: var(--texto); border-radius: var(--r-md); font-family: var(--font-sans);
-  font-size: 13px; }
+  background: var(--red-bg); color: var(--texto); border-radius: var(--r-md); font-family: var(--font-sans);
+  font-size: var(--fs-1); }
 .ed-error[hidden] { display: none; }
 .ed-error .ed-btn { margin-left: auto; white-space: nowrap; }
 @media (max-width: 699px) { .ed-error { margin: 10px 12px 0; } }
 
 /* Avisos del borrador: modificado en otro equipo / la visita cambió. */
 .ed-aviso { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 12px 24px 0;
-  padding: 10px 14px; background: #fdf4e3; color: var(--texto); border-radius: var(--r-md);
-  font-family: var(--font-sans); font-size: 13px; }
+  padding: 10px 14px; background: var(--amber-bg); color: var(--texto); border-radius: var(--r-md);
+  font-family: var(--font-sans); font-size: var(--fs-1); }
 .ed-aviso[hidden] { display: none; }
 .ed-aviso span { flex: 1 1 260px; }
 @media (max-width: 699px) { .ed-aviso { margin: 10px 12px 0; } }
 /* Tabla del art. 135 (del asistente): en el teléfono se desplaza dentro de su caja. */
 #ed-art135 { max-width: 100%; overflow-x: auto; }
-.ed-guardado { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texto-3);
+.ed-guardado { display: flex; align-items: center; gap: 6px; font-size: var(--fs-1); color: var(--texto-3);
   margin: -4px 0 10px; min-height: 16px; }
 /* Estado del guardado: punto de color + texto (el color solo no basta). */
 .ed-g-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--neutro-2); }
@@ -244,73 +247,79 @@ a.ed-btn-abrir[hidden] { display: none; }
 body.modo-doc #save-ind { display: none !important; }
 
 /* ── Panel de revisión final (ronda 2) ── */
-.ed-modal { position: fixed; inset: 0; z-index: 60; background: rgba(31,27,22,.45);
+.ed-modal { position: fixed; inset: 0; z-index: 60; background: rgba(21,20,15,.45);
   display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow: auto; }
 .ed-modal[hidden] { display: none; }
 .ed-modal-caja { background: var(--superficie); border-radius: var(--r-md); box-shadow: var(--sombra);
   max-width: 720px; width: 100%; font-family: var(--font-sans); }
 .ed-modal-cab { display: flex; align-items: center; gap: 10px; padding: 12px 18px;
   border-bottom: 1px solid var(--borde); }
-.ed-modal-cab b { font-size: 15px; font-weight: 600; }
+.ed-modal-cab b { font-size: var(--fs-2); font-weight: 600; }
 .ed-modal-cab .ed-ico { margin-left: auto; }
 .ed-modal-cuerpo { padding: 16px 18px; max-height: 62vh; overflow: auto; }
 .ed-modal-pie { display: flex; gap: 10px; justify-content: flex-end; align-items: center;
   padding: 14px 18px; border-top: 1px solid var(--borde); flex-wrap: wrap; }
-.ed-rev-estado { font-size: 13.5px; color: var(--texto-3); margin: 0; }
-.ed-rev-ok { font-size: 13.5px; color: var(--verde-dark); font-weight: 600; margin: 0; }
-.ed-rev-err { font-size: 13.5px; color: var(--rojo); font-weight: 600; margin: 0; }
-.ed-crit h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+.ed-rev-estado { font-size: var(--fs-1); color: var(--texto-3); margin: 0; }
+.ed-rev-ok { font-size: var(--fs-1); color: var(--verde-dark); font-weight: 600; margin: 0; }
+.ed-rev-err { font-size: var(--fs-1); color: var(--rojo); font-weight: 600; margin: 0; }
+.ed-crit h3 { font-size: var(--fs-1); font-weight: 600; margin: 12px 0 4px; }
 .ed-crit h3:first-child { margin-top: 0; }
-.ed-crit ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: var(--texto-2); }
+.ed-crit ul { margin: 0; padding-left: 18px; font-size: var(--fs-1); line-height: 1.55; color: var(--texto-2); }
 .ed-pregs { margin-top: 14px; }
 .ed-preg { padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--r); margin-top: 8px; }
-.ed-preg p { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
-.ed-preg label { display: block; font-size: 13px; padding: 4px 0; font-weight: 400; }
+.ed-preg p { margin: 0 0 6px; font-size: var(--fs-1); font-weight: 600; }
+.ed-preg label { display: block; font-size: var(--fs-1); padding: 4px 0; font-weight: 400; }
 .ed-preg-otra { width: 100%; margin-top: 4px; border: 1px solid var(--borde-med); border-radius: var(--r-sm);
-  padding: 8px 10px; font-family: inherit; font-size: 13px; min-height: 36px; background: var(--superficie); }
+  padding: 8px 10px; font-family: inherit; font-size: var(--fs-1); min-height: 36px; background: var(--superficie); }
 .ed-modal-caja.ed-modal-ancha { max-width: 1040px; }
 .ed-cambio { border: 1px solid var(--borde); border-radius: var(--r); padding: 10px 12px; margin-top: 10px; }
-.ed-cambio-cab { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--texto-3); }
+.ed-cambio-cab { display: flex; align-items: center; gap: 10px; font-size: var(--fs-1); color: var(--texto-3); }
 /* Tarjetas elegibles del paso 2 (misma forma que el panel rv-* de la visita). */
 .ed-ops { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px;
   align-items: stretch; margin-top: 8px; }
 @media (max-width: 699px) { .ed-ops { grid-template-columns: 1fr; } }
-.ed-op { display: flex; flex-direction: column; background: #F5F1EB; border-radius: var(--r);
+.ed-op { display: flex; flex-direction: column; background: var(--fondo); border-radius: var(--r);
   outline: 1px solid var(--borde); }
 .ed-op.elegida { background: var(--superficie); outline: 2px solid var(--texto); }
 .ed-op-cab { display: flex; align-items: center; min-height: 48px; padding: 0 8px 0 12px; gap: 8px; }
-.ed-op-cab b { font-size: 13px; }
+.ed-op-cab b { font-size: var(--fs-1); }
 .ed-op-cab .ed-btn, .ed-op-cab .ed-op-ok { margin-left: auto; }
-.ed-op-ok { font-size: 12px; font-weight: 600; }
+.ed-op-ok { font-size: var(--fs-1); font-weight: 600; }
 .ed-op-txt { display: block; width: 100%; box-sizing: border-box; border: 0; background: transparent;
-  padding: 0 12px 12px; font: inherit; font-size: 15px; line-height: 1.55; white-space: pre-wrap;
+  padding: 0 12px 12px; font: inherit; font-size: var(--fs-2); line-height: 1.55; white-space: pre-wrap;
   resize: none; color: var(--texto-2); }
 textarea.ed-op-txt { min-height: 140px; color: var(--texto); outline: 0; field-sizing: content; }
 .ed-op-txt del { color: var(--texto-suave); }
-.ed-op-nota { font-size: 11px; color: var(--texto-suave); padding: 0 12px 10px; }
+.ed-op-nota { font-size: var(--fs-1); color: var(--texto-suave); padding: 0 12px 10px; }
 /* Táctil: «Usar…» es la acción principal de cada tarjeta (QA 2026-10-17: 36 px). */
 @media (hover: none) { .ed-op-cab .ed-btn-chico { min-height: 44px; } }
-.ed-qc { margin: 0 12px 8px; padding: 0; list-style: none; font-size: 12px; color: var(--texto-3); }
+/* Piso táctil del resto del cromo: los controles del editor quedaban a 32/36 px
+   en campo. Los selects de la tabla del art. 135 (dentro de la hoja) quedan:
+   subirlos rompería la densidad del documento — se anota en el informe. */
+@media (hover: none) {
+  .ed-ui select, .ed-ui input[type="date"], .ed-sug-estado .ed-btn, .ed-btn-chico { min-height: 44px; }
+}
+.ed-qc { margin: 0 12px 8px; padding: 0; list-style: none; font-size: var(--fs-1); color: var(--texto-3); }
 .ed-qc li::before { content: "→ "; }
-.ed-rev-falta { margin-right: auto; font-size: 13px; color: var(--texto-3); }
-.ed-aviso-casilla { margin-top: 8px; font-size: 12.5px; color: var(--texto);
-  background: var(--amarillo-bg, #fdf6e3); border-radius: var(--r-sm); padding: 6px 10px; }
+.ed-rev-falta { margin-right: auto; font-size: var(--fs-1); color: var(--texto-3); }
+.ed-aviso-casilla { margin-top: 8px; font-size: var(--fs-1); color: var(--texto);
+  background: var(--amarillo-bg); border-radius: var(--r-sm); padding: 6px 10px; }
 
 /* ── Barra inferior (<1200) ── */
 .ed-barra { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
   background: var(--superficie); border-top: 1px solid var(--borde);
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); gap: 10px; align-items: center; }
 .ed-barra { flex-wrap: wrap; }
-.ed-barra-txt { font-size: 12px; color: var(--texto-3); min-width: 0; flex: 1 1 100%; }
-.ed-barra-txt b { display: inline; color: var(--texto); font-size: 13px; margin-right: 6px; }
+.ed-barra-txt { font-size: var(--fs-1); color: var(--texto-3); min-width: 0; flex: 1 1 100%; }
+.ed-barra-txt b { display: inline; color: var(--texto); font-size: var(--fs-1); margin-right: 6px; }
 .ed-barra .ed-btn { white-space: nowrap; flex: 1 1 0; }
 /* Con Word generado son tres botones: más angostos para caber a 360. */
 .ed-barra.con-abrir .ed-btn { padding: 0 10px; }
-.ed-barra-bloqueo { display: block; margin-top: 4px; color: var(--rojo); font-size: 13px; font-weight: 600; }
-.ed-barra-bloqueo .ed-bloqueo-ir { margin: 0 0 0 6px; background: #fdeceb; box-shadow: none; }
+.ed-barra-bloqueo { display: block; margin-top: 4px; color: var(--rojo); font-size: var(--fs-1); font-weight: 600; }
+.ed-barra-bloqueo .ed-bloqueo-ir { margin: 0 0 0 6px; background: var(--red-bg); box-shadow: none; }
 /* Avisos de redacción en la barra (<1200, sin bloqueo): ámbar como .ed-nota-avisos. */
-.ed-barra-aviso { display: block; margin-top: 4px; color: var(--texto); font-size: 13px; font-weight: 600;
-  background: var(--amarillo-bg, #faf1dd); border-radius: var(--r-sm); padding: 4px 8px; }
+.ed-barra-aviso { display: block; margin-top: 4px; color: var(--texto); font-size: var(--fs-1); font-weight: 600;
+  background: var(--amarillo-bg); border-radius: var(--r-sm); padding: 4px 8px; }
 .ed-barra-aviso .ed-bloqueo-ir { margin: 0 0 0 6px; box-shadow: none; }
 @media (max-width: 1199px) { .ed-barra { display: flex; } }
 /* Justificado en una columna de teléfono abre huecos entre palabras; el Word

@@ -23,41 +23,45 @@
 <title>Control Urbano · Generador F-GGO-43</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════════
-   Tokens V6 — los mismos valores de styles.css (sistema visual,
-   2026-10-13). Hasta entonces el café de acción era otro (#C96442
-   contra #AC5031), el ocre también, los radios iban de 8 a 18 y había
-   monoespaciada: dentro de la app el generador se veía de otra marca.
-   Café = acción; selección y hover en neutro; serif solo en el título.
+   Tokens Valla — los mismos valores de styles.css (valla de obra,
+   2026-10-27). Dentro de la app el generador se abre en un iframe:
+   sin esto se ve de otra marca. Tinta = acción; amarillo --valla
+   solo en placa, pestaña activa y selección. La hoja (.ed-hoja) es
+   intocada: imita el Word F-GGO-43 en Arial 14.
 ═══════════════════════════════════════════════════════════════ */
 :root{
-  --brand:#1F1B16; --brand-med:#2A2520; --brand-light:#3F362B;
-  --brand-bg:#FBE9E0; --brand-accent:#AC5031; --brand-ink:#8A3F26;
-  --brand-glow:rgba(172,80,49,0.18);
-  --verde:#6B7A3A; --verde-bg:#EFF1E1; --verde-dark:#565E2E;
-  --rojo:#B43A2E; --rojo-bg:#F8E4DF;
-  --azul:#4A6B7C; --azul-bg:#E0E8EC;
-  --amarillo:#8D682D; --amarillo-bg:#FAF1DD;
-  --texto:#1F1B16; --texto-2:#2A2520; --texto-suave:#5C5142; --texto-3:#806F5A;
-  --superficie:#FFFBF5; --fondo:#F5F1EB;
-  --neutro:#ECE5D9; --neutro-2:#DED5C8;
-  --borde:rgba(31,27,22,0.10); --borde-med:rgba(31,27,22,0.18);
-  --sombra-sm:0 1px 2px rgba(31,27,22,0.05),0 1px 1px rgba(31,27,22,0.03);
-  --sombra:0 12px 28px -12px rgba(31,27,22,0.18),0 2px 4px rgba(31,27,22,0.04);
-  --font-sans:'Inter',-apple-system,system-ui,'Helvetica Neue',sans-serif;
-  --font-serif:'Source Serif 4','Source Serif Pro',Georgia,serif;
+  --ink:#15140F; --ink-2:#2B2923; --ink-3:#4A4740; --ink-4:#6B675E;
+  --paper:#F6F5F2; --surface:#FFFFFF; --surface-2:#ECEAE4; --surface-3:#E0DED7;
+  --brand:#15140F; --brand-med:#2B2923; --brand-light:#3F362B;
+  --brand-bg:#FFF4C2; --brand-accent:#15140F; --brand-ink:#2E2C25;
+  --brand-glow:rgba(242,194,0,0.45);
+  --valla:#F2C200; --valla-ink:#15140F;
+  --verde:#1E7A46; --verde-bg:#E2F0E7; --verde-dark:#17603A;
+  --rojo:#C8261E; --rojo-bg:#F8E3E1;
+  --azul:#1F5FBF; --azul-bg:#E4ECF8;
+  --amarillo:#A35200; --amarillo-bg:#FBEBD9;
+  --texto:#15140F; --texto-2:#2B2923; --texto-suave:#4A4740; --texto-3:#6B675E;
+  --superficie:#FFFFFF; --fondo:#F6F5F2;
+  --neutro:#ECEAE4; --neutro-2:#E0DED7;
+  --borde:rgba(21,20,15,0.10); --borde-med:rgba(21,20,15,0.18);
+  --sombra-sm:0 1px 2px rgba(21,20,15,0.05),0 1px 1px rgba(21,20,15,0.03);
+  --sombra:0 12px 28px -12px rgba(21,20,15,0.18),0 2px 4px rgba(21,20,15,0.04);
+  --font-sans:'Barlow',-apple-system,system-ui,'Segoe UI',Roboto,sans-serif;
+  --font-cond:'Barlow Semi Condensed','Arial Narrow','Barlow',sans-serif;
+  --font-serif:var(--font-cond);
   --font-mono:var(--font-sans);
-  /* Escala de la app: control 6 · tarjeta 8 · panel 12 */
+  --fs-1:13px; --fs-2:15px; --fs-3:17px; --fs-4:22px; --fs-5:30px; --fs-display:40px;
+  /* Radios: control 6 · tarjeta 8 · panel 12 */
   --r-sm:6px; --r:8px; --r-md:12px; --r-lg:12px;
   --sidebar-w:248px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{
   font-family:var(--font-sans); background:var(--fondo); color:var(--texto);
-  font-size:13px; line-height:1.55; min-height:100vh;
-  font-feature-settings:'cv11','ss01','ss03';
+  font-size:var(--fs-2); line-height:1.55; min-height:100vh;
   font-variant-numeric:tabular-nums;
 }
 
@@ -71,17 +75,17 @@ body{
   position:sticky; top:0; height:100vh; overflow-y:auto;
 }
 .sb-logo{
-  font-family:var(--font-serif); color:var(--texto); font-size:15px; font-weight:600;
+  font-family:var(--font-serif); color:var(--texto); font-size:var(--fs-2); font-weight:600;
   padding:0 8px 16px; border-bottom:0.5px solid var(--borde); margin-bottom:10px;
   letter-spacing:-0.3px;
 }
 .sb-logo span{
-  display:block; font-family:var(--font-sans); font-size:11px; font-weight:400;
+  display:block; font-family:var(--font-sans); font-size:var(--fs-1); font-weight:400;
   color:var(--texto-3); margin-top:2px;
 }
 .sbt{
   display:flex; align-items:center; gap:10px; background:transparent; border:none;
-  color:var(--texto-suave); font-family:inherit; font-size:13px; font-weight:500;
+  color:var(--texto-suave); font-family:inherit; font-size:var(--fs-1); font-weight:500;
   padding:9px 12px; border-radius:var(--r-sm); cursor:pointer; text-align:left;
   transition:all .15s; width:100%;
 }
@@ -94,25 +98,25 @@ body.embebido .sb-logo{display:none}
 .sbn{
   width:22px; height:22px; border-radius:50%; border:1.5px solid currentColor;
   display:flex; align-items:center; justify-content:center;
-  font-size:11px; font-weight:600; font-family:var(--font-mono); flex-shrink:0;
+  font-size:var(--fs-1); font-weight:600; font-family:var(--font-mono); flex-shrink:0;
 }
 .sbt.active .sbn{background:var(--texto); border-color:var(--texto); color:#fff}
 .sbt.done .sbn{background:var(--verde); border-color:var(--verde); color:#fff}
 .sbt.done .sbn::before{content:'✓'; font-family:var(--font-sans)}
 .sbt.done .sbn{font-size:0}
-.sbt.done .sbn::before{font-size:12px}
+.sbt.done .sbn::before{font-size:var(--fs-1)}
 
 .sb-info{
   margin-top:12px; padding:10px 12px; background:var(--fondo);
   border:0.5px solid var(--borde); border-radius:var(--r-sm);
-  font-size:11px; color:var(--texto-suave); line-height:1.5;
+  font-size:var(--fs-1); color:var(--texto-suave); line-height:1.5;
 }
 .sb-info b{color:var(--texto); font-weight:600}
 
 .btn-nuevo{
   display:flex; align-items:center; gap:8px; background:transparent;
   border:1px solid var(--rojo); color:var(--rojo);
-  font-family:inherit; font-size:12px; font-weight:500;
+  font-family:inherit; font-size:var(--fs-1); font-weight:500;
   padding:9px 12px; border-radius:var(--r-sm); cursor:pointer;
   width:100%; margin-top:8px; transition:all .15s;
 }
@@ -123,10 +127,10 @@ body.embebido .sb-logo{display:none}
 .mn{padding:36px 48px; max-width:1180px; margin:0 auto; width:100%}
 
 .ptitle{
-  font-family:var(--font-serif); font-size:32px; font-weight:600;
+  font-family:var(--font-serif); font-size:var(--fs-5); font-weight:600;
   color:var(--texto); letter-spacing:-0.8px; margin-bottom:4px; line-height:1.15;
 }
-.psub{color:var(--texto-3); font-size:13px; margin-bottom:28px; font-weight:400}
+.psub{color:var(--texto-3); font-size:var(--fs-1); margin-bottom:28px; font-weight:400}
 
 .card{
   background:var(--superficie); border:0;
@@ -142,8 +146,8 @@ body.embebido .sb-logo{display:none}
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 .ci svg{width:16px; height:16px; fill:var(--texto-suave)}
-.ct{font-size:14px; font-weight:600; color:var(--texto); letter-spacing:-0.1px}
-.cst{font-size:11px; color:var(--texto-3); margin-top:2px}
+.ct{font-size:var(--fs-2); font-weight:600; color:var(--texto); letter-spacing:-0.1px}
+.cst{font-size:var(--fs-1); color:var(--texto-3); margin-top:2px}
 
 /* Grid de formulario: aprovecha el ancho del escritorio */
 .fg{display:grid; grid-template-columns:repeat(3,1fr); gap:14px 18px}
@@ -154,12 +158,12 @@ body.embebido .sb-logo{display:none}
 
 .f{display:flex; flex-direction:column; gap:5px}
 .f label{
-  font-size:11px; font-weight:600; color:var(--texto-suave);
+  font-size:var(--fs-1); font-weight:600; color:var(--texto-suave);
   letter-spacing:.02em;
 }
 .f input,.f select,.f textarea{
   background:var(--fondo); border:1px solid var(--borde-med); border-radius:var(--r-sm);
-  padding:9px 12px; font-family:inherit; font-size:13px; color:var(--texto);
+  padding:9px 12px; font-family:inherit; font-size:var(--fs-1); color:var(--texto);
   width:100%; transition:border-color .15s, box-shadow .15s; resize:vertical;
 }
 .f input:focus,.f select:focus,.f textarea:focus{
@@ -173,7 +177,7 @@ body.embebido .sb-logo{display:none}
 .nota{
   background:var(--amarillo-bg); border:0.5px solid var(--amarillo);
   border-left:3px solid var(--amarillo); border-radius:var(--r-sm);
-  padding:12px 16px; font-size:12px; color:var(--texto-2); margin-bottom:14px; line-height:1.55;
+  padding:12px 16px; font-size:var(--fs-1); color:var(--texto-2); margin-bottom:14px; line-height:1.55;
 }
 .nota b{color:var(--texto); font-weight:600}
 /* Variante informativa (no es una advertencia, solo contexto) */
@@ -185,7 +189,7 @@ body.embebido .sb-logo{display:none}
 /* Botones */
 .btn{
   padding:10px 22px; border-radius:var(--r-sm); font-family:inherit;
-  font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .15s;
+  font-size:var(--fs-1); font-weight:600; cursor:pointer; border:none; transition:all .15s;
   letter-spacing:-0.1px;
 }
 a.btn{display:inline-flex; align-items:center; text-decoration:none}
@@ -213,20 +217,20 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 }
 
 /* Tabla Art. 135 */
-.tv{width:100%; border-collapse:collapse; font-size:12px; margin-top:10px}
+.tv{width:100%; border-collapse:collapse; font-size:var(--fs-1); margin-top:10px}
 .tv th{
   background:var(--neutro); color:var(--texto); padding:8px 10px;
-  text-align:left; font-weight:600; font-size:11px; letter-spacing:0.02em;
+  text-align:left; font-weight:600; font-size:var(--fs-1); letter-spacing:0.02em;
 }
 .tv td{border:0.5px solid var(--borde-med); padding:7px 9px; vertical-align:top}
 .tv tr:nth-child(even) td{background:var(--fondo)}
 .tv .cbrow td{
-  background:var(--fondo); font-weight:600; font-size:12px;
+  background:var(--fondo); font-weight:600; font-size:var(--fs-1);
   color:var(--texto-2);
 }
 .tv select,.tv input[type=text]{
   background:var(--superficie); border:1px solid var(--borde-med);
-  border-radius:6px; padding:4px 7px; font-size:11px; font-family:inherit;
+  border-radius:6px; padding:4px 7px; font-size:var(--fs-1); font-family:inherit;
   width:100%; color:var(--texto);
 }
 .tv select:focus,.tv input[type=text]:focus{outline:none; border-color:var(--brand-accent)}
@@ -236,7 +240,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
   display:flex; align-items:center; gap:10px; padding:11px 14px;
   border-radius:var(--r-sm); border:1px solid var(--borde-med);
   cursor:pointer; background:var(--fondo); transition:all .15s;
-  font-size:13px; margin-bottom:12px;
+  font-size:var(--fs-1); margin-bottom:12px;
 }
 /* Marcado y hover en neutro, como el chip de la app: el café es acción. */
 .chkblock:hover{border-color:var(--texto-3); background:var(--neutro)}
@@ -248,7 +252,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 .hitem{
   display:flex; align-items:center; gap:10px; padding:10px 13px;
   border-radius:var(--r-sm); border:1px solid var(--borde-med);
-  cursor:pointer; background:var(--fondo); transition:all .15s; font-size:12px;
+  cursor:pointer; background:var(--fondo); transition:all .15s; font-size:var(--fs-1);
 }
 .hitem:hover{border-color:var(--texto-3); background:var(--neutro)}
 .hitem input{accent-color:var(--texto); width:14px; height:14px; flex-shrink:0}
@@ -257,7 +261,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 /* Modalidad chips */
 .mod-chk-wrap{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
 .mod-chk-wrap label{
-  display:flex; align-items:center; gap:7px; font-size:12px;
+  display:flex; align-items:center; gap:7px; font-size:var(--fs-1);
   padding:6px 12px; border:1px solid var(--borde-med); border-radius:var(--r-sm);
   cursor:pointer; background:var(--fondo); transition:all .15s;
 }
@@ -269,7 +273,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 .prev-box{
   background:var(--fondo); border:0.5px solid var(--borde);
   border-radius:var(--r-sm); padding:16px 18px;
-  font-family:var(--font-mono); font-size:11px; line-height:1.75;
+  font-family:var(--font-mono); font-size:var(--fs-1); line-height:1.75;
   color:var(--texto-2); white-space:pre-wrap; max-height:360px;
   overflow-y:auto; margin-top:10px;
 }
@@ -278,7 +282,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 /* Tarjeta prefill (cuando entra desde V6 con datos) */
 .prefill-pill{
   background:var(--verde-bg); border:0.5px solid var(--verde);
-  border-radius:var(--r-sm); padding:10px 14px; font-size:12px;
+  border-radius:var(--r-sm); padding:10px 14px; font-size:var(--fs-1);
   color:var(--verde-dark); margin-bottom:16px; display:flex;
   align-items:center; gap:8px;
 }
@@ -291,7 +295,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
   display:flex; gap:14px; align-items:flex-start;
 }
 .foto-card .thumb{
-  flex-shrink:0; width:90px; height:68px; background:var(--slate-200, #DED5C8);
+  flex-shrink:0; width:90px; height:68px; background:var(--neutro-2);
   border-radius:var(--r-sm); overflow:hidden;
   display:flex; align-items:center; justify-content:center;
 }
@@ -300,7 +304,7 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 /* Indicador "Guardado" flotante */
 #save-ind{
   position:fixed; bottom:18px; right:20px; background:var(--verde); color:#fff;
-  font-size:11px; font-family:inherit; font-weight:500;
+  font-size:var(--fs-1); font-family:inherit; font-weight:500;
   padding:6px 14px; border-radius:var(--r-lg);
   opacity:0; transition:opacity .4s; pointer-events:none; z-index:999;
   box-shadow:var(--sombra);
@@ -310,14 +314,14 @@ a.btn{display:inline-flex; align-items:center; text-decoration:none}
 .res-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:14px}
 @media (max-width:900px){.res-grid{grid-template-columns:repeat(2,1fr)}}
 .res-grid small{
-  color:var(--texto-3); font-size:10px; text-transform:uppercase;
-  letter-spacing:.04em; font-weight:600;
+  color:var(--texto-3); font-size:var(--fs-1); 
+  font-weight:600;
 }
-.res-grid b{display:block; margin-top:3px; font-size:14px; color:var(--texto); font-weight:500}
+.res-grid b{display:block; margin-top:3px; font-size:var(--fs-2); color:var(--texto); font-weight:500}
 
 .res-chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
 .res-chips span{
-  background:var(--neutro); color:var(--texto); font-size:11px;
+  background:var(--neutro); color:var(--texto); font-size:var(--fs-1);
   padding:3px 10px; border-radius:var(--r-lg); font-weight:500;
 }
 
@@ -357,7 +361,7 @@ body.v2-mode .stbox[data-momento].momento-activo{display:flex}
 body.v2-mode .v2-rail{display:flex; flex-direction:column; gap:4px}
 .v2-rail-item{
   display:flex; align-items:center; gap:10px; background:transparent; border:none;
-  color:var(--texto-suave); font-family:inherit; font-size:13px; font-weight:500;
+  color:var(--texto-suave); font-family:inherit; font-size:var(--fs-1); font-weight:500;
   padding:9px 12px; border-radius:var(--r-sm); cursor:pointer; text-align:left; width:100%;
   transition:background-color 150ms ease, color 150ms ease;
 }
@@ -366,20 +370,20 @@ body.v2-mode .v2-rail{display:flex; flex-direction:column; gap:4px}
 .v2-rail-item.bloqueado{opacity:.5; cursor:not-allowed}
 .v2-rail-item .estado{
   width:20px; height:20px; border-radius:50%; border:1.5px solid currentColor;
-  display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:var(--fs-1); flex-shrink:0;
 }
 .v2-rail-item.completo .estado{background:var(--verde); border-color:var(--verde); color:#fff}
 .v2-rail-item.completo .estado::before{content:'✓'}
 
 .v2-autosave{
-  font-size:11px; color:var(--texto-suave); display:none; align-items:center; gap:6px;
+  font-size:var(--fs-1); color:var(--texto-suave); display:none; align-items:center; gap:6px;
   padding:6px 10px; border:0.5px solid var(--borde); border-radius:var(--r-sm); background:var(--fondo);
 }
 body.v2-mode .v2-autosave{display:inline-flex}
 
 /* Modal unificado: recibo → generando → error → éxito (mismo contenedor, sin salto de layout) */
 #modal-emision{
-  position:fixed; inset:0; background:rgba(31,27,22,0.55); z-index:9500;
+  position:fixed; inset:0; background:rgba(21,20,15,0.55); z-index:9500;
   display:none; align-items:center; justify-content:center;
 }
 #modal-emision.visible{display:flex}
@@ -389,7 +393,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
   transition:transform 180ms cubic-bezier(0.23,1,0.32,1), opacity 180ms ease-out;
 }
 #modal-emision.visible .caja{transform:scale(1); opacity:1}
-#modal-emision .fase{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--texto-suave); margin-bottom:8px}
+#modal-emision .fase{display:flex; align-items:center; gap:10px; font-size:var(--fs-1); color:var(--texto-suave); margin-bottom:8px}
 #modal-emision .fase.hecha{color:var(--verde-dark)}
 #modal-emision .fase.activa{color:var(--texto); font-weight:600}
 @media (prefers-reduced-motion: reduce){#modal-emision .caja{transition:opacity 1ms}}
@@ -411,7 +415,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
   body.v2-mode .v2-rail{flex-direction:row}
   .v2-rail-item{width:auto; flex:none; white-space:nowrap; min-height:44px}
   .mn{padding:20px 16px 48px; max-width:none}
-  .ptitle{font-size:24px; letter-spacing:-0.4px}
+  .ptitle{font-size:var(--fs-4); letter-spacing:-0.4px}
   .card{padding:18px 16px}
   .br{flex-wrap:wrap}
   .btn{min-height:44px}
@@ -432,8 +436,8 @@ body.v2-mode .v2-autosave{display:inline-flex}
   <div class="v2-rail" id="v2-rail"></div>
   <div class="v2-autosave" id="v2-autosave">⏺ <span id="v2-autosave-txt">Guardado</span></div>
   <div id="sb-visita-info" class="sb-info hidden">
-    <div style="font-size:10px;color:var(--texto-3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Visita asociada</div>
-    <div id="sb-visita-rad" style="font-family:var(--font-mono);font-size:12px"></div>
+    <div style="font-size:var(--fs-1);color:var(--texto-3);margin-bottom:4px">Visita asociada</div>
+    <div id="sb-visita-rad" style="font-family:var(--font-mono);font-size:var(--fs-1)"></div>
     <div id="sb-visita-dir" style="margin-top:3px"></div>
   </div>
   <div style="flex:1"></div>
@@ -625,7 +629,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
             <option value="VIGENTE">Vigente</option>
             <option value="VENCIDA">Vencida</option>
           </select>
-          <small id="vigenciaLic-nota" style="display:block;font-size:11px;color:var(--texto-3);margin-top:3px"></small>
+          <small id="vigenciaLic-nota" style="display:block;font-size:var(--fs-1);color:var(--texto-3);margin-top:3px"></small>
         </div>
         <div class="f ff"><label>Tipo de tramite (puede seleccionar varios)</label>
           <div id="tipo-tramite-checks" class="mod-chk-wrap">
@@ -706,10 +710,10 @@ body.v2-mode .v2-autosave{display:inline-flex}
       <button class="btn btn-o" id="btn-mejorar" onclick="mejorarObservaciones()">
         ✨ Mejorar redacción
       </button>
-      <span id="mejorar-status" style="font-size:11px;color:var(--texto-suave)"></span>
+      <span id="mejorar-status" style="font-size:var(--fs-1);color:var(--texto-suave)"></span>
     </div>
     <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span id="sugerir-hallazgos-status" style="font-size:11px;color:var(--texto-suave)"></span>
+      <span id="sugerir-hallazgos-status" style="font-size:var(--fs-1);color:var(--texto-suave)"></span>
     </div>
     <div id="hallazgos-sugerencia-catalogo" class="hidden" style="margin-top:10px"></div>
     <div id="hallazgos-confirmados-catalogo" style="margin-top:10px"></div>
@@ -730,7 +734,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
     <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="usarVersionMejorada()">Usar esta versión</button>
       <button class="btn btn-o" onclick="descartarVersionMejorada()">Descartar</button>
-      <span style="font-size:11px;color:var(--texto-3);margin-left:auto">Al usarla, reemplaza el texto en bruto.</span>
+      <span style="font-size:var(--fs-1);color:var(--texto-3);margin-left:auto">Al usarla, reemplaza el texto en bruto.</span>
     </div>
   </div>
   <div class="card" id="card-areas" data-momento="2">
@@ -838,21 +842,21 @@ body.v2-mode .v2-autosave{display:inline-flex}
   </div>
   <div class="card" id="card-art135-comp" data-momento="2">
     <div class="ch"><div class="ci"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div><div class="ct">Comportamientos contrarios - Art. 135 Ley 1801/2016</div><div class="cst">Literales A, C y D. Marque los que aplican para incluir en conclusiones</div></div></div>
-    <div style="margin-bottom:8px"><small style="font-size:11px;color:#2E5496;font-weight:700">LITERAL A — Comportamientos contra la integridad urbanistica:</small></div>
+    <div style="margin-bottom:8px"><small style="font-size:var(--fs-1);color:var(--azul);font-weight:700">LITERAL A — Comportamientos contra la integridad urbanistica:</small></div>
     <div class="hlist" style="margin-bottom:14px">
       <label class="hitem"><input type="checkbox" class="comp-ac" value="A1 - En areas protegidas o afectadas por el plan vial o de infraestructura de servicios publicos domiciliarios, y las destinadas a equipamientos publicos"><span>1. En areas protegidas o afectadas por el plan vial o de infraestructura de servicios publicos domiciliarios, y las destinadas a equipamientos publicos</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="A2 - Con desconocimiento a lo preceptuado en la licencia"><span>2. Con desconocimiento a lo preceptuado en la licencia</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="A3 - En bienes de uso publico y terrenos afectados al espacio publico"><span>3. En bienes de uso publico y terrenos afectados al espacio publico</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="A4 - En terrenos aptos para estas actuaciones, sin licencia o cuando esta hubiere caducado"><span>4. En terrenos aptos para estas actuaciones, sin licencia o cuando esta hubiere caducado</span></label>
     </div>
-    <div style="margin-bottom:8px"><small style="font-size:11px;color:#2E5496;font-weight:700">LITERAL C — Comportamientos contra el uso del suelo:</small></div>
+    <div style="margin-bottom:8px"><small style="font-size:var(--fs-1);color:var(--azul);font-weight:700">LITERAL C — Comportamientos contra el uso del suelo:</small></div>
     <div class="hlist" style="margin-bottom:14px">
       <label class="hitem"><input type="checkbox" class="comp-ac" value="C9 - Uso diferente al senalado en la licencia de construccion"><span>9. Uso diferente al senalado en la licencia de construccion</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="C10 - Ubicacion diferente a la senalada en la licencia de construccion"><span>10. Ubicacion diferente a la senalada en la licencia de construccion</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="C11 - Contravenir los usos especificos del suelo"><span>11. Contravenir los usos especificos del suelo</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="C12 - Facilitar, en cualquier clase de inmueble, el desarrollo de usos o destinaciones del suelo no autorizados en licencia de construccion o con desconocimiento de las normas urbanisticas sobre usos especificos"><span>12. Facilitar, en cualquier clase de inmueble, el desarrollo de usos o destinaciones del suelo no autorizados en licencia de construccion o con desconocimiento de las normas urbanisticas sobre usos especificos</span></label>
     </div>
-    <div style="margin-bottom:8px"><small style="font-size:11px;color:#2E5496;font-weight:700">LITERAL D — Obligaciones del constructor y/o titular de licencia:</small></div>
+    <div style="margin-bottom:8px"><small style="font-size:var(--fs-1);color:var(--azul);font-weight:700">LITERAL D — Obligaciones del constructor y/o titular de licencia:</small></div>
     <div class="hlist">
       <label class="hitem"><input type="checkbox" class="comp-ac" value="D13 - Destinar lugar interior para guardar materiales y no ocupar con ellos el espacio publico"><span>13. Destinar lugar interior para guardar materiales y no ocupar con ellos el espacio publico</span></label>
       <label class="hitem"><input type="checkbox" class="comp-ac" value="D14 - Proveer unidades sanitarias provisionales para el personal que labora y visita la obra"><span>14. Proveer unidades sanitarias provisionales para el personal que labora y visita la obra</span></label>
@@ -885,10 +889,10 @@ body.v2-mode .v2-autosave{display:inline-flex}
     </div>
     <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1;min-width:280px">
-        <div id="loc-preview" style="background:var(--fondo);border:1px solid var(--borde-med);border-radius:var(--r-sm);min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--texto-3);font-size:12px;overflow:hidden">
+        <div id="loc-preview" style="background:var(--fondo);border:1px solid var(--borde-med);border-radius:var(--r-sm);min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--texto-3);font-size:var(--fs-1);overflow:hidden">
           Esperando dirección…
         </div>
-        <div id="loc-caption" style="font-size:11px;color:var(--texto-3);margin-top:6px"></div>
+        <div id="loc-caption" style="font-size:var(--fs-1);color:var(--texto-3);margin-top:6px"></div>
       </div>
       <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
         <div id="loc-resumen" class="sb-info" style="display:none"></div>
@@ -898,7 +902,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
           <input type="file" id="input-loc-qgis" accept="image/*" style="display:none" onchange="subirImagenLocalizacion(this)">
         </label>
         <button class="btn btn-o" id="btn-loc-restaurar" onclick="borrarImagenLocalizacion()" style="display:none">Volver al mapa automático</button>
-        <div id="loc-status" style="font-size:11px;color:var(--texto-suave)"></div>
+        <div id="loc-status" style="font-size:var(--fs-1);color:var(--texto-suave)"></div>
       </div>
     </div>
   </div>
@@ -912,24 +916,24 @@ body.v2-mode .v2-autosave{display:inline-flex}
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="cargarFotosDeVisita()" id="btn-cargar-fotos">Cargar fotos de la visita</button>
       <button class="btn btn-o" onclick="describirFotosConIA()" id="btn-describir-fotos" disabled style="opacity:.5" title="Genera una descripción técnica solo para las fotos sin descripción manual">✨ Describir</button>
-      <span id="fotos-status" style="font-size:11px;color:var(--texto-suave)"></span>
+      <span id="fotos-status" style="font-size:var(--fs-1);color:var(--texto-suave)"></span>
     </div>
     <div id="fotos-list"></div>
   </div>
 
-  <div class="card" id="res-box" data-momento="4"><p style="color:var(--texto-3);font-size:12px">Complete los pasos anteriores para ver el resumen.</p></div>
+  <div class="card" id="res-box" data-momento="4"><p style="color:var(--texto-3);font-size:var(--fs-1)">Complete los pasos anteriores para ver el resumen.</p></div>
 
   <div class="br" data-momento="4">
     <button class="btn btn-o wizard-nav" onclick="ir(4)">&larr; Atras</button>
     <button class="btn btn-p" id="btn-gen" onclick="generarInforme()" style="margin-left:auto">Generar informe</button>
   </div>
   <div id="stbox" class="stbox hidden" data-momento="4"></div>
-  <div id="dl-status" class="hidden" data-momento="4" style="margin-top:10px;font-size:12px;color:var(--texto-suave)"></div>
+  <div id="dl-status" class="hidden" data-momento="4" style="margin-top:10px;font-size:var(--fs-1);color:var(--texto-suave)"></div>
   <div id="prev-area" class="hidden" data-momento="4">
     <div class="sep"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:10px;flex-wrap:wrap">
-      <p style="font-size:11px;color:var(--texto-suave);margin:0">Vista previa del texto generado:</p>
-      <button class="btn btn-p" id="btn-dl" onclick="descargarDocx()" style="padding:6px 12px;font-size:12px">⬇ Descargar Word</button>
+      <p style="font-size:var(--fs-1);color:var(--texto-suave);margin:0">Vista previa del texto generado:</p>
+      <button class="btn btn-p" id="btn-dl" onclick="descargarDocx()" style="padding:6px 12px;font-size:var(--fs-1)">⬇ Descargar Word</button>
     </div>
     <div class="prev-box" id="prev-txt"></div>
   </div>
@@ -987,7 +991,7 @@ function autoComuna(sel) {
   var c = BARRIO_COMUNA[barrio];
   if (c) {
     comunaEl.value = c;
-    comunaEl.style.background = '#DCFCE7';
+    comunaEl.style.background = 'var(--verde-bg)';
     setTimeout(function() { comunaEl.style.background = ''; }, 1200);
   } else {
     comunaEl.value = 'Rural (sin comuna)';
@@ -1126,8 +1130,8 @@ function mostrarModalEmision(estado, datos) {
     var nHallazgos = HALLAZGOS_CONFIRMADOS.length;
     var sinLicEl = document.getElementById('sinLic');
     var sinLic = sinLicEl ? sinLicEl.checked : false;
-    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:14px">Confirmar emision</div>'
-      + '<div style="font-size:13px;color:var(--texto-2);line-height:1.9">'
+    html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:14px">Confirmar emision</div>'
+      + '<div style="font-size:var(--fs-1);color:var(--texto-2);line-height:1.9">'
       + '<div><b>' + nHallazgos + '</b> hallazgo' + (nHallazgos === 1 ? '' : 's') + '</div>'
       + '<div><b>' + nFotos + '</b> fotografia' + (nFotos === 1 ? '' : 's') + '</div>'
       + '<div>' + (sinLic ? 'Sin licencia aportada' : 'Con licencia aportada') + '</div>'
@@ -1139,14 +1143,14 @@ function mostrarModalEmision(estado, datos) {
   } else if (estado === 'generando') {
     var fases = ['Leyendo visita', 'Redactando', 'Verificando'];
     var activaIdx = datos.fase || 0;
-    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:14px">Generando informe</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:14px">Generando informe</div>'
       + fases.map(function(f, i) {
           var cls = i < activaIdx ? 'fase hecha' : (i === activaIdx ? 'fase activa' : 'fase');
           return '<div class="' + cls + '">' + (i < activaIdx ? '✓' : (i === activaIdx ? '●' : '○')) + ' ' + f + '</div>';
         }).join('');
   } else if (estado === 'error') {
-    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:10px;color:var(--rojo)">No pudimos generar el informe</div>'
-      + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">' + (datos.mensaje || 'Intenta de nuevo en unos segundos.') + '</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:10px;color:var(--rojo)">No pudimos generar el informe</div>'
+      + '<div style="font-size:var(--fs-1);color:var(--texto-2);margin-bottom:16px">' + (datos.mensaje || 'Intenta de nuevo en unos segundos.') + '</div>'
       + '<div style="display:flex;gap:10px">'
       + '<button class="btn btn-p" onclick="mostrarModalEmision(\'cerrar\');generarInformeV2()">Reintentar</button>'
       + '<button class="btn btn-o" onclick="mostrarModalEmision(\'cerrar\')">Cerrar</button>'
@@ -1155,8 +1159,8 @@ function mostrarModalEmision(estado, datos) {
     // «Abrir el informe» es la acción principal: antes era un enlace pequeño
     // y, cerrado el aviso, no había cómo abrirlo sin salir del generador
     // (ahora también queda en el panel del editor).
-    html = '<div style="font-family:var(--font-sans);font-size:16px;font-weight:600;margin-bottom:10px;color:var(--verde-dark)">✓ Informe generado</div>'
-      + '<div style="font-size:13px;color:var(--texto-2);margin-bottom:16px">Quedó en la carpeta de la visita en Drive. Si lo generas otra vez, el nuevo reemplaza a este.</div>'
+    html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:10px;color:var(--verde-dark)">✓ Informe generado</div>'
+      + '<div style="font-size:var(--fs-1);color:var(--texto-2);margin-bottom:16px">Quedó en la carpeta de la visita en Drive. Si lo generas otra vez, el nuevo reemplaza a este.</div>'
       + '<div style="display:flex;gap:10px;flex-wrap:wrap">'
       + (datos.link ? '<a class="btn btn-p" href="' + datos.link + '" target="_blank" rel="noopener" onclick="mostrarModalEmision(\'cerrar\')">Abrir el informe</a>' : '')
       + '<button class="' + (datos.link ? 'btn btn-o' : 'btn btn-p') + '" onclick="mostrarModalEmision(\'cerrar\')">Seguir editando</button>'
@@ -1885,14 +1889,14 @@ function _renderChipsPendientesCatalogo(catalogo) {
     var h = _hallazgoPorClave(clave, catalogo);
     var label = (h ? h.hallazgo : clave).toString().replace(/</g, '&lt;');
     return '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.04);'
-      + 'border:1px dashed var(--texto-3);border-radius:12px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0">'
+      + 'border:1px dashed var(--texto-3);border-radius:12px;padding:4px 10px;font-size:var(--fs-1);margin:0 6px 6px 0">'
       + label
       + ' <button type="button" onclick="_rechazarChipSugeridoCatalogo(\'' + clave.replace(/'/g, "\\'") + '\')" '
       + 'style="border:none;background:none;cursor:pointer;color:var(--rojo);font-weight:bold">×</button></span>';
   }).join('');
   box.innerHTML = '<div class="nota" style="margin-bottom:8px">Hallazgos sugeridos (revise antes de confirmar):</div>'
     + '<div>' + chips + '</div>'
-    + '<button type="button" class="btn btn-p" style="margin-top:8px;padding:6px 14px;font-size:12px" '
+    + '<button type="button" class="btn btn-p" style="margin-top:8px;padding:6px 14px;font-size:var(--fs-1)" '
     + 'onclick="_confirmarChipsSugeridosCatalogo()">Confirmar hallazgos</button>';
 }
 
@@ -1966,10 +1970,10 @@ function _renderPreguntasClarificacion() {
     var preguntaSafe = (pc.pregunta || '').toString().replace(/</g, '&lt;');
     var respuestaSafe = (pc.respuesta || '').toString().replace(/"/g, '&quot;');
     return '<div style="margin-bottom:8px">'
-      + '<div style="font-size:12px;color:var(--texto-2);margin-bottom:4px">' + preguntaSafe + '</div>'
+      + '<div style="font-size:var(--fs-1);color:var(--texto-2);margin-bottom:4px">' + preguntaSafe + '</div>'
       + '<input type="text" value="' + respuestaSafe + '" placeholder="Respuesta (opcional)" '
       + 'oninput="_actualizarRespuestaPreguntaClarificacion(' + i + ', this.value)" '
-      + 'style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:12px;border:1px solid var(--borde);border-radius:6px">'
+      + 'style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:var(--fs-1);border:1px solid var(--borde);border-radius:6px">'
       + '</div>';
   }).join('');
   box.innerHTML = '<div class="nota" style="margin-bottom:8px">Preguntas de aclaracion (opcional, ayudan a redactar mejor):</div>' + filas;
@@ -2029,9 +2033,9 @@ function _renderChipsConfirmadosCatalogo() {
       var bg = inconsistente ? 'var(--naranja, #b45309)' : 'var(--verde-dark)';
       var titulo = inconsistente ? ' title="Hay licencia aportada en esta visita — confirme que este hallazgo aplica igual"' : '';
       return '<span' + titulo + ' style="display:inline-flex;align-items:center;gap:6px;background:' + bg + ';color:#fff;'
-        + 'border-radius:14px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0">'
+        + 'border-radius:14px;padding:4px 10px;font-size:var(--fs-1);margin:0 6px 6px 0">'
         + (inconsistente ? '⚠ ' : '') + label
-        + ' <span style="opacity:.8;font-size:10px">· ' + confianza + '</span>'
+        + ' <span style="opacity:.8;font-size:var(--fs-1)">· ' + confianza + '</span>'
         + ' <button type="button" onclick="_quitarHallazgoConfirmadoCatalogo(\'' + clave.replace(/'/g, "\\'") + '\')" '
         + 'style="border:none;background:none;cursor:pointer;color:#fff;font-weight:bold">×</button></span>';
     }).join('');
@@ -2114,10 +2118,10 @@ function renderListaBorrador(tipo) {
     h += '<div class="revitem' + (it.incluido ? '' : ' excluido') + '">'
       + '<input type="checkbox" ' + (it.incluido ? 'checked' : '') + ' onchange="toggleItemBorrador(\'' + tipo + '\',' + i + ',this)">'
       + '<textarea oninput="editarItemBorrador(\'' + tipo + '\',' + i + ',this.value)">' + escapeHtml(it.texto) + '</textarea>'
-      + (it.manual ? '<button type="button" class="btn btn-o" style="padding:4px 10px;font-size:11px" onclick="eliminarItemBorrador(\'' + tipo + '\',' + i + ')">Quitar</button>' : '')
+      + (it.manual ? '<button type="button" class="btn btn-o" style="padding:4px 10px;font-size:var(--fs-1)" onclick="eliminarItemBorrador(\'' + tipo + '\',' + i + ')">Quitar</button>' : '')
       + '</div>';
   });
-  h += '<button type="button" class="btn btn-o" style="font-size:11px;padding:6px 12px" onclick="agregarItemBorrador(\'' + tipo + '\')">+ Agregar '
+  h += '<button type="button" class="btn btn-o" style="font-size:var(--fs-1);padding:6px 12px" onclick="agregarItemBorrador(\'' + tipo + '\')">+ Agregar '
     + (tipo === 'conclusion' ? 'conclusion' : 'recomendacion') + '</button>';
   cont.innerHTML = h;
 }
@@ -2310,15 +2314,15 @@ function buildRes() {
   }
   function bloque(titulo, contenido) {
     return '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde)">'
-      + '<small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">' + titulo + '</small>'
+      + '<small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">' + titulo + '</small>'
       + contenido + '</div>';
   }
   function chips(arr) {
-    if (!arr.length) return '<div style="color:var(--texto-3);font-size:11px;margin-top:6px">Ninguno seleccionado</div>';
+    if (!arr.length) return '<div style="color:var(--texto-3);font-size:var(--fs-1);margin-top:6px">Ninguno seleccionado</div>';
     return '<div class="res-chips">' + arr.map(function(x) { return '<span>' + escapeHtml(x) + '</span>'; }).join('') + '</div>';
   }
 
-  var h = '<div style="font-family:var(--font-sans);font-size:18px;font-weight:600;color:var(--texto);letter-spacing:-0.3px">Resumen del caso</div>';
+  var h = '<div style="font-family:var(--font-sans);font-size:var(--fs-4);font-weight:600;color:var(--texto);letter-spacing:-0.3px">Resumen del caso</div>';
 
   // ── Datos del caso ─────────────────────────────────────────
   h += '<div class="res-grid" style="margin-top:14px">';
@@ -2338,10 +2342,10 @@ function buildRes() {
 
   // ── Licencia ───────────────────────────────────────────────
   if (sinLic) {
-    h += bloque('Licencia', '<div style="margin-top:6px;font-size:13px;color:var(--texto-2)">No se aporto documentacion urbanistica</div>');
+    h += bloque('Licencia', '<div style="margin-top:6px;font-size:var(--fs-1);color:var(--texto-2)">No se aporto documentacion urbanistica</div>');
   } else {
     h += '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde)">';
-    h += '<small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Licencia urbanistica</small>';
+    h += '<small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Licencia urbanistica</small>';
     h += '<div class="res-grid" style="margin-top:8px">';
     h += fila('N resolucion',   gv('numRes'));
     h += fila('Fecha ejecutoria', gv('fechaEjec'));
@@ -2353,9 +2357,9 @@ function buildRes() {
     h += fila('Sistema estructural', gv('sist'));
     h += fila('Cubierta',       gv('cubierta'));
     h += '</div>';
-    if (tts.length)  h += '<div style="margin-top:10px"><small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Tipo de tramite</small>' + chips(tts) + '</div>';
-    if (mods.length) h += '<div style="margin-top:8px"><small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Modalidades</small>' + chips(mods) + '</div>';
-    if (gv('dest'))  h += '<div style="margin-top:10px;font-size:12px;color:var(--texto-2)"><b>Destinaciones aprobadas:</b> ' + escapeHtml(gv('dest')) + '</div>';
+    if (tts.length)  h += '<div style="margin-top:10px"><small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Tipo de tramite</small>' + chips(tts) + '</div>';
+    if (mods.length) h += '<div style="margin-top:8px"><small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Modalidades</small>' + chips(mods) + '</div>';
+    if (gv('dest'))  h += '<div style="margin-top:10px;font-size:var(--fs-1);color:var(--texto-2)"><b>Destinaciones aprobadas:</b> ' + escapeHtml(gv('dest')) + '</div>';
     h += '</div>';
   }
 
@@ -2363,14 +2367,14 @@ function buildRes() {
   if (gv('obs') || gv('areas')) {
     h += '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde)">';
     if (gv('obs')) {
-      h += '<small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Observaciones de campo</small>';
+      h += '<small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Observaciones de campo</small>';
       var obs = gv('obs');
       var resumen = obs.length > 280 ? obs.substring(0, 280) + '…' : obs;
-      h += '<div style="margin-top:6px;font-size:12px;color:var(--texto-2);line-height:1.6;white-space:pre-wrap">' + escapeHtml(resumen) + '</div>';
+      h += '<div style="margin-top:6px;font-size:var(--fs-1);color:var(--texto-2);line-height:1.6;white-space:pre-wrap">' + escapeHtml(resumen) + '</div>';
     }
     if (gv('areas')) {
-      h += '<div style="margin-top:10px"><small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Area en contravencion</small>';
-      h += '<div style="margin-top:4px;font-size:13px;color:var(--texto)">' + escapeHtml(gv('areas')) + '</div></div>';
+      h += '<div style="margin-top:10px"><small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Area en contravencion</small>';
+      h += '<div style="margin-top:4px;font-size:var(--fs-1);color:var(--texto)">' + escapeHtml(gv('areas')) + '</div></div>';
     }
     h += '</div>';
   }
@@ -2378,14 +2382,14 @@ function buildRes() {
   // ── POT ────────────────────────────────────────────────────
   if (gv('clasificacion') || gv('poligUso') || gv('poligTrat') || gv('proteccion')) {
     h += '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde)">';
-    h += '<small style="color:var(--texto-3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Norma POT</small>';
+    h += '<small style="color:var(--texto-3);font-size:var(--fs-1);font-weight:600">Norma POT</small>';
     h += '<div class="res-grid" style="margin-top:8px">';
     h += fila('Clasificacion suelo', gv('clasificacion'));
     h += fila('Poligono uso',        gv('poligUso'));
     h += fila('Poligono tratamiento', gv('poligTrat'));
     h += fila('Franja intensidad',   gv('franja'));
     h += '</div>';
-    if (gv('proteccion')) h += '<div style="margin-top:8px;font-size:12px;color:var(--texto-2)"><b>Suelo de proteccion / amenaza:</b> ' + escapeHtml(gv('proteccion')) + '</div>';
+    if (gv('proteccion')) h += '<div style="margin-top:8px;font-size:var(--fs-1);color:var(--texto-2)"><b>Suelo de proteccion / amenaza:</b> ' + escapeHtml(gv('proteccion')) + '</div>';
     h += '</div>';
   }
 
@@ -2404,8 +2408,8 @@ function buildRes() {
       var hc = _hallazgoPorClave(clave, CATALOGO_HALLAZGOS || []);
       var label = escapeHtml(hc ? hc.hallazgo : clave);
       var fragmento = _fragmentoRespaldoHallazgo(hc, textoObsOriginal);
-      return '<div style="margin-top:6px;font-size:12px">' + label
-        + (fragmento ? '<div style="color:var(--texto-3);font-size:11px;font-style:italic">"' + escapeHtml(fragmento) + '"</div>' : '')
+      return '<div style="margin-top:6px;font-size:var(--fs-1)">' + label
+        + (fragmento ? '<div style="color:var(--texto-3);font-size:var(--fs-1);font-style:italic">"' + escapeHtml(fragmento) + '"</div>' : '')
         + '</div>';
     }).join('');
     h += bloque('Hallazgos del catalogo (' + HALLAZGOS_CONFIRMADOS.length + ')', itemsHallazgosCatalogo);
@@ -2415,7 +2419,7 @@ function buildRes() {
   if (comps.length) h += bloque('Comportamientos Art. 135 (' + comps.length + ')', chips(comps));
 
   // ── Anexos / pie ──────────────────────────────────────────
-  h += '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde);display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--texto-suave)">';
+  h += '<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--borde);display:flex;gap:18px;flex-wrap:wrap;font-size:var(--fs-1);color:var(--texto-suave)">';
   h += '<span><b style="color:var(--texto)">' + nFotos + '</b> fotografia' + (nFotos === 1 ? '' : 's') + '</span>';
   h += '<span>Tabla Art. 135: <b style="color:var(--texto)">' + (inclArt ? 'Si' : 'No') + '</b></span>';
   h += '<span>Fecha emision: <b style="color:var(--texto)">' + (gv('fechaInforme') ? escapeHtml(gv('fechaInforme')) : '—') + '</b></span>';
@@ -2428,10 +2432,10 @@ function showStatus(tipo, titulo, msg) {
   var bgMap = {load:'var(--neutro)', ok:'var(--verde-bg)', er:'var(--rojo-bg)'};
   var brMap = {load:'var(--texto-3)', ok:'var(--verde)', er:'var(--rojo)'};
   var tcMap = {load:'var(--brand-ink)', ok:'var(--verde-dark)', er:'var(--rojo)'};
-  var ic = tipo === 'load' ? '<div class="spin"></div>' : '<span style="font-size:16px;color:'+tcMap[tipo]+'">' + (tipo==='ok'?'&#10003;':'&#10007;') + '</span>';
+  var ic = tipo === 'load' ? '<div class="spin"></div>' : '<span style="font-size:var(--fs-3);color:'+tcMap[tipo]+'">' + (tipo==='ok'?'&#10003;':'&#10007;') + '</span>';
   box.style.background = bgMap[tipo];
   box.style.borderColor = brMap[tipo];
-  box.innerHTML = ic + '<div><div style="font-size:13px;font-weight:600;color:' + tcMap[tipo] + '">' + titulo + '</div><div style="font-size:12px;color:var(--texto-suave);line-height:1.5;margin-top:2px">' + msg + '</div></div>';
+  box.innerHTML = ic + '<div><div style="font-size:var(--fs-1);font-weight:600;color:' + tcMap[tipo] + '">' + titulo + '</div><div style="font-size:var(--fs-1);color:var(--texto-suave);line-height:1.5;margin-top:2px">' + msg + '</div></div>';
   box.classList.remove('hidden');
 }
 // ── Recolectar el estado del wizard ──────────────────────────────────────────
@@ -4208,19 +4212,19 @@ function crearTarjetaFoto(opts) {
 
   var div = document.createElement('div');
   div.id = id;
-  div.style.cssText = 'border:1px solid #DDE2EC;border-radius:8px;padding:12px 14px;margin-bottom:8px;background:#F4F6FA;display:flex;gap:12px;align-items:flex-start';
+  div.style.cssText = 'border:1px solid var(--borde-med);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:var(--fondo);display:flex;gap:12px;align-items:flex-start';
 
   // Thumbnail
   var thumb = document.createElement('div');
-  thumb.style.cssText = 'flex-shrink:0;width:80px;height:60px;background:#E5E7EB;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center';
+  thumb.style.cssText = 'flex-shrink:0;width:80px;height:60px;background:var(--neutro);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center';
   if (url) {
     var img = document.createElement('img');
     img.src = url;
     img.style.cssText = 'width:100%;height:100%;object-fit:cover';
-    img.onerror = function() { thumb.innerHTML = '<span style="font-size:20px">&#128247;</span>'; };
+    img.onerror = function() { thumb.innerHTML = '<span style="font-size:var(--fs-4)">&#128247;</span>'; };
     thumb.appendChild(img);
   } else {
-    thumb.innerHTML = '<span style="font-size:20px">&#128247;</span>';
+    thumb.innerHTML = '<span style="font-size:var(--fs-4)">&#128247;</span>';
   }
   div.appendChild(thumb);
 
@@ -4233,7 +4237,7 @@ function crearTarjetaFoto(opts) {
   var row1 = document.createElement('div');
   row1.style.cssText = 'display:flex;align-items:center;gap:8px';
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:12px;font-weight:700;color:#1F3864';
+  lbl.style.cssText = 'font-size:var(--fs-1);font-weight:700;color:var(--texto)';
   lbl.textContent = 'Foto ' + n;
   row1.appendChild(lbl);
 
@@ -4245,7 +4249,7 @@ function crearTarjetaFoto(opts) {
     b.type = 'button';
     b.title = titulo;
     b.textContent = simbolo;
-    b.style.cssText = 'background:#E5E7EB;border:none;color:#1F3864;font-size:12px;width:24px;height:24px;border-radius:5px;cursor:pointer;line-height:1';
+    b.style.cssText = 'background:var(--neutro);border:none;color:var(--texto);font-size:var(--fs-1);width:24px;height:24px;border-radius:5px;cursor:pointer;line-height:1';
     b.onclick = function() { moverFoto(id, dir); };
     return b;
   }
@@ -4254,7 +4258,7 @@ function crearTarjetaFoto(opts) {
   row1.appendChild(ordenWrap);
 
   var delBtn = document.createElement('button');
-  delBtn.style.cssText = 'background:transparent;border:none;color:#dc2626;font-size:11px;cursor:pointer';
+  delBtn.style.cssText = 'background:transparent;border:none;color:var(--rojo);font-size:var(--fs-1);cursor:pointer';
   delBtn.textContent = 'Eliminar';
   delBtn.onclick = function() { div.remove(); };
   row1.appendChild(delBtn);
@@ -4650,7 +4654,7 @@ function _hoyLocal() {
   ir = function(n) { guardar(); irOrig(n); };
   var ind = document.createElement('div');
   ind.id = 'save-ind';
-  ind.style.cssText = 'position:fixed;bottom:14px;right:16px;background:#166534;color:#fff;font-size:11px;font-family:Arial,sans-serif;padding:5px 12px;border-radius:20px;opacity:0;transition:opacity .4s;pointer-events:none;z-index:999';
+  ind.style.cssText = 'position:fixed;bottom:14px;right:16px;background:var(--verde-dark);color:#fff;font-size:var(--fs-1);font-family:Arial,sans-serif;padding:5px 12px;border-radius:20px;opacity:0;transition:opacity .4s;pointer-events:none;z-index:999';
   ind.textContent = 'Guardado';
   document.body.appendChild(ind);
   var guardarOrig = guardar;
