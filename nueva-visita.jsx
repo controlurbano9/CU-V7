@@ -1464,7 +1464,7 @@ function _ChipsContravencion({ value, onChange, ofrecerIndeterminada }) {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--texto-suave)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
             {grupo.literal}
           </div>
-          <div className="chips">
+          <div className="chips chips-rejilla">
             {grupo.opciones.map(opt => (
               <button key={opt.val} type="button"
                 className={'chip' + (seleccionados.includes(opt.val) ? ' activo' : '')}
@@ -2240,7 +2240,10 @@ function _PanelPredio(p) {
               <Icon.Alert size={16} /> Predio del <strong>Municipio de Bello</strong>
             </div>
           )}
-          <_TarjetaFichaCatastral r={p.fichaInfo} expandida />
+          {/* Con la ubicación confirmada la ficha queda resumida (ficha,
+              dirección, titular): NPN, matrícula y avalúo se abren tocándola.
+              La `key` la vuelve a montar al confirmar o desconfirmar. */}
+          <_TarjetaFichaCatastral key={p.vigente ? 'resumen' : 'detalle'} r={p.fichaInfo} expandida={!p.vigente} />
         </>
       ) : (
         <div className="predio-nota predio-mono">

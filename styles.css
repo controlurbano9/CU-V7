@@ -578,6 +578,19 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   margin-bottom: 14px;
 }
 .chips-inf { margin-bottom: 0; }
+/* Comportamientos del art. 135 (nueva-visita.jsx): rejilla en vez de chips
+   corridos. Corridos, cada chip tomaba su propio renglón en el celular (21
+   chips = 1.207 px a 375). Dos columnas en el celular y las que quepan desde
+   600 px; el texto completo envuelve dentro del chip, que no baja de 44 px. */
+.chips-rejilla {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+@media (min-width: 600px) {
+  .chips-rejilla { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+.chips-rejilla > .chip { justify-content: flex-start; text-align: left; line-height: 1.25; }
 
 
 /* ╔════════════════════════════════════════════════════════════╗
@@ -1187,7 +1200,7 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .chip-predio-sel { border-color: var(--green); color: var(--green-ink); background: var(--green-bg); font-weight: 600; }
 @media (min-width: 768px) {
-  .mapa-gps   { height: 420px; }
+  .mapa-gps   { height: 320px; }
   .mapa-norma { height: 520px; }
 }
 @media (min-width: 1200px) {
@@ -1220,8 +1233,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
     align-items: start;
     margin-bottom: 14px;
   }
-  /* 4:3 con tope: cuadrado a media pantalla de 1920 medía ~950 px de alto. */
-  .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 4 / 3; max-height: 560px; }
+  /* 4:3 con tope: cuadrado a media pantalla de 1920 medía ~950 px de alto.
+     Tope de 400 (antes 560) para acortar el formulario: decisión del usuario. */
+  .ubic-mapa-grid .mapa-gps { height: auto; aspect-ratio: 4 / 3; max-height: 400px; }
   .ubic-mapa-grid .mapa-gps.mapa-gps-sin { aspect-ratio: auto; }
   /* Si «Predio» + norma miden más que el 4:3, el mapa crece hasta su alto
      (con el mismo tope) en vez de dejar un hueco debajo: el 4:3 es el mínimo. */
