@@ -3439,18 +3439,13 @@ function caracteresParaActa(celda, ocupados, parrafos) {
 // Tope que «Revisar» manda para la situación encontrada cuando la visita va
 // a acta (2026-10-26). La propuesta sale en párrafos por tema (hasta 4 de
 // hechos y uno de conclusión, que se permite en esta casilla) separados por
-// un salto simple: cada párrafo después del primero cuesta un
-// renglón a medias. Antes solo viajaba el largo del original, que no contaba
-// esos renglones. Si el inspector separó con líneas en blanco, se conservan
-// y cuestan lo de caracteresParaActa.
+// una línea en blanco (2026-10-27, decisión del usuario): cada párrafo
+// después del primero cuesta la línea vacía y un renglón a medias, lo de
+// caracteresParaActa. Antes solo viajaba el largo del original.
 var PARRAFOS_REVISION_MAX = 5;
 function topeSituacionRevision(texto) {
-  var t = String(texto == null ? '' : texto);
-  var p = t.split(/\n+/).filter(function (s) { return s.trim(); }).length;
-  if (/\n[ \t]*\n/.test(t)) return caracteresParaActa('situacion', 0, Math.max(p, PARRAFOS_REVISION_MAX));
-  var c = ACTA_CAPACIDAD.situacion;
-  var libres = c.renglones - (Math.max(p, PARRAFOS_REVISION_MAX) - 1);
-  return Math.floor(libres * c.porRenglon * 0.9);
+  var p = String(texto == null ? '' : texto).split(/\n+/).filter(function (s) { return s.trim(); }).length;
+  return caracteresParaActa('situacion', 0, Math.max(p, PARRAFOS_REVISION_MAX));
 }
 
 // Marcadores para completar que no pueden llegar al acta (2026-10-26):
