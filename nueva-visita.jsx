@@ -2697,7 +2697,10 @@ function _tonoEstadoVisita(estado) {
 // en una asignada «falta el acta» es obvio y era ruido. El informe no se
 // lista (vive en su renglón de entregables) y la ubicación sin confirmar
 // tampoco (la avisa el bloqueo al generar). La orden cuenta solo si la
-// visita tiene N° real; el registro, solo si ya hay fotos que lo alimenten.
+// visita tiene N° real. El registro cuenta siempre que no exista, con o sin
+// fotos (2026-10-29, decisión del usuario): antes solo con fotos subidas y una
+// visita con acta y sin fotos decía «Entregables completos», mientras Mis
+// visitas y Buscar (entregablesFaltantes) sí lo pedían.
 // Visita que se documenta con informe técnico (2026-10-15): falta el informe,
 // no el acta ni su registro fotográfico (mismo criterio que
 // entregablesFaltantes, utils.js).
@@ -2710,7 +2713,7 @@ function _pendientesPanel(p) {
   }
   if (!p.tieneActa) pendientes.push('Acta');
   if (p.ordenRelevante && !p.ordenEscaneada) pendientes.push('Orden escaneada');
-  if (p.fotos && p.fotos.subidas > 0 && !p.tieneRF) pendientes.push('Registro fotográfico');
+  if (!p.tieneRF) pendientes.push('Registro fotográfico');
   return pendientes;
 }
 
