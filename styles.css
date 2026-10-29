@@ -3040,6 +3040,7 @@ button.sv-col-head {
 .fv-estado-txt.espera { color: var(--amber); }
 .fv-estado-txt.demora { color: var(--red); }
 .fv-dir { margin-top: 6px; font: 600 var(--fs-4)/1.2 var(--font-sans); letter-spacing: -.3px; color: var(--ink); }
+.fv-ref { margin-top: 2px; font-size: var(--fs-1); line-height: 1.35; color: var(--ink-2); overflow-wrap: anywhere; }
 /* Renglón 3: barrio · Comuna N. */
 .fv-lugar-l { margin-top: 4px; font-size: var(--fs-2); color: var(--ink-3); }
 /* Renglón 4: los datos del caso, rótulo arriba y valor. */
@@ -3864,6 +3865,57 @@ button.sv-col-head {
 .bq-vacio b { display: block; font: 600 var(--fs-3) var(--font-serif); color: var(--ink); margin-bottom: 6px; }
 .bq-volver { border: 0; background: none; padding: 0; font: 600 var(--fs-1) var(--font-sans); color: var(--brand-ink); cursor: pointer; min-height: 28px; }
 
+/* «Registrar radicado» (2026-10-29): estado vacío con radicado que no está en
+   la base y el formulario que lo reemplaza. Maqueta propuesta-registrar-radicado.html. */
+.rr-acc { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rr-nota { font-size: var(--fs-1); color: var(--ink-3); }
+.rr { background: var(--surface); border-radius: var(--r-panel); padding: 20px; }
+.rr-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.rr-cab h2 { font: 600 var(--fs-2) var(--font-sans); color: var(--ink); margin: 0; }
+.rr-cab p { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.rr-cerrar { width: 44px; height: 44px; flex: none; margin: -10px -10px 0 0; border: 0; background: none;
+  border-radius: var(--r-ctl); color: var(--ink-3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+@media (hover: hover) and (pointer: fine) { .rr-cerrar:not(:disabled):hover { background: var(--surface-2); color: var(--ink); } }
+/* Dos columnas solo si caben: con la ficha abierta (≥1200) la lista es angosta. */
+.rr-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 16px; margin-top: 16px; }
+.rr-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.rr-ancho { grid-column: 1 / -1; }
+.rr-campo label, .rr-lbl { font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); }
+.rr-campo .input-campo, .rr-ubic .input-campo { min-height: var(--tap); }
+.rr-campo .input-campo[aria-invalid="true"], .rr-ubic .input-campo[aria-invalid="true"] { border-color: var(--red); }
+.rr-ayuda { font-size: var(--fs-1); color: var(--ink-3); }
+.rr-ayuda b { color: var(--ink); font-weight: 600; }
+.rr-err { color: var(--red); }
+.rr-opc { font-weight: 400; }
+.rr-ubic { background: var(--carril); border-radius: var(--r-card); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.rr-val-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rr-val { font-size: var(--fs-2); font-weight: 600; color: var(--ink); }
+.rr-val small { font-size: var(--fs-1); font-weight: 500; color: var(--ink-3); }
+.rr-cambiar { min-height: var(--tap); padding: 0 4px; border: 0; background: none; cursor: pointer;
+  font: 600 var(--fs-1) var(--font-sans); color: var(--brand-ink); text-decoration: underline; text-underline-offset: 2px; }
+.rr-fuente { font-size: var(--fs-1); color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.rr-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.rr-dot-ok { background: var(--green); }
+.rr-dot-esp { background: var(--amber); }
+.rr-dot-no { background: var(--ink-4); }
+.rr-girando { width: 12px; height: 12px; flex: none; border: 2px solid var(--line-2); border-top-color: var(--ink-3);
+  border-radius: 50%; animation: rr-girar .8s linear infinite; }
+@keyframes rr-girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rr-girando { animation: none; } }
+.rr-banda { background: var(--red-bg); border-radius: var(--r-card); padding: 10px 12px; font-size: var(--fs-1); color: var(--ink);
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rr-banda p { margin: 0; flex: 1 1 220px; }
+.rr-pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--line); }
+.rr-pie .rr-nota { max-width: 420px; }
+.rr-botones { display: flex; gap: 8px; margin-left: auto; }
+@media (max-width: 899px) {
+  .rr { padding: 16px; }
+  .rr-campos { grid-template-columns: 1fr; }
+  .rr-botones { width: 100%; flex-direction: column-reverse; }
+  .rr-botones > button { width: 100%; }
+}
+
 /* Gestión del admin dentro de la ficha. */
 .bq-gestion .bq-seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .bq-gestion .vc-btn { min-height: 40px; }
@@ -4123,6 +4175,7 @@ button.sv-col-head {
 .ruta-txt { min-width: 0; padding-top: 2px; }
 .ruta-dir { font-size: var(--fs-2); font-weight: 600; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
 .ruta-meta { margin-top: 2px; font-size: var(--fs-1); color: var(--ink-3); }
+.ruta-ref { margin-top: 2px; font-size: var(--fs-1); line-height: 1.35; color: var(--ink-2); overflow-wrap: anywhere; }
 .ruta-aprox { color: var(--amber); }
 .ruta-vacio { padding: 24px 0 8px; text-align: center; font-size: var(--fs-2); color: var(--ink-3); }
 .ruta-nota { font-size: var(--fs-1); color: var(--ink-4); }

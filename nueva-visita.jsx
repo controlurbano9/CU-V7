@@ -1007,7 +1007,9 @@ function _estadoInicial(datosIniciales) {
     esOficio:       esOficioDetectado,
     // Ubicación
     direccion:      d['DIRECCION INFRACCION'] || d['DIRECCION']         || '',
-    barrio:         d['BARRIO/VEREDA']        || d['BARRIO']            || '',
+    // Columna propia (referenciaDireccion), fuera del payload posicional.
+    referenciaDireccion: d['REFERENCIA_DIRECCION'] || '',
+    barrio:        d['BARRIO/VEREDA']        || d['BARRIO']            || '',
     comuna:         d['COMUNA']               || '',
     // normalizarCoord repara las filas que quedaron con el decimal comido
     // por el locale del Sheet (ver utils.js); una coordenada sana pasa igual.
@@ -2737,7 +2739,10 @@ function _tonoEstadoVisita(estado) {
 // en una asignada «falta el acta» es obvio y era ruido. El informe no se
 // lista (vive en su renglón de entregables) y la ubicación sin confirmar
 // tampoco (la avisa el bloqueo al generar). La orden cuenta solo si la
-// visita tiene N° real; el registro, solo si ya hay fotos que lo alimenten.
+// visita tiene N° real. El registro cuenta siempre que no exista, con o sin
+// fotos (2026-10-29, decisión del usuario): antes solo con fotos subidas y una
+// visita con acta y sin fotos decía «Entregables completos», mientras Mis
+// visitas y Buscar (entregablesFaltantes) sí lo pedían.
 // Visita que se documenta con informe técnico (2026-10-15): falta el informe,
 // no el acta ni su registro fotográfico (mismo criterio que
 // entregablesFaltantes, utils.js).
@@ -2750,7 +2755,7 @@ function _pendientesPanel(p) {
   }
   if (!p.tieneActa) pendientes.push('Acta');
   if (p.ordenRelevante && !p.ordenEscaneada) pendientes.push('Orden escaneada');
-  if (p.fotos && p.fotos.subidas > 0 && !p.tieneRF) pendientes.push('Registro fotográfico');
+  if (!p.tieneRF) pendientes.push('Registro fotográfico');
   return pendientes;
 }
 
@@ -3334,7 +3339,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur), citadoVisita: _citadoParaGuardar(dCur) });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur), referenciaDireccion: dCur.referenciaDireccion || '', citadoVisita: _citadoParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -5024,7 +5029,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal), citadoVisita: _citadoParaGuardar(dFinal) });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal), referenciaDireccion: dFinal.referenciaDireccion || '', citadoVisita: _citadoParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
@@ -6128,7 +6133,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             `#` y estorbaría. Al salir el inspector ve el resultado, confirma
             «Confirmar dirección» o lo corrige. La clave de carpeta de Drive no
             cambia (tests/direcciones.test.js). */}
-        <div className="input-grupo full-width">
+        <div className="input-grupo">
           <label className="input-label" htmlFor="nv-direccion">Dirección del inmueble</label>
           {/* «Confirmar dirección» al lado del campo, no debajo: en escritorio
               sobra ancho. Al tocarlo se vuelve el estado «✓ Dirección
@@ -6144,7 +6149,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 const n = normalizarDireccion(d.direccion);
                 if (n && n !== d.direccion) setCampo('direccion', n);
               }}
-              placeholder="CL 50 # 32-10" />
+              placeholder="CL 50 # 32-10 AP 301" />
           </div>
           {requiereDir && dirConfirmada && (
             <span className="dir-conf-hecha">✓ Dirección confirmada</span>
@@ -6157,6 +6162,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           )}
           </div>
         </div>
+        {/* Al lado de la dirección, una sola línea (decisión del usuario): lo
+            que no es nomenclatura va aquí, porque Maps, catastro y POT leen la
+            dirección tal cual. La unidad (AP 301, IN 105) sí va en la
+            dirección: con ella catastro elige la ficha. Antes del aviso de
+            casos para que el aviso no parta la fila. */}
+        <_Campo label="Referencia (opcional)">
+          <input type="text" className="input-campo" maxLength={500}
+            value={d.referenciaDireccion || ''}
+            onChange={e => setCampo('referenciaDireccion', e.target.value)}
+            title="Para llegar: puntos de referencia, finca o edificio. No sale en el acta."
+            placeholder="Frente a la escuela, portón verde" />
+        </_Campo>
         {/* Si el caso ya salió por la orden, no se repite aquí. */}
         <_AvisoCasosRelacionados
           casos={_casosRelacPor('direccion').filter(c => c.motivos.indexOf('orden') === -1)}

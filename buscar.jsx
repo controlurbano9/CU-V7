@@ -281,6 +281,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const [inspectores, setInspectores] = useStateB([]);
   const [busyFila, setBusyFila] = useStateB(null);           // _idx de fila en proceso
   const [asignandoFila, setAsignandoFila] = useStateB(null); // _idx con panel de inspector abierto
+  const [registrando, setRegistrando] = useStateB(false);    // «Registrar radicado» abierto
 
   const inputBuscarRef = useRefB(null);
   const conPanel = useMinAnchoBQ(BQ_ANCHO_PANEL);
@@ -437,6 +438,18 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   const selVisita = sel
     ? ((visitaSel && visitaSel.clave === sel.clave && sel.todas.find(c => c.f._idx === visitaSel.idx)) || sel)
     : null;
+
+  // «Registrar radicado» (2026-10-29): lo tecleado es un radicado que no está
+  // en la base (ni como reiterado). `noEstaEnBase` sin mirar el rol, para
+  // decirle al inspector a quién pedírselo.
+  const noEstaEnBase = useMemoB(() => puedeRegistrarRadicado(S.q, datos, 'ADMIN'), [S.q, datos]);
+  const puedeRegistrar = noEstaEnBase && puedeRegistrarRadicado(S.q, datos, usuario.rol);
+  useEffectB(() => { setRegistrando(false); }, [S.q]);
+  function alRegistrar(rad) {
+    setRegistrando(false);
+    toast('Radicado ' + rad + ' registrado');
+    invalidarCache('visitas'); cargar(true);
+  }
 
   // ── Acciones sobre S ──
   const parcharS = (parche) => setS(prev => Object.assign({}, prev, parche));
@@ -1167,7 +1180,30 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
           {error && (
             <div className="card" style={{ color: 'var(--rojo)' }}>Error: {error}</div>
           )}
-          {listo && lista.length === 0 && (
+          {listo && lista.length === 0 && registrando && (
+            <RegistrarRadicadoBQ radicado={claveRadicado(S.q)} idxBarrios={idxBarrios}
+              onCancelar={() => setRegistrando(false)} onRegistrado={alRegistrar}
+              onRecargar={() => { setRegistrando(false); invalidarCache('visitas'); cargar(true); }} />
+          )}
+          {listo && lista.length === 0 && !registrando && noEstaEnBase && (
+            <div className="bq-vacio">
+              <b>{claveRadicado(S.q)} no está en la base</b>
+              {puedeRegistrar ? (
+                <>
+                  Revisa que esté bien escrito. Si es una PQR nueva, puedes registrarla aquí.
+                  <div className="rr-acc">
+                    <button type="button" className="btn btn-primary" onClick={() => setRegistrando(true)}>
+                      Registrar {claveRadicado(S.q)}
+                    </button>
+                    <span className="rr-nota">Con los mismos datos del formulario de PQR</span>
+                  </div>
+                </>
+              ) : (
+                <>Revisa que esté bien escrito. Si es una PQR nueva, pídele al administrador que la registre.</>
+              )}
+            </div>
+          )}
+          {listo && lista.length === 0 && !registrando && !noEstaEnBase && (
             <div className="bq-vacio">
               <b>Ningún caso con estos filtros</b>
               Quita alguno de los chips de arriba o <button type="button" className="bq-volver" onClick={limpiarTodo}>limpia todo</button>.
@@ -1332,6 +1368,7 @@ function AvisoFilaBQ({ c, q, veTodo, donde }) {
   if (c.estado === 'INICIADO' && c.lista) partes.push(<b key="l" className="bq-lista-cerrar">✓ Lista para cerrar</b>);
   if (donde === 'orden') partes.push(<span key="o">coincide en orden de policía: <MarcarBQ texto={c.orden} q={q} /></span>);
   if (donde === 'atiende') partes.push(<span key="a">coincide en persona que atiende: <MarcarBQ texto={c.atiende} q={q} /></span>);
+  if (donde === 'ref') partes.push(<span key="f">coincide en referencia: <MarcarBQ texto={c.referencia} q={q} /></span>);
   if (donde === 'reit') {
     const r = c.reit.find(x => _normBQ(x).indexOf(_normBQ(q)) !== -1) || c.reit[0];
     partes.push(<span key="r">reitera <MarcarBQ texto={r} q={q} /></span>);
@@ -1921,3 +1958,244 @@ function ExportarBQ({ casos, resumenFiltros, onCerrar, toast }) {
 }
 
 window.BuscarScreen = BuscarScreen;
+
+// ── «Registrar radicado» (2026-10-29) ─────────────────────────
+// Ocupa el lugar del estado vacío cuando lo tecleado es un radicado que no
+// está en la base. Los cinco campos del Formulario de Google, todos
+// obligatorios (decisión del usuario). Barrio y comuna salen de la dirección:
+// catastro da el predio, su punto se cruza con los barrios del POT (el índice
+// que Buscar ya cargó) o, si no cae en ninguno, con la capa Veredas. Se pueden
+// cambiar. El punto del predio se guarda como ubicación aproximada: el
+// inspector la confirma en la visita. Maqueta: propuesta-registrar-radicado.html.
+const _RR_SIN_UBIC = { estado: '', barrio: '', comuna: '', punto: null };
+function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, onRecargar }) {
+  const [rad, setRad] = useStateB(radicado);
+  const [fecha, setFecha] = useStateB('');       // aaaa-mm-dd del <input type="date">
+  const [dir, setDir] = useStateB('');
+  const [referencia, setReferencia] = useStateB(''); // opcional, no entra a catastro
+  const [den, setDen] = useStateB('');
+  // estado: '' (sin dirección) · 'buscando' · 'pot' · 'vereda' · 'lista' (elegido a mano o sin predio)
+  const [ubic, setUbic] = useStateB(_RR_SIN_UBIC);
+  const [cambiando, setCambiando] = useStateB(false);
+  const [intentado, setIntentado] = useStateB(false);
+  const [err, setErr] = useStateB(null);           // respuesta de error del servidor
+  const [guardando, setGuardando] = useStateB(false);
+  const consultaRef = useRefB(0);
+  const fechaRef = useRefB(null);
+  // normalizarDireccion deja lo rural como se escribió; en la BD va en mayúsculas.
+  const dirNorm = normalizarDireccion(dir).toUpperCase();
+
+  useEffectB(() => { fechaRef.current && fechaRef.current.focus(); }, []);
+
+  // Dirección → predio → barrio. Con pausa: se consulta cuando deja de escribir.
+  useEffectB(() => {
+    const n = ++consultaRef.current;
+    if (dirNorm.length < 5) {
+      setUbic(prev => prev.estado === 'lista' ? Object.assign({}, prev, { punto: null }) : _RR_SIN_UBIC);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setUbic(prev => Object.assign({}, prev, { estado: 'buscando', punto: null,
+        previo: prev.estado === 'buscando' ? prev.previo : prev.estado }));
+      let res = null, punto = null;
+      try {
+        const u = await ubicarDireccionRegistro(dirNorm);
+        if (u && u.puntoBarrio) {
+          punto = u.puntoGuardar;
+          const [lat, lon] = u.puntoBarrio;
+          const pot = idxBarrios ? barrioPotPorPunto(idxBarrios, lat, lon) : null;
+          const b = barrioRegistroDesdePot(pot, _LISTA_BARRIOS, _ALIAS_BARRIO_POT);
+          if (b) res = Object.assign({ estado: 'pot' }, b);
+          else {
+            const v = await veredaDePunto(lat, lon);
+            if (v) {
+              const nom = _barrioDeLista(v, true) || v;
+              res = { estado: 'vereda', barrio: nom, comuna: _BARRIO_A_COMUNA[nom.toUpperCase()] || 'Vereda' };
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Registrar radicado] ubicación', e.message);
+      }
+      if (n !== consultaRef.current) return;
+      if (res) {
+        setUbic(Object.assign(res, { punto }));
+        setCambiando(false);
+      } else {
+        // Sin barrio del POT: se elige de la lista (lo ya elegido a mano se conserva).
+        setUbic(prev => {
+          const aMano = prev.previo === 'lista';
+          return { estado: 'lista', barrio: aMano ? prev.barrio : '', comuna: aMano ? prev.comuna : '', punto, sinPredio: true };
+        });
+        setCambiando(true);
+      }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [dirNorm, idxBarrios]);
+
+  function elegirBarrio(v) {
+    setUbic(prev => ({ estado: 'lista', barrio: v, comuna: _BARRIO_A_COMUNA[v.toUpperCase()] || '',
+      punto: prev.punto, sinPredio: prev.sinPredio }));
+  }
+
+  const faltan = {
+    radicado: !formaRadicadoValida(rad) ? 'El radicado debe tener 11 dígitos (o la forma AAAA-NNNNNN).' : '',
+    fecha: !fecha ? 'Falta la fecha de radicado.' : (fecha > _isoBQ(new Date()) ? 'La fecha de radicado no puede ser futura.' : ''),
+    direccion: !dirNorm ? 'Falta la dirección.' : '',
+    barrio: !ubic.barrio ? 'Falta el barrio.' : '',
+    denunciante: !den.trim() ? 'Falta el denunciante.' : '',
+  };
+  const msgCampo = (k) => (intentado && faltan[k]) || (err && err.campo === k ? err.error : '');
+  const buscando = ubic.estado === 'buscando';
+
+  async function registrar() {
+    setIntentado(true);
+    setErr(null);
+    if (Object.values(faltan).some(Boolean)) return;
+    setGuardando(true);
+    try {
+      const [a, m, d] = fecha.split('-');
+      const r = await registrarRadicado({
+        radicado: claveRadicado(rad), fechaRadicado: d + '/' + m + '/' + a,
+        direccion: dirNorm, barrio: ubic.barrio, comuna: ubic.comuna, denunciante: den.trim(),
+        lat: ubic.punto ? ubic.punto[0] : '', lon: ubic.punto ? ubic.punto[1] : '',
+        referencia: referencia.trim(),
+      });
+      if (r && r.ok) { onRegistrado(claveRadicado(rad)); return; }
+      setErr(r || { error: 'No se pudo registrar el radicado.' });
+    } catch (e) {
+      setErr({ error: 'No se pudo registrar: ' + e.message });
+    }
+    setGuardando(false);
+  }
+
+  const campoErr = (k) => {
+    const m = msgCampo(k);
+    return m ? <span className="rr-ayuda rr-err" id={'rr-err-' + k}>{m}</span> : null;
+  };
+  const describe = (k, otro) => msgCampo(k) ? 'rr-err-' + k : otro;
+  const dirCambia = dirNorm && dirNorm !== dir.trim().toUpperCase().replace(/\s+/g, ' ');
+
+  return (
+    <div className="rr" role="region" aria-labelledby="rr-titulo"
+      onKeyDown={e => { if (e.key === 'Escape' && !guardando) onCancelar(); }}>
+      <div className="rr-cab">
+        <div>
+          <h2 id="rr-titulo">Registrar radicado nuevo</h2>
+          <p>Los mismos datos del formulario de PQR. Queda como pendiente, sin asignar.</p>
+        </div>
+        <button type="button" className="rr-cerrar" aria-label="Cancelar" onClick={onCancelar} disabled={guardando}>
+          <Icon.Close size={18} />
+        </button>
+      </div>
+
+      <form className="rr-campos" onSubmit={e => { e.preventDefault(); registrar(); }} noValidate>
+        {err && !err.campo && (
+          <div className="rr-banda rr-ancho" role="alert">
+            <p>{err.error}</p>
+            {err.duplicado && (
+              <button type="button" className="btn-neutro" onClick={onRecargar}>Recargar la lista</button>
+            )}
+          </div>
+        )}
+        <div className="rr-campo">
+          <label htmlFor="rr-rad">Radicado</label>
+          <input id="rr-rad" className="input-campo" value={rad} inputMode="numeric" autoComplete="off"
+            onChange={e => setRad(e.target.value)} aria-invalid={!!msgCampo('radicado')}
+            aria-describedby={describe('radicado')} />
+          {campoErr('radicado')}
+        </div>
+        <div className="rr-campo">
+          <label htmlFor="rr-fecha">Fecha de radicado</label>
+          <input id="rr-fecha" ref={fechaRef} type="date" className="input-campo" value={fecha}
+            max={_isoBQ(new Date())} onChange={e => setFecha(e.target.value)} aria-invalid={!!msgCampo('fecha')}
+            aria-describedby={describe('fecha')} />
+          {campoErr('fecha')}
+        </div>
+        {/* Dirección y referencia en la misma fila cuando caben. */}
+        <div className="rr-campo">
+          <label htmlFor="rr-dir">Dirección de la infracción</label>
+          <input id="rr-dir" className="input-campo" value={dir} autoComplete="off"
+            onChange={e => setDir(e.target.value)} aria-invalid={!!msgCampo('direccion')}
+            aria-describedby={describe('direccion', dirCambia ? 'rr-dir-ayuda' : undefined)} />
+          {msgCampo('direccion') ? campoErr('direccion') : dirCambia ? (
+            <span className="rr-ayuda" id="rr-dir-ayuda">Se guardará como <b>{dirNorm}</b></span>
+          ) : null}
+        </div>
+        <div className="rr-campo">
+          <label htmlFor="rr-ref">Referencia <span className="rr-opc">(opcional)</span></label>
+          <input id="rr-ref" className="input-campo" maxLength={500} value={referencia} autoComplete="off"
+            onChange={e => setReferencia(e.target.value)}
+            title="Lo que no es dirección. Apto o interior van en la dirección."
+            placeholder="Frente a la escuela, portón verde" />
+        </div>
+
+        <div className="rr-ubic rr-ancho" aria-live="polite">
+          <span className="rr-lbl">{ubic.estado === 'vereda' ? 'Vereda' : 'Barrio y comuna'}</span>
+          {buscando && (
+            <span className="rr-fuente"><span className="rr-girando" aria-hidden="true"></span>Buscando la dirección en catastro…</span>
+          )}
+          {!buscando && !cambiando && ubic.barrio && (
+            <>
+              <div className="rr-val-fila">
+                <span className="rr-val">{ubic.barrio}
+                  <small> · {ubic.comuna === 'Vereda' || ubic.estado === 'vereda' ? 'Zona rural' : ubic.comuna ? 'Comuna ' + ubic.comuna : 'Sin comuna'}</small>
+                </span>
+                <button type="button" className="rr-cambiar" onClick={() => setCambiando(true)}>Cambiar</button>
+              </div>
+              <span className="rr-fuente">
+                <span className={'rr-dot ' + (ubic.estado === 'lista' ? 'rr-dot-no' : 'rr-dot-ok')}></span>
+                {ubic.estado === 'lista' ? 'Elegido en la lista' : 'Según el POT, por el predio de catastro'}
+              </span>
+            </>
+          )}
+          {!buscando && !cambiando && !ubic.barrio && (
+            <span className="rr-fuente">Se llena al escribir la dirección.</span>
+          )}
+          {!buscando && cambiando && (
+            <>
+              <select className="input-campo" aria-label="Barrio" value={ubic.barrio}
+                onChange={e => elegirBarrio(e.target.value)} aria-invalid={!!msgCampo('barrio')}>
+                <option value="">Elige el barrio…</option>
+                {BARRIOS_POR_COMUNA.map(g => (
+                  <optgroup key={g.comuna} label={g.label}>
+                    {g.barrios.map(b => <option key={b} value={b}>{b}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <span className="rr-fuente">
+                <span className="rr-dot rr-dot-esp"></span>
+                {ubic.sinPredio
+                  ? 'No se encontró la dirección en catastro. Elige el barrio; la comuna sale sola.'
+                  : 'Elige el barrio; la comuna sale sola.'}
+              </span>
+            </>
+          )}
+          {!buscando && campoErr('barrio')}
+        </div>
+
+        <div className="rr-campo rr-ancho">
+          <label htmlFor="rr-den">Denunciante</label>
+          <input id="rr-den" className="input-campo" value={den} autoComplete="off"
+            onChange={e => setDen(e.target.value)} aria-invalid={!!msgCampo('denunciante')}
+            aria-describedby={describe('denunciante')} />
+          {campoErr('denunciante')}
+        </div>
+
+        <div className="rr-pie rr-ancho">
+          <span className="rr-nota">
+            {ubic.punto
+              ? 'El punto del predio queda como ubicación aproximada; el inspector la confirma en la visita.'
+              : 'Sin punto del predio: el inspector toma la ubicación en la visita.'}
+          </span>
+          <div className="rr-botones">
+            <button type="button" className="btn-neutro" onClick={onCancelar} disabled={guardando}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={guardando || buscando}>
+              {guardando ? 'Registrando…' : 'Registrar radicado'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

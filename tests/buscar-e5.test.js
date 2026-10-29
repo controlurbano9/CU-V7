@@ -229,8 +229,10 @@ test('coincideBuscar: radicado, dirección sin separadores, barrio, orden sin ce
     'N° ORDEN DE POLICIA': '2026-09-015',
     'NOMBRE PERSONA ATIENDE': 'María Gómez',
     'RADICADOS REITERADOS': '20261011111',
+    'REFERENCIA_DIRECCION': 'Frente a la escuela, portón verde',
   }), null, HOY);
 
+  assert.equal(U.coincideBuscar(c, 'porton verde'), 'ref');
   assert.equal(U.coincideBuscar(c, '20261041'), 'rad');
   assert.equal(U.coincideBuscar(c, 'CL 50 32 10'), 'dirk');   // clave sin separadores: CL503210
   assert.equal(U.coincideBuscar(c, 'paris'), 'barrio');

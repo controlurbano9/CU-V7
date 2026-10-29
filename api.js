@@ -626,7 +626,8 @@ async function leerVisitas(opts) {
 // la lista muestre el guardado sin esperar la descarga completa. `valores` es
 // el payload posicional de guardarVisita (arranca en la columna B). No toca
 // _firmaVisitas: la próxima descarga trae la fila real y re-pinta si difiere.
-function _parchearVisitaLocal(fila, valores, ultimaMod) {
+// `porNombre`: columnas que viajan fuera de `valores` ({ ENCABEZADO: valor }).
+function _parchearVisitaLocal(fila, valores, ultimaMod, porNombre) {
   const base = _visitasUltimas;
   fila = parseInt(fila, 10);
   if (!base || !base.headers.length || !fila || !Array.isArray(valores)) return;
@@ -642,6 +643,11 @@ function _parchearVisitaLocal(fila, valores, ultimaMod) {
   valores.forEach((v, i) => { if (i + 1 < headers.length) poner(i + 1, v); });
   const jMod = headers.findIndex(h => (h || '').toString().trim() === 'ULTIMA_MODIFICACION');
   if (jMod >= 0 && ultimaMod) poner(jMod, ultimaMod);
+  Object.keys(porNombre || {}).forEach(nombre => {
+    const j = headers.findIndex(h => (h || '').toString().trim() === nombre);
+    if (j >= 0) poner(j, porNombre[nombre]);
+    else obj[nombre] = String(porNombre[nombre] || '').trim(); // la columna aún no existía
+  });
   if (!obj['RADICADO']) return;
   const datos = previa
     ? base.datos.map(o => (o === previa ? obj : o))
@@ -1245,7 +1251,7 @@ async function obtenerIdFotos(idCarpetaVisita) {
 // Campos que van fuera de `valores` y que un guardado puede no traer (sin la
 // clave, el backend no toca la columna). Al reemplazar un guardado encolado
 // por uno más nuevo se heredan los que el nuevo no trae.
-const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita'];
+const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita', 'referenciaDireccion'];
 
 // Saca de la cola los `actualizar` de esa fila. Con `nuevo`, le pasa antes los
 // campos extra que solo traían los encolados (el más reciente gana).
@@ -1308,10 +1314,13 @@ async function guardarVisita(payload) {
   if (payload.licenciaExtra) body.licenciaExtra = payload.licenciaExtra;
   // CITADO / DOCUMENTO_CITADO (audiencias): { mismaPersona } o el citado.
   if (payload.citadoVisita) body.citadoVisita = payload.citadoVisita;
+  // REFERENCIA_DIRECCION: por nombre; '' borra, clave ausente no se toca.
+  if (payload.referenciaDireccion !== undefined) body.referenciaDireccion = payload.referenciaDireccion;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
-    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida);
+    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida,
+      body.referenciaDireccion !== undefined ? { REFERENCIA_DIRECCION: body.referenciaDireccion } : null);
     // La fila entera ya quedó escrita: los guardados de esta visita que
     // seguían en cola son versiones anteriores. Si salieran después, chocarían
     // con este mismo guardado (conflicto de ULTIMA_MODIFICACION) y quedarían
@@ -2153,6 +2162,52 @@ async function puntoMapaCatastro(dir) {
   _puntoMapaCache.set(clave.base, p);
   p.catch(function () { _puntoMapaCache.delete(clave.base); });
   return p;
+}
+
+// ── «Registrar radicado» (Buscar, 2026-10-29) ─────────────────
+// Dónde cae la dirección según catastro, para sacar barrio y comuna del POT.
+//   null → la dirección no está en catastro (o no se reconoce)
+//   { puntoBarrio, puntoGuardar } → puntoBarrio: un punto dentro del predio
+//     (sirve para el barrio aunque el predio sea grande); puntoGuardar: el que
+//     se guarda como ubicación aproximada, solo con la misma regla de «Cómo
+//     llegar» (un predio chico), o null.
+// A diferencia de puntoMapaCatastro, sí descarga catastro.json si hace falta:
+// es una acción explícita, en la oficina.
+async function ubicarDireccionRegistro(dir) {
+  const r = await buscarCatastroPorDireccion(dir);
+  if (!r || !r.exacta || !r.terrenos.length) return null;
+  const data = await _cargarCatastro();
+  const t = r.terrenos[0];
+  return {
+    puntoBarrio: puntoInteriorAnillo(t.anillo),
+    puntoGuardar: puntoMapaDesdeCatastro(r, (data.f[t.tcod] || []).length),
+  };
+}
+
+// Vereda del POT en un punto (capa Veredas). barrios-mapa.json no trae sus
+// nombres, así que para lo rural se consulta la capa. '' si no cae en ninguna.
+async function veredaDePunto(lat, lon) {
+  if (!(await cargarTurf())) return '';
+  const veredas = await _cargarGeoJSON('Veredas.geojson');
+  if (!veredas) return '';
+  const punto = turf.point([Number(lon), Number(lat)]);
+  for (const feat of veredas.features) {
+    try {
+      if (turf.booleanPointInPolygon(punto, feat)) {
+        const p = feat.properties || {};
+        return p.NOMBRE || p.nombre || '';
+      }
+    } catch (e) {}
+  }
+  return '';
+}
+
+// Crea la fila del radicado (estado PENDIENTE), como el Formulario de Google.
+// datos: { radicado, fechaRadicado, direccion, barrio, comuna, denunciante, lat, lon }
+async function registrarRadicado(datos) {
+  const r = await gasPost(Object.assign({ accion: 'registrarRadicado' }, datos));
+  invalidarCache('visitas');
+  return r;
 }
 
 function _anillosCatastro(data) {
