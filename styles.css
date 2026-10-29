@@ -569,6 +569,9 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
   margin-bottom: 14px;
 }
 .chips-inf { margin-bottom: 0; }
+/* Texto de la ley bajo el chip marcado del art. 135 (2026-10-29). */
+.chip-ley { margin: -6px 0 10px; max-width: 72ch; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+.chip-ley strong { color: var(--ink-2); font-weight: 600; }
 
 
 /* ╔════════════════════════════════════════════════════════════╗
@@ -4176,6 +4179,8 @@ button.sv-col-head {
 .rv-txt { display: block; box-sizing: border-box; width: 100%; margin: 0; padding: 0 16px 12px; border: 0; background: transparent;
   color: var(--ink-2); font: inherit; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow: hidden; resize: none; }
 .rv-txt del { color: var(--ink-4); text-decoration-thickness: 1px; }
+.rv-txt mark.rv-aplaza { background: var(--amber-bg); color: inherit; text-decoration: underline wavy var(--amber);
+  text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .rv-vacio { color: var(--ink-4); font-style: italic; }
 .rv-nota { margin: 0 16px 10px; font-size: 11px; color: var(--ink-3); }
 .rv-forma { margin: 0 16px 12px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--amber-bg); font-size: 12px; color: var(--ink-2); }

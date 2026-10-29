@@ -2187,8 +2187,12 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   c.dCal = c.fRad ? Math.max(0, Math.round((refDia - new Date(c.fRad.getFullYear(), c.fRad.getMonth(), c.fRad.getDate())) / 86400000)) : 0;
 
   // Lo encontrado en la visita
-  c.infr = _colBuscar(f, 'TIPO DE INFRACCION').split(/[·,;|\n]+/)
-    .map(function (s) { return s.trim(); }).filter(Boolean);
+  // Un chip del catálogo va entero y con su nombre vigente (el de A2 lleva
+  // comas); el texto libre de V2 se parte como antes.
+  c.infr = _colBuscar(f, 'TIPO DE INFRACCION').split('|').reduce(function (acc, s) {
+    var v = nombreChipVigente(s);
+    return acc.concat(_CONTRAVENCION_VALIDAS.has(v) ? [v] : v.split(/[·,;\n]+/));
+  }, []).map(function (s) { return s.trim(); }).filter(Boolean);
   c.susp = _normBuscar(f['SUSPENSION DE LA OBRA']) === 'SI';
   c.orden = ordenPoliciaDe(f);
   c.nOrden = _normBuscar(c.orden);
@@ -2421,15 +2425,15 @@ function ordenarCasosBuscar(lista, orden, q) {
 const CONTRAVENCION_GRUPOS = [
   { literal: 'Literal A', opciones: [
     { val: 'A1: Áreas protegidas', l: 'A1: Áreas protegidas' },
-    { val: 'A2: Diferente a lo aprobado', l: 'A2: Diferente a lo aprobado' },
+    { val: 'A2: Distinto a la licencia (pisos, unidades, áreas)', l: 'A2: Distinto a la licencia (pisos, unidades, áreas)' },
     { val: 'A3: Bienes uso público (Antejardín)', l: 'A3: Bienes uso público (Antejardín)' },
     { val: 'A4: Sin licencia o caducada', l: 'A4: Sin licencia o caducada' },
   ]},
   { literal: 'Literal C', opciones: [
-    { val: 'C9: Uso distinto licencia', l: 'C9: Uso distinto licencia' },
-    { val: 'C10: Ubicación incorrecta', l: 'C10: Ubicación incorrecta' },
-    { val: 'C11: Usos suelo prohibidos', l: 'C11: Usos suelo prohibidos' },
-    { val: 'C12: Destinación no autorizada', l: 'C12: Destinación no autorizada' },
+    { val: 'C9: Uso distinto al de la licencia', l: 'C9: Uso distinto al de la licencia' },
+    { val: 'C10: Ubicación distinta a la licencia', l: 'C10: Ubicación distinta a la licencia' },
+    { val: 'C11: Uso del suelo no permitido', l: 'C11: Uso del suelo no permitido' },
+    { val: 'C12: Facilitar usos del suelo no autorizados', l: 'C12: Facilitar usos del suelo no autorizados' },
   ]},
   { literal: 'Literal D', opciones: [
     { val: 'D13: Materiales en vía', l: 'D13: Materiales en vía' },
@@ -2464,8 +2468,32 @@ const _CONTRAVENCION_EXCLUYENTES = [CONTRAVENCION_ESPECIAL, CONTRAVENCION_INDETE
 const _CONTRAVENCION_VALIDAS = new Set(
   CONTRAVENCION_GRUPOS.flatMap(g => g.opciones.map(o => o.val)).concat(_CONTRAVENCION_EXCLUYENTES)
 );
+// Nombres anteriores al 2026-10-29 (decisión del usuario, informe de
+// 20231121436): «C12: Destinación no autorizada» se marcaba por las unidades
+// de más, porque el formulario llama «destinaciones» a las unidades; C12 es
+// de usos del suelo. Lo guardado con el nombre viejo se lee con el nuevo, que
+// es el que sale en el acta. La huella de la revisión (_normChipsRevision) y
+// la del informe siguen con el viejo: renombrar no vence lo ya revisado.
+const _CONTRAVENCION_RENOMBRADAS = {
+  'A2: Diferente a lo aprobado': 'A2: Distinto a la licencia (pisos, unidades, áreas)',
+  'C9: Uso distinto licencia': 'C9: Uso distinto al de la licencia',
+  'C10: Ubicación incorrecta': 'C10: Ubicación distinta a la licencia',
+  'C11: Usos suelo prohibidos': 'C11: Uso del suelo no permitido',
+  'C12: Destinación no autorizada': 'C12: Facilitar usos del suelo no autorizados',
+};
+const _CONTRAVENCION_NOMBRE_SELLADO = Object.keys(_CONTRAVENCION_RENOMBRADAS)
+  .reduce((m, viejo) => { m[_CONTRAVENCION_RENOMBRADAS[viejo]] = viejo; return m; }, {});
+function nombreChipVigente(s) {
+  const t = String(s || '').trim();
+  return _CONTRAVENCION_RENOMBRADAS[t] || t;
+}
+// Lista de chips (' | ') con el nombre con que se sellaron las huellas.
+function chipsConNombreSellado(v) {
+  return String(v || '').split(' | ')
+    .map(s => { const t = s.trim(); return _CONTRAVENCION_NOMBRE_SELLADO[t] || t; }).join(' | ');
+}
 function _infraccionSoloCatalogo(v) {
-  const chips = String(v || '').split(' | ').map(s => s.trim())
+  const chips = String(v || '').split(' | ').map(nombreChipVigente)
     .filter(s => _CONTRAVENCION_VALIDAS.has(s));
   // A1 primero (prioridad, ver alternarContravencion): filas guardadas antes.
   return chips.filter(s => /^A1:/.test(s)).concat(chips.filter(s => !/^A1:/.test(s))).join(' | ');
@@ -3185,7 +3213,8 @@ function seccionesFicha(f, rol) {
   // 7. Conclusiones — el área solo con contravención; la fecha de citación
   // solo con suspensión SI o si ya hay fecha.
   var s7 = seccion(7, 'conclusiones', 'Conclusiones');
-  var infraccion = String(_gFicha(f, 'TIPO DE INFRACCION', 23)).trim();
+  var infraccion = String(_gFicha(f, 'TIPO DE INFRACCION', 23)).split(' | ')
+    .map(nombreChipVigente).join(' | ').trim();
   campo(s7, 'Tipo de contravención', infraccion, { ancho: true });
   if (infraccion) {
     campo(s7, 'Área contravención (m²)', _gFicha(f, 'AREA CONTRAVENCION m2', 'AREA CONTRAVENCION M2', 24));
@@ -3323,7 +3352,20 @@ function citaArt135(literal, numeral) {
   return 'literal ' + literal + ' «' + enc + '», numeral ' + n + ' «' + txt + '»';
 }
 
-var COMPORTAMIENTO_INDETERMINADO_IA = 'Ninguno: el inspector marcó «No se pudo determinar» ' +
+// 'C12: …' → 'Usar o destinar un inmueble a facilitar, en cualquier clase de
+// inmueble, …' (encabezado del literal + numeral, como se lee en la ley; sin
+// punto final: va entre comillas). Va bajo el chip marcado (2026-10-29): el
+// nombre corto no basta para decidir.
+// El literal D es una lista de obligaciones: va con dos puntos.
+function textoLeyChip(val) {
+  var m = /^([ABCD])(\d{1,2}):/.exec(String(val || ''));
+  if (!m) return '';
+  var enc = ART135_LITERALES[m[1]], txt = ART135_TEXTO[parseInt(m[2], 10)];
+  if (!enc || !txt) return '';
+  return enc + (m[1] === 'D' ? ': ' : ' ') + txt.charAt(0).toLowerCase() + txt.slice(1);
+}
+
+var COMPORTAMIENTO_INDETERMINADO_IA ='Ninguno: el inspector marcó «No se pudo determinar» ' +
   '(no pudo determinar si las obras requieren licencia). No hay comportamiento calificado ni se ' +
   'puede afirmar que no hay infracción.';
 
@@ -3428,10 +3470,13 @@ function marcadoresPendientes(texto) {
 //   [{ tipo: 'pierde' | 'motivo', texto }]
 // Fuentes de regex sobre el texto sin tildes y en minúscula. Con límite de
 // palabra: «segun» no puede atrapar «segundo piso».
+// «aparente(mente)» salió el 2026-10-29: quitarlo es lo que pide la regla «la
+// visita es la verificación» (aplazamientosTexto). La duda con motivo sigue
+// protegida por «tuvo acceso», «no se pudo», «no fue posible».
 var SALVEDADES_REVISION = [
   '\\bpor si mism\\w*', '\\bpor si sol\\w*', '\\bsiempre que\\b', '\\bsalvo\\b', '\\bexcepto\\b',
   '\\ba menos que\\b', '\\ben las areas\\b', '\\btuvo acceso\\b', '\\bvisibles?\\b',
-  '\\bno fue posible\\b', '\\bno se pudo\\b', '\\bno se logro\\b', '\\bpresunt\\w*', '\\baparente\\w*',
+  '\\bno fue posible\\b', '\\bno se pudo\\b', '\\bno se logro\\b', '\\bpresunt\\w*',
   '\\bsegun\\b', '\\bmanifest\\w*'
 ];
 function resumenCambios(orig, prop, opts) {
@@ -3665,7 +3710,7 @@ function _normTextoRevision(s) {
   return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 }
 function _normChipsRevision(infraccion) {
-  return String(infraccion || '').split(' | ')
+  return chipsConNombreSellado(infraccion).split(' | ')
     .map(function(c) { return c.trim(); }).filter(Boolean).sort().join(' | ');
 }
 
@@ -3863,6 +3908,58 @@ function expresionesIA(texto) {
   });
   return out;
 }
+// ── La visita es la verificación (2026-10-29, decisión del usuario) ──
+// Informe de 20231121436: «esta circunstancia deberá ser objeto de
+// verificación mediante la revisión de la licencia», «deberán ser
+// contrastadas con los documentos urbanísticos», «aparentemente». La visita es
+// la que verifica: dejarlo para después o dudar de lo que se vio le quita al
+// documento su valor de prueba. `aplaza` = deja la verificación para otro;
+// `duda` = pone en duda lo observado. «Presunto» no entra (es la forma
+// jurídica de nombrar un incumplimiento), ni «aproximadamente» con medidas
+// (sin cinta, una medida es aproximada); con un conteo de unidades o pisos sí.
+// Patrones sin tildes y en minúscula (se comparan con _sinTildesRev).
+var APLAZAMIENTOS_VERIFICACION = [
+  { rx: '\\b(?:debera|deberan|deberia|deberian|sera|seran) ser objeto de (?:verificacion|revision|estudio|analisis|confrontacion)\\b', tipo: 'aplaza' },
+  { rx: '\\b(?:debera|deberan|deberia|deberian) (?:ser )?(?:contrastad|verificad|confrontad|corroborad|validad|revisad|cotejad)[oa]s?\\b', tipo: 'aplaza' },
+  { rx: '\\b(?:debera|deberan|deberia|deberian) (?:contrastarse|verificarse|confrontarse|corroborarse|validarse|cotejarse|efectuarse|establecerse|determinarse)\\b', tipo: 'aplaza' },
+  { rx: '\\bcuya (?:verificacion|confrontacion|comprobacion|revision)\\b', tipo: 'aplaza' },
+  { rx: '\\bquedan? pendientes? (?:la |de |por )?(?:verificacion|verificar|confirmacion|confirmar|revision|revisar|establecer)\\b', tipo: 'aplaza' },
+  { rx: '\\b(?:se requiere|es necesario|sera necesario|se hace necesario|se debe|se deben) (?:verificar|contrastar|confrontar|corroborar|establecer si|determinar si)\\b', tipo: 'aplaza' },
+  { rx: '\\baparentemente\\b', tipo: 'duda' },
+  { rx: '\\baparentes?\\b', tipo: 'duda' },
+  { rx: '\\bal parecer\\b', tipo: 'duda' },
+  { rx: '\\bpresumiblemente\\b', tipo: 'duda' },
+  { rx: '\\bpareciera\\b', tipo: 'duda' },
+  { rx: '\\bposibles? (?:diferencias?|inconsistencias?|discrepancias?|irregularidad(?:es)?|modificaci(?:on|ones)|ampliaci(?:on|ones)|unidad(?:es)?|destinaci(?:on|ones))\\b', tipo: 'duda' },
+  { rx: '\\b(?:aproximadamente|alrededor de|cerca de) (?:[a-z]+ )?\\(?\\d+\\)? (?:destinaciones|unidades|apartamentos|viviendas|locales|pisos|niveles)\\b', tipo: 'duda' }
+];
+// Si la oración dice por qué no se pudo verificar, la duda es honesta.
+var _MOTIVO_SIN_VERIFICAR = /no se (?:tuvo|permitio|pudo|logro) (?:el )?(?:acceso|acceder|ingres|ingresar|entrar)|sin acceso|no fue posible (?:acceder|ingresar|entrar)|no se permitio el ingreso|no hubo acceso|estaba cerrad|se encontraba cerrad/;
+
+// [{ inicio, fin, frase, tipo }] con posiciones sobre el texto original, como
+// expresionesIA (para marcarlas en «Tu texto»).
+function aplazamientosTexto(texto) {
+  var t = String(texto || '');
+  var n = _sinTildesRev(t);
+  var todos = [];
+  APLAZAMIENTOS_VERIFICACION.forEach(function (e) {
+    var m, re = new RegExp(e.rx, 'g');
+    while ((m = re.exec(n))) {
+      var ini = Math.max(n.lastIndexOf('.', m.index), n.lastIndexOf('\n', m.index)) + 1;
+      var finO = n.indexOf('.', m.index);
+      var oracion = n.slice(ini, finO < 0 ? n.length : finO);
+      if (e.tipo === 'duda' && _MOTIVO_SIN_VERIFICAR.test(oracion)) continue;
+      todos.push({ inicio: m.index, fin: m.index + m[0].length, frase: t.substr(m.index, m[0].length), tipo: e.tipo });
+    }
+  });
+  todos.sort(function (a, b) { return a.inicio - b.inicio || (b.fin - b.inicio) - (a.fin - a.inicio); });
+  var out = [], ultimoFin = -1;
+  todos.forEach(function (x) {
+    if (x.inicio >= ultimoFin) { out.push(x); ultimoFin = x.fin; }
+  });
+  return out;
+}
+
 var _NUMERALES_LITERAL = { A: [1, 4], B: [5, 8], C: [9, 12], D: [13, 24] };
 
 function _sinTildesRev(s) {
@@ -3902,7 +3999,7 @@ function _comportamientosCitados(texto, poligono) {
 // 2026-10-15: a Alejandro se le pidió justificar el largo de la propuesta
 // de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
-var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b'];
+var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b', 'aplaza'];
 // Cifra de un área como se escribe en Colombia: decimales con coma
 // («58.75» → «58,75»). Un punto con 3 cifras detrás es de miles y se deja.
 function numeroAreaCO(n) {
@@ -4073,7 +4170,49 @@ function revisarTextoLocal(e) {
     var pa = num(e.alturaPisos), pl = num(e.pisos), da = num(e.destActuales), dl = num(e.destinaciones);
     if ((pa > pl) || (da > dl)) {
       add('R12', 'area', 'Hay ' + (pa > pl ? pa + ' pisos y la licencia aprueba ' + pl : da + ' destinaciones y la licencia aprueba ' + dl) +
-        ', y no está marcado A2 (diferente a lo aprobado).');
+        ', y no está marcado A2 (distinto a la licencia).');
+    }
+  }
+
+  // R19 (2026-10-29, informe de 20231121436): el literal C es de usos del
+  // suelo. Con usos actuales solo residenciales, un C9-C12 suele ser una
+  // vivienda con más unidades que las aprobadas, que es A2: el formulario
+  // llama «destinaciones» a las unidades y el chip C12 decía «Destinación no
+  // autorizada».
+  var usosAct = String(e.usos || '').split(/\s*[·,]\s*/).map(function(u) { return _sinTildesRev(u).trim(); }).filter(Boolean);
+  var cUsos = marcados.filter(function(c) { return /^C(9|1[0-2])$/.test(c); });
+  if (cUsos.length && usosAct.length && usosAct.every(function(u) { return /^(residencial|vivienda|habitacional)$/.test(u); })) {
+    add('R19', 'area', 'Los usos actuales son solo residenciales y está marcado ' + cUsos.join(', ') +
+      '. El literal C es de usos del suelo (comercio, taller, bodega…). Más unidades de vivienda que las aprobadas es A2 (distinto a la licencia).');
+  }
+
+  // R20 / aplaza (2026-10-29): la visita es la verificación (aplazamientosTexto).
+  // Con licencia aportada, contrastarla era el trabajo de la visita: pide
+  // justificación. Sin licencia, aviso.
+  textos.forEach(function(x) {
+    var ap = aplazamientosTexto(x.t);
+    if (!ap.length) return;
+    var frases = ap.slice(0, 3).map(function(a) { return '«' + a.frase.toLowerCase() + '»'; }).join(', ') +
+      (ap.length > 3 ? ' y ' + (ap.length - 3) + ' más' : '');
+    add(si(e.licenciaAportada) ? 'R20' : 'aplaza', x.donde, x.nombre + ' ' + frases + '. La visita es la verificación: ' +
+      'si lo contaste o lo mediste, escríbelo como hecho («la licencia aprueba 11 destinaciones; se contaron 15»). ' +
+      'Si algo no se pudo verificar, di qué y por qué.');
+  });
+
+  // R21 (2026-10-29): el texto cuenta otras destinaciones que la casilla
+  // (caso 20231121436: la casilla decía 13 y el texto «quince (15)»). No
+  // cuentan la cifra de la licencia, la diferencia ni las «adicionales».
+  var dAct = num(e.destActuales);
+  if (desc && !isNaN(dAct)) {
+    var dLic = num(e.destinaciones);
+    var rxDest = /(\d+)\)?\s+destinaciones\b(?!\s+(?:adicional|mas\b|de mas|nuevas|no contemplad))/g, mD, otras = [];
+    var descN = _sinTildesRev(desc);
+    while ((mD = rxDest.exec(descN))) {
+      var nD = parseInt(mD[1], 10);
+      if (nD !== dAct && nD !== dLic && nD !== Math.abs(dAct - dLic) && otras.indexOf(nD) < 0) otras.push(nD);
+    }
+    if (otras.length) {
+      add('R21', 'descripcion', 'La descripción dice ' + otras.join(' y ') + ' destinaciones, y en Características de la edificación «N° destinaciones actuales» = ' + dAct + '.');
     }
   }
 
@@ -4604,6 +4743,7 @@ var _cuUtilsExports = {
   expedienteDe: expedienteDe,
   identificadorVisita: identificadorVisita,
   citaArt135: citaArt135,
+  textoLeyChip: textoLeyChip,
   comportamientosParaIA: comportamientosParaIA,
   reglasBloqueoActa: reglasBloqueoActa,
   camposRevision: camposRevision,
@@ -4630,6 +4770,7 @@ var _cuUtilsExports = {
   SALVEDADES_REVISION: SALVEDADES_REVISION,
   EXPRESIONES_IA: EXPRESIONES_IA,
   expresionesIA: expresionesIA,
+  aplazamientosTexto: aplazamientosTexto,
   AGENDA_OFICINA: AGENDA_OFICINA,
   nivelPrioridad: nivelPrioridad,
   motivoPrioridad: motivoPrioridad,
@@ -4783,6 +4924,8 @@ var _cuUtilsExports = {
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
   CONTRAVENCION_INDETERMINADA: CONTRAVENCION_INDETERMINADA,
   _infraccionSoloCatalogo: _infraccionSoloCatalogo,
+  nombreChipVigente: nombreChipVigente,
+  chipsConNombreSellado: chipsConNombreSellado,
   alternarContravencion: alternarContravencion,
   infraccionParaActa: infraccionParaActa,
   // expuestas para pruebas unitarias (auditoría 2026-07, QA#3/MP7)

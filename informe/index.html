@@ -943,7 +943,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=139"></script>
+<script src="../utils.js?v=154"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -2703,7 +2703,13 @@ async function construirPromptF43(ctx) {
     + 'sin cifra, nunca tomes la de la licencia. ' + areaCierra + ' '
     + 'OBSERVACIONES solo describe: PROHIBIDO incluir en ellas recomendaciones o conclusiones ("se recomienda", '
     + '"permite concluir", "en consecuencia") — si las observaciones del inspector (obs) las traen, llevalas a su '
-    + 'seccion. PROHIBIDO afirmar que la obra "no tiene" o "no cuenta con" licencia, o que "se verifico" su inexistencia: '
+    + 'seccion. LA VISITA ES LA VERIFICACION (2026-10-29): PROHIBIDO dejar comprobaciones para despues ("debera ser objeto '
+    + 'de verificacion", "deberan ser contrastadas con los documentos", "cuya verificacion debera efectuarse", "queda '
+    + 'pendiente verificar") y PROHIBIDO poner en duda lo que DATOS da como observado ("aparentemente", "al parecer", '
+    + '"posible diferencia", "aparentes inconsistencias"). Si obs trae esas frases, deja el hecho sin ellas; si algo no se '
+    + 'pudo verificar, dilo como hecho con su motivo ("no se tuvo acceso al primer nivel"). Un conteo (destinaciones, '
+    + 'pisos, niveles) es exacto: sin "aproximadamente". '
+    + 'PROHIBIDO afirmar que la obra "no tiene" o "no cuenta con" licencia, o que "se verifico" su inexistencia: '
     + 'usa la formula de la NOTA LICENCIA. Una inferencia sobre antiguedad o secuencia constructiva (ej. "la losa fue '
     + 'adicionada despues") solo se escribe junto al indicio fisico concreto que la sostiene y que este en DATOS; '
     + 'sin ese indicio, se omite. Las manifestaciones de las partes (invasion de un predio, linderos, titularidad) se '
@@ -2799,7 +2805,9 @@ async function construirPromptF43(ctx) {
     + '6. Lenguaje: "constituyen un comportamiento contrario a la integridad urbanistica" se usa SOLO en la conclusion '
     + 'del punto 4.d. Prohibido "demuestra", "acredita", "confirma", "prueba", "evidencia plenamente", '
     + '"se encuentra plenamente establecido", "desconocimiento total", "carece de estructura aprobada" — usa '
-    + '"se observo", "se evidencio", "se identifico", "durante la visita". Nunca escribas "no fue posible verificar" — describe el hecho observado, no lo que falto comprobar (con sin-licencia sugeriria que la licencia existe). Sin puntos '
+    + '"se observo", "se evidencio", "se identifico", "durante la visita". Nunca escribas "no fue posible verificar" — describe el hecho observado, no lo que falto comprobar (con sin-licencia sugeriria que la licencia existe). '
+    + 'En CONCLUSIONES tampoco: ni "aparentemente", ni "posible", ni "aproximadamente" con un conteo, ni que algo "debera '
+    + 'verificarse": la conclusion determina con lo que se verifico en la visita. Sin puntos '
     + 'suspensivos ni coloquialismos.\n'
     + '7. VERIFICACION INTERNA (no la incluyas en la respuesta, es un paso silencioso antes de responder): '
     + 'revisa que ningun comportamiento citado este fuera de la lista dada, que cada comportamiento marcado tenga su '
@@ -3196,6 +3204,24 @@ function validarInformeIA(json, ctx, opts) {
         ? 'Afirma un hecho negativo sobre la licencia ("' + mAmp[0] + '"): escribe "no se aportó ni exhibió licencia".'
         : 'Dice "' + mAmp[0] + '" y no se aportó licencia: nada de lo construido consta como aprobado.');
     }
+  }
+  // La visita es la verificacion (2026-10-29, informe de 20231121436;
+  // aplazamientosTexto en utils.js): dejar la verificacion para despues o
+  // dudar de lo que se vio. Es redaccion: avisa, no bloquea.
+  if (typeof aplazamientosTexto === 'function') {
+    var apObs = aplazamientosTexto(json.observaciones || '');
+    if (apObs.length) {
+      avisos.push('Las observaciones de campo dejan la verificación para después o dudan de lo que se vio ("'
+        + apObs[0].frase + '"' + (apObs.length > 1 ? ' y ' + (apObs.length - 1) + ' más' : '') + '): la visita es la '
+        + 'verificación. Escribe lo que se contó o midió, o qué no se pudo verificar y por qué.');
+    }
+    (json.conclusiones_items || []).forEach(function(item, i) {
+      var apC = aplazamientosTexto(item);
+      if (apC.length) {
+        avisos.push('La conclusión ' + (i + 1) + ' deja la verificación para después o duda de lo que se vio ("'
+          + apC[0].frase + '"): di lo que se verificó.');
+      }
+    });
   }
   // Razonamiento interno del prompt que no va en el informe.
   if (/carga de acreditar/.test(todoNorm)) {
@@ -4985,6 +5011,6 @@ async function subirInformeAlDrive(blob) {
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
 <link rel="stylesheet" href="editor.css?v=12">
-<script src="editor.js?v=15"></script>
+<script src="editor.js?v=16"></script>
 </body>
 </html>

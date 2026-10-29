@@ -313,7 +313,9 @@ function armarMensajeCritica(informe, d, opts) {
     + '2. "bien": lo que está correcto y bien sustentado (frases cortas; puede ser una lista vacía).\n'
     + '3. "falta": hechos de los DATOS que sostienen una conclusión del informe y no aparecen en él.\n'
     + '4. "no_coincide": afirmaciones contrarias a los DATOS DE LA VISITA o contradictorias entre secciones del informe.\n'
-    + '5. "forma": problemas de redacción u orden, MÁXIMO 4.\n'
+    + '5. "forma": problemas de redacción u orden, MÁXIMO 4. Va siempre aquí la frase que deja la verificación para '
+    + 'después ("deberá ser objeto de verificación", "deberán ser contrastadas con los documentos") o pone en duda lo que '
+    + 'se vio ("aparentemente", "posible diferencia", "aproximadamente" con un conteo): la visita es la verificación.\n'
     + '6. "preguntas": SOLO cuando tengas una DUDA REAL que los DATOS DE LA VISITA y el informe no permiten resolver '
     + 'y cuya respuesta cambiaría el texto del informe. MÁXIMO 2, con 2 a 4 opciones cortas cada una. PROHIBIDO preguntar '
     + 'para confirmar un hecho que ya está en los DATOS o en el informe, preguntar sobre la forma, o volver a preguntar algo '
@@ -689,8 +691,13 @@ var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) 
 var _fotosPendientes = null, _aplicandoFotos = false;
 var _qgis = { id: '', base64: '', mime: '' }, _qgisSubiendo = false;
 // Huella de lo que trajo la visita: si cambia después de empezar el informe, se avisa.
+// Los chips, con el nombre anterior al 2026-10-29 (chipsConNombreSellado,
+// utils.js): renombrarlos no es un cambio de la visita.
 var _huellaVisitaActual = _hashTexto(['observaciones', 'conclusiones', 'infraccion', 'areas', 'seAportoLicencia',
-  'requiereLicencia', 'requiereDetalle'].map(function (k) { return _SESION_QS.get(k) || ''; }).join('\u0001'));
+  'requiereLicencia', 'requiereDetalle'].map(function (k) {
+    var v = _SESION_QS.get(k) || '';
+    return k === 'infraccion' && typeof chipsConNombreSellado === 'function' ? chipsConNombreSellado(v) : v;
+  }).join('\u0001'));
 var _baseVisita = (_borrador && _borrador.baseVisita) || _huellaVisitaActual;
 function _hashTexto(s) {
   var h = 0x811c9dc5;
