@@ -167,6 +167,7 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
                 <span className="ruta-n" aria-hidden="true">{i + 1}</span>
                 <div className="ruta-txt">
                   <div className="ruta-dir">{puntoDesdeTextoCoord(p.dir) ? 'Punto GPS' : (p.dir || 'Sin dirección')}</div>
+                  {p.f['REFERENCIA_DIRECCION'] && <div className="ruta-ref">{p.f['REFERENCIA_DIRECCION']}</div>}
                   <div className="ruta-meta">
                     {[_svUbic(p.f), alcance === 'equipo' ? _svNombreCorto(p.f) : ''].filter(Boolean).join(' · ')}
                     {!p.punto && <span className="ruta-aprox">{_svUbic(p.f) || alcance === 'equipo' ? ' · ' : ''}ubicación por dirección</span>}

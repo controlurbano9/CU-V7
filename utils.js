@@ -2196,6 +2196,8 @@ function prepararCasoBuscar(f, idxBarrios, hoy) {
   c.obra = _colBuscar(f, 'ESTADO OBRA');
   c.atiende = _colBuscar(f, 'NOMBRE PERSONA ATIENDE');
   c.nAtiende = _normBuscar(c.atiende);
+  c.referencia = _colBuscar(f, 'REFERENCIA_DIRECCION');
+  c.nRef = _normBuscar(c.referencia);
 
   // Qué falta (solo visitas iniciadas o completadas, desde BUSCAR_FALTAS_DESDE_ANIO)
   c.faltas = [];
@@ -2267,6 +2269,7 @@ function coincideBuscar(c, q) {
   if (c.nBarrio.indexOf(n) !== -1) return 'barrio';
   if (c.nOrden && (c.nOrden.indexOf(n) !== -1 || _sinCerosBuscar(c.nOrden).indexOf(_sinCerosBuscar(n)) !== -1)) return 'orden';
   if (c.nAtiende.indexOf(n) !== -1) return 'atiende';
+  if (c.nRef && c.nRef.indexOf(n) !== -1) return 'ref';
   if (coincideReiterado(c.f, n)) return 'reit';
   return '';
 }

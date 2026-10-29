@@ -2989,6 +2989,7 @@ button.sv-col-head {
 .fv-estado-txt.espera { color: var(--amber); }
 .fv-estado-txt.demora { color: var(--red); }
 .fv-dir { margin-top: 6px; font: 600 24px/1.2 var(--font-sans); letter-spacing: -.3px; color: var(--ink); }
+.fv-ref { margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--ink-2); overflow-wrap: anywhere; }
 /* Renglón 3: barrio · Comuna N. */
 .fv-lugar-l { margin-top: 4px; font-size: 14px; color: var(--ink-3); }
 /* Renglón 4: los datos del caso, rótulo arriba y valor. */
@@ -3838,6 +3839,7 @@ button.sv-col-head {
 .rr-ayuda { font-size: 12px; color: var(--ink-3); }
 .rr-ayuda b { color: var(--ink); font-weight: 600; }
 .rr-err { color: var(--red); }
+.rr-opc { font-weight: 400; }
 .rr-ubic { background: var(--carril); border-radius: var(--r-card); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
 .rr-val-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .rr-val { font-size: 15px; font-weight: 600; color: var(--ink); }
@@ -4126,6 +4128,7 @@ button.sv-col-head {
 .ruta-txt { min-width: 0; padding-top: 2px; }
 .ruta-dir { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
 .ruta-meta { margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.ruta-ref { margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--ink-2); overflow-wrap: anywhere; }
 .ruta-aprox { color: var(--amber); }
 .ruta-vacio { padding: 24px 0 8px; text-align: center; font-size: 14px; color: var(--ink-3); }
 .ruta-nota { font-size: 12px; color: var(--ink-4); }

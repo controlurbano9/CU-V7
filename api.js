@@ -626,7 +626,8 @@ async function leerVisitas(opts) {
 // la lista muestre el guardado sin esperar la descarga completa. `valores` es
 // el payload posicional de guardarVisita (arranca en la columna B). No toca
 // _firmaVisitas: la próxima descarga trae la fila real y re-pinta si difiere.
-function _parchearVisitaLocal(fila, valores, ultimaMod) {
+// `porNombre`: columnas que viajan fuera de `valores` ({ ENCABEZADO: valor }).
+function _parchearVisitaLocal(fila, valores, ultimaMod, porNombre) {
   const base = _visitasUltimas;
   fila = parseInt(fila, 10);
   if (!base || !base.headers.length || !fila || !Array.isArray(valores)) return;
@@ -642,6 +643,11 @@ function _parchearVisitaLocal(fila, valores, ultimaMod) {
   valores.forEach((v, i) => { if (i + 1 < headers.length) poner(i + 1, v); });
   const jMod = headers.findIndex(h => (h || '').toString().trim() === 'ULTIMA_MODIFICACION');
   if (jMod >= 0 && ultimaMod) poner(jMod, ultimaMod);
+  Object.keys(porNombre || {}).forEach(nombre => {
+    const j = headers.findIndex(h => (h || '').toString().trim() === nombre);
+    if (j >= 0) poner(j, porNombre[nombre]);
+    else obj[nombre] = String(porNombre[nombre] || '').trim(); // la columna aún no existía
+  });
   if (!obj['RADICADO']) return;
   const datos = previa
     ? base.datos.map(o => (o === previa ? obj : o))
@@ -1245,7 +1251,7 @@ async function obtenerIdFotos(idCarpetaVisita) {
 // Campos que van fuera de `valores` y que un guardado puede no traer (sin la
 // clave, el backend no toca la columna). Al reemplazar un guardado encolado
 // por uno más nuevo se heredan los que el nuevo no trae.
-const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita'];
+const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita', 'referenciaDireccion'];
 
 // Saca de la cola los `actualizar` de esa fila. Con `nuevo`, le pasa antes los
 // campos extra que solo traían los encolados (el más reciente gana).
@@ -1308,10 +1314,13 @@ async function guardarVisita(payload) {
   if (payload.licenciaExtra) body.licenciaExtra = payload.licenciaExtra;
   // CITADO / DOCUMENTO_CITADO (audiencias): { mismaPersona } o el citado.
   if (payload.citadoVisita) body.citadoVisita = payload.citadoVisita;
+  // REFERENCIA_DIRECCION: por nombre; '' borra, clave ausente no se toca.
+  if (payload.referenciaDireccion !== undefined) body.referenciaDireccion = payload.referenciaDireccion;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
-    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida);
+    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida,
+      body.referenciaDireccion !== undefined ? { REFERENCIA_DIRECCION: body.referenciaDireccion } : null);
     // La fila entera ya quedó escrita: los guardados de esta visita que
     // seguían en cola son versiones anteriores. Si salieran después, chocarían
     // con este mismo guardado (conflicto de ULTIMA_MODIFICACION) y quedarían

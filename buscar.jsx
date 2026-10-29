@@ -1406,6 +1406,7 @@ function NotaFilaBQ({ c, q, yo, veTodo, donde }) {
   // En qué campo no evidente calzó el texto (orden, persona que atiende, reiterado).
   if (donde === 'orden') partes.push(<span key="o">coincide en orden de policía: <MarcarBQ texto={c.orden} q={q} /></span>);
   if (donde === 'atiende') partes.push(<span key="a">coincide en persona que atiende: <MarcarBQ texto={c.atiende} q={q} /></span>);
+  if (donde === 'ref') partes.push(<span key="f">coincide en referencia: <MarcarBQ texto={c.referencia} q={q} /></span>);
   if (donde === 'reit') {
     const r = c.reit.find(x => _normBQ(x).indexOf(_normBQ(q)) !== -1) || c.reit[0];
     partes.push(<span key="r">reitera <MarcarBQ texto={r} q={q} /></span>);
@@ -2005,6 +2006,7 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
   const [rad, setRad] = useStateB(radicado);
   const [fecha, setFecha] = useStateB('');       // aaaa-mm-dd del <input type="date">
   const [dir, setDir] = useStateB('');
+  const [referencia, setReferencia] = useStateB(''); // opcional, no entra a catastro
   const [den, setDen] = useStateB('');
   // estado: '' (sin dirección) · 'buscando' · 'pot' · 'vereda' · 'lista' (elegido a mano o sin predio)
   const [ubic, setUbic] = useStateB(_RR_SIN_UBIC);
@@ -2091,6 +2093,7 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
         radicado: claveRadicado(rad), fechaRadicado: d + '/' + m + '/' + a,
         direccion: dirNorm, barrio: ubic.barrio, comuna: ubic.comuna, denunciante: den.trim(),
         lat: ubic.punto ? ubic.punto[0] : '', lon: ubic.punto ? ubic.punto[1] : '',
+        referencia: referencia.trim(),
       });
       if (r && r.ok) { onRegistrado(claveRadicado(rad)); return; }
       setErr(r || { error: 'No se pudo registrar el radicado.' });
@@ -2143,7 +2146,8 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
             aria-describedby={describe('fecha')} />
           {campoErr('fecha')}
         </div>
-        <div className="rr-campo rr-ancho">
+        {/* Dirección y referencia en la misma fila cuando caben. */}
+        <div className="rr-campo">
           <label htmlFor="rr-dir">Dirección de la infracción</label>
           <input id="rr-dir" className="input-campo" value={dir} autoComplete="off"
             onChange={e => setDir(e.target.value)} aria-invalid={!!msgCampo('direccion')}
@@ -2151,6 +2155,13 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
           {msgCampo('direccion') ? campoErr('direccion') : dirCambia ? (
             <span className="rr-ayuda" id="rr-dir-ayuda">Se guardará como <b>{dirNorm}</b></span>
           ) : null}
+        </div>
+        <div className="rr-campo">
+          <label htmlFor="rr-ref">Referencia <span className="rr-opc">(opcional)</span></label>
+          <input id="rr-ref" className="input-campo" maxLength={500} value={referencia} autoComplete="off"
+            onChange={e => setReferencia(e.target.value)}
+            title="Lo que no es dirección. Apto o interior van en la dirección."
+            placeholder="Frente a la escuela, portón verde" />
         </div>
 
         <div className="rr-ubic rr-ancho" aria-live="polite">

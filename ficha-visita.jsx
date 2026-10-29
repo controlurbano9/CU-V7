@@ -183,6 +183,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
             </div>
             {/* Una dirección que es una coordenada se dice «Punto GPS», como en Buscar. */}
             <div className="fv-dir" title={dir}>{puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir}</div>
+            {f['REFERENCIA_DIRECCION'] && <div className="fv-ref">{f['REFERENCIA_DIRECCION']}</div>}
             <div className="fv-lugar-l">
               {[barrio, f['COMUNA'] ? 'Comuna ' + f['COMUNA'] : ''].filter(Boolean).join(' · ')}
             </div>

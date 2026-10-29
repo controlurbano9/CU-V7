@@ -33,6 +33,7 @@ function cargar() {
     fn('parsearFecha'), fn('parsearFechaVisita'), fn('_normRadicadoFila'),
     fn('_formaRadicadoValida'), fn('_tokensReiterados'),
     fn('_fechaRadicadoTexto'), fn('_validarRegistroRadicado'), fn('_casoQueReitera'),
+    fn('_textoReferencia'),
   ];
   piezas.forEach((p, i) => assert.ok(p, 'falta la pieza ' + i + ' del backend'));
   const ctx = vm.createContext({ Utilities: { formatDate: () => '' } });
@@ -57,6 +58,15 @@ test('backend: un registro completo sale limpio y en el formato de la BD', opts,
   assert.equal(r.datos.denunciante, 'María Fernanda Ospina');
   assert.equal(r.datos.comuna, '7');
   assert.equal(r.datos.lat, 6.334512);
+  assert.equal(r.datos.referencia, '');
+});
+
+test('backend: la referencia es opcional y se guarda en una línea', opts, () => {
+  const validar = cargar()('_validarRegistroRadicado');
+  const r = validar(Object.assign({}, BUENO, { referencia: '  Frente a la escuela,\n portón verde ' }), HOY);
+  assert.equal(r.ok, true);
+  assert.equal(r.datos.referencia, 'Frente a la escuela, portón verde');
+  assert.equal(r.datos.direccion, 'CL 50 # 32-10');
 });
 
 test('backend: los cinco campos son obligatorios', opts, () => {
