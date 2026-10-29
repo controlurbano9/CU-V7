@@ -369,3 +369,23 @@ test('_infraccionSoloCatalogo — los chips del catálogo pasan, el texto libre 
   assert.equal(_infraccionSoloCatalogo(''), '');
   assert.equal(_infraccionSoloCatalogo(null), '');
 });
+
+test('fichaAreaTablero: conteo por estado, vivos, medianas e inspectores por carga', () => {
+  const { fichaAreaTablero } = require('../utils.js');
+  const filas = [
+    { est: 'P', edad: 10, ins: '' },
+    { est: 'A', edad: 30, ins: 'ANA' },
+    { est: 'I', edad: 50, ins: 'ANA' },
+    { est: 'I', edad: 20, ins: 'LUIS' },
+    { est: 'C', edad: 90, aVisita: 12, ins: 'LUIS' },
+    { est: 'X', edad: 200, ins: '' },
+  ];
+  const r = fichaAreaTablero(filas);
+  assert.equal(r.n, 6);
+  assert.deepEqual(r.porEst, { P: 1, A: 1, I: 2, C: 1, X: 1 });
+  assert.equal(r.vivos, 4, 'vivos = P + A + I');
+  assert.equal(r.medVisita, 12);
+  assert.deepEqual(r.porInspector, [{ ins: 'ANA', vivos: 2 }, { ins: 'LUIS', vivos: 1 }],
+    'solo casos vivos, ordenados por carga; sin inspector no cuenta');
+  assert.equal(fichaAreaTablero([]).n, 0);
+});

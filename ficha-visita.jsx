@@ -15,9 +15,10 @@
 const { useState: useStateFV, useEffect: useEffectFV, useRef: useRefFV } = React;
 
 // El scroller de la ficha depende de quién la aloja: el panel de Mis visitas
-// (.mv-panel) o la hoja del modal (.fv-hoja).
+// (.mv-panel), la hoja del modal (E2c) o el panel del Tablero (.tb-panel).
+// Misma búsqueda de la maqueta: closest('.mv-panel, .fv-hoja, .tb-panel').
 function _scrollerFV(el) {
-  return el && el.closest ? el.closest('.mv-panel, .fv-hoja') : null;
+  return el && el.closest ? el.closest('.mv-panel, .fv-hoja, .tb-panel') : null;
 }
 
 // El predio: código, ficha y coordenadas; solo los que tengan dato (en la

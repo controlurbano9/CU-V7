@@ -2848,6 +2848,28 @@ function calidadTablero(filas) {
   ];
 }
 
+// Ficha de un área (comuna o barrio) para el panel del tablero: total y
+// conteo por estado (la barra apilada), vivos con su espera mediana,
+// mediana radicado → visita y casos vivos por inspector (ordenados por
+// carga viva, que no es un ranking de competencia).
+function fichaAreaTablero(filas) {
+  var base = filas || [];
+  var porEst = { P: 0, A: 0, I: 0, C: 0, X: 0 };
+  base.forEach(function (f) { porEst[f.est]++; });
+  var vivos = base.filter(function (f) { return _tbVivo(f.est); });
+  var ins = new Map();
+  vivos.forEach(function (f) { if (f.ins) ins.set(f.ins, (ins.get(f.ins) || 0) + 1); });
+  return {
+    n: base.length,
+    porEst: porEst,
+    vivos: vivos.length,
+    medEspera: _tbMediana(vivos.map(function (f) { return f.edad; })),
+    medVisita: _tbMediana(base.filter(function (f) { return f.aVisita != null; }).map(function (f) { return f.aVisita; })),
+    porInspector: Array.from(ins, function (par) { return { ins: par[0], vivos: par[1] }; })
+      .sort(function (a, b) { return b.vivos - a.vivos; }),
+  };
+}
+
 // ── Administración: Bandeja · Equipo · Actividad (2026-10-03) ──
 // La pantalla de admin pinta; la regla vive aquí y se prueba en
 // tests/admin-equipo.test.js.
@@ -5196,6 +5218,7 @@ var _cuUtilsExports = {
   equipoTablero: equipoTablero,
   hallazgosTablero: hallazgosTablero,
   calidadTablero: calidadTablero,
+  fichaAreaTablero: fichaAreaTablero,
   CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
   CONTRAVENCION_INDETERMINADA: CONTRAVENCION_INDETERMINADA,

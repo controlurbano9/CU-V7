@@ -809,6 +809,9 @@ function AppV6() {
   // En el celular la Agenda va al menú de usuario, junto a Administración
   // (2026-10-28, decisión del usuario): con 6 pestañas «Mis visitas» se partía
   // en dos renglones, y la agenda se arma en el escritorio.
+  // Tablero territorial (E7): admin y supervisor. Pestaña solo en escritorio;
+  // en el celular va al menú de usuario, como la Agenda (2026-10-29).
+  if (veTodas && isDesktop) tabs.push({ k: 'tablero', label: 'Tablero', Icono: Icon.Tablero });
   if (esAdmin && isDesktop) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
   if (veTodas) tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
@@ -850,6 +853,11 @@ function AppV6() {
               <b>{titleCaseNombre(usuario.usuario)}</b>
               {usuario.cargo && <small>{usuario.cargo}</small>}
             </div>
+            {veTodas && !isDesktop && (
+              <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('tablero'); }}>
+                <Icon.Tablero size={18} /> Tablero
+              </button>
+            )}
             {esAdmin && (
               <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('agenda'); }}>
                 <Icon.Agenda size={18} /> Agenda
@@ -928,6 +936,7 @@ function AppV6() {
             onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
           {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'audiencias' && <AudienciasScreen usuario={usuario} />}
+          {pantalla === 'tablero' && <TableroScreen usuario={usuario} onNavegar={navegar} onContinuar={irContinuar} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen
             usuario={usuario}
             filaInicial={contextoNueva?.fila || null}
