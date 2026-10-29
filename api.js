@@ -2155,6 +2155,52 @@ async function puntoMapaCatastro(dir) {
   return p;
 }
 
+// ── «Registrar radicado» (Buscar, 2026-10-29) ─────────────────
+// Dónde cae la dirección según catastro, para sacar barrio y comuna del POT.
+//   null → la dirección no está en catastro (o no se reconoce)
+//   { puntoBarrio, puntoGuardar } → puntoBarrio: un punto dentro del predio
+//     (sirve para el barrio aunque el predio sea grande); puntoGuardar: el que
+//     se guarda como ubicación aproximada, solo con la misma regla de «Cómo
+//     llegar» (un predio chico), o null.
+// A diferencia de puntoMapaCatastro, sí descarga catastro.json si hace falta:
+// es una acción explícita, en la oficina.
+async function ubicarDireccionRegistro(dir) {
+  const r = await buscarCatastroPorDireccion(dir);
+  if (!r || !r.exacta || !r.terrenos.length) return null;
+  const data = await _cargarCatastro();
+  const t = r.terrenos[0];
+  return {
+    puntoBarrio: puntoInteriorAnillo(t.anillo),
+    puntoGuardar: puntoMapaDesdeCatastro(r, (data.f[t.tcod] || []).length),
+  };
+}
+
+// Vereda del POT en un punto (capa Veredas). barrios-mapa.json no trae sus
+// nombres, así que para lo rural se consulta la capa. '' si no cae en ninguna.
+async function veredaDePunto(lat, lon) {
+  if (!(await cargarTurf())) return '';
+  const veredas = await _cargarGeoJSON('Veredas.geojson');
+  if (!veredas) return '';
+  const punto = turf.point([Number(lon), Number(lat)]);
+  for (const feat of veredas.features) {
+    try {
+      if (turf.booleanPointInPolygon(punto, feat)) {
+        const p = feat.properties || {};
+        return p.NOMBRE || p.nombre || '';
+      }
+    } catch (e) {}
+  }
+  return '';
+}
+
+// Crea la fila del radicado (estado PENDIENTE), como el Formulario de Google.
+// datos: { radicado, fechaRadicado, direccion, barrio, comuna, denunciante, lat, lon }
+async function registrarRadicado(datos) {
+  const r = await gasPost(Object.assign({ accion: 'registrarRadicado' }, datos));
+  invalidarCache('visitas');
+  return r;
+}
+
 function _anillosCatastro(data) {
   if (!_anilloPorTcod) _anilloPorTcod = new Map(data.p.map(function (p) { return [p[0], p[5]]; }));
   return _anilloPorTcod;

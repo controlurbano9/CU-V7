@@ -375,6 +375,29 @@ function formaRadicadoValida(r) {
   var k = claveRadicado(r);
   return /^\d{11}$/.test(k) || /^\d{4}-\d{4,}$/.test(k);
 }
+// «Registrar radicado» en el estado vacío de Buscar (2026-10-29): solo admin
+// y supervisores, solo si lo tecleado tiene forma de radicado y no está en la
+// base ni como radicado ni como reiterado de otro caso. `filas`: todas las de
+// la BD que tiene Buscar (también las NO COMPETENCIA), sin filtros.
+function puedeRegistrarRadicado(texto, filas, rol) {
+  if (rol !== 'ADMIN' && rol !== 'SUPERVISOR') return false;
+  var k = claveRadicado(texto);
+  if (!formaRadicadoValida(k)) return false;
+  return !(filas || []).some(function (f) {
+    return claveRadicado(f && f['RADICADO']) === k || radicadosReiterados(f).indexOf(k) !== -1;
+  });
+}
+// Barrio del POT (barrioPotPorPunto) con el nombre que usa la lista del
+// formulario de la visita, para que la fila registrada se vea igual que una
+// diligenciada. `lista`: barrios del formulario; `alias`: clave canónica del
+// POT → nombre de la lista (los que la clave no salva). null si no hay barrio.
+function barrioRegistroDesdePot(pot, lista, alias) {
+  if (!pot || !pot.n) return null;
+  var k = claveBarrioPot(pot.n);
+  var nombre = (alias && alias[k]) ||
+    (lista || []).find(function (b) { return claveBarrioPot(b) === k; }) || pot.n;
+  return { barrio: nombre, comuna: String(pot.c || '') };
+}
 // ¿La fila tiene `texto` entre sus reiterados? En Buscar se teclea a medias,
 // así que basta que un reiterado lo contenga (mínimo 4 caracteres).
 function coincideReiterado(f, texto) {
@@ -4696,6 +4719,8 @@ var _cuUtilsExports = {
   radicadosReiterados: radicadosReiterados,
   coincideReiterado: coincideReiterado,
   formaRadicadoValida: formaRadicadoValida,
+  puedeRegistrarRadicado: puedeRegistrarRadicado,
+  barrioRegistroDesdePot: barrioRegistroDesdePot,
   tipoBusquedaCaso: tipoBusquedaCaso,
   buscarCasos: buscarCasos,
   casosRelacionados: casosRelacionados,
