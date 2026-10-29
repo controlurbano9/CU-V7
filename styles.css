@@ -5307,3 +5307,33 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   .cab-perfil { width: 44px; height: 44px; margin: 0; }
   .input-campo { min-height: 44px; }
 }
+
+/* Formulario: renglones sin huecos a la derecha (2026-10-29, decisión del usuario).
+   Las tres piezas miden su propio ancho (container) porque la sección cambia
+   con los entregables al costado, no con la ventana. */
+@media (min-width: 900px) {
+  .form-grid-2col > .nv-span-2 { grid-column: span 2; }
+  .form-grid-2col > .nv-resto { grid-column: 2 / -1; }
+  .form-grid-2col > .nv-atiende, .form-grid-2col > .nv-tipif { grid-column: 1 / -1; }
+}
+/* Persona que atiende: nombre y correo anchos, cédula y teléfono angostos. */
+.nv-atiende { container-type: inline-size; }
+.nv-atiende-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; }
+@container (min-width: 440px) {
+  .nv-atiende-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 820px) {
+  .nv-atiende-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr); }
+}
+/* «Otro motivo» en el hueco del renglón de chips; baja si no cabe. */
+.nv-chips-otro { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
+.nv-chips-otro > .chips { flex: 0 1 auto; margin-bottom: 0; }
+.nv-chips-otro > .input-campo { flex: 1 1 220px; min-width: 0; }
+/* Tipificación: comportamientos (filas de 4) | área, suspensión y citación. */
+.nv-tipif { container-type: inline-size; }
+.nv-tipif-lado { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 16px; align-content: start; }
+.nv-tipif-lado > .input-grupo.full-width { grid-column: 1 / -1; }
+@container (min-width: 900px) {
+  .nv-tipif-in { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 var(--s-6, 32px); align-items: start; }
+  .nv-tipif-chips .chips-rejilla { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

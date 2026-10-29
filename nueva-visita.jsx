@@ -1300,7 +1300,7 @@ function _Seccion({ titulo, color, estado, accion, children }) {
   );
 }
 
-function _Campo({ label, children, hint, fullWidth }) {
+function _Campo({ label, children, hint, fullWidth, className }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo: el linter espera mayúscula inicial, `_Campo` es la convención de este archivo (CLAUDE.md)
   const autoId = React.useId();
   const esUnicoElemento = React.Children.count(children) === 1 && React.isValidElement(children);
@@ -1309,7 +1309,7 @@ function _Campo({ label, children, hint, fullWidth }) {
     ? React.cloneElement(children, { id: autoId })
     : children;
   return (
-    <div className={'input-grupo' + (fullWidth ? ' full-width' : '')}>
+    <div className={'input-grupo' + (fullWidth ? ' full-width' : '') + (className ? ' ' + className : '')}>
       <label className="input-label" htmlFor={inputId || undefined}>{label}</label>
       {child}
       {hint && <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginTop: 4 }}>{hint}</div>}
@@ -3716,14 +3716,18 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         )}
         {r.respuesta === 'NO' && (
           <>
+            {/* «Otro motivo» al lado de los chips, en el hueco del renglón;
+                baja solo si no cabe. */}
             <_Campo label="¿Por qué no la requieren?" fullWidth>
-              {_chipsReqLic(MOTIVOS_NO_REQUIERE, 'motivos')}
+              <div className="nv-chips-otro">
+                {_chipsReqLic(MOTIVOS_NO_REQUIERE, 'motivos')}
+                {(r.motivos || []).indexOf('Otro') >= 0 && (
+                  <input type="text" className="input-campo" value={r.otro || ''}
+                    onChange={e => _setReqLic({ otro: e.target.value })}
+                    aria-label="Otro motivo" placeholder="Otro motivo" />
+                )}
+              </div>
             </_Campo>
-            {(r.motivos || []).indexOf('Otro') >= 0 && (
-              <_Campo label="Otro motivo" fullWidth>
-                <_Input value={r.otro || ''} onChange={v => _setReqLic({ otro: v })} />
-              </_Campo>
-            )}
           </>
         )}
         {r.respuesta === REQUIERE_INDETERMINADO && (
@@ -6362,6 +6366,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           </label>
         </div>
         {!d.noAtiende && (<>
+        {/* Nombre y correo más anchos que cédula y teléfono (10 dígitos):
+            la fila mide su propio ancho (container), no el de la ventana. */}
+        <div className="nv-atiende"><div className="nv-atiende-grid">
         <_Campo label="Nombre completo">
           <_Input value={d.atiendeNombre} onChange={v => setCampo('atiendeNombre', v)} />
         </_Campo>
@@ -6377,6 +6384,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             onChange={v => setCampo('atiendeEmail', v)}
             disabled={d.emailNoAporta} placeholder={d.emailNoAporta ? 'No aporta' : 'correo@ejemplo.com'} />
         </_Campo>
+        </div></div>
         <_Campo label="Relación con el evento" fullWidth>
           <_Radio value={d.atiendeRelacion} onChange={v => setCampo('atiendeRelacion', v)}
             opciones={['Propietario', 'Arrendatario', 'Constructor', 'Otro']} />
@@ -6415,13 +6423,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 4. CARACTERÍSTICAS ──────────────────────────────── */}
       <_Seccion titulo="Características de la edificación"
         estado={estadosSeccion["Características de la edificación"]} color="cafe">
-        <_Campo label="Estado de la obra" fullWidth>
+        {/* Sin huecos a la derecha con 4 columnas: Estado (2) + Altura +
+            Destinaciones, y ¿Habitado? + Usos (resto del renglón). */}
+        <_Campo label="Estado de la obra" className="nv-span-2">
           <_Radio value={d.estadoObra} onChange={v => setCampo('estadoObra', v)}
             opciones={['En proceso / iniciada', 'Terminada']} />
-        </_Campo>
-        <_Campo label="¿Habitado?">
-          <_Radio value={d.habitado} onChange={v => setCampo('habitado', v)}
-            opciones={['SI', 'NO']} />
         </_Campo>
         <_Campo label="Altura en pisos">
           <_Input mono value={d.alturaPisos} onChange={v => setCampo('alturaPisos', v)} />
@@ -6429,7 +6435,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         <_Campo label="N° destinaciones actuales">
           <_Input mono value={d.destActuales} onChange={v => setCampo('destActuales', v)} />
         </_Campo>
-        <_Campo label="Usos actuales" fullWidth>
+        <_Campo label="¿Habitado?">
+          <_Radio value={d.habitado} onChange={v => setCampo('habitado', v)}
+            opciones={['SI', 'NO']} />
+        </_Campo>
+        <_Campo label="Usos actuales" className="nv-resto">
           <_ChipsMulti
             opciones={USOS_OPCIONES}
             value={d.usos}
@@ -6549,6 +6559,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       {/* 7B. TIPIFICACIÓN Y MEDIDAS ──────────────────────── */}
       <_Seccion titulo="Tipificación y medidas"
         estado={estadosSeccion["Tipificación y medidas"]} color="cafe">
+        {/* Con espacio (la sección mide ≥ 900 px): comportamientos a la
+            izquierda en filas de 4 y área, suspensión y citación a la
+            derecha. Si no, uno debajo del otro, como antes. */}
+        <div className="nv-tipif"><div className="nv-tipif-in">
+        <div className="nv-tipif-chips">
         <_Campo label="Tipo de contravención (Art. 135 Ley 1801/2016)" fullWidth>
           {/* Advertencia: si el predio es público o está en área protegida,
               sugerir el comportamiento correcto antes de que el inspector
@@ -6606,7 +6621,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             ofrecerIndeterminada={(d.reqLicencia || {}).respuesta === REQUIERE_INDETERMINADO}
           />
         </_Campo>
-        <_Campo label="Área de contravención (m²)">
+        </div>
+        <div className="nv-tipif-lado">
+        <_Campo label="Área de contravención (m²)" fullWidth>
           {/* Dos casillas, excluyentes: "No aplica" es que no hay nada que
               medir (sin infracción) y "No se pudo medir" es que sí lo hay
               pero no se pudo tomar la medida — al acta le llegan textos
@@ -6758,6 +6775,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             </_Campo>
           </>)}
         </>)}
+        </div>
+        </div></div>
       </_Seccion>
 
       {/* 8. VISITADORES ──────────────────────────────────── */}
