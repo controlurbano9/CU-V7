@@ -790,6 +790,8 @@ var SECCIONES_SENAL = {
   R14: ['Verificación documental', 'Tipificación y medidas'],
   R15: ['Verificación documental', 'Tipificación y medidas'],
   R16: ['Tipificación y medidas'],
+  R19: ['Características de la edificación', 'Tipificación y medidas'],
+  R21: ['Características de la edificación'],
   area: ['Tipificación y medidas'],
 };
 // Nombre corto de cada sección para la barra «Falta en:» de la cabecera: con
@@ -1491,6 +1493,14 @@ function _ChipsContravencion({ value, onChange, ofrecerIndeterminada }) {
               </button>
             ))}
           </div>
+          {/* El texto de la ley bajo cada chip marcado (2026-10-29): el
+              nombre corto no basta para decidir (C12 se marcaba por las
+              unidades de más). */}
+          {grupo.opciones.filter(opt => seleccionados.includes(opt.val)).map(opt => (
+            <p key={opt.val} className="chip-ley">
+              <strong>{opt.val.split(':')[0]}</strong> «{textoLeyChip(opt.val)}».
+            </p>
+          ))}
         </div>
       ))}
       {/* Opción especial */}
@@ -4348,15 +4358,23 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // (antes salía un tercer cuadro con el mismo texto) y la otra se pliega; el
     // espacio del acta va en el pie de cada tarjeta para comparar las dos.
     // En «Tu texto», las expresiones de IA van tachadas (decisión del usuario
-    // 2026-10-17): solo se nota, no bloquea nada y el texto guardado no cambia.
+    // 2026-10-17) y lo que deja la verificación para después o duda de lo que
+    // se vio, subrayado (2026-10-29, aplazamientosTexto): solo se nota, no
+    // bloquea nada y el texto guardado no cambia. Con solapes gana la más larga.
     const tachado = t => {
-      const expr = expresionesIA(t);
-      if (!expr.length) return String(t || '');
+      const todas = expresionesIA(t).map(x => ({ ...x, clase: 'ia' }))
+        .concat(aplazamientosTexto(t).map(x => ({ ...x, clase: 'aplaza' })))
+        .sort((a, b) => a.inicio - b.inicio || (b.fin - b.inicio) - (a.fin - a.inicio));
+      if (!todas.length) return String(t || '');
       const partes = [];
       let pos = 0;
-      expr.forEach((x, i) => {
+      todas.forEach((x, i) => {
+        if (x.inicio < pos) return;
         if (x.inicio > pos) partes.push(t.slice(pos, x.inicio));
-        partes.push(<del key={i} aria-label={'expresión de IA: ' + t.slice(x.inicio, x.fin)}>{t.slice(x.inicio, x.fin)}</del>);
+        const frase = t.slice(x.inicio, x.fin);
+        partes.push(x.clase === 'ia'
+          ? <del key={i} aria-label={'expresión de IA: ' + frase}>{frase}</del>
+          : <mark key={i} className="rv-aplaza" aria-label={'verificación aplazada o duda: ' + frase}>{frase}</mark>);
         pos = x.fin;
       });
       if (pos < t.length) partes.push(t.slice(pos));
@@ -4392,6 +4410,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const usar = plegada ? 'Usar este'
         : cual === 'ia' ? 'Usar la propuesta' : (vacio ? 'Escribir la mía' : 'Usar mi texto');
       const exprIA = cual === 'propio' && !vacio && !elegida ? expresionesIA(texto) : [];
+      const aplaza = cual === 'propio' && !vacio && !elegida ? aplazamientosTexto(texto) : [];
       return (
         <article className={'rv-op' + (elegida ? ' elegida' : '') + (plegada ? ' plegada' : '')}>
           <div className="rv-op-cab">
@@ -4417,6 +4436,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             </div>
           )}
           {exprIA.length > 0 && <div className="rv-nota">Lo tachado son expresiones típicas de textos generados por IA.</div>}
+          {aplaza.length > 0 && <div className="rv-nota">Lo subrayado deja la verificación para después o pone en duda lo que se vio.</div>}
           {elegida && avisos.map(s => <div key={s.id + s.donde} className="rv-forma">{s.mensaje}</div>)}
           {medidor(elegida ? p[k] : texto, celda)}
         </article>
