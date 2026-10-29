@@ -288,7 +288,7 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
     { id: 'vig', t: 'Órdenes de suspensión sin oficio de vigilancia', v: _n0TB(kpis.ordenesSinVigilancia),
       c: 'Radicados desde 2025, visita iniciada o completada',
       filas: sinEst.filter(f => f.susp === 'SI' && f.orden && !(f.ent & 16) && (f.est === 'I' || f.est === 'C') && f.fr && f.fr >= new Date(2025, 0, 1)),
-      alerta: kpis.ordenesSinVigilancia > 0 },
+      aviso: kpis.ordenesSinVigilancia > 0 },
   ];
 
   // ── Render ──
@@ -393,7 +393,7 @@ function TableroScreen({ usuario, onNavegar, onContinuar }) {
       {/* ── Indicadores ── */}
       <div className="tb-kpis">
         {tarjetasKpi.map(k => (
-          <button key={k.id} type="button" className={'tb-kpi' + (k.alerta ? ' alerta' : '')}
+          <button key={k.id} type="button" className={'tb-kpi' + (k.alerta ? ' alerta' : '') + (k.aviso ? ' aviso' : '')}
             onClick={() => abrirLista(k.t, k.filas)}>
             <span className="tb-kpi-t">{k.t}</span>
             <span className="tb-kpi-v">{k.v}{k.sm && <small>{k.sm}</small>}</span>
@@ -553,7 +553,7 @@ function MapaTB({ filas, mapas, proj, S, parchar, sel }) {
         return (
           <text key={'l' + k} className="tb-lbl" x={c.cx} y={c.cy} textAnchor="middle" aria-hidden="true">
             {k === '12' ? 'Rural' : k}
-            {v != null && <tspan x={c.cx} dy="13" className="tb-lbl-n">{_n0TB(v)}</tspan>}
+            {v != null && <tspan x={c.cx} dy="15" className="tb-lbl-n">{_n0TB(v)}</tspan>}
           </text>
         );
       })}
@@ -835,7 +835,7 @@ function SerieTB({ filas, S, parchar, hoy }) {
         return (
           <g key={i} aria-hidden="true">
             <line x1={ml} x2={W - mr} y1={y(v)} y2={y(v)} stroke="var(--line)" strokeDasharray={i ? '2 3' : ''} />
-            <text x={ml - 6} y={y(v) + 4} textAnchor="end" fontSize="10.5" fill="var(--ink-4)">{v}</text>
+            <text x={ml - 6} y={y(v) + 4} textAnchor="end" fontSize="13" fill="var(--ink-4)">{v}</text>
           </g>
         );
       })}
@@ -852,7 +852,7 @@ function SerieTB({ filas, S, parchar, hoy }) {
               </path>
             )}
             {(m.mes.indexOf('-01') === 5 || i === 0) && (
-              <text x={x + bw / 2} y={H - 8} fontSize="10.5" fill="var(--ink-3)" textAnchor="start" aria-hidden="true">
+              <text x={x + bw / 2} y={H - 8} fontSize="13" fill="var(--ink-3)" textAnchor="start" aria-hidden="true">
                 {m.mes.indexOf('-01') === 5 ? m.mes.slice(0, 4) : mesTxt(m)}
               </text>
             )}
