@@ -137,8 +137,11 @@ body.embebido .ed-top { display: none; }
 .ed-sug-t { font-size: var(--fs-1); font-weight: 600; color: var(--texto-suave); margin-bottom: 8px;
   display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .ed-sug-t span { font-weight: 400; color: var(--texto-3); font-size: var(--fs-1); }
+/* Sin fondo ni sombra: es una tarjeta dentro de la bandeja .ed-sug y la
+   caja anidada se leía mal (revisión final, TASK 09). La bandeja es la caja. */
 .ed-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
-  background: var(--superficie); border-radius: var(--r); padding: 10px 12px; margin-top: 8px; box-shadow: var(--sombra-sm); }
+  padding: 10px 2px; margin-top: 8px; border-bottom: 1px solid var(--borde); }
+.ed-card:last-child { border-bottom: 0; }
 .ed-card p { margin: 4px 0 0; font-size: var(--fs-2); line-height: 1.45; }
 /* <small>, no <p>: sin tamaño propio heredaba el de la hoja (Arial 14/15)
    y el navegador lo encogía a ×0.833 (11.7/12.5 px, bajo el piso de 13). */

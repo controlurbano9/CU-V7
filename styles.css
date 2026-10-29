@@ -4825,7 +4825,7 @@ tr.clic:hover td { background: var(--surface-2); }
 /* En el celular un solo renglón que se desplaza: la cabecera fija no puede crecer. */
 @media (max-width: 899px) {
   .nv-falta { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-  .nv-falta-ir { min-height: 36px; }
+  .nv-falta-ir { min-height: 44px; display: inline-flex; align-items: center; }
 }
 /* Barrio y comuna que dio el POT: texto, no desplegable de ~120 barrios. */
 .barrio-pot { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; min-height: var(--tap); padding-top: 6px; }
@@ -5174,15 +5174,15 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 }
 
 /* Medición de la TASK 04 (Claude, 2026-10-28): los campos del formulario
-   medían 42 px en el celular; en campo el mínimo es 44. */
-@media (pointer: coarse) {
-  .input-campo, select.input-campo { min-height: 44px; }
-}
+   medían 42 px en el celular; en campo el mínimo es 44. Revisión final
+   (TASK 09): 44 en todos los anchos — la casilla de 42 se media igual
+   en escritorio. */
+.input-campo, select.input-campo { min-height: 44px; }
 /* Registro fotográfico (medido a 390): zoom − / + de 36 px y «Generar» de 40
-   → 44 en táctil; el fondo del zoom en la tinta de la Valla. */
+   → 44; el fondo del zoom en la tinta de la Valla. */
 .rfm-zoom { background: rgba(21,20,15,.85); color: var(--surface); }
+.rfm-zoom button { width: 44px; height: 44px; }
 @media (pointer: coarse) {
-  .rfm-zoom button { width: 44px; height: 44px; }
   .rfm-generar { min-height: 44px; }
 }
 
@@ -5342,4 +5342,28 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 @container (min-width: 900px) {
   .nv-tipif-in { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 var(--s-6, 32px); align-items: start; }
   .nv-tipif-chips .chips-rejilla { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA 09 — hallazgos de la revisión final          ║
+   ╚════════════════════════════════════════════════════════════╝
+   Cajas anidadas y toques de 44 px, medidos en los bancos qa. */
+
+/* Audiencias: el «vacío» llevaba borde punteado (caja); ahora es un tinte.
+   Dentro de una caja (.au-caja) las filas no son cajas: se separan con
+   línea fina, como .au-nov al lado. */
+.au-vacio-hoy { border: 0; background: var(--surface-2); }
+.au-caja .au-row { border: 0; border-bottom: 1px solid var(--line);
+  border-radius: 0; background: none; }
+.au-caja .au-row:last-child { border-bottom: 0; }
+
+/* Citación: la cita reservada estaba en caja (borde y fondo) dentro de la
+   sección; se lee por la letra (el estado ya va coloreado) y la separación. */
+.cita-reservada, .cita-reservada.cola, .cita-reservada.fallo {
+  border: 0; background: none; border-radius: 0; padding: 4px 0 10px;
+}
+
+/* Agenda, celular: «Reglas» y «Recargar» medían 36 px de alto. */
+@media (max-width: 899px) {
+  .ag-cab-der .vc-btn { min-height: var(--tap); }
 }
