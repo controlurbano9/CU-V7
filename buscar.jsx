@@ -2127,7 +2127,7 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
           <input id="rr-ref" className="input-campo" maxLength={500} value={referencia} autoComplete="off"
             onChange={e => setReferencia(e.target.value)}
             title="Lo que no es dirección. Apto o interior van en la dirección."
-            placeholder="Frente a la escuela, portón verde" />
+            placeholder="Ej.: frente a la escuela" />
         </div>
 
         <div className="rr-ubic rr-ancho" aria-live="polite">

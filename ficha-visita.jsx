@@ -215,7 +215,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 </div>
               </div>
               {nVisita && <div><div className="l">Visita</div><div className="v">{nVisita}</div></div>}
-              {fRadicado && <div><div className="l">Radicada</div><div className="v">{fRadicado}</div></div>}
+              {fRadicado && <div><div className="l">Fecha de radicado</div><div className="v">{fRadicado}</div></div>}
               {fAsignada && <div><div className="l">Asignada</div><div className="v">{fAsignada}</div></div>}
               {fVisita && <div><div className="l">Fecha de visita</div><div className="v">{fVisita}</div></div>}
               {quienes.length > 0 && (

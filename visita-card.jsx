@@ -85,7 +85,7 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
           {marca && <span className="tv-marca" role="img" aria-label="En Atención" title="Está en Atención"></span>}
           {t.dirVisible}</button>
         <div className="tv-meta">
-          {meta.map((m, i) => <React.Fragment key={i}>{i > 0 && <span className="tv-sep"> · </span>}{m}</React.Fragment>)}
+          {meta.map((m, i) => <React.Fragment key={i}><span className="tv-m">{m}{i < meta.length - 1 && <span className="tv-sep"> ·</span>}</span>{' '}</React.Fragment>)}
         </div>
         {t.falta.length > 0 && <div className="tv-falta">Falta: {t.falta.join(' · ')}</div>}
         {aviso}

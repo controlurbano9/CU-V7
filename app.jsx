@@ -182,7 +182,7 @@ function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaD
   // Arriba, bajo la cabecera, y sin atrapar toques (revisión 2026-10-28): abajo
   // tapaba la acción de la 3.ª tarjeta en el celular y el «Iniciar» de Atención.
   return React.createElement('div', { role: 'status', style: {
-    position: 'fixed', top: 'calc(var(--header-h, 0px) + ' + top + 'px)', right: right, zIndex: 9000,
+    position: 'fixed', top: 'calc(var(--header-h, 0px) + ' + top + 'px)', right: right, zIndex: 250,
     pointerEvents: 'none',
     background: completado ? 'var(--verde-bg)' : 'var(--superficie)',
     border: '1px solid ' + (completado ? 'rgba(107,122,58,0.30)' : 'var(--borde-med)'),
@@ -922,7 +922,7 @@ function AppV6() {
               <div className="sidebar-pie-acc">
                 <button type="button" className="btn-logout btn-pin" onClick={() => setCambiandoPin(true)}
                   aria-label="Cambiar mi PIN" title="Cambiar mi PIN">
-                  <Icon.Lock size={14} /><span>PIN</span>
+                  <Icon.Lock size={14} /><span>Cambiar PIN</span>
                 </button>
                 <button type="button" className="btn-logout" onClick={salir}>Salir</button>
               </div>

@@ -690,7 +690,7 @@ var _avisos = [];
 // Word ya generado (_pintarAbrirWord).
 var _linkWord = _linkGoogle(_SESION_QS.get('linkInforme'));
 var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) || [];
-var _fotosPendientes = null, _aplicandoFotos = false;
+var _fotosPendientes = null, _aplicandoFotos = false, _gestoFoto = null;
 var _qgis = { id: '', base64: '', mime: '' }, _qgisSubiendo = false;
 // Huella de lo que trajo la visita: si cambia después de empezar el informe, se avisa.
 // Los chips, con el nombre anterior al 2026-10-29 (chipsConNombreSellado,
@@ -778,7 +778,7 @@ root.innerHTML =
       '<div id="ed-art135"></div>' +
 
       '<div class="ed-h">Registro fotográfico.</div>' +
-      '<div class="ed-ui"><span class="ed-chip ed-chip-neutro" id="ed-fotos-n"></span><span class="ed-ui-nota">Los pies son los del registro; edítalos, quita o reordena.</span></div>' +
+      '<div class="ed-ui"><span class="ed-chip ed-chip-neutro" id="ed-fotos-n"></span><span class="ed-ui-nota">Arrastra una foto para cambiar el orden (en el celular, mantenla presionada). Los pies son los del registro: edítalos o quita la foto.</span></div>' +
       '<div class="ed-fotos" id="ed-fotos"></div>' +
 
       '<div class="ed-h">Conclusiones.</div>' +
@@ -1064,6 +1064,7 @@ function _pintarFotos() {
   // Las fotos llegan de Drive después de abrir: el orden, los pies y las
   // quitadas del borrador se aplican apenas están.
   if (_fotosPendientes && !_aplicandoFotos && _fotosAsistentes().length) { _aplicarFotos(_fotosPendientes); return; }
+  if (_gestoFoto) _soltarFoto(true); // repintar se lleva la foto que se está arrastrando
   grid.innerHTML = '';
   var tarjetas = _fotosAsistentes();
   Array.prototype.forEach.call(tarjetas, function (div, i) {
@@ -1074,6 +1075,7 @@ function _pintarFotos() {
 
     var fig = document.createElement('figure');
     fig.className = 'ed-foto';
+    fig.setAttribute('data-foto-id', div.id);
     // El número va encima de la miniatura a propósito: sin señal la celda
     // debe seguir diciendo cuántas hay (misma regla de nueva-visita).
     var num = document.createElement('div');
@@ -1081,6 +1083,10 @@ function _pintarFotos() {
     num.textContent = String(n);
     var imgBox = document.createElement('div');
     imgBox.className = 'ed-foto-img';
+    imgBox.tabIndex = 0;
+    imgBox.setAttribute('role', 'button');
+    imgBox.setAttribute('aria-label', 'Foto ' + n + '. Arrastra para cambiar el orden, o usa las flechas del teclado.');
+    imgBox.title = 'Arrastra para cambiar el orden';
     if (url) {
       var img = document.createElement('img');
       img.src = url;
@@ -1106,9 +1112,7 @@ function _pintarFotos() {
     var acc = document.createElement('div');
     acc.className = 'ed-foto-acc';
     acc.innerHTML =
-      '<button type="button" class="ed-ico" data-ed-foto="' + div.id + '" data-ed-dir="arriba" aria-label="Subir foto" title="Subir">↑</button>' +
-      '<button type="button" class="ed-ico" data-ed-foto="' + div.id + '" data-ed-dir="abajo" aria-label="Bajar foto" title="Bajar">↓</button>' +
-      '<button type="button" class="ed-ico" data-ed-foto="' + div.id + '" data-ed-dir="quitar" aria-label="Quitar foto" title="Quitar del informe">✕</button>';
+      '<button type="button" class="ed-ico" data-ed-foto="' + div.id + '" aria-label="Quitar foto" title="Quitar del informe">✕</button>';
     fig.appendChild(num);
     fig.appendChild(imgBox);
     fig.appendChild(pie);
@@ -1123,6 +1127,164 @@ function _pintarFotos() {
 }
 new MutationObserver(_pintarFotos).observe(_el('fotos-list'), { childList: true });
 _pintarFotos();
+
+// ── Reordenar las fotos arrastrándolas (2026-10-30, decisión del usuario) ──
+// Con el mouse al mover; con el dedo, mantener presionado: deslizar sigue siendo
+// desplazar la página (como en la tira del registro fotográfico). Nada se mueve
+// hasta soltar, solo una barra marca dónde cae: las filas tienen alturas
+// distintas por los pies y mover las fotos a media maniobra haría saltar la página.
+function _figDe(el) { return el && el.closest ? el.closest('#ed-fotos .ed-foto') : null; }
+
+function _limpiarCaidaFoto(g) {
+  if (g.fig) g.fig.classList.remove('ed-cae-antes', 'ed-cae-despues');
+  g.fig = null;
+  g.antes = false;
+}
+
+function _marcarCaidaFoto(g) {
+  var bajo = _figDe(document.elementFromPoint(g.x, g.y));
+  if (!bajo) return; // en el hueco entre fotos sigue valiendo la última marca
+  _limpiarCaidaFoto(g);
+  if (bajo === g.origen) return;
+  var r = bajo.getBoundingClientRect();
+  var antes = g.x < r.left + r.width / 2;
+  // Junto a su propio sitio soltar no cambia nada: sin barra.
+  var sig = antes ? bajo : bajo.nextElementSibling;
+  if (sig === g.origen || sig === g.origen.nextElementSibling) return;
+  g.fig = bajo;
+  g.antes = antes;
+  bajo.classList.add(antes ? 'ed-cae-antes' : 'ed-cae-despues');
+}
+
+function _ubicarFantasmaFoto(g) {
+  if (g.fantasma) g.fantasma.style.transform = 'translate(' + (g.x + g.dx) + 'px,' + (g.y + g.dy) + 'px)';
+}
+
+// Cerca del borde la página se desplaza sola: con 20 fotos en el celular el
+// destino casi nunca está a la vista cuando se levanta la foto.
+function _autoDesplazarFoto() {
+  var g = _gestoFoto;
+  if (!g || !g.activo) return;
+  var margen = 64, v = 0;
+  if (g.y < g.zonaArriba + margen) v = (g.y - g.zonaArriba - margen) / 5;
+  else if (g.y > g.zonaAbajo - margen) v = (g.y - g.zonaAbajo + margen) / 5;
+  if (v) {
+    document.scrollingElement.scrollTop += Math.max(-16, Math.min(16, v));
+    _marcarCaidaFoto(g);
+  }
+  g.raf = requestAnimationFrame(_autoDesplazarFoto);
+}
+
+function _activarFoto(g) {
+  g.activo = true;
+  // El informe va en un iframe en escritorio: soltar fuera de él también cuenta.
+  try { _el('ed-fotos').setPointerCapture(g.id); } catch (err) { /* el puntero ya no existe */ }
+  document.body.classList.add('ed-arrastrando');
+  g.origen.classList.add('ed-arrastrada');
+  var fijo = function (sel, lado, sinEl) {
+    var el = document.querySelector(sel);
+    return el && getComputedStyle(el).display !== 'none' ? el.getBoundingClientRect()[lado] : sinEl;
+  };
+  g.zonaArriba = fijo('.ed-top', 'bottom', 0);
+  g.zonaAbajo = fijo('.ed-barra', 'top', window.innerHeight);
+  var caja = g.origen.querySelector('.ed-foto-img'), img = caja.querySelector('img');
+  var f = document.createElement('div');
+  f.className = 'ed-foto-fantasma';
+  if (img) f.appendChild(img.cloneNode());
+  document.body.appendChild(f);
+  g.fantasma = f;
+  // Con el dedo va encima, para que se vea dónde cae; con el mouse, al lado.
+  var ancho = f.offsetWidth, alto = f.offsetHeight;
+  g.dx = g.tipo === 'mouse' ? 14 : -ancho / 2;
+  g.dy = g.tipo === 'mouse' ? 14 : -alto - 28;
+  _ubicarFantasmaFoto(g);
+  g.raf = requestAnimationFrame(_autoDesplazarFoto);
+}
+
+function _soltarFoto(cancelar) {
+  var g = _gestoFoto;
+  if (!g) return;
+  _gestoFoto = null;
+  clearTimeout(g.timer);
+  cancelAnimationFrame(g.raf);
+  window.removeEventListener('pointermove', _moverPunteroFoto);
+  window.removeEventListener('pointerup', _alSoltarFoto);
+  window.removeEventListener('pointercancel', _alCancelarFoto);
+  if (!g.activo) return;
+  document.body.classList.remove('ed-arrastrando');
+  g.origen.classList.remove('ed-arrastrada');
+  if (g.fantasma) g.fantasma.remove();
+  var destino = g.fig, antes = g.antes;
+  _limpiarCaidaFoto(g);
+  if (cancelar || !destino) return;
+  var sig = antes ? destino : destino.nextElementSibling;
+  // El orden vive en #fotos-list: de ahí sale el Word, y el observador repinta.
+  _el('fotos-list').insertBefore(_el(g.origen.getAttribute('data-foto-id')), sig ? _el(sig.getAttribute('data-foto-id')) : null);
+  _programarGuardar();
+}
+function _alSoltarFoto(e) { if (_gestoFoto && e.pointerId === _gestoFoto.id) _soltarFoto(false); }
+function _alCancelarFoto(e) { if (_gestoFoto && e.pointerId === _gestoFoto.id) _soltarFoto(true); }
+
+function _moverPunteroFoto(e) {
+  var g = _gestoFoto;
+  if (!g || e.pointerId !== g.id) return;
+  g.x = e.clientX;
+  g.y = e.clientY;
+  if (!g.activo) {
+    if (Math.abs(g.x - g.x0) + Math.abs(g.y - g.y0) <= 8) return;
+    if (g.tipo !== 'mouse') { _soltarFoto(true); return; } // el dedo se movió antes de tiempo: era desplazar
+    _activarFoto(g);
+  }
+  _ubicarFantasmaFoto(g);
+  _marcarCaidaFoto(g);
+}
+
+(function () {
+  var grid = _el('ed-fotos');
+  if (!grid) return;
+  grid.addEventListener('pointerdown', function (e) {
+    if (e.button > 0 || _gestoFoto) return;
+    var caja = e.target.closest ? e.target.closest('.ed-foto-img') : null;
+    if (!caja) return;
+    var g = { id: e.pointerId, tipo: e.pointerType, origen: _figDe(caja), x0: e.clientX, y0: e.clientY,
+      x: e.clientX, y: e.clientY, activo: false, timer: null, raf: 0, fig: null, antes: false, fantasma: null };
+    if (e.pointerType !== 'mouse') {
+      g.timer = setTimeout(function () {
+        if (_gestoFoto !== g) return;
+        if (navigator.vibrate) navigator.vibrate(15);
+        _activarFoto(g);
+      }, 350);
+    }
+    _gestoFoto = g;
+    window.addEventListener('pointermove', _moverPunteroFoto);
+    window.addEventListener('pointerup', _alSoltarFoto);
+    window.addEventListener('pointercancel', _alCancelarFoto);
+  });
+  // Sin esto el navegador toma el dedo para desplazar y cancela el arrastre.
+  grid.addEventListener('touchmove', function (e) {
+    if (_gestoFoto && _gestoFoto.activo) e.preventDefault();
+  }, { passive: false });
+  grid.addEventListener('contextmenu', function (e) {
+    if (_gestoFoto && _gestoFoto.tipo !== 'mouse') e.preventDefault();
+  });
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && _gestoFoto && _gestoFoto.activo) { e.stopPropagation(); _soltarFoto(true); }
+  }, true);
+  // El teclado no arrastra: con las flechas la foto enfocada cambia de puesto.
+  grid.addEventListener('keydown', function (e) {
+    var dir = { ArrowLeft: 'arriba', ArrowUp: 'arriba', ArrowRight: 'abajo', ArrowDown: 'abajo' }[e.key];
+    if (!dir || !e.target.classList.contains('ed-foto-img')) return;
+    e.preventDefault();
+    var id = _figDe(e.target).getAttribute('data-foto-id');
+    moverFoto(id, dir);
+    _programarGuardar();
+    // El observador repinta la grilla: el foco vuelve a la misma foto.
+    setTimeout(function () {
+      var c = grid.querySelector('[data-foto-id="' + id + '"] .ed-foto-img');
+      if (c) c.focus();
+    }, 0);
+  });
+})();
 
 // ── Listas editables (conclusiones y recomendaciones) ────────────────
 function _item(texto, esNuevo) {
@@ -2094,12 +2256,10 @@ root.addEventListener('click', function (e) {
     }
     _programarGuardar();
   } else if (b.getAttribute('data-ed-foto')) {
-    var divId = b.getAttribute('data-ed-foto'), dirF = b.getAttribute('data-ed-dir');
-    if (dirF === 'quitar') {
-      var fidQ = _fidDe(divId);
-      if (fidQ && _fotosQuitadas.indexOf(fidQ) < 0) _fotosQuitadas.push(fidQ);
-      _el(divId).remove(); // el MutationObserver repinta
-    } else moverFoto(divId, dirF);
+    var divId = b.getAttribute('data-ed-foto');
+    var fidQ = _fidDe(divId);
+    if (fidQ && _fotosQuitadas.indexOf(fidQ) < 0) _fotosQuitadas.push(fidQ);
+    _el(divId).remove(); // el MutationObserver repinta
     _programarGuardar();
   } else if (b.getAttribute('data-ed-aplicar')) {
     var idLista = b.getAttribute('data-ed-aplicar');

@@ -1647,21 +1647,17 @@ function _SelectBarrio({ barrio, barrioOtro, comuna, onChangeBarrio, onChangeBar
         ))}
         {barrioHeredado && <option value={barrioHeredado}>{barrioHeredado}</option>}
       </select>
-      {(esOtro || (!valorEnLista && barrio && barrio !== '')) && (
+      {/* Un barrio heredado ya sale como opción del select: la casilla repetía el
+          mismo valor en una segunda caja (2026-10-30). */}
+      {esOtro && (
         <input
           type="text"
           className="input-campo"
           style={{ marginTop: 8 }}
           aria-label="Nombre del barrio"
           placeholder="Escribir nombre del barrio"
-          value={esOtro ? (barrioOtro || '') : barrio}
-          onChange={e => {
-            if (esOtro) {
-              onChangeBarrioOtro(e.target.value);
-            } else {
-              onChangeBarrio(e.target.value);
-            }
-          }}
+          value={barrioOtro || ''}
+          onChange={e => onChangeBarrioOtro(e.target.value)}
         />
       )}
     </div>
@@ -2095,7 +2091,11 @@ function _TarjetaFichaCatastral({ r, onSeleccionar, expandida }) {
           display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', alignItems: 'baseline',
         }}>
           <span style={{ color: 'var(--texto-suave)' }}>NPN:</span>
-          <span style={{ fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere', minWidth: 0 }}>{r.catastral}</span>
+          {/* Si no cabe, parte entre el terreno (21 dígitos) y la unidad: nunca deja un dígito suelto.
+              <wbr> no agrega nada al copiar el número. */}
+          <span style={{ fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere', minWidth: 0 }}>
+            {String(r.catastral).slice(0, 21)}<wbr />{String(r.catastral).slice(21)}
+          </span>
           <span style={{ color: 'var(--texto-suave)' }}>Matrícula:</span>
           <span style={{ fontFamily: 'var(--font-mono)' }}>{r.matricula || '—'}</span>
           <span style={{ color: 'var(--texto-suave)' }}>Avalúo:</span>
@@ -2207,11 +2207,11 @@ function _PanelPredio(p) {
         : 'Falta la ficha catastral.')
     : '';
   let lineaDir = null;
-  if (p.esRural) lineaDir = 'Zona rural: el predio sale del punto en el mapa.';
+  if (p.esRural) lineaDir = 'Zona rural: el predio se toma del punto en el mapa.';
   else if (p.estadoBusq === 'buscando') lineaDir = 'Buscando la dirección en catastro…';
-  else if (p.estadoBusq === 'no-reconocible') lineaDir = 'La dirección no tiene placa reconocible para catastro: el predio sale del punto.';
-  else if (p.estadoBusq === 'sin-catastro') lineaDir = 'Catastro no disponible (sin conexión): el predio sale del punto.';
-  else if (p.predioDir && !p.predioDir.exacta && !p.predioDir.terrenos.length) lineaDir = 'Dirección no encontrada en catastro: el predio sale del punto.';
+  else if (p.estadoBusq === 'no-reconocible') lineaDir = 'La dirección no tiene placa reconocible para catastro: el predio se toma del punto en el mapa.';
+  else if (p.estadoBusq === 'sin-catastro') lineaDir = 'Catastro no disponible (sin conexión): el predio se toma del punto en el mapa.';
+  else if (p.predioDir && !p.predioDir.exacta && !p.predioDir.terrenos.length) lineaDir = 'Dirección no encontrada en catastro: el predio se toma del punto en el mapa.';
   // Candidatos: placas cercanas (no exacta) o varios terrenos con la misma
   // dirección sin pin que desempate.
   const candidatos = !p.predioDir ? [] :
@@ -4451,7 +4451,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         if (x.inicio > pos) partes.push(t.slice(pos, x.inicio));
         const frase = t.slice(x.inicio, x.fin);
         partes.push(x.clase === 'ia'
-          ? <del key={i} aria-label={'expresión de IA: ' + frase}>{frase}</del>
+          ? <del key={i} aria-label={'expresión de relleno: ' + frase}>{frase}</del>
           : <mark key={i} className="rv-aplaza" aria-label={'verificación aplazada o duda: ' + frase}>{frase}</mark>);
         pos = x.fin;
       });
@@ -4513,7 +4513,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 : (cual === 'propio' ? tachado(texto) : texto)}
             </div>
           )}
-          {exprIA.length > 0 && <div className="rv-nota">Lo tachado son expresiones típicas de textos generados por IA.</div>}
+          {exprIA.length > 0 && <div className="rv-nota">Lo tachado son expresiones de relleno.</div>}
           {aplaza.length > 0 && <div className="rv-nota">Lo subrayado deja la verificación para después o pone en duda lo que se vio.</div>}
           {elegida && avisos.map(s => <div key={s.id + s.donde} className="rv-forma">{s.mensaje}</div>)}
           {medidor(elegida ? p[k] : texto, celda)}
@@ -6274,7 +6274,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             value={d.referenciaDireccion || ''}
             onChange={e => setCampo('referenciaDireccion', e.target.value)}
             title="Para llegar: puntos de referencia, finca o edificio. No sale en el acta."
-            placeholder="Frente a la escuela, portón verde" />
+            placeholder="Ej.: frente a la escuela" />
         </_Campo>
         {/* Si el caso ya salió por la orden, no se repite aquí. */}
         <_AvisoCasosRelacionados
@@ -7109,7 +7109,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           <FilaEntregable
             icono={<Icon.Camera size={18} />}
             nombre="Registro fotográfico"
-            meta={'Fotos de la visita · documento F‑GGO‑46'}
+            meta={'F‑GGO‑46 · fotos de la visita'}
             estadoTono={d.linkRegistroFotos
               ? 'ok'
               : (sinCarpetaVisita

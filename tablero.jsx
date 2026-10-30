@@ -851,9 +851,9 @@ function SerieTB({ filas, S, parchar, hoy }) {
                 <title>{m.mes + ' · Radicadas: ' + m.radicadas + ' · Visitadas: ' + m.visitadas}</title>
               </path>
             )}
-            {(m.mes.indexOf('-01') === 5 || i === 0) && (
+            {(m.mes.slice(5) === '01' || i === 0) && (
               <text x={x + bw / 2} y={H - 8} fontSize="13" fill="var(--ink-3)" textAnchor="start" aria-hidden="true">
-                {m.mes.indexOf('-01') === 5 ? m.mes.slice(0, 4) : mesTxt(m)}
+                {m.mes.slice(5) === '01' ? m.mes.slice(0, 4) : mesTxt(m)}
               </text>
             )}
           </g>

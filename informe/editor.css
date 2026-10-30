@@ -101,12 +101,31 @@ body.embebido .ed-top { display: none; }
 .ed-foto-img { aspect-ratio: 4/3; border: 1px solid #ccc; background: var(--neutro); display: flex;
   align-items: center; justify-content: center; color: var(--texto-3); font-family: Arial, Helvetica, sans-serif;
   font-size: 18px; font-weight: 600; overflow: hidden; }
-.ed-foto-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ed-foto-img img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+/* Arrastrar para reordenar: la foto de origen se apaga, una copia sigue al
+   puntero y la barra, en el hueco entre fotos, marca dónde cae. */
+.ed-foto-img { cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ed-foto-img:focus-visible { outline: 2px solid var(--texto); outline-offset: 2px; }
+.ed-foto-n { pointer-events: none; }
+.ed-foto.ed-arrastrada .ed-foto-img, .ed-foto.ed-arrastrada .ed-foto-pie { opacity: .35; }
+.ed-foto.ed-cae-antes::before, .ed-foto.ed-cae-despues::after { content: ''; position: absolute; top: 0; bottom: 0;
+  width: 4px; border-radius: 2px; background: var(--texto); pointer-events: none; }
+.ed-foto.ed-cae-antes::before { left: -9px; }
+.ed-foto.ed-cae-despues::after { right: -9px; }
+.ed-foto-fantasma { position: fixed; left: 0; top: 0; z-index: 70; width: 120px; aspect-ratio: 4/3; overflow: hidden;
+  border: 2px solid var(--texto); background: var(--neutro); box-shadow: 0 8px 24px rgba(21,20,15,.35); pointer-events: none; }
+.ed-foto-fantasma img { width: 100%; height: 100%; object-fit: cover; display: block; }
+body.ed-arrastrando, body.ed-arrastrando .ed-foto-img { cursor: grabbing; }
+body.ed-arrastrando { user-select: none; -webkit-user-select: none; }
 .ed-foto-pie { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; text-align: center; margin-top: 4px; }
 .ed-foto-pie:empty::before { content: 'Sin pie — escríbelo'; color: var(--texto-3); font-style: italic; font-weight: 400; }
 .ed-foto-acc { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .ed-foto:hover .ed-foto-acc, .ed-foto:focus-within .ed-foto-acc { opacity: 1; }
 @media (hover: none) { .ed-foto-acc { opacity: 1; } }
+/* El ✕ va sobre la foto: sin fondo no se veía en las oscuras. */
+.ed-foto-acc .ed-ico { background: rgba(255,255,255,.88); color: var(--texto); }
+#ed-obs:empty::before { content: 'Sin observaciones: escríbelas aquí'; color: var(--texto-3); font-style: italic; }
+#ed-pot-campos select, #ed-pot-campos input { min-height: 44px; }
 
 /* ── Listas de conclusiones y recomendaciones ── */
 .ed-lista { margin: 0; padding-left: 0; list-style: none; counter-reset: edi; }
@@ -163,7 +182,10 @@ body.embebido .ed-top { display: none; }
   background: transparent; text-align: center; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: var(--texto-2); }
 
 /* ── Rail de estado (≥1200) ── */
-.ed-rail { position: sticky; top: 84px; align-self: start; font-family: var(--font-sans); }
+/* Con avisos mide más que la ventana: sin su propio desplazamiento, lo que
+   bloquea el Word quedaba abajo, inalcanzable hasta llegar al final de la hoja. */
+.ed-rail { position: sticky; top: 84px; align-self: start; font-family: var(--font-sans);
+  max-height: calc(100vh - 100px); overflow-y: auto; }
 body.embebido .ed-rail { top: 24px; }
 .ed-panel { background: var(--superficie); border-radius: var(--r-md); padding: 16px; box-shadow: var(--sombra-sm); }
 .ed-panel h2 { margin: 0 0 10px; font-size: var(--fs-2); font-weight: 600; }

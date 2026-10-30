@@ -3586,7 +3586,7 @@ function resumenCambios(orig, prop, opts) {
   var iaFuera = expresionesIA(orig).filter(function (x) { return !enProp[_sinTildesRev(x.frase)]; });
   if (iaFuera.length) {
     var citas = iaFuera.slice(0, 2).map(function (x) { return '«' + x.frase.toLowerCase() + '»'; });
-    motivos.push('Se quitan expresiones típicas de textos generados por IA (' + citas.join(', ') + ').');
+    motivos.push('Se quitan expresiones de relleno (' + citas.join(', ') + ').');
   }
 
   // 2. Reordenó: cada oración de orig con la de prop que más palabras suyas

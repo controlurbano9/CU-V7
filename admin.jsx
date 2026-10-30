@@ -807,7 +807,7 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
               Desactivar pide confirmación y avisa las visitas abiertas (togglear). */}
           {!esYo && (
             <div className="adm-peligro">
-              <button type="button" className={'vc-btn adm-btn-estado ' + (u.activo ? 'rojo' : 'verde')} disabled={busy}
+              <button type="button" className={'vc-btn adm-btn-estado' + (u.activo ? '' : ' verde')} disabled={busy}
                 onClick={togglear}>
                 {busy ? '…' : (u.activo ? 'Desactivar usuario…' : 'Activar usuario')}
               </button>

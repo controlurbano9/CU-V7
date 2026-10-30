@@ -163,7 +163,7 @@ function MisVisitasScreen({ usuario, onContinuar }) {
                   onElegir={elegir} onContinuar={onContinuar} />
               </>)}
               {pend.lista.length > 0 && (<>
-                <div className="mv-grupo">Pendientes{pend.lista.length > 1 && <span>lo más atrasado primero</span>}</div>
+                <div className="mv-grupo">{pend.lista.length > 1 ? 'Lo más atrasado primero' : 'Pendientes'}</div>
                 {pend.lista.map(x => fila(x, x.tipo))}
               </>)}
               {pend.acompanas.length > 0 && (<>

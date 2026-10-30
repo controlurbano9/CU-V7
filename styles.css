@@ -304,7 +304,8 @@ body {
   line-height: 1.1;
 }
 /* ── Pad bottom (espacio sobre nav inferior fija) ──────────── */
-.pad-bottom { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+/* 124 y no menos: con la lista al final, el «+» no puede quedar sobre el icono de mapa de la última tarjeta. */
+.pad-bottom { padding-bottom: calc(124px + env(safe-area-inset-bottom)); }
 
 
 /* ╔════════════════════════════════════════════════════════════╗
@@ -1009,10 +1010,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
    lectura y el botón en una fila y el texto del botón partía en dos líneas.
    Al envolver, el botón toma el ancho completo y se lee de un vistazo. */
 .gps-box {
-  background: var(--brand-bg);
-  border: 1px solid rgba(201,100,66,.18);
-  border-radius: var(--r-sm);
-  padding: 12px 14px;
   display: flex; align-items: center; gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 13px;
@@ -2721,7 +2718,8 @@ button.sv-col-head {
 @media (min-width: 900px) and (max-width: 1599px) {
   .home-pantalla .home-al {
     max-height: 480px; overflow-y: auto;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    /* 400: en tres columnas de 322 px a 1366 el botón dejaba ~140 px para el texto. */
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     gap: 6px 8px; align-content: start;
   }
   .home-pantalla .home-al > .al-head,
@@ -3090,6 +3088,8 @@ button.sv-col-head {
 @container (max-width: 600px) {
   .fv-fija { padding: 16px 16px 14px; }
   .fv-fija-fila { align-items: stretch; flex-direction: column; gap: 0; }
+  /* En columna, los 200 px de piso se volvían alto: dejaban un hueco sobre los botones. */
+  .fv-fija-id { flex: 0 0 auto; }
   .fv-fija-acc { margin-top: 16px; }
   .fv-fija-acc .vc-btn { flex: 1 1 0; justify-content: center; min-height: var(--tap); padding: 0 6px; }
   .fv-dir { font-size: var(--fs-4); }
@@ -3252,7 +3252,6 @@ button.sv-col-head {
 .adm-p-ajustes .adm-pin-tmp { margin: 12px 0 0; }
 
 .adm-peligro { padding-top: 14px; }
-.adm-btn-estado.rojo  { color: var(--red); border-color: var(--red); }
 .adm-btn-estado.verde { color: var(--green-ink); }
 
 /* Panel a pantalla completa (<1200). */
@@ -4059,6 +4058,8 @@ button.sv-col-head {
   .ag-dia-nota button { min-height: var(--tap-min); }
   .bq-orden select { height: var(--tap); }
   .bq-gestion .vc-btn { min-height: var(--tap); }
+  .bq-orden ~ .vc-btn { min-height: var(--tap); }
+  .bq-ico { width: var(--tap); height: var(--tap); }
   .header .btn-logout { min-height: var(--tap-min); }
   .adm-tab, .adm-enlace { min-height: var(--tap-min); height: auto; }
   .adm-btn-estado, .adm-ver-visitas { min-height: var(--tap); }
@@ -4071,6 +4072,8 @@ button.sv-col-head {
   .bq-estados { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .bq-estados::-webkit-scrollbar { display: none; }
   .bq-estados > * { flex-shrink: 0; }
+  /* Primero: con cinco estados, al final de la fila quedaba fuera de la pantalla. */
+  .bq-estados .bq-btn-filtros { order: -1; margin-left: 0; }
 }
 
 /* ── Ruta del día (semana-visitas.jsx, 2026-10-14) ──
@@ -4167,6 +4170,7 @@ button.sv-col-head {
 .rv-usar { margin-left: auto; min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--r-ctl);
   background: var(--surface-2); color: var(--ink); font-size: var(--fs-1); font-weight: 500; cursor: pointer; }
 .rv-usar:hover { background: var(--surface-3); }
+@media (max-width: 899px) { .rv-usar, .rv-pasos button { min-height: var(--tap); } }
 .rv-elegida { margin-left: auto; margin-right: 8px; font-size: var(--fs-1); font-weight: 600; color: var(--ink); }
 .rv-cambia { margin: 0 16px 10px; padding: 0; list-style: none; font-size: var(--fs-1); color: var(--ink-3); }
 .rv-cambia li { position: relative; margin-bottom: 2px; padding-left: 14px; }
@@ -4538,7 +4542,8 @@ tr.clic:hover td { background: var(--surface-2); }
 .sv-col { scroll-snap-align: start; }
 /* Desde 1200 los cinco días caben sin desplazarse (2026-10-28, decisión del
    usuario): a 1366 la rejilla mide ~998 px y con 230 el lunes quedaba cortado. */
-@media (min-width: 1200px) { .sv-grid { grid-template-columns: repeat(5, minmax(180px, 1fr)); } }
+/* 150 y no 180 (2026-10-30): a 1200 no cabían los cinco días y el lunes quedaba cortado. */
+@media (min-width: 1200px) { .sv-grid { grid-template-columns: repeat(5, minmax(150px, 1fr)); } }
 .au-grupo-n { font-weight: 400; color: var(--ink-3); }
 
 /* Cabecera de cada día fija (2026-10-25, decisión del usuario): con el
@@ -4592,7 +4597,9 @@ tr.clic:hover td { background: var(--surface-2); }
 .rfm .rfm-txt { flex: 1; min-height: 44px; max-height: 120px; resize: none; font-size: var(--fs-2); line-height: 1.4; padding: 10px 12px; }
 .rfm-pie .btn-icono { width: 44px; height: 44px; flex-shrink: 0; }
 .rfm-tira { background: var(--carril); padding: 10px 12px; overflow-x: auto; }
-.rfm-grid { display: grid; gap: 6px; justify-content: center; }
+/* margin auto y no justify-content: center: con más fotos de las que caben, centrar
+   sacaba las primeras por la izquierda, donde el desplazamiento no llega. */
+.rfm-grid { display: grid; gap: 6px; width: max-content; margin: 0 auto; }
 .rfm-mini { position: relative; aspect-ratio: 4 / 3; padding: 0; border: 0; border-radius: var(--r-card); overflow: hidden; background: var(--surface-3); outline: 2px solid transparent; outline-offset: 1px; cursor: pointer; touch-action: pan-x; -webkit-touch-callout: none; }
 .rfm-mini img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 .rfm-mini.sel { outline-color: var(--ink); }
@@ -4653,6 +4660,8 @@ tr.clic:hover td { background: var(--surface-2); }
 }
 .tv-tarjeta .tv-dir { font-size: var(--fs-3); margin: 2px 0; }
 .tv-meta { font-size: var(--fs-1); color: var(--ink-3); line-height: 1.4; }
+/* Cada dato baja entero con su «·»: ni comuna suelta ni renglón que empieza en «·». */
+.tv-m { display: inline-block; max-width: 100%; }
 .tv-rad { font-variant-numeric: tabular-nums; }
 /* El rojo es solo para lo urgente (audiencia en ≤3 días) y la demora (≥5 días
    hábiles), además de los errores (2026-10-28, decisión del usuario). Lo que
@@ -4714,7 +4723,8 @@ tr.clic:hover td { background: var(--surface-2); }
   background: var(--ink); color: var(--surface); cursor: pointer;
   font: 600 var(--fs-1) var(--font-sans); letter-spacing: .5px;
 }
-.cab-velo { position: fixed; inset: 0; z-index: 300; }
+/* Con color: sin él, el texto que el menú tapa se leía como texto cortado. */
+.cab-velo { position: fixed; inset: 0; z-index: 300; background: rgba(31,27,22,.28); }
 .cab-menu, .fab-menu {
   position: fixed; z-index: 301; min-width: 220px; padding: var(--s-1) 0;
   background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
@@ -4779,7 +4789,10 @@ tr.clic:hover td { background: var(--surface-2); }
 /* En el celular un solo renglón que se desplaza: la cabecera fija no puede crecer. */
 @media (max-width: 899px) {
   .nv-falta { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-  .nv-falta-ir { min-height: 44px; display: inline-flex; align-items: center; }
+  /* inline-block y no inline-flex: en un flex el subrayado del nombre pasaba
+     también al número y al «·». */
+  .nv-falta-ir { flex: none; min-height: 44px; display: inline-block; line-height: 40px; }
+  .nv-falta-n { line-height: 18px; }
 }
 /* Barrio y comuna que dio el POT: texto, no desplegable de ~120 barrios. */
 .barrio-pot { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; min-height: var(--tap); padding-top: 6px; }
@@ -5341,7 +5354,7 @@ select.login-input {
 .btn-login:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 .btn-login:active { transform: scale(.98); }
 /* Deshabilitado en neutro: el amarillo apagado sobre blanco se veía sucio. */
-.btn-login:disabled { background: var(--surface-3); color: var(--ink-4); cursor: default; transform: none; }
+.btn-login:disabled { background: var(--surface-3); color: var(--ink-3); cursor: default; transform: none; }
 .btn-login-alt { margin-top: 8px; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink-2); }
 .login-error { margin: 10px 0 0; font: 600 var(--fs-1)/1.35 var(--font-sans); color: var(--red); text-align: center; }
 .login-nota { margin: 20px 0 0; font: 500 var(--fs-1) var(--font-sans); color: rgba(246,245,242,.6); }
@@ -5484,7 +5497,9 @@ select.login-input {
 /* La cifra como los indicadores de Inicio: condensada 700 a --fs-5. */
 .tb-kpi-v { font: 700 var(--fs-5)/1.05 var(--font-cond); font-variant-numeric: tabular-nums; letter-spacing: 0; display: flex; align-items: baseline; gap: 8px; }
 .tb-kpi-v small { font: 500 var(--fs-1) var(--font-sans); color: var(--ink-3); letter-spacing: 0; }
-.tb-kpi-c { font-size: var(--fs-1); color: var(--ink-3); margin-top: auto; display: flex; align-items: center; gap: 6px; }
+/* Bloque y no flex: en flex, cada trozo de la frase quedaba en su propia columna. */
+.tb-kpi-c { font-size: var(--fs-1); color: var(--ink-3); margin-top: auto; display: block; }
+.tb-kpi-c svg { vertical-align: middle; margin-right: 6px; }
 .tb-kpi-c b { font-weight: 600; color: var(--ink); }
 .tb-kpi.alerta .tb-kpi-v { color: var(--red); }
 .tb-kpi.aviso .tb-kpi-v { color: var(--amber); }
@@ -5631,6 +5646,13 @@ button.tb-det-n { cursor: pointer; }
   .tb-detenidas { grid-template-columns: 96px 1fr 44px 56px; }
   .tb-filtros { position: static; }
   .tb-stats { grid-template-columns: 1fr 1fr; }
+}
+/* La barra se pega en el borde del relleno del contenedor: sin esto, las
+   tarjetas pasaban visibles por encima de ella (mismo arreglo de .titulo-fijo).
+   La cabecera va encima del relleno que la barra sube sobre ella. */
+@media (min-width: 900px) {
+  .tb-cab { position: relative; z-index: 6; }
+  .tb-filtros { top: calc(-1 * var(--content-pad-top)); margin-top: calc(-1 * var(--content-pad-top)); padding-top: calc(8px + var(--content-pad-top)); }
 }
 /* Toques de campo de 44 px (§8): en celular y en pantallas táctiles,
    no solo donde no hay hover (revisión final 2026-10-28). */
