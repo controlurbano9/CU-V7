@@ -132,7 +132,9 @@ La dirección va en **condensada 700** (`.tv-dir`, `styles.css:4799`; `--fs-3` e
 desde 900 vuelve al lado (`styles.css:4739-4745`). La selección es un filete interior de 2 px
 amarillo (`.tv.sel`, `styles.css:4578`).
 
-## 5. La tarjeta completada
+## 5. La barra de estado y la tarjeta completada
+
+La **barra lateral de 3 px es solo para el estado de una visita** (decisión del usuario, 2026-10-30, sobre el código de la Semana del 2026-09-19): tarjeta `.tv`, visitas del caso en la ficha y estado del formulario. Va siempre con la palabra del estado. Además marca lo activo en el menú lateral, la candidata elegida en Norma y «hoy» en Audiencias. No se usa para decorar avisos ni cajas: esos dicen lo suyo con el fondo o el texto.
 
 Lo completado **se atenúa, no desaparece** (decisión del usuario, 2026-10-30, en vez del sello con
 filete verde que traía la TASK 01): barra verde + la palabra «Completada» como en los demás estados
