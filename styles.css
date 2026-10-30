@@ -5360,6 +5360,8 @@ select.login-input {
   .mv-sig-dir { min-height: 44px; }
   .cab-perfil { width: 44px; height: 44px; margin: 0; }
   .input-campo { min-height: 44px; }
+  /* Chips de estado y «Filtros» de Buscar: los 36 de --tap-min son para el mouse. */
+  .bq-est { height: 44px; }
 }
 
 /* Formulario: renglones sin huecos a la derecha (2026-10-29, decisión del usuario).
