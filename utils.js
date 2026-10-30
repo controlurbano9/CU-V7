@@ -5004,7 +5004,25 @@ function tieneVisitasPropias(filas, nombre, hoy) {
   });
 }
 
+// Id de Drive de una foto: `listarFotosActa` lo trae; de una recién subida se
+// saca del link (`.../d/<id>/view`). Una foto en cola todavía no tiene.
+function idFotoDrive(f) {
+  if (!f || f.pendiente) return '';
+  if (f.id) return f.id;
+  var m = String(f.link || '').match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+
+// Las fotos que el visor puede mostrar (sin las que siguen en cola), con su id.
+function fotosParaVisor(fotos) {
+  return (fotos || []).map(function (f) {
+    return Object.assign({}, f, { id: idFotoDrive(f) });
+  }).filter(function (f) { return f.id; });
+}
+
 var _cuUtilsExports = {
+  idFotoDrive: idFotoDrive,
+  fotosParaVisor: fotosParaVisor,
   tieneVisitasPropias: tieneVisitasPropias,
   pendientesMisVisitas: pendientesMisVisitas,
   atencionInicio: atencionInicio,

@@ -213,29 +213,20 @@ const RFM_ZOOM_MAX = 8;         // veces el tamaño ajustado
 
 function _rfmThumb(id, w) { return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + w; }
 
-function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGenerar, puedeGenerar, etiquetaGenerar }) {
-  const [sel, setSel] = React.useState(0);
-  const [cols, setCols] = React.useState(0);
-  const [quitada, setQuitada] = React.useState(null);   // { foto, idx } para «Deshacer»
-  const [arrastre, setArrastre] = React.useState(null); // { desde, hasta } al reordenar
+// Foto en grande con zoom (rueda, pellizco, doble toque, +/−) y paso a la
+// anterior o la siguiente (flechas, teclado, deslizar). La comparten el modal
+// del registro fotográfico y el visor de fotos.
+function _VisorFotoRF({ foto, idx, n, onElegir }) {
   const [grande, setGrande] = React.useState(null);     // { id, w, h } de la versión grande ya cargada
+  const [fallo, setFallo] = React.useState('');         // id de la foto que no cargó
   const visorRef = React.useRef(null);
   const imgRef = React.useRef(null);
   const pctRef = React.useRef(null);
-  const tiraRef = React.useRef(null);
-  const txtRef = React.useRef(null);
   const vistaRef = React.useRef({ e: 1, x: 0, y: 0, a: 1 });
   const punterosRef = React.useRef({});
   const gestoRef = React.useRef(null);      // arrastre o pellizco en el visor
   const toqueRef = React.useRef(0);         // hora del último toque (doble toque = zoom)
-  const miniGestoRef = React.useRef(null);  // reordenar en la tira
-  const sinClicRef = React.useRef(false);
-  const toastRef = React.useRef(null);
 
-  const n = fotos.length;
-  const idx = Math.min(sel, Math.max(0, n - 1));
-  const foto = fotos[idx] || null;
-  const fotoId = foto ? foto.id : '';
   const listaGrande = !!(grande && foto && grande.id === foto.id);
 
   // Posición del zoom: en un ref y aplicada directo al DOM (re-renderizar en
@@ -291,49 +282,18 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
     return function() { el.removeEventListener('wheel', rueda); };
   });
 
-  // Una fila si todas caben al ancho mínimo; si no, dos.
-  React.useEffect(function() {
-    const el = tiraRef.current;
-    if (!el) return;
-    function medir() {
-      const min = window.innerWidth < 900 ? RFM_MINI_MIN_MOVIL : RFM_MINI_MIN;
-      const cabeUna = n * min + (n - 1) * RFM_MINI_GAP <= el.clientWidth - 24;
-      setCols(cabeUna ? n : Math.ceil(n / 2));
-    }
-    medir();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(medir);
-    ro.observe(el);
-    return function() { ro.disconnect(); };
-  }, [n]);
-
-  // El pie crece con el texto, hasta 120 px.
-  React.useEffect(function() {
-    const t = txtRef.current; if (!t) return;
-    t.style.height = 'auto';
-    t.style.height = Math.min(120, t.scrollHeight + 2) + 'px';
-  }, [foto && foto.descripcion, fotoId]);
-
-  // La miniatura elegida siempre a la vista.
-  React.useEffect(function() {
-    const b = tiraRef.current && tiraRef.current.querySelector('[data-rfi="' + idx + '"]');
-    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [idx]);
-
   React.useEffect(function() {
     function tecla(e) {
       const tag = (document.activeElement && document.activeElement.tagName) || '';
       if (tag === 'TEXTAREA' || tag === 'INPUT') return;
-      if (e.key === 'ArrowRight') setSel(function(s) { return Math.min(s + 1, n - 1); });
-      else if (e.key === 'ArrowLeft') setSel(function(s) { return Math.max(s - 1, 0); });
+      if (e.key === 'ArrowRight') onElegir(function(s) { return Math.min(s + 1, n - 1); });
+      else if (e.key === 'ArrowLeft') onElegir(function(s) { return Math.max(s - 1, 0); });
       else if (e.key === '+' || e.key === '=') zoomCentro(1.6);
       else if (e.key === '-') zoomCentro(1 / 1.6);
     }
     document.addEventListener('keydown', tecla);
     return function() { document.removeEventListener('keydown', tecla); };
   });
-
-  React.useEffect(function() { return function() { clearTimeout(toastRef.current); }; }, []);
 
   // ── Gestos del visor: arrastrar, pellizcar, doble toque, deslizar ──
   function _dist() {
@@ -373,7 +333,7 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
     const ajustada = v.e / v.a < 1.05;
     // Sin zoom, deslizar de lado cambia de foto (en el celular no hay flechas).
     if (ajustada && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(e.clientY - g.y)) {
-      setSel(function(s) { return Math.max(0, Math.min(n - 1, s + (dx < 0 ? 1 : -1))); });
+      onElegir(function(s) { return Math.max(0, Math.min(n - 1, s + (dx < 0 ? 1 : -1))); });
       return;
     }
     if (g.movio) return;
@@ -384,6 +344,92 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
       else { const r = visorRef.current.getBoundingClientRect(); zoomEn(e.clientX - r.left, e.clientY - r.top, 3); }
     } else toqueRef.current = ahora;
   }
+
+  return (
+    <div className="rfm-visor" ref={visorRef}
+      onPointerDown={visorDown} onPointerMove={visorMove} onPointerUp={visorUp} onPointerCancel={visorUp}>
+      {foto && !listaGrande && (
+        <img className="rfm-previa" src={_rfmThumb(foto.id, 400)} alt="" draggable={false} />
+      )}
+      {foto && (
+        <img key={foto.id} ref={imgRef} className="rfm-img" src={_rfmThumb(foto.id, 2000)} alt=""
+          draggable={false}
+          style={listaGrande ? { width: grande.w, height: grande.h } : { visibility: 'hidden' }}
+          onLoad={function(e) {
+            const id = foto.id, w = e.currentTarget.naturalWidth, h = e.currentTarget.naturalHeight;
+            setGrande({ id: id, w: w, h: h });
+              setFallo('');
+            }}
+            onError={function() { setFallo(foto.id); }} />
+      )}
+      {foto && fallo === foto.id && (
+        <div className="rfm-fallo" role="status">No se pudo cargar esta foto.</div>
+      )}
+      {idx > 0 && (
+        <button type="button" className="rfm-nav izq" aria-label="Foto anterior" onClick={function() { onElegir(idx - 1); }}>
+          <Icon.ArrowLeft size={20} />
+        </button>
+      )}
+      {idx < n - 1 && (
+        <button type="button" className="rfm-nav der" aria-label="Foto siguiente" onClick={function() { onElegir(idx + 1); }}>
+          <span className="rfm-espejo"><Icon.ArrowLeft size={20} /></span>
+        </button>
+      )}
+      <div className="rfm-zoom">
+        <button type="button" aria-label="Alejar" onClick={function() { zoomCentro(1 / 1.6); }}>−</button>
+        <span ref={pctRef}>100 %</span>
+        <button type="button" aria-label="Acercar" onClick={function() { zoomCentro(1.6); }}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGenerar, puedeGenerar, etiquetaGenerar }) {
+  const [sel, setSel] = React.useState(0);
+  const [cols, setCols] = React.useState(0);
+  const [quitada, setQuitada] = React.useState(null);   // { foto, idx } para «Deshacer»
+  const [arrastre, setArrastre] = React.useState(null); // { desde, hasta } al reordenar
+  const tiraRef = React.useRef(null);
+  const txtRef = React.useRef(null);
+  const miniGestoRef = React.useRef(null);  // reordenar en la tira
+  const sinClicRef = React.useRef(false);
+  const toastRef = React.useRef(null);
+
+  const n = fotos.length;
+  const idx = Math.min(sel, Math.max(0, n - 1));
+  const foto = fotos[idx] || null;
+  const fotoId = foto ? foto.id : '';
+
+  // Una fila si todas caben al ancho mínimo; si no, dos.
+  React.useEffect(function() {
+    const el = tiraRef.current;
+    if (!el) return;
+    function medir() {
+      const min = window.innerWidth < 900 ? RFM_MINI_MIN_MOVIL : RFM_MINI_MIN;
+      const cabeUna = n * min + (n - 1) * RFM_MINI_GAP <= el.clientWidth - 24;
+      setCols(cabeUna ? n : Math.ceil(n / 2));
+    }
+    medir();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return function() { ro.disconnect(); };
+  }, [n]);
+
+  // El pie crece con el texto, hasta 120 px.
+  React.useEffect(function() {
+    const t = txtRef.current; if (!t) return;
+    t.style.height = 'auto';
+    t.style.height = Math.min(120, t.scrollHeight + 2) + 'px';
+  }, [foto && foto.descripcion, fotoId]);
+
+  // La miniatura elegida siempre a la vista.
+  React.useEffect(function() {
+    const b = tiraRef.current && tiraRef.current.querySelector('[data-rfi="' + idx + '"]');
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [idx]);
+
+  React.useEffect(function() { return function() { clearTimeout(toastRef.current); }; }, []);
 
   // ── Reordenar en la tira: con el mouse al mover; con el dedo, mantener presionado ──
   function _soltarMini() {
@@ -491,36 +537,7 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
       </header>
 
       <div className="rfm-foto">
-        <div className="rfm-visor" ref={visorRef}
-          onPointerDown={visorDown} onPointerMove={visorMove} onPointerUp={visorUp} onPointerCancel={visorUp}>
-          {foto && !listaGrande && (
-            <img className="rfm-previa" src={_rfmThumb(foto.id, 400)} alt="" draggable={false} />
-          )}
-          {foto && (
-            <img key={foto.id} ref={imgRef} className="rfm-img" src={_rfmThumb(foto.id, 2000)} alt=""
-              draggable={false}
-              style={listaGrande ? { width: grande.w, height: grande.h } : { visibility: 'hidden' }}
-              onLoad={function(e) {
-                const id = foto.id, w = e.currentTarget.naturalWidth, h = e.currentTarget.naturalHeight;
-                setGrande({ id: id, w: w, h: h });
-              }} />
-          )}
-          {idx > 0 && (
-            <button type="button" className="rfm-nav izq" aria-label="Foto anterior" onClick={function() { setSel(idx - 1); }}>
-              <Icon.ArrowLeft size={20} />
-            </button>
-          )}
-          {idx < n - 1 && (
-            <button type="button" className="rfm-nav der" aria-label="Foto siguiente" onClick={function() { setSel(idx + 1); }}>
-              <span className="rfm-espejo"><Icon.ArrowLeft size={20} /></span>
-            </button>
-          )}
-          <div className="rfm-zoom">
-            <button type="button" aria-label="Alejar" onClick={function() { zoomCentro(1 / 1.6); }}>−</button>
-            <span ref={pctRef}>100 %</span>
-            <button type="button" aria-label="Acercar" onClick={function() { zoomCentro(1.6); }}>+</button>
-          </div>
-        </div>
+        <_VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
 
         {foto && (
           <div className="rfm-pie">
@@ -586,6 +603,67 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
         </div>
       )}
     </div>
+  );
+}
+
+// Ver las fotos subidas sin salir de la app (2026-10-30, decisión del usuario):
+// tocar una miniatura abre este visor en vez del enlace de Drive. Es solo para
+// mirar: el pie se lee, no se edita. Drive queda a un toque para descargar o
+// para una foto que no cargue. Va en portal porque la columna de entregables
+// atraparía el position: fixed.
+function VisorFotos({ fotos, inicio, onCerrar }) {
+  const [sel, setSel] = React.useState(inicio);
+  const cerrarRef = React.useRef(null);
+  const cerrandoRef = React.useRef(false);
+  const onCerrarRef = React.useRef(onCerrar);
+  onCerrarRef.current = onCerrar;
+
+  const n = fotos.length;
+  const idx = Math.min(sel, Math.max(0, n - 1));
+  const foto = fotos[idx] || null;
+
+  // Cerrar siempre pasa por el historial: así «atrás» en el celular cierra la
+  // foto y no la visita. app.jsx ignora ese popstate mientras _cuVisorFotos esté
+  // arriba (el suyo corre antes que este y preguntaría si salir de la visita).
+  function cerrar() {
+    if (cerrandoRef.current) return;
+    cerrandoRef.current = true;
+    history.back();
+  }
+  React.useEffect(function() {
+    const previo = document.activeElement;
+    if (cerrarRef.current) cerrarRef.current.focus();
+    history.pushState(history.state, '');
+    window._cuVisorFotos = true;
+    function alVolver() { onCerrarRef.current(); }
+    function tecla(e) { if (e.key === 'Escape') cerrar(); }
+    window.addEventListener('popstate', alVolver);
+    window.addEventListener('keydown', tecla);
+    return function() {
+      window._cuVisorFotos = false;
+      window.removeEventListener('popstate', alVolver);
+      window.removeEventListener('keydown', tecla);
+      if (previo && previo.focus && document.contains(previo)) previo.focus();
+    };
+  }, []);
+
+  return ReactDOM.createPortal(
+    <div className="rfm rfm-ver" role="dialog" aria-modal="true" aria-labelledby="rfm-ver-titulo">
+      <header className="rfm-top">
+        <button ref={cerrarRef} type="button" className="btn-icono" onClick={cerrar} aria-label="Cerrar">
+          <Icon.Close size={20} />
+        </button>
+        <h2 id="rfm-ver-titulo" className="rfm-titulo">{'Foto ' + (idx + 1) + ' de ' + n}</h2>
+        {foto && foto.link && (
+          <a className="btn-accion rfm-drive" href={foto.link} target="_blank" rel="noopener noreferrer">Abrir en Drive</a>
+        )}
+      </header>
+      <div className="rfm-foto">
+        <_VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
+        {foto && foto.descripcion && <p className="rfm-ver-pie">{foto.descripcion}</p>}
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -7383,6 +7461,7 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
   const grillaRef = React.useRef(null);
   const [colsGrilla, setColsGrilla] = React.useState(0);
   const [verTodas, setVerTodas] = React.useState(false);
+  const [visorId, setVisorId] = React.useState('');  // foto abierta en el visor
   React.useEffect(function() {
     const el = grillaRef.current;
     if (!el) return;
@@ -7405,34 +7484,26 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
   // Las fotos van en grilla de miniaturas, no en lista: con 18 fotos la lista
   // medía ~790 px y empujaba todo el formulario hacia abajo.
 
-  // Id de Drive para la miniatura: `listarFotosActa` lo trae; para una foto
-  // recién subida se saca del link (`.../d/<id>/view`) sin pedir nada más.
-  function _idFoto(f) {
-    if (f.id) return f.id;
-    const m = (f.link || '').match(/[-\w]{25,}/);
-    return m ? m[0] : '';
-  }
-
   // Miniatura w160, la misma fuente que el modal de registro fotográfico. Una
   // foto en cola no tiene id de Drive todavía: se marca con ⇡ sobre ámbar, que
-  // es lo que el inspector necesita saber de ella (falta subirla).
+  // es lo que el inspector necesita saber de ella (falta subirla). Las demás
+  // abren el visor de fotos, sin salir de la app.
   function _celdaFoto(f, i) {
-    const id = f.pendiente ? '' : _idFoto(f);
+    const id = idFotoDrive(f);
     const etiqueta = (f.pendiente ? 'Pendiente de subir: ' : '') + f.nombre +
                      (f.descripcion ? ' — ' + f.descripcion : '');
     const clase = 'fg-celda' + (f.pendiente ? ' fg-pendiente' : '');
     const key   = f.link || f.localId || (f.nombre + '_' + i);
     const cuerpo = [
-      id ? <img key="i" src={'https://drive.google.com/thumbnail?id=' + id + '&sz=w160'}
-                alt="" loading="lazy" /> : null,
+      id ? <img key="i" src={_rfmThumb(id, 160)} alt="" loading="lazy" /> : null,
       <span key="n" className="fg-num" aria-hidden="true">{f.pendiente ? '⇡' : (i + 1)}</span>,
     ];
-    if (f.pendiente || !f.link) {
+    if (!id) {
       return <div key={key} className={clase} title={etiqueta} aria-label={etiqueta}>{cuerpo}</div>;
     }
     return (
-      <a key={key} className={clase} title={etiqueta} aria-label={etiqueta}
-         href={f.link} target="_blank" rel="noopener noreferrer">{cuerpo}</a>
+      <button key={key} type="button" className={clase} title={etiqueta} aria-label={etiqueta}
+        onClick={function() { setVisorId(id); }}>{cuerpo}</button>
     );
   }
 
@@ -7474,6 +7545,14 @@ function SeccionFotos({ idCarpetaFotos, fila, situacion, onFotosChange }) {
               </button>
             )}
           </>);
+        })()}
+        {visorId && (function() {
+          const lista = fotosParaVisor(fotos);
+          return (
+            <VisorFotos fotos={lista}
+              inicio={Math.max(0, lista.findIndex(function(f) { return f.id === visorId; }))}
+              onCerrar={function() { setVisorId(''); }} />
+          );
         })()}
       </div>
     </div>

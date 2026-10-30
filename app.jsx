@@ -490,6 +490,8 @@ function AppV6() {
   useEffectApp(() => {
     history.replaceState({ cuPantalla: 'home' }, '');
     async function onPop(e) {
+      // Con el visor de fotos abierto, «atrás» solo cierra la foto (lo hace él).
+      if (window._cuVisorFotos) return;
       const destino = (e.state && e.state.cuPantalla) || 'home';
       const actual = pilaRef.current[pilaRef.current.length - 1];
       if (actual === 'nueva-visita' && !saltarGuardRef.current
