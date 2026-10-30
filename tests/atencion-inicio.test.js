@@ -11,7 +11,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { atencionInicio } = require('../utils.js');
+const { atencionInicio, tarjetaVisita } = require('../utils.js');
 
 const HOY = new Date(2026, 9, 27); // martes 27/10/2026
 let n = 0;
@@ -32,6 +32,13 @@ test('una visita con audiencia cercana y demora sale una sola vez, como urgente'
   const al = atencionInicio([f], { veTodo: true, hoy: HOY });
   assert.equal(al.length, 1);
   assert.equal(al[0].cat, 'urgente');
+});
+
+test('una PENDIENTE no entra por demora, aunque traiga fecha de asignación o inspector', () => {
+  const sinInsp = fila({ 'ESTADO VISITA': 'PENDIENTE', 'VISITADOR(ES)': '', 'FECHA ASIGNACION VISITA': '01/09/2026' });
+  const conInsp = fila({ 'ESTADO VISITA': 'PENDIENTE', 'FECHA ASIGNACION VISITA': '01/09/2026' });
+  assert.equal(atencionInicio([sinInsp, conInsp], { veTodo: true, hoy: HOY }).length, 0);
+  assert.equal(tarjetaVisita(sinInsp, { hoy: HOY }).tiempo, 'sin asignar');
 });
 
 test('lo reciente no entra (umbral de 5 días hábiles)', () => {

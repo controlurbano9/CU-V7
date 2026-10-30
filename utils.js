@@ -4848,7 +4848,8 @@ function tarjetaVisita(f, opts) {
   var n = null;
   if (estado === 'PENDIENTE') {
     // Sin asignación no hay reloj: la antigüedad de la PQR la dice su prioridad.
-    n = diasSinIniciar(f, ref);
+    // Sin inspector tampoco cuenta una fecha de asignación que quedó en la fila.
+    n = visitadoresBD(f).length ? diasSinIniciar(f, ref) : null;
     t.tiempo = n == null ? 'sin asignar' : _tvDias(n, 'sin iniciar');
     t.demora = n != null && n >= _TV_DEMORA;
     // Pendiente que ya tiene inspector (filas viejas, o «Iniciar» sin asignar
@@ -4971,6 +4972,9 @@ function atencionInicio(datos, opts) {
   var demoras = [];
   (datos || []).forEach(function (f) {
     if (!f || vistas[clave(f)] || !entra(f)) return;
+    // Una PENDIENTE no se ha asignado: no hay a quién reclamarle la demora, aunque
+    // la fila traiga una fecha de asignación vieja (2026-10-30, decisión del usuario).
+    if (_normEstadoVisitaBD(f['ESTADO VISITA'] || f[13] || '') === 'PENDIENTE') return;
     var si = diasSinIniciar(f, ref);
     if (si != null && si >= DIAS_DEMORA_ATENCION) {
       demoras.push({ f: f, cat: 'sinIniciar', dias: si, motivo: si + ' días sin iniciar',
