@@ -90,7 +90,7 @@ La revisión final no encontró tamaños fuera de escala en la app (`INFORME-val
 
 1. La **placa de la siguiente visita** (`.mv-sig`, `styles.css:4819`).
 2. El **ítem o pestaña activa** (raya superior de la pestaña, `styles.css:4779`; borde izquierdo
-   del ítem lateral, `styles.css:4788`; raya del día «hoy», `styles.css:4921`; subrayado de
+   del ítem lateral, `styles.css:4788`; subrayado de
    pestaña de Administración, `styles.css:5126`; «hoy» de Audiencias, `styles.css:5095`).
 3. La **selección** (`.tv.sel` filete interior 2 px, `styles.css:4578`; radio de opción elegida
    en «Pedir cita», `styles.css:5114`; `::selection` global, `styles.css:194`).
@@ -132,15 +132,12 @@ La dirección va en **condensada 700** (`.tv-dir`, `styles.css:4799`; `--fs-3` e
 desde 900 vuelve al lado (`styles.css:4739-4745`). La selección es un filete interior de 2 px
 amarillo (`.tv.sel`, `styles.css:4578`).
 
-## 5. El sello de completada
+## 5. La tarjeta completada
 
-Lo completado **se sella, no desaparece** (contrato, STORY): en vez de apagarse, la tarjeta
-lleva la palabra **«Completada»** en mayúscula condensada `--green-ink` con **filete verde de
-1 px** y radio de control, y **el resto de la tarjeta queda a color normal** (`.tv-e-completado .tv-est b`,
-`styles.css:4800-4805`; decisión de `TASK-valla-01-marco-y-tarjeta.md:26-31`; contraste medido
-7,58:1 en `INFORME-valla-01-marco-y-tarjeta.md:21`). El sello sustituye la atenuación al 62 %
-que traía la pieza base (`styles.css:4576` conserva la opacidad de la pieza; el bloque 01 la
-pisa con `.tv-e-completado { opacity: 1 }`).
+Lo completado **se atenúa, no desaparece** (decisión del usuario, 2026-10-30, en vez del sello con
+filete verde que traía la TASK 01): barra verde + la palabra «Completada» como en los demás estados
+y toda la tarjeta al 62 % (`.tv-e-completado`). Elegida, enfocada o bajo el puntero vuelve a color
+pleno. La atenuación baja el contraste a propósito: lo que importa de esa tarjeta ya está hecho.
 
 ## 6. La placa de la siguiente visita (`.mv-sig*`)
 
@@ -186,8 +183,9 @@ a ~42, y los corrigió todos; re-medición final: 0 toques bajos en los tres rol
 | Menú de perfil | iniciales en círculo `--valla` (sección 3); menú placa blanca, opciones a 48 px | `styles.css:4766`, `:4657-4661` |
 | Login | fondo de tinta plana, formulario en placa con radio de panel, botón lleno de `--valla` | `styles.css:5144-5162` |
 
-El mismo gesto de la raya de 3 px marca «hoy» en la Semana de Inicio (`styles.css:4921`) y en
-Audiencias (`styles.css:5095`): una sola manera de señalar lo activo en toda la app.
+El mismo gesto de la raya de 3 px marca «hoy» en Audiencias (`styles.css:5095`). En la Semana de
+Inicio, «hoy» lleva el borde de tinta de 2 px de la placa de la siguiente visita (decisión del
+usuario, 2026-10-30): la raya se curvaba con el radio de la columna.
 
 ## 8b. Decisiones del 2026-10-28 (revisión con skills, resuelta por Claude)
 
@@ -225,8 +223,7 @@ las que comunican estado. Requisito de `PRODUCT.md:69`.
   visitas (decisión 3), formulario **todo visible**, ni pasos ni plegado (decisión 5,
   `styles.css:4695-4697`).
 - **Decisiones del usuario** citadas en TASK/INFORME: el rediseño se publica **completo y una
-  sola vez** (`TASK-valla-00-LEEME.md:28`); formulario todo visible; «hoy» con la raya, no con
-  fondo (`styles.css:4913-4915`); chips del formulario a 44 px y los de filtro a 36
+  sola vez** (`TASK-valla-00-LEEME.md:28`); formulario todo visible; «hoy» sin fondo amarillo, con borde de tinta; chips del formulario a 44 px y los de filtro a 36
   (`styles.css:5011-5015`); sin versiones subidas.
 - **TASK-valla-01 línea 16**: el círculo amarillo de iniciales del perfil.
 - **TASK-valla-02**: la placa con texto `--valla-ink`, acciones a 52 px, selección de escritorio
@@ -244,6 +241,5 @@ las que comunican estado. Requisito de `PRODUCT.md:69`.
 - **La hoja del informe F-GGO-43 queda fuera del sistema**: sigue igual al Word de la Alcaldía
   (10/11/14 px incluidos, decisión de la TASK 07); el rediseño pinta solo el cromo del generador
   (`INFORME-valla-revision-final.md:87-89`).
-- **Nada desaparece: se sella** (contrato STORY). Lo completado conserva su contenido y gana el
-  sello (sección 5).
+- **Nada desaparece** (contrato STORY). Lo completado conserva su contenido, atenuado (sección 5).
 - Los logos institucionales y los nombres F-GGO-46 / F-GGO-43 no cambian (`PRODUCT.md:46`).

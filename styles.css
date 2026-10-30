@@ -4555,7 +4555,6 @@ tr.clic:hover td { background: var(--surface-2); }
     position: sticky; top: 0; z-index: 1; background: var(--carril);
     border-radius: 12px 12px 0 0;
   }
-  .sv-col.hoy .sv-col-head, .sv-col.hoy button.sv-col-head { background: var(--valla-bg); }
 }
 @media (min-width: 1600px) {
   .home-pantalla .home-sem { overflow: hidden; }
@@ -4882,15 +4881,12 @@ tr.clic:hover td { background: var(--surface-2); }
 .fab-nueva { width: 56px; height: 56px; background: var(--ink); box-shadow: var(--shadow-md); }
 .cab-menu, .fab-menu { border: 1px solid var(--line-2); box-shadow: var(--shadow-md); }
 
-/* Tarjeta: dirección en condensada; lo completado se SELLA (contrato) en vez
-   de apagarse: la palabra «Completada» con filete verde y el resto a color. */
+/* Tarjeta: dirección en condensada. Lo completado se ATENÚA (2026-10-30, decisión
+   del usuario, en vez del sello con filete): opacidad de .tv-e-completado arriba.
+   Elegida o bajo el puntero vuelve a color pleno para poder leerla. */
 .tv-dir { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0; }
-.tv-e-completado { opacity: 1; }
-.tv-e-completado .tv-est b {
-  display: inline-block; padding: 0 6px; border: 1px solid var(--green); border-radius: var(--r-ctl);
-  font: 700 var(--fs-1)/1.5 var(--font-cond); color: var(--green-ink);
-  text-transform: uppercase; letter-spacing: .04em;
-}
+.tv-e-completado.sel, .tv-e-completado:focus-within { opacity: 1; }
+@media (hover: hover) { .tv-e-completado:hover { opacity: 1; } }
 /* Un solo botón lleno por pantalla (2026-10-28, decisión del usuario): la
    acción de cada tarjeta va en tinte; el lleno queda para la placa de la
    siguiente visita (.mv-sig-acc, más abajo). A 390 eran cuatro negros a la vez. */
@@ -5009,7 +5005,13 @@ tr.clic:hover td { background: var(--surface-2); }
    (20 px), para no desalinear cabeceras entre columnas. */
 .sv-col,
 .sv-col.hoy { background: var(--carril); border-radius: var(--r-panel); }
-.sv-col.hoy { box-shadow: inset 0 3px 0 0 var(--valla); }
+/* «Hoy» con borde de tinta de 2 px, el gesto de la placa de la siguiente visita
+   (2026-10-30, decisión del usuario; la raya amarilla se curvaba con el radio).
+   Borde real y no sombra: la cabecera pegajosa taparía una sombra interior. El
+   relleno baja lo mismo que sube el borde: el contenido no se corre. */
+.sv-col.hoy { box-shadow: none; border: 2px solid var(--ink); padding: 0 6px 6px; }
+.sv-col-head, button.sv-col-head { min-height: 32px; } /* con o sin conteo, el mismo alto */
+.sv-col-head.hoy { padding-top: 8px; min-height: 30px; }
 .sv-col-head,
 button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 .sv-col-head.hoy { color: var(--ink); }
@@ -5023,7 +5025,7 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 }
 /* Tira del celular: activo en tinta y «hoy» con la misma raya. */
 .sv-dia.activo { background: var(--ink); }
-.sv-dia.hoy:not(.activo) { box-shadow: inset 0 3px 0 0 var(--valla); }
+.sv-dia.hoy:not(.activo) { box-shadow: inset 0 0 0 2px var(--ink); }
 .sv-dia.hoy:not(.activo) .sv-dia-rot { color: var(--ink); }
 
 /* Atención: título en condensada 700; el conteo en rojo SOLO si hay
