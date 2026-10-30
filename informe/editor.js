@@ -691,6 +691,7 @@ var _avisos = [];
 var _linkWord = _linkGoogle(_SESION_QS.get('linkInforme'));
 var _fotosQuitadas = (_borrador && _borrador.fotos && _borrador.fotos.quitadas) || [];
 var _fotosPendientes = null, _aplicandoFotos = false, _gestoFoto = null;
+var _piesPedidos = {}, _piesEnCurso = {}, _piesTimer = null, _piesCorriendo = false;
 var _qgis = { id: '', base64: '', mime: '' }, _qgisSubiendo = false;
 // Huella de lo que trajo la visita: si cambia después de empezar el informe, se avisa.
 // Los chips, con el nombre anterior al 2026-10-29 (chipsConNombreSellado,
@@ -1098,7 +1099,7 @@ function _pintarFotos() {
       imgBox.textContent = String(n);
     }
     var pie = document.createElement('div');
-    pie.className = 'ed-ed ed-foto-pie';
+    pie.className = 'ed-ed ed-foto-pie' + (_piesEnCurso[_fidDe(div.id)] ? ' ed-describiendo' : '');
     pie.setAttribute('contenteditable', 'true');
     pie.textContent = desc ? ('Fotografía ' + n + '. ' + desc) : '';
     pie.addEventListener('input', function () {
@@ -1119,12 +1120,86 @@ function _pintarFotos() {
     fig.appendChild(acc);
     grid.appendChild(fig);
   });
-  var total = tarjetas.length, conPie = _nFotosConPie();
+  _pintarConteoFotos();
+  _pintarEstado();
+  _programarPies();
+}
+function _pintarConteoFotos() {
+  var total = _fotosAsistentes().length, conPie = _nFotosConPie();
   _el('ed-fotos-n').textContent = total
     ? (total + (total === 1 ? ' foto del registro' : ' fotos del registro') + (conPie === total ? '' : ' · ' + (total - conPie) + ' sin pie'))
     : 'Sin fotos cargadas';
-  _pintarEstado();
 }
+
+// ── Pies que faltan (2026-10-30, decisión del usuario) ───────────────
+// Quien entra al informe sin pasar por el registro fotográfico no tiene por qué
+// escribirlos: al abrir se piden solos, como en el modal del registro, y solo
+// para las fotos sin pie. Una vez por foto en cada sesión. Si falla, la foto
+// sigue en «Sin pie — escríbelo», sin avisos. Actualiza el pie en su sitio, sin
+// repintar la grilla: un repintado le quitaría el foco a quien esté escribiendo.
+function _programarPies() {
+  clearTimeout(_piesTimer);
+  _piesTimer = setTimeout(_describirSinPie, 800);
+}
+
+function _terminarPie(item, texto) {
+  delete _piesEnCurso[item.fid];
+  var fig = document.querySelector('#ed-fotos [data-foto-id="' + item.div + '"]');
+  var pie = fig && fig.querySelector('.ed-foto-pie');
+  if (pie) pie.classList.remove('ed-describiendo');
+  var descEl = _el('desc-' + item.div);
+  // Quitada, ya escrita o con el inspector ahí mismo: gana lo suyo.
+  if (!texto || !descEl || descEl.value.trim() || pie === document.activeElement) return;
+  descEl.value = texto;
+  if (pie) pie.textContent = 'Fotografía ' + fig.querySelector('.ed-foto-n').textContent + '. ' + texto;
+  _pintarConteoFotos();
+  _pintarEstado();
+  _programarGuardar();
+}
+
+// Devuelve las que chocaron con la cuota o la saturación de Gemini.
+async function _pasadaPies(items, situacion, ultima) {
+  var limitados = [];
+  for (var t = 0; t < items.length; t += DESCRIBIR_TANDA) {
+    var lote = items.slice(t, t + DESCRIBIR_TANDA);
+    var res = await _describirTandaWH(lote.map(function (x) { return x.fid; }), situacion);
+    lote.forEach(function (item, k) {
+      if (res[k].rateLimited && !ultima) limitados.push(item);
+      else _terminarPie(item, res[k].ok ? res[k].descripcion : '');
+    });
+  }
+  return limitados;
+}
+
+async function _describirSinPie() {
+  if (_piesCorriendo || !navigator.onLine) return;
+  var faltan = [];
+  Array.prototype.forEach.call(_fotosAsistentes(), function (div) {
+    var fid = _fidDe(div.id), descEl = _el('desc-' + div.id);
+    if (!fid || !descEl || descEl.value.trim() || _piesPedidos[fid]) return;
+    _piesPedidos[fid] = true;
+    _piesEnCurso[fid] = true;
+    faltan.push({ div: div.id, fid: fid });
+    var fig = document.querySelector('#ed-fotos [data-foto-id="' + div.id + '"] .ed-foto-pie');
+    if (fig) fig.classList.add('ed-describiendo');
+  });
+  if (!faltan.length) return;
+  _piesCorriendo = true;
+  var situacion = _el('ed-obs').textContent.trim();
+  try {
+    var limitados = await _pasadaPies(faltan, situacion, false);
+    if (limitados.length) {
+      await new Promise(function (res) { setTimeout(res, 6000); });
+      await _pasadaPies(limitados, situacion, true);
+    }
+  } finally {
+    _piesCorriendo = false;
+    faltan.forEach(function (item) { if (_piesEnCurso[item.fid]) _terminarPie(item, ''); });
+  }
+  _programarPies(); // las que llegaron mientras tanto
+}
+window.addEventListener('online', _programarPies);
+
 new MutationObserver(_pintarFotos).observe(_el('fotos-list'), { childList: true });
 _pintarFotos();
 

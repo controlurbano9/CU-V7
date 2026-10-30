@@ -119,6 +119,7 @@ body.ed-arrastrando, body.ed-arrastrando .ed-foto-img { cursor: grabbing; }
 body.ed-arrastrando { user-select: none; -webkit-user-select: none; }
 .ed-foto-pie { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; text-align: center; margin-top: 4px; }
 .ed-foto-pie:empty::before { content: 'Sin pie — escríbelo'; color: var(--texto-3); font-style: italic; font-weight: 400; }
+.ed-foto-pie.ed-describiendo:empty::before { content: 'Describiendo…'; }
 .ed-foto-acc { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .ed-foto:hover .ed-foto-acc, .ed-foto:focus-within .ed-foto-acc { opacity: 1; }
 @media (hover: none) { .ed-foto-acc { opacity: 1; } }
