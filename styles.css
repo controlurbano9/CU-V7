@@ -287,72 +287,6 @@ body {
 }
 .btn-logout:active { transform: scale(0.96); }
 
-/* ── Login (fondo oscuro cálido) ───────────────────────────── */
-#pantalla-login {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  min-height: 100vh; padding: 48px 32px;
-  background: linear-gradient(160deg, #0F0B08 0%, var(--ink) 50%, var(--ink-2) 100%);
-  text-align: center;
-}
-.login-logo {
-  width: 92px; height: 92px;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 24px;
-  filter: drop-shadow(0 12px 24px rgba(0,0,0,0.45));
-}
-.login-logo img {
-  width: 100%; height: 100%;
-  object-fit: contain;
-}
-.login-titulo {
-  font-family: var(--font-serif);
-  color: var(--paper);
-  font-size: var(--fs-display); font-weight: 600;
-  text-align: center; margin-bottom: 6px;
-  letter-spacing: -1px; line-height: 1.05;
-}
-.login-sub {
-  color: rgba(245,241,235,0.55);
-  font-size: var(--fs-2); text-align: center;
-  margin-bottom: 36px; font-weight: 400;
-}
-.login-form { width: 100%; max-width: 360px; }
-.login-input {
-  width: 100%; padding: 15px 16px;
-  border-radius: var(--r);
-  font-size: var(--fs-3); font-family: inherit;
-  margin-bottom: 10px; outline: none;
-  background: rgba(245,241,235,0.06);
-  color: var(--paper);
-  border: 1px solid rgba(245,241,235,0.10);
-  transition: border-color .15s, background .15s;
-}
-.login-input::placeholder { color: rgba(245,241,235,0.35); }
-.login-input:focus {
-  border-color: var(--brand);
-  background: rgba(245,241,235,0.10);
-}
-.login-input option { background: var(--ink); color: var(--paper); }
-.btn-login {
-  width: 100%; padding: 15px;
-  border-radius: var(--r); border: none;
-  background: var(--brand); color: var(--surface);
-  font-size: var(--fs-3); font-weight: 600;
-  cursor: pointer; font-family: inherit;
-  box-shadow: var(--shadow-md);
-  transition: background .15s, transform .1s;
-  letter-spacing: -0.1px;
-}
-@media (hover: hover) and (pointer: fine) {
-  .btn-login:hover { background: var(--brand-ink); }
-}
-.btn-login:active { transform: scale(0.97); }
-.login-nota {
-  color: rgba(245,241,235,0.55);
-  font-size: var(--fs-1); text-align: left;
-  margin-top: 24px;
-}
 
 /* ── Pantallas ─────────────────────────────────────────────── */
 .pantalla {
@@ -5277,31 +5211,99 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 }
 #cn-direccion-coordenadas:focus { outline: none; border-color: var(--ink) !important; }
 
-/* ── Login: fondo de tinta plana; el formulario sobre placa blanca
-   con radio de panel; rótulos visibles (critica P2); botón lleno de
-   --valla con texto --valla-ink (es la única acción: aquí sí lleva
-   la firma). El error ≥ 13 px (--fs-1). */
-#pantalla-login { background: var(--ink); }
-.login-logo { filter: none; }
-.login-titulo { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0; }
-.login-sub { color: rgba(246,245,242,.6); }
-.login-form {
-  background: var(--surface); border-radius: var(--r-panel);
-  padding: var(--s-4); box-shadow: var(--shadow-md);
+/* ── Login como valla (2026-10-29, crítica impeccable) ──────────
+   Fondo de tinta; la marca animada «hasta donde dice la licencia»; una placa
+   blanca con el escudo y el nombre, filete de tinta y el formulario.
+   Arranca arriba (no centrada): un error solo empuja lo de abajo, la placa no
+   salta. «Ingresar» es lo único amarillo de la pantalla. El error va bajo el
+   campo que falla. Lo usan el login y «Elige tu PIN» (PIN temporal). */
+#pantalla-login {
+  display: flex; flex-direction: column; align-items: center;
+  min-height: 100vh; min-height: 100dvh;
+  padding: clamp(28px, 8vh, 88px) 16px 32px;
+  background: var(--ink); text-align: left;
 }
-.login-rotulo { display: block; margin-bottom: 4px; text-align: left; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
-.login-input { background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); }
+
+/* Marca: la altura aprobada se traza, suben los pisos y el último se asienta
+   en la línea sin pasarla. Una vez por carga, ~0,85 s. */
+.login-marca { width: 96px; height: 96px; margin-bottom: 20px; color: var(--paper); flex: none; }
+.login-marca svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.login-marca .suelo { stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.login-marca .limite { stroke: currentColor; stroke-opacity: .8; stroke-width: 2;
+  stroke-dasharray: 5 4; stroke-linecap: round;
+  animation: login-trazar .28s ease-out both; }
+.login-marca .losa { fill: currentColor; }
+.login-marca .vano { fill: var(--ink); }
+/* El estado base es el dibujo terminado: si la animación no corre, la marca
+   se ve igual. `both` la oculta solo mientras espera su turno. */
+.login-piso { animation: login-subir .26s cubic-bezier(.16,1,.3,1) both; }
+.login-piso.p1 { animation-delay: .24s; }
+.login-piso.p2 { animation-delay: .34s; }
+.login-piso.p3 { animation-delay: .44s; }
+.login-piso.p4 { animation: login-asentar .4s cubic-bezier(.16,1,.3,1) .54s both; }
+@keyframes login-trazar { from { stroke-dashoffset: 90; } to { stroke-dashoffset: 0; } }
+@keyframes login-subir { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* El último piso llega a la línea y cede 1,5 px: la toca y se queda. */
+@keyframes login-asentar {
+  0%   { opacity: 0; transform: translateY(10px); }
+  60%  { opacity: 1; transform: translateY(0); }
+  78%  { transform: translateY(1.5px); }
+  100% { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-marca .limite, .login-piso { animation: none; }
+}
+
+/* Placa */
+.login-placa { width: 100%; max-width: 380px; background: var(--surface); border-radius: var(--r-panel); }
+.login-cab { display: flex; align-items: center; gap: 14px; padding: 18px 20px 16px;
+  border-bottom: 2px solid var(--ink); }
+.login-escudo { width: 52px; height: auto; flex: none; }
+.login-titulo { margin: 0; font: 800 var(--fs-5)/1 var(--font-cond); letter-spacing: -.01em; color: var(--ink); }
+.login-sub { margin: 4px 0 0; font: 600 var(--fs-2)/1.25 var(--font-cond); color: var(--ink-3); }
+
+.login-form { padding: 18px 20px 20px; }
+.login-campo + .login-campo { margin-top: 14px; }
+.login-rotulo { display: block; margin-bottom: 6px; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.login-input {
+  width: 100%; height: 52px; padding: 0 16px; border-radius: var(--r);
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  font: 400 var(--fs-3) var(--font-sans); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+select.login-input {
+  appearance: none; padding-right: 40px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B675E' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 16px center;
+}
 .login-input::placeholder { color: var(--ink-4); }
-.login-input:focus { border-color: var(--ink); background: var(--surface); }
+.login-input:focus-visible { border-color: var(--ink); box-shadow: 0 0 0 3px var(--brand-glow); }
+.login-input[aria-invalid="true"] { border-color: var(--red); }
+.login-input:disabled { color: var(--ink-4); }
 .login-input option { background: var(--surface); color: var(--ink); }
-#pantalla-login .pin-campo label { color: var(--ink-3); }
-#pantalla-login .pin-error-oscuro { color: var(--red); }
-.pin-salir { color: var(--ink-3); }
-.btn-login { background: var(--valla); color: var(--valla-ink); box-shadow: none; font-weight: 700; }
-.btn-login:hover { background: var(--valla); }
-.btn-login:disabled { opacity: .55; }
+.login-error-campo { margin: 6px 0 0; font: 600 var(--fs-1)/1.35 var(--font-sans); color: var(--red); }
+
+.btn-login {
+  width: 100%; height: 52px; margin-top: 20px; border: 0; border-radius: var(--r);
+  background: var(--valla); color: var(--valla-ink);
+  font: 700 var(--fs-3) var(--font-sans); cursor: pointer;
+  transition: transform .1s;
+}
+.btn-login:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.btn-login:active { transform: scale(.98); }
+/* Deshabilitado en neutro: el amarillo apagado sobre blanco se veía sucio. */
+.btn-login:disabled { background: var(--surface-3); color: var(--ink-4); cursor: default; transform: none; }
 .btn-login-alt { margin-top: 8px; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink-2); }
-.login-error { color: var(--red); font-size: var(--fs-1); text-align: center; margin-top: 8px; }
+.login-error { margin: 10px 0 0; font: 600 var(--fs-1)/1.35 var(--font-sans); color: var(--red); text-align: center; }
+.login-ayuda { margin: 14px 0 0; font: 500 var(--fs-1)/1.4 var(--font-sans); color: var(--ink-3); text-align: center; }
+.login-nota { margin: 20px 0 0; font: 500 var(--fs-1) var(--font-sans); color: rgba(246,245,242,.6); }
+
+/* «Elige tu PIN» (PIN temporal) dentro de la misma placa */
+#pantalla-login .pin-intro { max-width: none; margin: 6px 0 0; text-align: left;
+  font: 500 var(--fs-2)/1.4 var(--font-sans); color: var(--ink-3); }
+#pantalla-login .pin-campo + .pin-campo { margin-top: 14px; }
+#pantalla-login .pin-campo label { margin-bottom: 6px; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+#pantalla-login .pin-error-oscuro { color: var(--red); }
+#pantalla-login .pin-salir { color: var(--ink-3); }
 @media (max-width: 899px) {
   .adm-tab { height: 44px; }
 }

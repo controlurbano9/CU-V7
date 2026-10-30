@@ -3,12 +3,51 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateLG, useEffect: useEffectLG } = React;
 
+// Marca del login: «hasta donde dice la licencia». Se traza la altura
+// aprobada, suben los pisos y el último se asienta justo en la línea, sin
+// pasarla. Una sola vez por carga (~0,85 s); decorativa. Con «reducir
+// movimiento» queda el cuadro final (styles.css).
+function MarcaLogin() {
+  const piso = (k, y, h) => (
+    <g key={k} className={'login-piso p' + k}>
+      <rect className="losa" x="28" y={y} width="40" height={h} rx="1.5" />
+      <rect className="vano" x="35" y={y + 4.5} width="7" height="6" />
+      <rect className="vano" x="54" y={y + 4.5} width="7" height="6" />
+    </g>
+  );
+  return (
+    <div className="login-marca" aria-hidden="true">
+      <svg viewBox="0 0 96 96">
+        <line className="limite" x1="4" y1="24" x2="92" y2="24" />
+        {piso(1, 72, 15)}{piso(2, 56, 15)}{piso(3, 40, 15)}{piso(4, 25, 14)}
+        <line className="suelo" x1="10" y1="89" x2="86" y2="89" />
+      </svg>
+    </div>
+  );
+}
+
+// Cabecera de la placa: escudo de Bello (institucional, no se toca) y el
+// título de la pantalla.
+function CabeceraLogin({ id, titulo, children }) {
+  return (
+    <header className="login-cab">
+      <img className="login-escudo" src="logo.jpg" alt="Escudo del Municipio de Bello" />
+      <div>
+        <h1 className="login-titulo" id={id}>{titulo}</h1>
+        {children}
+      </div>
+    </header>
+  );
+}
+
 function LoginScreen({ onLogin }) {
   const [inspectores, setInspectores] = useStateLG([]);
   const [cargandoLista, setCargandoLista] = useStateLG(true);
   const [nombre, setNombre] = useStateLG('');
   const [pin, setPin] = useStateLG('');
-  const [error, setError] = useStateLG('');
+  // { campo: 'nombre' | 'pin' | null, msg }: el error va bajo el campo que
+  // falla; sin campo (red, backend), bajo el botón.
+  const [error, setError] = useStateLG(null);
   const [verificando, setVerificando] = useStateLG(false);
   // Usuario que entró con PIN temporal y todavía no eligió el suyo.
   const [pendiente, setPendiente] = useStateLG(null);
@@ -21,7 +60,7 @@ function LoginScreen({ onLogin }) {
   function cargarInspectores() {
     setCargandoLista(true);
     setFallóLista(false);
-    setError('');
+    setError(null);
     // Sale al instante con la última lista guardada; si el webhook trae una
     // distinta, se reemplaza sin tocar la selección.
     // Solo quien tiene PIN entra. Hay funcionarios activos que existen en
@@ -42,7 +81,7 @@ function LoginScreen({ onLogin }) {
       .catch(e => {
         setCargandoLista(false);
         setFallóLista(true);
-        setError('No se pudo cargar la lista de inspectores');
+        setError({ campo: null, msg: 'No se pudo cargar la lista de inspectores. Revisa la señal y toca «Reintentar».' });
       });
   }
 
@@ -50,10 +89,10 @@ function LoginScreen({ onLogin }) {
 
   async function manejarSubmit(e) {
     e.preventDefault();
-    setError('');
+    setError(null);
 
-    if (!nombre) { setError('Selecciona tu nombre'); return; }
-    if (!pin || pin.length !== 4) { setError('El PIN debe tener 4 dígitos'); return; }
+    if (!nombre) { setError({ campo: 'nombre', msg: 'Elige tu nombre en la lista.' }); return; }
+    if (!pin || pin.length !== 4) { setError({ campo: 'pin', msg: 'El PIN tiene 4 dígitos.' }); return; }
 
     setVerificando(true);
     const { ok, error: errorMsg, ...usuario } = await login(nombre, pin);
@@ -66,7 +105,7 @@ function LoginScreen({ onLogin }) {
       if (usuario.debeCambiarPin) setPendiente(usuario);
       else onLogin(usuario);
     } else {
-      setError(errorMsg);
+      setError({ campo: 'pin', msg: errorMsg });
       setPin('');
     }
     setVerificando(false);
@@ -80,69 +119,77 @@ function LoginScreen({ onLogin }) {
     );
   }
 
+  const errNombre = !!(error && error.campo === 'nombre');
+  const errPin = !!(error && error.campo === 'pin');
+
   return (
-    <div id="pantalla-login" style={{ display: 'flex' }}>
-      <div className="login-logo">
-        <img src="logo-login.png" alt="Control Urbano" />
-      </div>
-      <div className="login-titulo">Control Urbano</div>
-      <div className="login-sub">Inspección N°9 · Alcaldía de Bello</div>
+    <div id="pantalla-login">
+      <MarcaLogin />
+      <section className="login-placa" aria-labelledby="login-t">
+        <CabeceraLogin id="login-t" titulo="Control Urbano">
+          <p className="login-sub">Alcaldía de Bello · Inspección N°9</p>
+        </CabeceraLogin>
 
-      <form className="login-form" onSubmit={manejarSubmit} autoComplete="on">
-        <label htmlFor="login-nombre" className="login-rotulo">Inspector</label>
-        <select
-          id="login-nombre"
-          name="username"
-          className="login-input"
-          autoComplete="username"
-          value={nombre}
-          onChange={e => setNombre(e.target.value)}
-          disabled={cargandoLista}
-          style={{
-            appearance: 'none',
-            backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B675E' d='M6 8L1 3h10z'/%3E%3C/svg%3E\")",
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 14px center',
-            paddingRight: 36,
-          }}>
-          <option value="">
-            {cargandoLista ? 'Cargando inspectores...' : 'Selecciona tu nombre'}
-          </option>
-          {inspectores.map(i => (
-            <option key={i.nombre} value={i.nombre}>{i.nombre}</option>
-          ))}
-        </select>
+        <form className="login-form" onSubmit={manejarSubmit} autoComplete="on" noValidate>
+          <div className="login-campo">
+            <label htmlFor="login-nombre" className="login-rotulo">Inspector</label>
+            <select
+              id="login-nombre"
+              name="username"
+              className="login-input"
+              autoComplete="username"
+              value={nombre}
+              aria-invalid={errNombre || undefined}
+              aria-describedby={errNombre ? 'login-e-nombre' : undefined}
+              onChange={e => { setNombre(e.target.value); if (errNombre) setError(null); }}
+              disabled={cargandoLista}>
+              <option value="">
+                {cargandoLista ? 'Cargando inspectores…' : 'Selecciona tu nombre'}
+              </option>
+              {inspectores.map(i => (
+                <option key={i.nombre} value={i.nombre}>{i.nombre}</option>
+              ))}
+            </select>
+            {errNombre && <p id="login-e-nombre" role="alert" className="login-error-campo">{error.msg}</p>}
+          </div>
 
-        <label htmlFor="login-pin" className="login-rotulo">PIN</label>
-        <input
-          type="password"
-          id="login-pin"
-          name="password"
-          className="login-input"
-          placeholder="PIN de 4 dígitos"
-          maxLength={4}
-          inputMode="numeric"
-          pattern="[0-9]*"
-          autoComplete="current-password"
-          value={pin}
-          onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-        />
+          <div className="login-campo">
+            <label htmlFor="login-pin" className="login-rotulo">PIN</label>
+            <input
+              type="password"
+              id="login-pin"
+              name="password"
+              className="login-input"
+              placeholder="4 dígitos"
+              maxLength={4}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="current-password"
+              value={pin}
+              aria-invalid={errPin || undefined}
+              aria-describedby={errPin ? 'login-e-pin' : undefined}
+              onChange={e => { setPin(e.target.value.replace(/\D/g, '')); if (errPin) setError(null); }}
+            />
+            {errPin && <p id="login-e-pin" role="alert" className="login-error-campo">{error.msg}</p>}
+          </div>
 
-        <button type="submit" className="btn-login" disabled={verificando || cargandoLista || fallóLista}>
-          {verificando ? 'Verificando...' : 'Ingresar →'}
-        </button>
-
-        {fallóLista && (
-          <button type="button" onClick={cargarInspectores} className="btn-login btn-login-alt">
-            Reintentar
+          <button type="submit" className="btn-login" disabled={verificando || cargandoLista || fallóLista}>
+            {verificando ? 'Verificando…' : cargandoLista ? 'Cargando inspectores…' : 'Ingresar'}
           </button>
-        )}
-        {error && (
-          <div role="alert" className="login-error">{error}</div>
-        )}
-      </form>
 
-      <div className="login-nota">Acceso restringido · Solo personal autorizado</div>
+          {fallóLista && (
+            <button type="button" onClick={cargarInspectores} className="btn-login btn-login-alt">
+              Reintentar
+            </button>
+          )}
+          {error && !error.campo && (
+            <p role="alert" className="login-error">{error.msg}</p>
+          )}
+          <p className="login-ayuda">¿Olvidaste tu PIN? Pídele uno temporal al administrador.</p>
+        </form>
+      </section>
+
+      <p className="login-nota">Acceso restringido · Solo personal autorizado</p>
     </div>
   );
 }
@@ -197,15 +244,14 @@ function CambiarPinScreen({ modo, nombre, onListo, onCancelar }) {
 
   if (temporal) {
     return (
-      <div id="pantalla-login" style={{ display: 'flex' }}>
-        <div className="login-logo">
-          <img src="logo-login.png" alt="Control Urbano" />
-        </div>
-        <div className="login-titulo">Elige tu PIN</div>
-        <div className="login-sub pin-intro">
-          Hola, {titleCaseNombre(nombre)}. El PIN que te dieron es temporal: elige uno de 4 dígitos
-          que solo tú sepas.
-        </div>
+      <div id="pantalla-login">
+        <section className="login-placa" aria-labelledby="pin-t">
+          <CabeceraLogin id="pin-t" titulo="Elige tu PIN">
+            <p className="login-sub pin-intro">
+              Hola, {titleCaseNombre(nombre)}. El PIN que te dieron es temporal: elige uno de 4 dígitos
+              que solo tú sepas.
+            </p>
+          </CabeceraLogin>
         <form className="login-form" onSubmit={guardar}>
           {campo('pin-nuevo', 'Nuevo PIN', pin, setPin, 'new-password', true)}
           {campo('pin-repite', 'Repite el PIN', pin2, setPin2, 'new-password')}
@@ -215,6 +261,7 @@ function CambiarPinScreen({ modo, nombre, onListo, onCancelar }) {
           {error && <div role="alert" className="pin-error-oscuro">{error}</div>}
           <button type="button" className="pin-salir" onClick={onCancelar}>Salir</button>
         </form>
+        </section>
       </div>
     );
   }
