@@ -5294,7 +5294,6 @@ select.login-input {
 .btn-login:disabled { background: var(--surface-3); color: var(--ink-4); cursor: default; transform: none; }
 .btn-login-alt { margin-top: 8px; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink-2); }
 .login-error { margin: 10px 0 0; font: 600 var(--fs-1)/1.35 var(--font-sans); color: var(--red); text-align: center; }
-.login-ayuda { margin: 14px 0 0; font: 500 var(--fs-1)/1.4 var(--font-sans); color: var(--ink-3); text-align: center; }
 .login-nota { margin: 20px 0 0; font: 500 var(--fs-1) var(--font-sans); color: rgba(246,245,242,.6); }
 
 /* «Elige tu PIN» (PIN temporal) dentro de la misma placa */

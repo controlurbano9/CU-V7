@@ -185,7 +185,6 @@ function LoginScreen({ onLogin }) {
           {error && !error.campo && (
             <p role="alert" className="login-error">{error.msg}</p>
           )}
-          <p className="login-ayuda">¿Olvidaste tu PIN? Pídele uno temporal al administrador.</p>
         </form>
       </section>
 
