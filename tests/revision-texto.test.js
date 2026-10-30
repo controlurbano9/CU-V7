@@ -451,15 +451,12 @@ test('propuestaAporta: corrige 3+ palabras (erratas) → aporta', () => {
 });
 
 // Párrafos y marcadores (2026-10-26).
-test('topeSituacionRevision: reserva un renglón por párrafo (hasta 5) con salto simple', () => {
-  assert.equal(u.topeSituacionRevision('Un solo bloque.'), Math.floor(18 * 152 * 0.9));
-  const seis = 'a.\nb.\nc.\nd.\ne.\nf.';
-  assert.equal(u.topeSituacionRevision(seis), Math.floor(17 * 152 * 0.9));
-});
-
-test('topeSituacionRevision: con líneas en blanco del inspector cuesta lo de caracteresParaActa', () => {
-  const t = 'Primer párrafo.\n\nSegundo párrafo.';
-  assert.equal(u.topeSituacionRevision(t), u.caracteresParaActa('situacion', 0, 5));
+test('topeSituacionRevision: cuenta siempre la línea en blanco entre párrafos', () => {
+  const tope = u.caracteresParaActa('situacion', 0, 5);
+  assert.equal(u.topeSituacionRevision('Un solo bloque.'), tope);
+  assert.equal(u.topeSituacionRevision('a.\nb.\nc.\nd.\ne.\nf.'), tope);
+  assert.equal(u.topeSituacionRevision('Primer párrafo.\n\nSegundo párrafo.'), tope);
+  assert.ok(tope < Math.floor(18 * 152 * 0.9), 'más corto que con salto simple');
 });
 
 test('marcadoresPendientes: corchetes y rayas bajas', () => {
