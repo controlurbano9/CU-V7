@@ -5224,34 +5224,73 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
   background: var(--ink); text-align: left;
 }
 
-/* Marca: la altura aprobada se traza, suben los pisos y el último se asienta
-   en la línea sin pasarla. Una vez por carga, ~0,85 s. */
-.login-marca { width: 96px; height: 96px; margin-bottom: 20px; color: var(--paper); flex: none; }
+/* Marca: tres escenas de una cuadra de Bello que rotan (login.jsx,
+   MarcaLogin). Misma familia: noche, trazo claro sobre tinta, el Quitasol y
+   algo que se enciende en el amarillo pálido de la firma (es luz, no estado).
+   El estado base de cada pieza es el cuadro final: si la animación no corre,
+   la marca se ve igual; `both` solo la oculta mientras espera su turno. */
+.login-marca { width: 200px; height: 120px; margin-bottom: 16px; color: var(--paper); flex: none; }
 .login-marca svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.login-marca .suelo { stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
-.login-marca .limite { stroke: currentColor; stroke-opacity: .8; stroke-width: 2;
-  stroke-dasharray: 5 4; stroke-linecap: round;
-  animation: login-trazar .28s ease-out both; }
-.login-marca .losa { fill: currentColor; }
-.login-marca .vano { fill: var(--ink); }
-/* El estado base es el dibujo terminado: si la animación no corre, la marca
-   se ve igual. `both` la oculta solo mientras espera su turno. */
-.login-piso { animation: login-subir .26s cubic-bezier(.16,1,.3,1) both; }
-.login-piso.p1 { animation-delay: .24s; }
-.login-piso.p2 { animation-delay: .34s; }
-.login-piso.p3 { animation-delay: .44s; }
-.login-piso.p4 { animation: login-asentar .4s cubic-bezier(.16,1,.3,1) .54s both; }
-@keyframes login-trazar { from { stroke-dashoffset: 90; } to { stroke-dashoffset: 0; } }
-@keyframes login-subir { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-/* El último piso llega a la línea y cede 1,5 px: la toca y se queda. */
-@keyframes login-asentar {
-  0%   { opacity: 0; transform: translateY(10px); }
-  60%  { opacity: 1; transform: translateY(0); }
-  78%  { transform: translateY(1.5px); }
-  100% { opacity: 1; transform: none; }
-}
+.login-marca .calle { stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 184;
+  animation: lm-trazar .5s cubic-bezier(.65,0,.35,1) both; }
+.login-marca .cerro { fill: #232220; stroke: rgba(246,245,242,.22); stroke-width: 1.25; stroke-linejoin: round;
+  animation: lm-amanecer .7s ease-out both; }
+.login-marca .vecino { fill: var(--ink); stroke: currentColor; stroke-opacity: .35; stroke-width: 1.5; stroke-linejoin: round; }
+.login-marca .losa { fill: var(--ink); stroke: currentColor; stroke-width: 1.75; }
+.login-marca .vano { fill: var(--valla-bg); }
+.login-marca .escenario { animation: lm-aparecer .5s ease-out both; }
+@keyframes lm-aparecer { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lm-amanecer { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes lm-trazar { from { stroke-dashoffset: 184; } to { stroke-dashoffset: 0; } }
+@keyframes lm-encender { from { fill: rgba(246,245,242,.12); } to { fill: var(--valla-bg); } }
+@keyframes lm-apagar { from { fill: var(--valla-bg); } to { fill: rgba(246,245,242,.12); } }
+
+/* 1. La cuadra en regla: el plano aprobado, los pisos que encajan, el
+   punteado que se cierra (conforme) y las ventanas que se encienden. */
+.lm-cuadra .vecino { transform-box: fill-box; transform-origin: 50% 100%; animation: lm-asomar .45s cubic-bezier(.16,1,.3,1) both; }
+.lm-cuadra .v1 { animation-delay: .3s; } .lm-cuadra .v2 { animation-delay: .4s; } .lm-cuadra .v3 { animation-delay: .5s; }
+.lm-cuadra .plano { fill: none; stroke: currentColor; stroke-opacity: .75; stroke-width: 1.5; stroke-dasharray: 7 0;
+  animation: lm-dibujar-plano .55s ease-out .65s both, lm-cerrar .35s ease-in-out 2.25s both; }
+.lm-cuadra .piso { animation: lm-encajar .42s cubic-bezier(.34,1.45,.64,1) both; }
+.lm-cuadra .p1 { animation-delay: 1.2s; } .lm-cuadra .p2 { animation-delay: 1.45s; }
+.lm-cuadra .p3 { animation-delay: 1.7s; } .lm-cuadra .p4 { animation-delay: 1.95s; }
+.lm-cuadra .vano { animation: lm-encender .18s ease-out both; }
+.lm-cuadra .w1 { animation-delay: 2.5s; }  .lm-cuadra .w2 { animation-delay: 2.58s; }
+.lm-cuadra .w3 { animation-delay: 2.66s; } .lm-cuadra .w4 { animation-delay: 2.74s; }
+.lm-cuadra .w5 { animation-delay: 2.82s; } .lm-cuadra .w6 { animation-delay: 2.9s; }
+.lm-cuadra .w7 { animation-delay: 2.98s; } .lm-cuadra .w8 { animation-delay: 3.06s; }
+@keyframes lm-asomar { from { opacity: 0; transform: scaleY(.4); } to { opacity: 1; transform: none; } }
+@keyframes lm-dibujar-plano { from { opacity: 0; clip-path: inset(100% 0 0 0); stroke-dasharray: 4 3; }
+                              to   { opacity: 1; clip-path: inset(0);        stroke-dasharray: 4 3; } }
+@keyframes lm-cerrar { from { stroke-dasharray: 4 3; } to { stroke-dasharray: 7 0; } }
+@keyframes lm-encajar { from { opacity: 0; transform: translateY(-26px); } 30% { opacity: 1; } to { opacity: 1; transform: none; } }
+
+/* 2. Amanece: el sol sale por el oriente (el Quitasol está al occidente) con
+   un resplandor que aclara el cielo, y las ventanas se apagan. */
+.lm-amanecer .sol { fill: var(--valla-bg); }
+.lm-amanecer .resplandor { animation: lm-aparecer 1.8s ease-out .6s both; }
+.lm-amanecer .astro { animation: lm-salir 1.9s cubic-bezier(.22,.8,.3,1) .5s both; }
+.lm-amanecer .vano { fill: rgba(246,245,242,.12); animation: lm-apagar .3s ease-in both; }
+.lm-amanecer .w1 { animation-delay: 1.5s; }  .lm-amanecer .w2 { animation-delay: 1.7s; }
+.lm-amanecer .w3 { animation-delay: 1.85s; } .lm-amanecer .w4 { animation-delay: 2s; }
+.lm-amanecer .w5 { animation-delay: 2.15s; } .lm-amanecer .w6 { animation-delay: 2.3s; }
+.lm-amanecer .w7 { animation-delay: 2.45s; } .lm-amanecer .w8 { animation-delay: 2.6s; }
+@keyframes lm-salir { from { transform: translateY(34px); } to { transform: none; } }
+
+/* 3. Pasa el Metro: la Línea A va detrás de la cuadra; el tren entra, pasa
+   por detrás de los edificios y frena en la estación; la cuadra se enciende. */
+.lm-metro svg { overflow: hidden; }
+.lm-metro .viaducto { stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+.lm-metro .pila { stroke: currentColor; stroke-opacity: .4; stroke-width: 2; }
+.lm-metro .vagon { fill: var(--ink); stroke: currentColor; stroke-width: 1.75; stroke-linejoin: round; }
+.lm-metro .ventanilla { fill: var(--valla-bg); }
+.lm-metro .tren { animation: lm-llegar 2.2s cubic-bezier(.3,.55,.3,1) .45s both; }
+.lm-metro .vano { animation: lm-encender .2s ease-out 1.3s both; }
+.lm-metro .w2, .lm-metro .w4, .lm-metro .w6, .lm-metro .w8 { animation-delay: 1.45s; }
+@keyframes lm-llegar { from { transform: translateX(-200px); } to { transform: none; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .login-marca .limite, .login-piso { animation: none; }
+  .login-marca * { animation: none !important; }
 }
 
 /* Placa */

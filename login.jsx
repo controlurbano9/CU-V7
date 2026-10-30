@@ -3,24 +3,100 @@
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateLG, useEffect: useEffectLG } = React;
 
-// Marca del login: «hasta donde dice la licencia». Se traza la altura
-// aprobada, suben los pisos y el último se asienta justo en la línea, sin
-// pasarla. Una sola vez por carga (~0,85 s); decorativa. Con «reducir
-// movimiento» queda el cuadro final (styles.css).
-function MarcaLogin() {
-  const piso = (k, y, h) => (
-    <g key={k} className={'login-piso p' + k}>
-      <rect className="losa" x="28" y={y} width="40" height={h} rx="1.5" />
-      <rect className="vano" x="35" y={y + 4.5} width="7" height="6" />
-      <rect className="vano" x="54" y={y + 4.5} width="7" height="6" />
-    </g>
-  );
+// Marca del login: tres escenas de una cuadra de Bello al pie del Quitasol
+// (maqueta propuesta-login-rotacion.html, aprobada 2026-10-29). Rotan en
+// orden, una por entrada: la cuadra en regla (la obra encaja en el plano
+// aprobado y se encienden las ventanas), amanece (el sol sale por el oriente
+// y las ventanas se apagan) y pasa el Metro (la Línea A cruza detrás y la
+// cuadra se enciende). Una sola vez, ~3 s, decorativa; el formulario se usa
+// desde el primer instante. El estado base de cada escena es su cuadro final
+// y con «reducir movimiento» no se mueve (styles.css, «Login como valla»).
+const ESCENAS_LOGIN = ['cuadra', 'amanecer', 'metro'];
+// Se elige una vez por carga de página: el login se monta más de una vez al
+// arrancar y cada montaje avanzaba la rotación.
+let _escenaLoginElegida = null;
+function _escenaLogin() {
+  if (_escenaLoginElegida) return _escenaLoginElegida;
+  let i = 0;
+  try {
+    i = ((parseInt(localStorage.getItem('cu_login_escena'), 10) + 1) || 0) % ESCENAS_LOGIN.length;
+    localStorage.setItem('cu_login_escena', String(i));
+  } catch (e) {}
+  return (_escenaLoginElegida = ESCENAS_LOGIN[i]);
+}
+
+// El Quitasol, imponente, al occidente (izquierda).
+const _CERRO_D = 'M0 92C8 78 18 56 30 38C42 20 56 7 72 4C86 2 98 9 110 20C124 33 140 44 160 50C176 55 190 58 200 60V109H0Z';
+
+function _VecinosLogin({ cls = '' }) {
+  // El último, con la chimenea de ladrillo de Fabricato.
   return (
-    <div className="login-marca" aria-hidden="true">
-      <svg viewBox="0 0 96 96">
-        <line className="limite" x1="4" y1="24" x2="92" y2="24" />
-        {piso(1, 72, 15)}{piso(2, 56, 15)}{piso(3, 40, 15)}{piso(4, 25, 14)}
-        <line className="suelo" x1="10" y1="89" x2="86" y2="89" />
+    <>
+      <path className={'vecino ' + cls + '1'} d="M18 108V78h26v30" />
+      <path className={'vecino ' + cls + '2'} d="M48 108V62l13-9 13 9v46" />
+      <path className={'vecino ' + cls + '3'} d="M136 108V70h22v38M162 108V84h22v24M168 84V52h6v32M166.5 52h9" />
+    </>
+  );
+}
+
+function _EdificioLogin({ conPiso }) {
+  // Cuatro pisos de abajo arriba; las ventanas se numeran w1…w8 en ese orden.
+  return [90, 71, 52, 33].map((y, i) => (
+    <g key={y} className={conPiso ? 'piso p' + (i + 1) : undefined}>
+      <rect className="losa" x="82" y={y} width="46" height="17" rx="1" />
+      <rect className={'vano w' + (2 * i + 1)} x="90" y={y + 5} width="10" height="8" />
+      <rect className={'vano w' + (2 * i + 2)} x="110" y={y + 5} width="10" height="8" />
+    </g>
+  ));
+}
+
+function MarcaLogin() {
+  const [escena] = useStateLG(_escenaLogin);
+  const calle = <line className="calle" x1="8" y1="109" x2="192" y2="109" />;
+  return (
+    <div className={'login-marca lm-' + escena} aria-hidden="true">
+      <svg viewBox="0 0 200 120">
+        {escena === 'amanecer' && (
+          <>
+            <defs>
+              <radialGradient id="lm-resplandor">
+                <stop offset="0" stopColor="#FFF4C2" stopOpacity=".34" />
+                <stop offset="1" stopColor="#FFF4C2" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+            <circle className="resplandor" cx="184" cy="60" r="80" fill="url(#lm-resplandor)" />
+            <g className="astro"><circle className="sol" cx="184" cy="60" r="12" /></g>
+          </>
+        )}
+        <path className="cerro" d={_CERRO_D} />
+        {escena === 'metro' && (
+          <>
+            <line className="pila" x1="12" y1="66" x2="12" y2="108" />
+            <line className="pila" x1="160" y1="66" x2="160" y2="108" />
+            <line className="pila" x1="196" y1="66" x2="196" y2="108" />
+            <line className="viaducto" x1="0" y1="65.5" x2="200" y2="65.5" />
+            <g className="tren"><g transform="translate(28 45)">
+              <path className="vagon" d="M96 19V11.5Q96 9 98.5 9H128V19Z" />
+              <path className="vagon" d="M130 19V9H157.5Q162 9 164 13L166 19Z" />
+              {[101, 109, 117, 135, 143, 151].map(x => (
+                <rect key={x} className="ventanilla" x={x} y="12" width="5" height="3.5" rx=".6" />
+              ))}
+            </g></g>
+          </>
+        )}
+        {escena === 'cuadra' ? (
+          <>
+            <_VecinosLogin cls="v" />
+            <rect className="plano" x="80" y="31" width="50" height="77" />
+            <_EdificioLogin conPiso />
+          </>
+        ) : (
+          <g className="escenario">
+            <_VecinosLogin />
+            <_EdificioLogin />
+          </g>
+        )}
+        {calle}
       </svg>
     </div>
   );
