@@ -636,6 +636,7 @@ function MapaTB({ filas, mapas, proj, S, parchar, sel }) {
       <svg ref={svgRef} className="tb-mapa" viewBox={'0 0 ' + mapas.w + ' ' + mapas.h}
         role="group" aria-label="Mapa de Bello por comuna">
         {cuerpo}
+        {selPath && <path className="tb-sel-base" d={selPath.d} pointerEvents="none" aria-hidden="true" />}
         {selPath && <path className="tb-sel" d={selPath.d} pointerEvents="none" aria-hidden="true" />}
       </svg>
       <div className="tb-leyenda">{leyenda}</div>

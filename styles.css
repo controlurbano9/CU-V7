@@ -5521,10 +5521,16 @@ select.login-input {
 .tb-area.bar { stroke-width: .6; }
 .tb-area.fondo { fill: var(--surface-2); }
 .tb-area:hover { opacity: .82; }
+/* El foco por defecto en un path del SVG es un rectángulo alrededor de toda el área. */
+.tb-area:focus, .tb-pto:focus { outline: none; }
+.tb-area:focus-visible { stroke: var(--valla); stroke-width: 2.6; }
 .tb-borde { fill: none; stroke: var(--ink-3); stroke-width: .9; pointer-events: none; }
-.tb-sel { fill: none; stroke: var(--ink); stroke-width: 2.6; pointer-events: none; }
+/* Selección en amarillo sobre una base de tinta: se distingue sobre todo el rango
+   del mapa, del gris más claro al casi negro. */
+.tb-sel-base { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linejoin: round; pointer-events: none; }
+.tb-sel { fill: none; stroke: var(--valla); stroke-width: 3; stroke-linejoin: round; pointer-events: none; }
 .tb-pto { stroke: var(--surface); stroke-width: 1; cursor: pointer; }
-.tb-pto:hover { stroke: var(--ink); stroke-width: 1.6; }
+.tb-pto:hover, .tb-pto:focus-visible { stroke: var(--ink); stroke-width: 1.6; }
 .tb-mapa .tb-lbl { font: 600 var(--fs-1) var(--font-sans); fill: var(--ink); pointer-events: none; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .tb-mapa .tb-lbl .tb-lbl-n { font-weight: 500; font-size: var(--fs-1); }
 .tb-leyenda { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-1); color: var(--ink-3); margin-top: 8px; }
