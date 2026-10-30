@@ -1269,7 +1269,7 @@ function BQSeccion({ titulo, n, children }) {
       <button type="button" className="bq-sec-tit" aria-expanded={!plegada}
         onClick={() => setPlegada(!plegada)}>
         {titulo}{n > 0 && <span className="bq-sec-n">· {n}</span>}
-        <span className="bq-chev" aria-hidden="true">▾</span>
+        <span className="bq-chev" aria-hidden="true"><Icon.Chevron size={14} /></span>
       </button>
       <div className="bq-sec-cuerpo">{children}</div>
     </div>
@@ -1365,7 +1365,7 @@ function AvisoFilaBQ({ c, q, veTodo, donde }) {
         {c.prio}{c.exceso != null && c.tier >= 1 ? ' · ' + (vencida ? 'vencida hace ' + c.exceso + ' días' : 'a ' + (-c.exceso) + ' días del plazo') : ''}
       </b>);
   }
-  if (c.estado === 'INICIADO' && c.lista) partes.push(<b key="l" className="bq-lista-cerrar">✓ Lista para cerrar</b>);
+  if (c.estado === 'INICIADO' && c.lista) partes.push(<b key="l" className="bq-lista-cerrar"><Icon.Check size={13} /> Lista para cerrar</b>);
   if (donde === 'orden') partes.push(<span key="o">coincide en orden de policía: <MarcarBQ texto={c.orden} q={q} /></span>);
   if (donde === 'atiende') partes.push(<span key="a">coincide en persona que atiende: <MarcarBQ texto={c.atiende} q={q} /></span>);
   if (donde === 'ref') partes.push(<span key="f">coincide en referencia: <MarcarBQ texto={c.referencia} q={q} /></span>);
@@ -2127,7 +2127,7 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
           <input id="rr-ref" className="input-campo" maxLength={500} value={referencia} autoComplete="off"
             onChange={e => setReferencia(e.target.value)}
             title="Lo que no es dirección. Apto o interior van en la dirección."
-            placeholder="Ej.: frente a la escuela" />
+            placeholder="Ej.: portón verde" />
         </div>
 
         <div className="rr-ubic rr-ancho" aria-live="polite">

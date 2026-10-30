@@ -158,7 +158,9 @@ function MisVisitasScreen({ usuario, onContinuar }) {
                 </div>
               )}
               {pend.siguiente && (<>
-                <div className="mv-grupo">Siguiente visita</div>
+                <div className="mv-grupo">Siguiente visita
+                  <span>hoy{pend.siguiente.de > 1 && <> · {pend.siguiente.n} de {pend.siguiente.de} en la ruta</>}</span>
+                </div>
                 <SiguienteVisitaMV s={pend.siguiente} conPanel={conPanel} elegida={sel === pend.siguiente.x.f}
                   onElegir={elegir} onContinuar={onContinuar} />
               </>)}
@@ -210,7 +212,6 @@ function SiguienteVisitaMV({ s, conPanel, elegida, onElegir, onContinuar }) {
   const abrir = () => conPanel ? onElegir(f) : (window.abrirVisitaDetail && window.abrirVisitaDetail(f));
   return (
     <article className={'mv-sig' + (conPanel && elegida ? ' sel' : '')} onClick={abrir}>
-      <div className="mv-sig-est">Asignada para hoy{s.de > 1 && <> · {s.n} de {s.de} en la ruta</>}</div>
       <button type="button" className="mv-sig-dir" title={t.dir}
         onClick={(e) => { e.stopPropagation(); abrir(); }}>{t.dirVisible}</button>
       <div className="tv-meta">{[t.ident.principal, t.ubic].filter(Boolean).join(' · ')}</div>

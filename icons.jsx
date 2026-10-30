@@ -85,6 +85,12 @@ const Icon = {
   ChevronUp: (p) => _svg([
     React.createElement('polyline', { key: 1, points: '18 15 12 9 6 15' }),
   ], p?.size),
+  ChevronLeft: (p) => _svg([
+    React.createElement('polyline', { key: 1, points: '15 18 9 12 15 6' }),
+  ], p?.size),
+  ChevronRight: (p) => _svg([
+    React.createElement('polyline', { key: 1, points: '9 18 15 12 9 6' }),
+  ], p?.size),
   Refresh: (p) => _svg([
     React.createElement('polyline', { key: 1, points: '23 4 23 10 17 10' }),
     React.createElement('polyline', { key: 2, points: '1 20 1 14 7 14' }),

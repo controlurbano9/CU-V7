@@ -6274,7 +6274,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             value={d.referenciaDireccion || ''}
             onChange={e => setCampo('referenciaDireccion', e.target.value)}
             title="Para llegar: puntos de referencia, finca o edificio. No sale en el acta."
-            placeholder="Ej.: frente a la escuela" />
+            placeholder="Ej.: portón verde" />
         </_Campo>
         {/* Si el caso ya salió por la orden, no se repite aquí. */}
         <_AvisoCasosRelacionados

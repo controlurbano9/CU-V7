@@ -3698,11 +3698,12 @@ button.sv-col-head {
 /* Chips de estado: el chip común (sin borde ni fondo; activo en tinta). */
 .bq-est {
   display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
-  border: 0; border-radius: var(--r-full); background: transparent;
-  color: var(--ink-3); font: 600 var(--fs-1) var(--font-sans); cursor: pointer; white-space: nowrap;
+  /* Con borde y fondo, como los chips de Mis visitas: sin ellos, al sol no se veía que se pueden tocar. */
+  border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--surface);
+  color: var(--ink-2); font: 600 var(--fs-1) var(--font-sans); cursor: pointer; white-space: nowrap;
 }
 @media (hover: hover) and (pointer: fine) {
-  .bq-est:not(.on):hover { background: rgba(31,27,22,0.06); color: var(--ink); }
+  .bq-est:not(.on):hover { background: var(--surface-2); color: var(--ink); }
 }
 .bq-est i { font: normal 400 var(--fs-1) var(--font-mono); color: var(--ink-4); font-style: normal; }
 /* Marcado = relleno, como .bq-op.on (antes solo cambiaba el borde y no se
@@ -3715,7 +3716,6 @@ button.sv-col-head {
 .bq-dot.pend { background: var(--ink-4); } .bq-dot.asig { background: var(--amber); }
 .bq-dot.curso { background: var(--info); } .bq-dot.hecha { background: var(--green); }
 .bq-dot.cerr { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-4); }
-.bq-est:not(.on) .bq-dot { opacity: .45; }
 .bq-sep-v { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
 .bq-btn-filtros { margin-left: auto; display: none; }
 
@@ -3735,7 +3735,9 @@ button.sv-col-head {
   font: 600 var(--fs-2) var(--font-sans); color: var(--ink); min-height: 32px; cursor: pointer; }
 /* Conteo de filtros activos de la sección: dato, no acción. */
 .bq-sec-n { font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); background: var(--surface-2); border-radius: var(--r-full); padding: 0 6px; }
-.bq-chev { margin-left: auto; color: var(--ink-4); font-size: var(--fs-1); transition: transform .15s; }
+.bq-chev { margin-left: auto; display: inline-flex; color: var(--ink-4); font-size: var(--fs-1); transition: transform .15s; }
+.bq-lista-cerrar svg { vertical-align: -2px; }
+.sv-nav-btn, .ag-flecha { display: inline-flex; align-items: center; justify-content: center; }
 .bq-plegada .bq-chev { transform: rotate(-90deg); }
 .bq-plegada .bq-sec-cuerpo { display: none; }
 .bq-lbl { font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); margin: 14px 0 6px; }
@@ -4754,7 +4756,6 @@ tr.clic:hover td { background: var(--surface-2); }
   cursor: pointer;
 }
 .mv-sig.sel { box-shadow: 0 0 0 3px var(--valla); }
-.mv-sig-est { font-size: var(--fs-1); color: var(--ink-3); }
 .mv-sig-dir {
   display: block; padding: 0; margin: 2px 0; border: 0; background: none; cursor: pointer;
   font: 700 var(--fs-4)/1.2 var(--font-sans); color: var(--ink); text-align: left;
@@ -4908,7 +4909,6 @@ tr.clic:hover td { background: var(--surface-2); }
   background: var(--valla); border: 0; border-radius: var(--r-panel);
   color: var(--valla-ink);
 }
-.mv-sig-est { font-weight: 600; color: var(--valla-ink); }
 .mv-sig-dir { font: 800 var(--fs-5)/1.1 var(--font-cond); color: var(--valla-ink); }
 /* Radicado · barrio · comuna; la cita (si hay) es un renglón propio. */
 .mv-sig .tv-meta { font-size: var(--fs-3); font-weight: 600; color: var(--valla-ink); }
@@ -5397,6 +5397,12 @@ select.login-input {
   .form-grid-2col > .nv-span-2 { grid-column: span 2; }
   .form-grid-2col > .nv-resto { grid-column: 2 / -1; }
   .form-grid-2col > .nv-atiende, .form-grid-2col > .nv-tipif { grid-column: 1 / -1; }
+}
+/* Cabían tres columnas y la fecha de visita y la comuna quedaban solas en su renglón.
+   Salvo 1200–1299: con los entregables al costado, las fechas quedarían de 100 px. */
+@media (min-width: 900px) and (max-width: 1199px), (min-width: 1300px) {
+  .form-seccion[data-seccion="Identificación del caso"] .form-grid-2col { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .form-seccion[data-seccion="Ubicación del inmueble"] .form-grid-2col { grid-template-columns: repeat(3, minmax(0, 2fr)) minmax(0, 1fr); }
 }
 /* Persona que atiende: nombre y correo anchos, cédula y teléfono angostos. */
 .nv-atiende { container-type: inline-size; }

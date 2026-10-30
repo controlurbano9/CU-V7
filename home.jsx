@@ -204,9 +204,9 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           porque el filtro afecta a las dos (y a los indicadores no). ── */}
       <div className="home-barra">
         <div className="sv-nav">
-          <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => setOffsetSemana(offsetSemana - 1)}>‹</button>
+          <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => setOffsetSemana(offsetSemana - 1)}><Icon.ChevronLeft size={16} /></button>
           <span className="sv-rango">{_svRango(rangoSemana(new Date(), offsetSemana).dias)}</span>
-          <button className="sv-nav-btn" aria-label="Semana siguiente" onClick={() => setOffsetSemana(offsetSemana + 1)}>›</button>
+          <button className="sv-nav-btn" aria-label="Semana siguiente" onClick={() => setOffsetSemana(offsetSemana + 1)}><Icon.ChevronRight size={16} /></button>
           {offsetSemana !== 0 && (
             <button className="sv-hoy" onClick={() => setOffsetSemana(0)}>Hoy</button>
           )}

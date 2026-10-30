@@ -443,9 +443,9 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   const cabecera = controlada ? null : (
     <div className="sv-head">
       <div className="sv-nav">
-        <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => irSemana(-1)}>‹</button>
+        <button className="sv-nav-btn" aria-label="Semana anterior" onClick={() => irSemana(-1)}><Icon.ChevronLeft size={16} /></button>
         <span className="sv-rango">{_svRango(dias)}</span>
-        <button className="sv-nav-btn" aria-label="Semana siguiente" onClick={() => irSemana(1)}>›</button>
+        <button className="sv-nav-btn" aria-label="Semana siguiente" onClick={() => irSemana(1)}><Icon.ChevronRight size={16} /></button>
         {offset !== 0 && (
           <button className="sv-hoy" onClick={() => { setOffset(0); setDiaSel(null); }}>Hoy</button>
         )}

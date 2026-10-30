@@ -337,9 +337,9 @@ function AgendaScreen({ usuario }) {
             <h1 className="page-title">{fechaLargaAgenda(dia)}</h1>
             <div className="ag-flechas">
               <button type="button" className="ag-flecha" aria-label="Día hábil anterior"
-                onClick={() => setDia(d => moverDiaHabil(d, -1))}>‹</button>
+                onClick={() => setDia(d => moverDiaHabil(d, -1))}><Icon.ChevronLeft size={16} /></button>
               <button type="button" className="ag-flecha" aria-label="Siguiente día hábil"
-                onClick={() => setDia(d => moverDiaHabil(d, 1))}>›</button>
+                onClick={() => setDia(d => moverDiaHabil(d, 1))}><Icon.ChevronRight size={16} /></button>
             </div>
           </div>
           <div className="ag-dia-nota">
