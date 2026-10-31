@@ -3062,6 +3062,7 @@ button.sv-col-head {
   /* El lugar de la visita queda fijo bajo la cabecera mientras se recorren
      los datos. */
   .fv-lugar { position: sticky; top: var(--fv-fija-h, 120px); }
+  .fv-lugar .fv-ent-caja { margin-bottom: 14px; }
 }
 /* Bloques del cuerpo (bloquesFicha, v2): título 15/600 sin número ni raya;
    rótulo 12 sin mayúsculas; textos largos en recuadro. */
@@ -4630,7 +4631,6 @@ tr.clic:hover td { background: var(--surface-2); }
 /* Visor de fotos (VisorFotos): solo para mirar. Sin la tira del registro, las
    flechas son lo que dice que hay más fotos, también en el celular. */
 .rfm-ver .rfm-nav { display: flex; }
-.rfm-drive { flex-shrink: 0; }
 .rfm-ver-pie { margin: 0; padding: 10px 16px; max-height: 30vh; overflow-y: auto; background: var(--surface); border-top: 1px solid var(--line); font-size: var(--fs-2); line-height: 1.4; color: var(--ink); }
 
 /* ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──

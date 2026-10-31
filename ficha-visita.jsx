@@ -8,7 +8,7 @@
 // asignada → «El predio» y el mapa; iniciada → entregables (lo pendiente
 // primero) y los tres bloques de bloquesFicha (utils.js — esa decide QUÉ se
 // muestra; aquí solo se pinta); completada/cerrada → documentos que existen y
-// los bloques sin «Sin dato». Con contenedor ≥860 px, el mapa y el predio van
+// los bloques sin «Sin dato». Con contenedor ≥860 px, los entregables y el mapa van
 // a su columna derecha, fijos mientras se recorren los datos.
 // Solo lectura: no edita nada.
 // ═══════════════════════════════════════════════════════════════
@@ -178,6 +178,23 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
     (usuario.rol === 'ADMIN' || !veTodasLasVisitas(usuario.rol)) &&
     !citaVisitaTexto(f) && !!(rad || normOrdenAudiencias(ordenCita));
 
+  // Iniciada: lo pendiente primero. Completada: «Documentos», solo lo que
+  // existe (decisión del usuario 2026-10-14).
+  const cajaEntregables = entItems.length > 0 && (
+    <section className="fv-ent-caja">
+      <h2 className="fv-bt">{terminada ? 'Documentos' : 'Entregables'}</h2>
+      {entItems.map(e => (
+        <div className="mv-ent" key={e.n}>
+          <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
+          <span className="mv-ent-n">{e.n}</span>
+          {e.link
+            ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
+            : <span className="mv-ent-e falta">Falta</span>}
+        </div>
+      ))}
+    </section>
+  );
+
   return (
     <div className="fv" ref={raizRef}>
       {pidiendoCita && (
@@ -254,23 +271,14 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
       <div className="fv-cuerpo">
         <div className="fv-datos">
           {empezada ? (<>
-            {/* Iniciada: lo pendiente primero. Completada: «Documentos»,
-                solo lo que existe (decisión del usuario 2026-10-14). */}
-            {entItems.length > 0 && (
-              <section className="fv-ent-caja">
-                <h2 className="fv-bt">{terminada ? 'Documentos' : 'Entregables'}</h2>
-                {entItems.map(e => (
-                  <div className="mv-ent" key={e.n}>
-                    <span className={'ent-dot' + (e.link ? ' ed-ok' : ' ed-pend')} aria-hidden="true" />
-                    <span className="mv-ent-n">{e.n}</span>
-                    {e.link
-                      ? <a className="vc-btn" href={e.link} target="_blank" rel="noopener noreferrer">Abrir</a>
-                      : <span className="mv-ent-e falta">Falta</span>}
-                  </div>
-                ))}
+            {!dosCols && cajaEntregables}
+            {bloques.map(b => <_BloqueFV key={b.clave} b={b} />)}
+            {dosCols && predio.length > 0 && (
+              <section className="fv-bloque">
+                <h2 className="fv-bt">El predio</h2>
+                <_DatosMV pares={predio} />
               </section>
             )}
-            {bloques.map(b => <_BloqueFV key={b.clave} b={b} />)}
           </>) : (<>
             {/* Asignada sin visita: el predio y nada más — ni secciones ni
                 «Se llenan en la visita». */}
@@ -290,13 +298,14 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
           {!dosCols && <MapaPanelMV f={f} />}
         </div>
 
-        {/* Ficha ancha: mapa y predio en su columna, fijos bajo la cabecera
-            mientras se recorren los datos. En la asignada el predio va a la
-            izquierda y aquí viaja solo el mapa (como la maqueta). */}
+        {/* Ficha ancha: entregables y mapa en su columna, fijos bajo la cabecera
+            mientras se recorren los datos (2026-10-30, decisión del usuario).
+            El predio va a la izquierda: con él la columna no cabía en la
+            pantalla y lo fijo quedaba cortado. */}
         {dosCols && (
           <div className="fv-lugar">
+            {empezada && cajaEntregables}
             <MapaPanelMV f={f} />
-            {empezada && predio.length > 0 && <_DatosMV pares={predio} />}
           </div>
         )}
       </div>
