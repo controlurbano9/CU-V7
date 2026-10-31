@@ -364,28 +364,23 @@ function BandaCasoFV({ f, verPrioridad }) {
 // rótulo arriba, textos largos en recuadro y —solo si es iniciada— «Sin dato»
 // al pie (bloquesFicha vacía la lista en las terminadas).
 function _BloqueFV({ b }) {
-  const piezas = [];
-  let pares = [];
-  const volcar = () => {
-    if (pares.length) {
-      piezas.push(<_DatosMV key={'dl' + piezas.length} pares={pares} />);
-      pares = [];
-    }
-  };
-  b.campos.forEach(c => {
-    if (c.largo) {
-      volcar();
-      piezas.push(<p key={'tx' + piezas.length} className="fv-texto">{c.v}</p>);
-    } else {
-      pares.push([c.l, c.v, c.ancho]);
-    }
-  });
-  volcar();
+  // Datos y textos largos aparte: en la ficha ancha van lado a lado. Con los
+  // datos encima, el tope de lectura del texto dejaba vacío todo el lado derecho
+  // (2026-10-30, decisión del usuario).
+  const textos = b.campos.filter(c => c.largo);
+  const pares = b.campos.filter(c => !c.largo).map(c => [c.l, c.v, c.ancho]);
 
   return (
     <section className="fv-bloque">
       <h2 className="fv-bt">{b.titulo}</h2>
-      {piezas}
+      <div className={'fv-bloque-grid' + (textos.length && pares.length ? ' fv-con-texto' : '')}>
+        {pares.length > 0 && <div className="fv-bloque-datos"><_DatosMV pares={pares} /></div>}
+        {textos.length > 0 && (
+          <div className="fv-bloque-textos">
+            {textos.map((c, i) => <p key={i} className="fv-texto">{c.v}</p>)}
+          </div>
+        )}
+      </div>
       {b.sinDato.length > 0 && (
         // Tres y «N más»: la lista entera de una visita a medio diligenciar es
         // un párrafo que tapa los datos (la completa queda en el title).
@@ -423,7 +418,7 @@ function _VisitasCasoFV({ visitas, actual, onElegir }) {
           return (
             <button key={v._idx} type="button" className={'fv-vcaso-op' + (on ? ' on' : '')}
               aria-pressed={on} onClick={() => { if (!on) onElegir(v); }}>
-              <b><EstadoAnillo estado={est} />{n != null ? 'Visita ' + n : 'Por hacer'}{on && <em className="fv-vcaso-ve">Viendo</em>}</b>
+              <b><EstadoAnillo estado={est} />{n != null ? 'Visita ' + n : 'Por hacer'}</b>
               <span>{etiqueta}{fecha && <i>{fecha}</i>}</span>
             </button>
           );

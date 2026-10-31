@@ -2970,6 +2970,10 @@ button.sv-col-head {
 .fv-hechos .l { font-size: var(--fs-1); color: var(--ink-4); }
 .fv-hechos .v { margin-top: 1px; font-size: var(--fs-2); font-weight: 500; }
 .fv-fija-acc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fv { --fv-lado: 300px; }
+.fv-ent-caja { background: var(--paper); border-radius: 12px; padding: 12px 16px; }
+.fv-ent-caja .mv-ent { min-height: 38px; }
+.fv-ent-caja .mv-ent .vc-btn { min-height: 30px; padding: 0 10px; font-size: var(--fs-1); }
 .fv-fija-acc .vc-btn { min-height: 38px; padding: 0 14px; font-size: var(--fs-1); }
 .fv-cerrar { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 0; font-size: var(--fs-4); }
 /* La × no pisa «Cómo llegar»: la cabecera le reserva su esquina. */
@@ -2989,11 +2993,12 @@ button.sv-col-head {
 .fv-vcaso-op i::before { content: ' · '; }
 .fv-vcaso-op { border-color: var(--line-2); }
 .fv-vcaso-op:hover { background: var(--surface-2); }
-/* La elegida con la selección de la tarjeta (amarillo) y la palabra «Viendo»:
-   gris contra blanco no decía cuál era (2026-10-30, decisión del usuario). */
-.fv-vcaso-op.on { background: var(--valla-bg); border-color: var(--valla); box-shadow: inset 0 0 0 1px var(--valla); color: var(--ink); cursor: default; }
-.fv-vcaso-ve { margin-left: 6px; font-style: normal; font-weight: 600; }
-.fv-vcaso-op.on b { color: var(--ink); }
+/* La elegida: borde de tinta de 2 px y «Visita N» más grande y en negrilla, sin
+   color de fondo (2026-10-30, decisión del usuario). El borde va con sombra
+   interior para que no cambie el tamaño del botón. */
+.fv-vcaso-op.on { background: var(--surface); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); cursor: default; }
+.fv-vcaso-op.on:hover { background: var(--surface); }
+.fv-vcaso-op.on b { color: var(--ink); font-size: var(--fs-2); font-weight: 800; }
 .fv-vcaso-op:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .fv-hoja .fv-vcaso { padding-right: 48px; }
 /* Angosto (hoja en el teléfono): las visitas lado a lado y repartidas, no
@@ -3029,11 +3034,24 @@ button.sv-col-head {
 /* Mapa de la ficha: alto fijo (el 16:9 del panel se estiraba de más aquí). */
 .fv .mv-mapa { height: 220px; aspect-ratio: auto; border-radius: 12px; }
 @container (min-width: 860px) {
-  .fv-cuerpo { grid-template-columns: minmax(0, 1fr) 300px; }
+  .fv-cuerpo { grid-template-columns: minmax(0, 1fr) var(--fv-lado); }
   /* El lugar de la visita queda fijo bajo la cabecera mientras se recorren
      los datos. */
   .fv-lugar { position: sticky; top: var(--fv-fija-h, 120px); }
   .fv-lugar .fv-ent-caja { margin-bottom: 14px; }
+}
+/* Ficha ancha: el texto largo a la izquierda, con su tope de lectura, y los datos
+   a su derecha. Medido en la ficha, no en la ventana: en Buscar el panel es angosto. */
+@container (min-width: 1200px) {
+  .fv-bloque-grid.fv-con-texto { display: grid; grid-template-columns: minmax(0, 70ch) minmax(0, 1fr); gap: 0 var(--s-5); align-items: start; }
+  .fv-con-texto .fv-bloque-textos { grid-column: 1; grid-row: 1; }
+  .fv-con-texto .fv-bloque-datos { grid-column: 2; grid-row: 1; margin-top: 12px; }
+  .fv-con-texto .fv-bloque-textos .fv-texto:first-child { margin-top: 12px; }
+}
+/* Con más espacio, el mapa crece en vez de dejar aire. */
+@container (min-width: 1500px) {
+  .fv { --fv-lado: 400px; }
+  .fv .mv-mapa { height: 300px; }
 }
 /* Bloques del cuerpo (bloquesFicha, v2): título 15/600 sin número ni raya;
    rótulo 12 sin mayúsculas; textos largos en recuadro. */
@@ -3047,9 +3065,6 @@ button.sv-col-head {
 .fv-vacios b { font-weight: 600; color: var(--ink-3); }
 /* Entregables (iniciada) / Documentos (completada): recuadro de papel con las
    filas de .mv-ent — lo pendiente primero, con su punto de color. */
-.fv-ent-caja { background: var(--paper); border-radius: 12px; padding: 12px 16px; }
-.fv-ent-caja .mv-ent { min-height: 38px; }
-.fv-ent-caja .mv-ent .vc-btn { min-height: 30px; padding: 0 10px; font-size: var(--fs-1); }
 /* Columna del lugar (ficha ancha): el predio en una sola columna, debajo del
    mapa; el código catastral largo se parte antes que desbordar. */
 .fv-lugar .mv-bloque { margin-top: 18px; }

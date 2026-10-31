@@ -138,3 +138,29 @@ test('cliente: la fila REITERADO tampoco se lista si la hoja llega entera', () =
   const fn = /function _procesarVisitas\([^)]*\) \{[\s\S]*?\n\}/.exec(api)[0];
   assert.ok(fn.includes("'REITERADO'"));
 });
+
+test('backend: citaciones completadas, de la más reciente a la más antigua', opts, () => {
+  const src = fs.readFileSync(BACKEND, 'utf8');
+  const piezas = [/function _fechaOrdenableAS\([^)]*\) \{[\s\S]*?\n\}/.exec(src),
+    /function _citacionesCompletadas\([^)]*\) \{[\s\S]*?\n\}/.exec(src)];
+  piezas.forEach((p) => assert.ok(p));
+  const ctx = vm.createContext({
+    ESTADO_CUPO_RESERVADO: 'R',
+    _visitaDeCupo: (v, c) => v[c.radicado] || null,
+    _minutosHora: (h) => h,
+    _filaExcelCitacion: (c) => [c.radicado, '', '', '', '', '', '', '', 'NUEVO'],
+  });
+  vm.runInContext(piezas.map((p) => p[0]).join('\n'), ctx);
+  const cupo = (radicado, fecha, hora) => ({ estado: 'R', radicado, fecha, hora, sustanciador: 'A', fechaTexto: '' });
+  const visitas = {
+    viejo: { completada: true, fechaCompletada: '05/09/2026' },
+    nuevo: { completada: true, fechaCompletada: '28/10/2026' },
+    mismoDia: { completada: true, fechaCompletada: '28/10/2026' },
+    sinFecha: { completada: true, fechaCompletada: '' },
+    vivo: { completada: false, fechaCompletada: '' },
+  };
+  const r = vm.runInContext('_citacionesCompletadas', ctx)({ cupos: [cupo('viejo', 1, 0), cupo('sinFecha', 2, 0),
+    cupo('mismoDia', 9, 0), cupo('nuevo', 3, 0), cupo('vivo', 4, 0)] }, visitas);
+  assert.deepEqual(Array.from(r, (x) => x.radicado), ['nuevo', 'mismoDia', 'viejo', 'sinFecha']);
+  assert.equal(r[0].fechaCompletada, '28/10/2026');
+});

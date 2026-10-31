@@ -905,6 +905,7 @@ function AudienciasScreen({ usuario }) {
             <div className="au-row" key={r.idCupo}>
               <span className="t">
                 <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
+                {r.fechaCompletada && <small>Completada {formatearFecha(r.fechaCompletada)}</small>}
                 <small>{titleCaseNombre(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
               </span>
               <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
