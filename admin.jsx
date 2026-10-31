@@ -290,13 +290,14 @@ function TabBandeja({ vig, logDesc, recargarVisitas, pend, pendError, onReintent
     return (
       <div key={f._idx} className="adm-b-item">
         <div className="adm-b-txt">
-          <span className="vc-rad">{f['RADICADO'] || '—'}</span>
+          {/* El oficio se pide por la orden de policía: es lo que identifica la fila. */}
+          <span className="vc-rad">{ordenPoliciaDe(f) ? 'Orden ' + ordenPoliciaDe(f) : 'Sin orden'}</span>
           <div className="adm-b-dir"><span title={f['DIRECCION INFRACCION'] || f['DIRECCION'] || ''}>
             {direccionVisible(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '—')}</span>
             {(f['BARRIO/VEREDA'] || f['BARRIO']) && <span> · {f['BARRIO/VEREDA'] || f['BARRIO']}</span>}</div>
           <div className="adm-b-meta">
-            <span className="vc-sep">Orden</span> {f['N ORDEN DE POLICIA'] || f['N° ORDEN DE POLICIA'] || '—'}{' '}
-            <span className="vc-sep">·</span> {f['FECHA DE VISITA'] || 'sin fecha'}
+            <span className="vc-sep">Radicado</span> {f['RADICADO'] || '—'}{' '}
+            <span className="vc-sep">·</span> {formatearFecha(f['FECHA DE VISITA']) || 'sin fecha'}
           </div>
         </div>
         <div className="adm-b-acc">
