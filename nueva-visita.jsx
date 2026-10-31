@@ -216,7 +216,7 @@ function _rfmThumb(id, w) { return 'https://drive.google.com/thumbnail?id=' + id
 // Foto en grande con zoom (rueda, pellizco, doble toque, +/−) y paso a la
 // anterior o la siguiente (flechas, teclado, deslizar). La comparten el modal
 // del registro fotográfico y el visor de fotos.
-function _VisorFotoRF({ foto, idx, n, onElegir }) {
+function VisorFotoRF({ foto, idx, n, onElegir }) {
   const [grande, setGrande] = React.useState(null);     // { id, w, h } de la versión grande ya cargada
   const [fallo, setFallo] = React.useState('');         // id de la foto que no cargó
   const visorRef = React.useRef(null);
@@ -537,7 +537,7 @@ function ModalRegistroFotos({ fotos, onCambiar, onDescribir, onCancelar, onGener
       </header>
 
       <div className="rfm-foto">
-        <_VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
+        <VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
 
         {foto && (
           <div className="rfm-pie">
@@ -659,7 +659,7 @@ function VisorFotos({ fotos, inicio, onCerrar }) {
         )}
       </header>
       <div className="rfm-foto">
-        <_VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
+        <VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
         {foto && foto.descripcion && <p className="rfm-ver-pie">{foto.descripcion}</p>}
       </div>
     </div>,
