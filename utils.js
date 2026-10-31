@@ -1703,6 +1703,16 @@ function reordenarVisitaDia(lista, idx, antesDe) {
   return nueva.every(function (x, i) { return x._idx === lista[i]._idx; }) ? null : nueva;
 }
 
+// «Asignar a»: solo quienes reciben visitas (2026-10-30, decisión del usuario).
+// Por primer nombre, como los inspectores de la agenda. Acepta filas {nombre}.
+var INSPECTORES_ASIGNABLES = ['ALEJANDRO', 'MAURICIO', 'DANIEL'];
+function inspectoresAsignables(lista) {
+  return (lista || []).filter(function (i) {
+    var primero = String((i && i.nombre) || '').trim().split(/\s+/)[0].toUpperCase();
+    return INSPECTORES_ASIGNABLES.indexOf(primero) !== -1;
+  });
+}
+
 function ordenPoliciaDe(f) {
   var s = String((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').trim();
   var u = s.toUpperCase();
@@ -4880,7 +4890,8 @@ function tarjetaVisita(f, opts) {
   var t = { estado: estado, estadoTxt: _TV_ESTADO_TXT[estado] || estado, tiempo: '', demora: false,
     dir: dir || 'Sin dirección', dirVisible: dir ? direccionVisible(dir) : 'Sin dirección',
     ident: identificadorVisita(f), ubic: ubicacionCortaVisita(f), accion: null,
-    mapa: estado === 'ASIGNADO' || estado === 'INICIADO',
+    // Iniciada: ya se fue al predio; «Cómo llegar» sigue en la ficha (2026-10-30).
+    mapa: estado === 'ASIGNADO',
     inspector: opts.veTodo ? nombreCortoVisita(f) : '',
     radicada: formatearFecha(f['FECHA RADICADO'] || '') };
   var n = null;
@@ -5139,6 +5150,7 @@ var _cuUtilsExports = {
   visitasDelDia: visitasDelDia,
   ordenPoliciaDe: ordenPoliciaDe,
   reordenarVisitaDia: reordenarVisitaDia,
+  inspectoresAsignables: inspectoresAsignables,
   idArchivoDrive: idArchivoDrive,
   entregablesFaltantes: entregablesFaltantes,
   agruparMisVisitas: agruparMisVisitas,

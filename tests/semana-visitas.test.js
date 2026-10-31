@@ -258,3 +258,11 @@ test('reordenarVisitaDia: subir, bajar, al final; sin cambio o ajena devuelve nu
   assert.equal(r(L, 3, null), null);
   assert.equal(r(L, 9, 1), null);
 });
+
+test('Asignar a: solo Alejandro, Mauricio y Daniel, por primer nombre', () => {
+  const { inspectoresAsignables: a } = require('../utils.js');
+  const lista = ['ALEJANDRO HERNANDEZ MUÑOZ', 'MAURICIO HERRERA LOPERA', 'DANIEL PEDRAZA ARANGO',
+    'VICTOR DANIEL RUIZ', 'JUAN MAURICIO PEREZ', 'PATRICIA LOPEZ'].map((nombre) => ({ nombre }));
+  assert.deepEqual(a(lista).map((i) => i.nombre.split(' ')[0]), ['ALEJANDRO', 'MAURICIO', 'DANIEL']);
+  assert.deepEqual(a(null), []);
+});

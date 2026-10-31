@@ -40,7 +40,7 @@ test('asignada hoy: «hoy», sin demora', () => {
   assert.equal(t.demora, false);
 });
 
-test('iniciada: Continuar', () => {
+test('iniciada: Continuar y sin «Cómo llegar» en la tarjeta', () => {
   const t = tarjetaVisita(fila({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '20/10/2026' }), { hoy: HOY });
   assert.equal(t.accion, 'Continuar');
 });
@@ -116,4 +116,10 @@ test('dirección que es coordenada: se ve «Punto GPS»', () => {
 test('la tarjeta no dice lo que falta: eso va en la ficha', () => {
   const t = tarjetaVisita({ 'ESTADO VISITA': 'INICIADO' }, { hoy: new Date(2026, 9, 30), puede: true });
   assert.equal(t.falta, undefined);
+});
+
+test('iniciada: la tarjeta no ofrece el mapa', () => {
+  const t = tarjetaVisita({ 'ESTADO VISITA': 'INICIADO' }, { hoy: new Date(2026, 9, 30), puede: true });
+  assert.equal(t.mapa, false);
+  assert.equal(t.accion, 'Continuar');
 });

@@ -978,8 +978,9 @@ function AppV6() {
         {/* ── FAB «+»: solo sin barra lateral. Abre Nueva visita / Pedir cita
             (decisión 4: el oficio en campo pide la cita solo con el N° de
             orden, sin abrir el formulario). Al supervisor lo lleva directo a
-            Nueva visita: no pide citas. ── */}
-        {!isDesktop && !enFormulario && menuMas && (<>
+            Nueva visita: no pide citas. En la Agenda no sale: pisaba el botón
+            «Asignar» de su barra fija (2026-10-30, decisión del usuario). ── */}
+        {!isDesktop && !enFormulario && pantalla !== 'agenda' && menuMas && (<>
           <div className="cab-velo" onClick={() => setMenuMas(false)}></div>
           <div className="fab-menu" role="menu">
             <button type="button" role="menuitem" onClick={() => { setMenuMas(false); irNueva(); }}>
@@ -990,7 +991,7 @@ function AppV6() {
             </button>
           </div>
         </>)}
-        {!isDesktop && !enFormulario && (
+        {!isDesktop && !enFormulario && pantalla !== 'agenda' && (
           <button type="button" className="fab-nueva" onClick={abrirMas}
             title={puedePedirCita ? 'Nueva visita o pedir cita' : 'Nueva visita'}
             aria-label={puedePedirCita ? 'Nueva visita o pedir cita' : 'Nueva visita'}

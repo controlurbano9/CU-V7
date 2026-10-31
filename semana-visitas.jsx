@@ -159,8 +159,9 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
 
 // ── Reordenar en el celular (2026-10-30, decisión del usuario: sin flechas) ──
 // Como las fotos del informe: con el dedo, mantener presionado y arrastrar;
-// deslizar sigue siendo desplazar la página. Con el mouse, al mover. Nada se
-// mueve hasta soltar: una raya marca dónde cae.
+// deslizar sigue siendo desplazar la página. Con el mouse, al mover. La tarjeta
+// entera va encima del dedo, para que se vea la raya que marca dónde cae; las
+// demás no se mueven hasta soltar.
 function useArrastreDiaSV(contRef, activo, alSoltar) {
   const cb = React.useRef(alSoltar);
   cb.current = alSoltar;
@@ -188,7 +189,7 @@ function useArrastreDiaSV(contRef, activo, alSoltar) {
       bajo.classList.add(antes ? 'sv-cae-antes' : 'sv-cae-despues');
     };
     const ubicar = () => {
-      if (g.fantasma) g.fantasma.style.transform = 'translate(' + (g.x + g.dx) + 'px,' + (g.y + g.dy) + 'px)';
+      if (g.fantasma) g.fantasma.style.transform = 'translate(' + g.fx + 'px,' + (g.y - g.alto - 12) + 'px)';
     };
     const autoDesplazar = () => {
       if (!g || !g.activo) return;
@@ -208,15 +209,20 @@ function useArrastreDiaSV(contRef, activo, alSoltar) {
       try { cont.setPointerCapture(g.id); } catch (e) { /* el puntero ya no existe */ }
       document.body.classList.add('sv-arrastrando');
       g.origen.classList.add('sv-arrastrada');
-      const f = document.createElement('div');
-      f.className = 'sv-fantasma';
-      const dir = g.origen.querySelector('.tv-dir');
-      f.textContent = dir ? dir.textContent : '';
-      document.body.appendChild(f);
+      // Copia de la tarjeta, dentro de la lista para conservar sus estilos. Solo
+      // sube y baja: la lista es de una columna.
+      const r = g.origen.getBoundingClientRect();
+      const f = g.origen.cloneNode(true);
+      f.removeAttribute('data-sv-idx');
+      f.removeAttribute('data-sv-orden');
+      f.classList.remove('sv-arrastrada');
+      f.classList.add('sv-fantasma');
+      f.setAttribute('aria-hidden', 'true');
+      f.style.width = r.width + 'px';
+      cont.appendChild(f);
       g.fantasma = f;
-      // Con el dedo va encima, para que se vea dónde cae; con el mouse, al lado.
-      g.dx = g.tipo === 'mouse' ? 14 : -f.offsetWidth / 2;
-      g.dy = g.tipo === 'mouse' ? 14 : -f.offsetHeight - 28;
+      g.fx = r.left;
+      g.alto = r.height;
       ubicar();
       g.raf = requestAnimationFrame(autoDesplazar);
     };
@@ -266,7 +272,7 @@ function useArrastreDiaSV(contRef, activo, alSoltar) {
       const origen = tvDe(e.target);
       if (!origen || !origen.hasAttribute('data-sv-orden')) return;
       g = { id: e.pointerId, tipo: e.pointerType, origen, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
-        activo: false, timer: null, raf: 0, sobre: null, antes: false, fantasma: null, dx: 0, dy: 0 };
+        activo: false, timer: null, raf: 0, sobre: null, antes: false, fantasma: null, fx: 0, alto: 0 };
       if (e.pointerType !== 'mouse') {
         const este = g;
         g.timer = setTimeout(() => {

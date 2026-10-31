@@ -252,7 +252,8 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
   const [aviso, setAviso] = useStateVC('');
   const [expediente, setExpediente] = useStateVC('');
 
-  if (!abierto || !inspectores || inspectores.length === 0) return null;
+  const asignables = inspectoresAsignables(inspectores);
+  if (!abierto || asignables.length === 0) return null;
   const est = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
   // La acción llega explícita desde el caller. Antes se deducía del estado
   // de la fila ("si está COMPLETADO, crear visita nueva"), que es la raíz de
@@ -261,7 +262,8 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
   // viejo para los callers que todavía no la pasan (Agenda).
   const esNueva = accion ? accion === 'nueva' : (est === 'COMPLETADO' && !!onAsignarNuevaVisita);
 
-  const hoyIso = _hoyIso();
+  // Sin mínimo: también se asigna para un día anterior (2026-10-30, decisión
+  // del usuario), cuando la visita ya se hizo y se registra después.
   const maxIso = _isoSumandoDias(90);
 
   function elegir(nombre) {
@@ -287,13 +289,13 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
           : 'Asignar a:'}
       </div>
 
-      {/* Fecha programada: asignar hoy para un día posterior. Vacío = hoy.
+      {/* Fecha de la asignación: anterior o posterior a hoy. Vacío = hoy.
           Solo donde el caller lo pide (Buscar y Agenda). */}
       {conFecha && (
       <div className="psi-fecha">
         <label htmlFor={'psi-f-' + f._idx}>Para el día</label>
         <input id={'psi-f-' + f._idx} type="date" value={fecha}
-          min={hoyIso} max={maxIso}
+          max={maxIso}
           onChange={e => cambiarFecha(e.target.value)} />
         <button type="button" className="vc-btn"
           onClick={() => { setFecha(''); setAviso(''); }}
@@ -313,7 +315,7 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
         </div>
       )}
 
-      {inspectores.map(i => (
+      {asignables.map(i => (
         <button key={i.nombre} type="button"
           onClick={() => elegir(i.nombre)} disabled={busy} style={{
             background: 'var(--superficie)', border: '1px solid var(--borde)', borderRadius: 6,
@@ -361,11 +363,6 @@ async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expedient
 
 // El <input type="date"> habla ISO; BD habla DD/MM/YYYY (regla de fechas).
 // La conversión se hace acá y nunca se manda un Date ni un ISO al backend.
-function _hoyIso() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
-    '-' + String(d.getDate()).padStart(2, '0');
-}
 function _isoSumandoDias(n) {
   const d = new Date();
   d.setDate(d.getDate() + n);
@@ -383,6 +380,9 @@ function avisoFechaAsignacion(iso) {
   if (!iso) return '';
   const d = parsearFecha(_isoADDMMAAAA(iso));
   if (!d) return '';
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  // El reloj de la tarjeta («N días sin iniciar») cuenta desde esta fecha.
+  if (d < hoy) return 'Fecha anterior: los días sin iniciar se cuentan desde ese día.';
   const dow = d.getDay();
   if (dow === 0 || dow === 6) return 'Cae en fin de semana.';
   if (typeof esDiaHabil === 'function' && !esDiaHabil(d)) return 'Es festivo.';

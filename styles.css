@@ -4680,10 +4680,9 @@ body.sv-arrastrando { -webkit-user-select: none; user-select: none; }
 .sv-arrastrada { opacity: .4; }
 .sv-cae-antes { box-shadow: 0 -4px 0 var(--ink); }
 .sv-cae-despues { box-shadow: 0 4px 0 var(--ink); }
-.sv-fantasma {
-  position: fixed; top: 0; left: 0; z-index: 400; max-width: 240px; padding: var(--s-2) var(--s-3); pointer-events: none;
-  background: var(--ink); color: var(--surface); border-radius: var(--r-ctl); box-shadow: var(--shadow-md);
-  font: 700 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.sv-lista .sv-fantasma {
+  position: fixed; top: 0; left: 0; z-index: 400; margin: 0; pointer-events: none;
+  border-color: var(--ink); box-shadow: var(--shadow-md);
 }
 .sv .tv[draggable="true"] { cursor: grab; }
 /* Táctil: 44 px también dentro de la Semana (gana a la regla de arriba). */
