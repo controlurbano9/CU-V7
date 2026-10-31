@@ -391,13 +391,13 @@ function _BloqueFV({ b }) {
 // «Visitas del caso»: un radicado con seguimiento tiene varias filas y la
 // lista de Buscar muestra una sola (la viva). Este selector, primero en la
 // cabecera porque decide de qué visita es todo lo que sigue, pasa de una a
-// otra. Cada opción: número, estado en texto + barra de color (código de la
-// Semana: el color solo no basta) y la fecha que importa.
+// otra. Cada opción: número, estado en texto + anillo (el color solo no basta)
+// y la fecha que importa.
 const _EST_VC_FV = {
-  PENDIENTE:  { cls: ' vcs-pend',  label: 'Pendiente' },
-  ASIGNADO:   { cls: ' vcs-asig',  label: 'Asignada' },
-  INICIADO:   { cls: ' vcs-curso', label: 'Iniciada' },
-  COMPLETADO: { cls: ' vcs-hecha', label: 'Completada' },
+  PENDIENTE:  'Pendiente',
+  ASIGNADO:   'Asignada',
+  INICIADO:   'Iniciada',
+  COMPLETADO: 'Completada',
 };
 function _VisitasCasoFV({ visitas, actual, onElegir }) {
   const ord = numerarVisitasRadicado(visitas);
@@ -407,15 +407,15 @@ function _VisitasCasoFV({ visitas, actual, onElegir }) {
       <div className="fv-vcaso-ops">
         {ord.map(({ f: v, n }) => {
           const est = normalizarEstado(v['ESTADO VISITA'] || '');
-          const t = _EST_VC_FV[est] || { cls: '', label: est || '—' };
+          const etiqueta = _EST_VC_FV[est] || est || '—';
           const fecha = (est === 'INICIADO' || est === 'COMPLETADO')
             ? formatearFecha(v['FECHA DE VISITA'] || '') : '';
           const on = v._idx === actual._idx;
           return (
-            <button key={v._idx} type="button" className={'fv-vcaso-op' + t.cls + (on ? ' on' : '')}
+            <button key={v._idx} type="button" className={'fv-vcaso-op' + (on ? ' on' : '')}
               aria-pressed={on} onClick={() => { if (!on) onElegir(v); }}>
-              <b>{n != null ? 'Visita ' + n : 'Por hacer'}</b>
-              <span>{t.label}{fecha && <i>{fecha}</i>}</span>
+              <b><EstadoAnillo estado={est} />{n != null ? 'Visita ' + n : 'Por hacer'}</b>
+              <span>{etiqueta}{fecha && <i>{fecha}</i>}</span>
             </button>
           );
         })}

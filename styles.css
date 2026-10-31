@@ -2332,14 +2332,6 @@ button.sv-col-head:hover { color: var(--ink-2); }
 
 /* Sin border-radius a propósito: la esquina redondeada contra un borde de un
    solo lado (la barra de estado) se ve rota. */
-.sv-card {
-  background: var(--superficie);
-  border: 0.5px solid var(--borde);
-  border-left: 3px solid var(--amarillo);
-  padding: 7px 8px; margin-bottom: 5px;
-}
-.sv-card.sv-iniciada   { border-left-color: var(--azul); }
-.sv-card.sv-completada { border-left-color: var(--verde); opacity: .62; }
 .sv-dir { font-size: var(--fs-1); font-weight: 600; line-height: 1.3; }
 /* Una sola línea lógica que envuelve sola: a 160 px ocupa dos renglones y a
    285 px uno. Por eso no hace falta media query para "la tarjeta ancha". */
@@ -2454,14 +2446,6 @@ button.ind { cursor: pointer; display: flex; flex-direction: column; justify-con
   background: var(--paper); padding-bottom: 8px;
 }
 .al-head > div:first-child { margin-bottom: 8px; }
-.al-card {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--superficie);
-  border: 0.5px solid var(--borde);
-  border-left: 3px solid var(--amarillo);
-  padding: 6px 8px 6px 10px; margin-bottom: 5px;
-}
-.al-card.al-iniciada { border-left-color: var(--azul); }
 .al-txt { flex: 1 1 auto; min-width: 0; }
 .al-motivo {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -2645,33 +2629,6 @@ button.sv-col-head {
 .home-pantalla .home-sem,
 .home-pantalla .home-al { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
 
-/* Tarjeta de visita: la misma en la Semana y en Alertas. La barra de estado
-   va separada del borde y con los extremos redondeados: así la tarjeta puede
-   tener esquinas redondeadas sin que se vea «rota» (el motivo por el que la
-   versión anterior no las tenía). */
-.sv-card,
-.al-card {
-  position: relative; margin: 0; border: 0; border-radius: 8px;
-  background: var(--surface); box-shadow: var(--shadow-sm);
-  padding: 9px 10px 9px 15px;
-  transition: box-shadow .15s, transform .15s;
-}
-.al-card + .al-card { margin-top: 6px; }
-.sv-card::before,
-.al-card::before {
-  content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 3px;
-  border-radius: 2px; background: var(--amber);
-}
-.sv-card.sv-iniciada::before,
-.al-card.al-iniciada::before { background: var(--info); }
-.sv-card.sv-completada::before { background: var(--green); }
-@media (hover: hover) and (pointer: fine) {
-  .sv-card:hover,
-  .al-card:hover {
-    box-shadow: 0 4px 12px -4px rgba(31,27,22,0.16), 0 1px 2px rgba(31,27,22,0.05);
-    transform: translateY(-1px);
-  }
-}
 .sv-dir,
 .al-dir {
   font-family: var(--font-sans); font-size: var(--fs-1); font-weight: 600; line-height: 1.3;
@@ -2724,7 +2681,6 @@ button.sv-col-head {
   }
   .home-pantalla .home-al > .al-head,
   .home-pantalla .home-al > .sv-vacio { grid-column: 1 / -1; }
-  .home-pantalla .home-al .al-card + .al-card { margin-top: 0; }
   .home-pantalla .al-head { position: sticky; top: 0; z-index: 2; }
 }
 
@@ -3010,8 +2966,8 @@ button.sv-col-head {
 .fv-vcaso-tit { font: 600 var(--fs-1)/1 var(--font-sans); color: var(--ink-2); }
 .fv-vcaso-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .fv-vcaso-op { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
-  min-height: 40px; padding: 4px 12px 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-2);
-  border-radius: 0 6px 6px 0; background: var(--surface-2); color: var(--ink-3); font: inherit; text-align: left; cursor: pointer; }
+  min-height: 40px; padding: 4px 12px; border: 1px solid var(--line);
+  border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink-3); font: inherit; text-align: left; cursor: pointer; }
 .fv-vcaso-op b { font-size: var(--fs-1); font-weight: 700; color: var(--ink-2, var(--ink)); }
 .fv-vcaso-op span { font-size: var(--fs-1); white-space: nowrap; }
 .fv-vcaso-op i { font-style: normal; }
@@ -3020,10 +2976,6 @@ button.sv-col-head {
 .fv-vcaso-op.on { background: var(--surface); border-color: var(--ink); color: var(--ink); cursor: default; box-shadow: 0 1px 2px rgba(31,27,22,.08); }
 .fv-vcaso-op.on b { color: var(--ink); }
 .fv-vcaso-op:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.fv-vcaso-op.vcs-asig  { border-left-color: var(--amarillo); }
-.fv-vcaso-op.vcs-curso { border-left-color: var(--azul); }
-.fv-vcaso-op.vcs-hecha { border-left-color: var(--verde); }
-.fv-vcaso-op.vcs-pend  { border-left-color: var(--ink-4); }
 .fv-hoja .fv-vcaso { padding-right: 48px; }
 /* Angosto (hoja en el teléfono): las visitas lado a lado y repartidas, no
    apiladas — apiladas se comían ~100 px de la cabecera fija. */
@@ -4509,13 +4461,9 @@ tr.clic, .au-lrow.clic { cursor: pointer; }
 tr.clic:hover td { background: var(--surface-2); }
 
 /* Semana: orden del día y mover de día (2026-10-22) */
-.sv-card { position: relative; }
-.sv-card.arrastrable { cursor: grab; }
-.sv-card.arrastrable:active { cursor: grabbing; }
 .sv-n { position: absolute; top: 6px; right: 7px; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--surface-2); color: var(--ink-2);
   font: 600 var(--fs-1)/18px var(--font-sans); text-align: center; }
-.sv-card .sv-dir { padding-right: 24px; }
 .sv-orden { width: 44px; height: 44px; border: 1px solid var(--line-2); border-radius: var(--r-ctl);
   background: var(--surface); font: 600 var(--fs-3) var(--font-sans); color: var(--ink-2); cursor: pointer; }
 .sv-orden:disabled { opacity: .35; cursor: default; }
@@ -4635,20 +4583,21 @@ tr.clic:hover td { background: var(--surface-2); }
 
 /* ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──
    TarjetaVisita (visita-card.jsx) en Semana, Alertas, Mis visitas y Buscar.
-   Estado = barra lateral de 3 px + palabra (el color solo no basta). Sin
-   border-radius: la esquina redondeada contra un borde de un solo lado se ve
-   rota. La completada va atenuada, como en la Semana. */
+   Estado = anillo + palabra (el color solo no basta; 2026-10-30, reemplaza la
+   barra lateral). La completada va atenuada, como en la Semana. */
 .tv {
   position: relative; display: flex; align-items: flex-start; gap: var(--s-3);
   margin: 0 0 var(--s-2); padding: var(--s-3);
-  background: var(--surface); border-left: 3px solid var(--line-2);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
   cursor: pointer;
 }
-.tv-e-pendiente  { border-left-color: var(--ink-4); }
-.tv-e-asignado   { border-left-color: var(--amber); }
-.tv-e-iniciado   { border-left-color: var(--info); }
-.tv-e-completado { border-left-color: var(--green); opacity: .62; }
-.tv-e-cerrado    { border-left-color: var(--line-2); }
+.tv-e-completado { opacity: .62; }
+/* EstadoAnillo (visita-card.jsx): se llena con el recorrido del caso. */
+.anillo { display: inline-block; flex-shrink: 0; width: 15px; height: 15px; margin-right: 5px; vertical-align: -3px; color: var(--ink-4); }
+.anillo-asignado { color: var(--amber); }
+.anillo-iniciado { color: var(--info); }
+.anillo-completado { color: var(--green); }
+.anillo-check { fill: none; stroke: var(--surface); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tv.sel { box-shadow: inset 0 0 0 2px var(--valla); }
 .tv-txt { flex: 1; min-width: 0; }
 .tv-est { font-size: var(--fs-1); color: var(--ink-3); }
@@ -5049,21 +4998,18 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
    que falta se nombra en la cabecera fija. Sin amarillo --valla:
    en el formulario no hay nada activo que señalar ni selección. */
 
-/* Cabecera: el estado con el código de la tarjeta (palabra + barra
-   de 3 px en su color), no píldora de tinte — un solo lenguaje de
+/* Cabecera: el estado con el código de la tarjeta (anillo + palabra),
+   no píldora de tinte — un solo lenguaje de
    estado desde la Semana hasta aquí. El radicado, que es lo que
    identifica la visita, pasa a condensada 700 a 17: la Semi
    Condensed cierra más que la Barlow que reemplaza, así que chip +
    11 dígitos siguen cabiendo en el renglón del celular. */
 .nv-header .estado-badge {
-  background: none; border: 0; border-left: 3px solid var(--ink-4);
-  border-radius: 0; padding: 0 8px 0 7px;
-  font-family: var(--font-cond); font-weight: 700; letter-spacing: .03em;
+  background: none; border: 0;
+  border-radius: 0; padding: 0;
+  font-family: var(--font-cond); font-weight: 700;
   color: var(--ink);
 }
-.nv-header .estado-badge.ep-amarillo { border-left-color: var(--amber); }
-.nv-header .estado-badge.ep-azul     { border-left-color: var(--info); }
-.nv-header .estado-badge.ep-verde    { border-left-color: var(--green); }
 .nv-header .estado-id {
   font-family: var(--font-cond); font-weight: 700;
   font-size: var(--fs-3); color: var(--ink);

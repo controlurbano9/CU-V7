@@ -115,29 +115,29 @@ amarillo fuera de los cinco usos permitidos (`INFORME-valla-revision-final.md:94
 ## 4. La tarjeta única de visita (`.tv-*`)
 
 Una sola tarjeta para Semana, Alertas, Mis visitas y Buscar (`visita-card.jsx`;
-`styles.css:4562-4628`). El estado se comunica **duplicado**: barra lateral izquierda de 3 px
-**más la palabra** — el color solo no basta (accesibilidad, `PRODUCT.md`). Sin `border-radius`:
-la esquina redondeada contra un borde de un solo lado se ve rota.
+`styles.css:4562-4628`). El estado se comunica **duplicado**: un **anillo** (`EstadoAnillo`, `visita-card.jsx`)
+**más la palabra** — el color solo no basta (accesibilidad, `PRODUCT.md`). Placa blanca con filete
+de 1 px en `--line-2` y radio `--r-card`.
 
-| Estado | Barra | Clase |
-|---|---|---|
-| Pendiente | `--ink-4` | `.tv-e-pendiente` (`styles.css:4573`) |
-| Asignada | `--amber` | `.tv-e-asignado` (`styles.css:4574`) |
-| Iniciada | `--info` | `.tv-e-iniciado` (`styles.css:4575`) |
-| Completada | `--green` | `.tv-e-completado` (`styles.css:4576`) |
-| Cerrada | `--line-2` | `.tv-e-cerrado` (`styles.css:4577`) |
+| Estado | Forma del anillo | Color | Clase |
+|---|---|---|---|
+| Pendiente | aro vacío | `--ink-4` | `.anillo-pendiente` |
+| Asignada | aro con un cuarto lleno | `--amber` | `.anillo-asignado` |
+| Iniciada | aro con la mitad llena | `--info` | `.anillo-iniciado` |
+| Completada | círculo lleno con ✓ | `--green` | `.anillo-completado` |
+| Cerrada | aro con una raya | `--ink-4` | `.anillo-cerrado` |
 
 La dirección va en **condensada 700** (`.tv-dir`, `styles.css:4799`; `--fs-3` en tarjeta,
 `--fs-2` en renglón). En celular la acción baja a su propio renglón a 44 px (`styles.css:4607-4610`);
 desde 900 vuelve al lado (`styles.css:4739-4745`). La selección es un filete interior de 2 px
 amarillo (`.tv.sel`, `styles.css:4578`).
 
-## 5. La barra de estado y la tarjeta completada
+## 5. El anillo de estado y la tarjeta completada
 
-La **barra lateral de 3 px es solo para el estado de una visita** (decisión del usuario, 2026-10-30, sobre el código de la Semana del 2026-09-19): tarjeta `.tv`, visitas del caso en la ficha y estado del formulario. Va siempre con la palabra del estado. Además marca lo activo en el menú lateral, la candidata elegida en Norma y «hoy» en Audiencias. No se usa para decorar avisos ni cajas: esos dicen lo suyo con el fondo o el texto.
+El **anillo se llena con el recorrido del caso** (decisión del usuario, 2026-10-30; reemplaza la barra lateral de 3 px, que no se distinguía sin color): tarjeta `.tv`, visitas del caso en la ficha y estado del formulario. Va siempre con la palabra del estado. La raya lateral de 3 px en amarillo queda solo para lo activo: el menú lateral, la candidata elegida en Norma y «hoy» en Audiencias. No se usa para decorar avisos ni cajas: esos dicen lo suyo con el fondo o el texto.
 
 Lo completado **se atenúa, no desaparece** (decisión del usuario, 2026-10-30, en vez del sello con
-filete verde que traía la TASK 01): barra verde + la palabra «Completada» como en los demás estados
+filete verde que traía la TASK 01): anillo verde + la palabra «Completada» como en los demás estados
 y toda la tarjeta al 62 % (`.tv-e-completado`). Elegida, enfocada o bajo el puntero vuelve a color
 pleno. La atenuación baja el contraste a propósito: lo que importa de esa tarjeta ya está hecho.
 

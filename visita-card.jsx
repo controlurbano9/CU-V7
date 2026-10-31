@@ -4,6 +4,7 @@
 //   TarjetaVisita             La única tarjeta de visita de la app (Semana,
 //                             Alertas, Mis visitas, Buscar). Arquitectura
 //                             2026-10-27, decisión 1.
+//   EstadoAnillo              Marca del estado: se llena con el recorrido del caso
 //   BotonPdfRadicado          Chip «PQR» (la ficha lo usa junto al radicado)
 //   BotonMapaVisita           Cómo llegar (Google Maps: GPS, catastro o dirección)
 //   PanelSeleccionInspector   Lista de inspectores para asignar / reasignar
@@ -17,6 +18,28 @@
 // Aliasing por archivo (regla de la app): cada .jsx desestructura los hooks
 // con su propio sufijo para que el bundle no colisione.
 const { useState: useStateVC, useEffect: useEffectVC } = React;
+
+// ═══════════════════════════════════════════════════════════════
+// EstadoAnillo — la marca del estado de una visita (2026-10-30, decisión del
+// usuario; reemplaza la barra lateral de 3 px). Va siempre junto a la palabra
+// del estado. Cada estado tiene su forma, así que se distingue sin color: el
+// anillo se llena según el recorrido asignada → iniciada → completada.
+// ═══════════════════════════════════════════════════════════════
+function EstadoAnillo({ estado }) {
+  const e = String(estado || '').toLowerCase();
+  const aro = <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />;
+  return (
+    <svg className={'anillo anillo-' + e} viewBox="0 0 16 16" aria-hidden="true">
+      {e === 'completado'
+        ? <><circle cx="8" cy="8" r="7.5" fill="currentColor" />
+            <path className="anillo-check" d="M4.6 8.3l2.3 2.3 4.5-4.9" /></>
+        : aro}
+      {e === 'asignado' && <path d="M8 8V3.5A4.5 4.5 0 0 1 12.5 8Z" fill="currentColor" />}
+      {e === 'iniciado' && <path d="M8 3.5A4.5 4.5 0 0 1 8 12.5Z" fill="currentColor" />}
+      {e === 'cerrado' && <path d="M5 8h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+    </svg>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════
 // TarjetaVisita — la misma visita dice lo mismo en toda la app, en el mismo
@@ -63,7 +86,7 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
   const tiempoNodo = tiempoTxt
     ? <span className={(urgente || (tiempo == null && t.demora)) ? 'tv-demora' : ''}>{tiempoTxt}</span>
     : null;
-  const estadoNodo = <><b>{t.estadoTxt}</b>{tiempoNodo && <> · {tiempoNodo}</>}</>;
+  const estadoNodo = <><EstadoAnillo estado={t.estado} /><b>{t.estadoTxt}</b>{tiempoNodo && <> · {tiempoNodo}</>}</>;
   const identNodo = ident || (t.ident.principal
     ? <span className={'tv-rad' + (t.ident.secundario ? ' exp-tag' : '')} title={t.ident.secundario || undefined}>{t.ident.principal}</span>
     : null);
@@ -362,5 +385,6 @@ function avisoFechaAsignacion(iso) {
 
 // Exponer al scope global del bundle (mismo patrón que el resto de los componentes)
 window.TarjetaVisita           = TarjetaVisita;
+window.EstadoAnillo            = EstadoAnillo;
 window.BotonPdfRadicado        = BotonPdfRadicado;
 window.PanelSeleccionInspector = PanelSeleccionInspector;

@@ -2864,7 +2864,8 @@ function PanelEstadoVisita(p) {
     <div className="estado-panel" role="status" aria-label="Estado de la visita">
       <div className="estado-panel-top">
         <span className={'estado-badge ep-' + _tonoEstadoVisita(p.estadoVisita)}>
-          {String(p.estadoVisita || '—').toUpperCase()}
+          <EstadoAnillo estado={p.estadoVisita} />
+          {_TV_ESTADO_TXT[String(p.estadoVisita || '').toUpperCase()] || String(p.estadoVisita || '—')}
         </span>
         {/* El prefijo «RAD» se separa para poder ocultarlo en móvil: ahí
             chip + prefijo + 11 dígitos no caben en un renglón. */}
