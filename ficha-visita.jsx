@@ -423,7 +423,7 @@ function _VisitasCasoFV({ visitas, actual, onElegir }) {
           return (
             <button key={v._idx} type="button" className={'fv-vcaso-op' + (on ? ' on' : '')}
               aria-pressed={on} onClick={() => { if (!on) onElegir(v); }}>
-              <b><EstadoAnillo estado={est} />{n != null ? 'Visita ' + n : 'Por hacer'}</b>
+              <b><EstadoAnillo estado={est} />{n != null ? 'Visita ' + n : 'Por hacer'}{on && <em className="fv-vcaso-ve">Viendo</em>}</b>
               <span>{etiqueta}{fecha && <i>{fecha}</i>}</span>
             </button>
           );

@@ -2982,13 +2982,17 @@ button.sv-col-head {
 .fv-vcaso-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .fv-vcaso-op { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
   min-height: 40px; padding: 4px 12px; border: 1px solid var(--line);
-  border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink-3); font: inherit; text-align: left; cursor: pointer; }
+  border-radius: var(--r-ctl); background: var(--surface); color: var(--ink-3); font: inherit; text-align: left; cursor: pointer; }
 .fv-vcaso-op b { font-size: var(--fs-1); font-weight: 700; color: var(--ink-2, var(--ink)); }
 .fv-vcaso-op span { font-size: var(--fs-1); white-space: nowrap; }
 .fv-vcaso-op i { font-style: normal; }
 .fv-vcaso-op i::before { content: ' · '; }
-.fv-vcaso-op:hover { border-color: var(--line-2); background: var(--surface); }
-.fv-vcaso-op.on { background: var(--surface); border-color: var(--ink); color: var(--ink); cursor: default; box-shadow: 0 1px 2px rgba(31,27,22,.08); }
+.fv-vcaso-op { border-color: var(--line-2); }
+.fv-vcaso-op:hover { background: var(--surface-2); }
+/* La elegida con la selección de la tarjeta (amarillo) y la palabra «Viendo»:
+   gris contra blanco no decía cuál era (2026-10-30, decisión del usuario). */
+.fv-vcaso-op.on { background: var(--valla-bg); border-color: var(--valla); box-shadow: inset 0 0 0 1px var(--valla); color: var(--ink); cursor: default; }
+.fv-vcaso-ve { margin-left: 6px; font-style: normal; font-weight: 600; }
 .fv-vcaso-op.on b { color: var(--ink); }
 .fv-vcaso-op:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .fv-hoja .fv-vcaso { padding-right: 48px; }
@@ -3846,9 +3850,8 @@ button.sv-col-head {
   background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: var(--r); font-size: var(--fs-1); box-shadow: var(--shadow-md); }
 .bq-toast[hidden] { display: none; }
 
-/* Velo del cajón de filtros (1200–1599). */
+/* Velo del cajón de filtros. */
 .bq-velo { position: fixed; inset: 0; z-index: 45; background: rgba(31,27,22,.32); }
-@media (min-width: 1600px) { .bq-velo { display: none; } }
 
 /* ── Anchos (nota 11 de la maqueta) ──
    ≥1600: filtros · lista · ficha (los monitores de la oficina rondan 2300).
@@ -3881,19 +3884,16 @@ button.sv-col-head {
      cursor: 271 pendientes seguidas eran una columna de «Asignar» terracota. */
   .bq-fila:not(.sel):not(:hover):not(:focus-within) .mv-acc .vc-btn-cta { visibility: hidden; }
 }
-@media (max-width: 1599px) {
-  .bq-filtros {
-    position: fixed; z-index: 50; top: 0; left: 0; bottom: 0; width: min(360px, 100vw);
-    border-radius: 0; border: 0; box-shadow: var(--shadow-md); background: var(--surface);
-    transform: translateX(-104%); transition: transform .2s ease; visibility: hidden;
-  }
-  .bq-filtros.abierto { transform: none; visibility: visible; }
-  .bq-filtros-cab { display: flex; }
-  .bq-btn-filtros { display: inline-flex; }
+/* Filtros plegados en cajón a todo ancho (2026-10-30, decisión del usuario):
+   como tercera columna le quitaban 300 px a la lista y a la ficha. */
+.bq-filtros {
+  position: fixed; z-index: 50; top: 0; left: 0; bottom: 0; width: min(360px, 100vw);
+  border-radius: 0; border: 0; box-shadow: var(--shadow-md); background: var(--surface);
+  transform: translateX(-104%); transition: transform .2s ease; visibility: hidden;
 }
-@media (min-width: 1600px) {
-  .bq-cuerpo { grid-template-columns: 300px clamp(420px, 33%, 560px) minmax(0, 1fr); }
-}
+.bq-filtros.abierto { transform: none; visibility: visible; }
+.bq-filtros-cab { display: flex; }
+.bq-btn-filtros { display: inline-flex; }
 @media (max-width: 1199px) {
   .bq-cuerpo { display: block; }
   .bq-est { height: var(--tap-min); }
@@ -4601,7 +4601,7 @@ tr.clic:hover td { background: var(--surface-2); }
    Estado = anillo + palabra (el color solo no basta; 2026-10-30, reemplaza la
    barra lateral). La completada va atenuada, como en la Semana. */
 .tv {
-  position: relative; display: flex; align-items: flex-start; gap: var(--s-3);
+  position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-3);
   margin: 0 0 var(--s-2); padding: var(--s-3);
   background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
   cursor: pointer;
@@ -4631,7 +4631,10 @@ tr.clic:hover td { background: var(--surface-2); }
    hábiles), además de los errores (2026-10-28, decisión del usuario). Lo que
    falta, «vencida» y la prioridad alta van en tinta. */
 .tv-demora { color: var(--red); font-weight: 600; }
-.tv-acc { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
+/* Siempre debajo del texto: al lado lo apretaba a tres o cuatro renglones
+   (2026-10-30, decisión del usuario). Los iconos, junto a la acción. */
+.tv-acc { display: flex; align-items: center; gap: var(--s-2); width: 100%; }
+.tv-acc:empty { display: none; }
 .tv-btn {
   min-height: 36px; padding: 0 var(--s-4); border: 0; border-radius: var(--r-ctl);
   background: var(--brand); color: var(--surface); cursor: pointer;
@@ -4646,23 +4649,13 @@ tr.clic:hover td { background: var(--surface-2); }
 .tv:has(.tv-n) .tv-dir { padding-right: 24px; }
 .tv-pie { flex-basis: 100%; }
 /* Tarjeta (celular): la acción baja a su renglón, a 44 px. */
-.tv-tarjeta { flex-wrap: wrap; }
-.tv-tarjeta .tv-acc { width: 100%; }
 .tv-tarjeta .tv-btn { min-height: 44px; padding: 0 var(--s-5); font-size: var(--fs-2); }
-.tv-tarjeta .tv-acc .sv-icono { width: 44px; height: 44px; margin-left: auto; }
+.tv-tarjeta .tv-acc .sv-icono { width: 44px; height: 44px; }
 /* En las columnas de la Semana no cabe texto y acción lado a lado. */
 .sv .tv { flex-wrap: wrap; gap: var(--s-1); padding: 7px 8px; margin-bottom: 5px; }
 .sv .tv-dir { font-size: var(--fs-1); }
-.sv .tv-acc { width: 100%; }
 .sv .tv-btn { min-height: 28px; padding: 0 10px; }
 .sv .tv[draggable="true"] { cursor: grab; }
-/* Celular: el renglón (Alertas, Buscar) baja la acción a su propio renglón,
-   como la tarjeta; al lado del texto lo apretaba a media pantalla. */
-@media (max-width: 599px) {
-  .tv-renglon { flex-wrap: wrap; }
-  .tv-renglon .tv-acc { width: 100%; }
-  .tv-renglon .tv-acc .sv-icono { margin-left: auto; }
-}
 /* Táctil: 44 px también dentro de la Semana (gana a la regla de arriba). */
 @media (pointer: coarse) {
   .tv .tv-btn { min-height: 44px; }
@@ -4783,14 +4776,10 @@ tr.clic:hover td { background: var(--surface-2); }
   background: var(--surface-2); color: var(--ink); font-weight: 600; text-align: center; text-decoration: none;
 }
 
-/* Escritorio sin panel (900–1199): Mis visitas usaba la tarjeta del celular,
-   con la acción en su propio renglón a 44 px, en una columna de ~740 px. Desde
-   900 la tarjeta se acomoda como el renglón (acción al lado). */
+/* Desde 900 la tarjeta usa los controles del renglón: 44 px es para el pulgar. */
 @media (min-width: 900px) {
-  .tv-tarjeta { flex-wrap: nowrap; }
-  .tv-tarjeta .tv-acc { width: auto; }
   .tv-tarjeta .tv-btn { min-height: 36px; padding: 0 var(--s-4); font-size: var(--fs-1); }
-  .tv-tarjeta .tv-acc .sv-icono { width: 36px; height: 36px; margin-left: 0; }
+  .tv-tarjeta .tv-acc .sv-icono { width: 36px; height: 36px; }
   .tv-tarjeta .tv-dir { font-size: var(--fs-2); }
 }
 
@@ -4849,6 +4838,12 @@ tr.clic:hover td { background: var(--surface-2); }
    Elegida o bajo el puntero vuelve a color pleno para poder leerla. */
 .tv-dir { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0; }
 .tv-e-completado.sel, .tv-e-completado:focus-within { opacity: 1; }
+/* En Buscar se consultan: se leen igual que las demás (decisión del usuario). */
+.buscar-pantalla .tv-e-completado { opacity: 1; }
+/* Sin botón (con panel la acción vive en la ficha), el icono del mapa va en la
+   esquina: un renglón solo para él alargaba toda la lista. */
+.buscar-pantalla .tv-acc:not(:has(.tv-btn, .vc-btn, .btn-accion)) { position: absolute; top: var(--s-2); right: var(--s-2); width: auto; }
+.buscar-pantalla .tv:has(.tv-acc:not(:has(.tv-btn, .vc-btn, .btn-accion))) .tv-txt { padding-right: 36px; }
 @media (hover: hover) { .tv-e-completado:hover { opacity: 1; } }
 /* Un solo botón lleno por pantalla (2026-10-28, decisión del usuario): la
    acción de cada tarjeta va en tinte; el lleno queda para la placa de la

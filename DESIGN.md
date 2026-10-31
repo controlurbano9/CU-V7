@@ -128,8 +128,8 @@ de 1 px en `--line-2` y radio `--r-card`.
 | Cerrada | aro con una raya | `--ink-4` | `.anillo-cerrado` |
 
 La dirección va en **condensada 700** (`.tv-dir`, `styles.css:4799`; `--fs-3` en tarjeta,
-`--fs-2` en renglón). En celular la acción baja a su propio renglón a 44 px (`styles.css:4607-4610`);
-desde 900 vuelve al lado (`styles.css:4739-4745`). La selección es un filete interior de 2 px
+`--fs-2` en renglón). La acción va siempre en su propio renglón, debajo del texto, con los iconos a su lado: a 44 px en
+celular y a 36 desde 900 (decisión del usuario, 2026-10-30). La selección es un filete interior de 2 px
 amarillo (`.tv.sel`, `styles.css:4578`).
 
 ## 5. El anillo de estado y la tarjeta completada
@@ -139,7 +139,7 @@ El **anillo se llena con el recorrido del caso** (decisión del usuario, 2026-10
 Lo completado **se atenúa, no desaparece** (decisión del usuario, 2026-10-30, en vez del sello con
 filete verde que traía la TASK 01): anillo verde + la palabra «Completada» como en los demás estados
 y toda la tarjeta al 62 % (`.tv-e-completado`). Elegida, enfocada o bajo el puntero vuelve a color
-pleno. La atenuación baja el contraste a propósito: lo que importa de esa tarjeta ya está hecho.
+pleno. En Buscar no se atenúa: ahí las completadas se consultan. La atenuación baja el contraste a propósito: lo que importa de esa tarjeta ya está hecho.
 
 ## 6. La placa de la siguiente visita (`.mv-sig*`)
 

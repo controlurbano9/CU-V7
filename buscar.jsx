@@ -12,7 +12,7 @@
 //     completadas» lo dice. Un radicado completo sale siempre y sube con
 //     «Coincidencia exacta».
 //   - Vistas fijas + propias (localStorage) + enlace con los filtros (hash).
-//   - ≥1600: filtros · lista · ficha. 1200–1599: filtros en cajón.
+//   - ≥1200: lista · ficha, con los filtros en cajón.
 //     <1200: lista sola y la ficha abre como «Ver datos».
 //   - La gestión del admin (asignar / reasignar / desasignar / completar /
 //     seguimiento) vive en la ficha (prop `gestion` de FichaVisita), no en
@@ -49,7 +49,7 @@ const BQ_LIMITE_INICIAL = 50;
 const BQ_LIMITE_PASO = 50;
 
 // El panel (ficha) existe desde este ancho: monta mapa y visor de PDF que en
-// un teléfono no deben ni cargarse. 1200–1599 lista+ficha; ≥1600 tres columnas.
+// un teléfono no deben ni cargarse. ≥1200 lista+ficha.
 const BQ_ANCHO_PANEL = '(min-width: 1200px)';
 
 function useMinAnchoBQ(media) {
@@ -509,7 +509,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
 
   // Al abrir el cajón de filtros con la lista recorrida, subirlo a la vista
   // (queda oculto tras el bloque fijo). <900 scrollea el documento;
-  // 900–1599 scrollea #content-desktop.
+  // desde 900 scrollea #content-desktop.
   useEffectB(() => {
     if (!filtrosAbiertos) return;
     const panel = document.getElementById('buscar-filtros');
