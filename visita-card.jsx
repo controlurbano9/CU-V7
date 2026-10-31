@@ -74,7 +74,7 @@ function EstadoAnillo({ estado }) {
 //               (la Semana de Inicio la señala sin repetirla)
 // ═══════════════════════════════════════════════════════════════
 function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, urgente, sinTiempo,
-  ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre, marca }) {
+  ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre, marca, mapa }) {
   const t = tarjetaVisita(f, Object.assign({ puede: puedeDiligenciar(f) }, opts));
   const renglon = densidad === 'renglon';
   const acc = accion === null ? null
@@ -112,10 +112,12 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
         </div>
         {aviso}
       </div>
-      {(acc || t.mapa || extra) && (
+      {(acc || (t.mapa && mapa !== false) || extra) && (
         <div className="tv-acc" onClick={(e) => e.stopPropagation()}>
           {acc && <button type="button" className="tv-btn" onClick={acc.fn}>{acc.texto}</button>}
-          {t.mapa && <BotonMapaVisita f={f} variante="icono" />}
+          {/* Con palabras: el icono solo se adivina (2026-10-30, decisión del
+              usuario). `mapa`: 'icono' donde no cabe el texto, false donde no va. */}
+          {t.mapa && mapa !== false && <BotonMapaVisita f={f} variante={mapa === 'icono' ? 'icono' : 'texto'} />}
           {extra}
         </div>
       )}
@@ -198,6 +200,12 @@ function BotonMapaVisita({ f, variante, sinIcono }) {
         onClick={(e) => e.stopPropagation()} title={titulo} aria-label="Cómo llegar">
         <Icon.Pin size={14} />
       </a>
+    );
+  }
+  if (variante === 'texto') {
+    return (
+      <a className="tv-enlace" href={link} target="_blank" rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()} title={titulo}>Cómo llegar</a>
     );
   }
   if (variante === 'vc') {

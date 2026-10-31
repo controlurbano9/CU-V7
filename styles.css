@@ -4480,9 +4480,6 @@ tr.clic:hover td { background: var(--surface-2); }
 .sv-n { position: absolute; top: 6px; right: 7px; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--surface-2); color: var(--ink-2);
   font: 600 var(--fs-1)/18px var(--font-sans); text-align: center; }
-.sv-orden { width: 44px; height: 44px; border: 1px solid var(--line-2); border-radius: var(--r-ctl);
-  background: var(--surface); font: 600 var(--fs-3) var(--font-sans); color: var(--ink-2); cursor: pointer; }
-.sv-orden:disabled { opacity: .35; cursor: default; }
 .sv-optimizar { display: block; width: 100%; min-height: 32px; margin-top: 4px; border: 0; background: none;
   color: var(--ink-3); font: 600 var(--fs-1) var(--font-sans); text-decoration: underline; cursor: pointer; }
 .sv-lista .sv-optimizar { min-height: 44px; }
@@ -4631,12 +4628,14 @@ tr.clic:hover td { background: var(--surface-2); }
    hábiles), además de los errores (2026-10-28, decisión del usuario). Lo que
    falta, «vencida» y la prioridad alta van en tinta. */
 .tv-demora { color: var(--red); font-weight: 600; }
-/* Siempre debajo del texto: al lado lo apretaba a tres o cuatro renglones
-   (2026-10-30, decisión del usuario). Los iconos, junto a la acción. */
-.tv-acc { display: flex; align-items: center; gap: var(--s-2); width: 100%; }
+/* A la derecha del texto: el botón arriba y los iconos debajo de él. Todos los
+   botones miden lo mismo: «Iniciar» y «Continuar» se leen como la misma acción
+   (2026-10-30, decisión del usuario). */
+.tv-acc { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s-1) var(--s-2); flex-shrink: 0; width: 96px; }
 .tv-acc:empty { display: none; }
+.tv-acc:not(:has(.tv-btn)) { width: auto; }
 .tv-btn {
-  min-height: 36px; padding: 0 var(--s-4); border: 0; border-radius: var(--r-ctl);
+  width: 100%; min-height: 36px; padding: 0; border: 0; border-radius: var(--r-ctl);
   background: var(--brand); color: var(--surface); cursor: pointer;
   font: 600 var(--fs-1) var(--font-sans); white-space: nowrap;
 }
@@ -4649,17 +4648,49 @@ tr.clic:hover td { background: var(--surface-2); }
 .tv:has(.tv-n) .tv-dir { padding-right: 24px; }
 .tv-pie { flex-basis: 100%; }
 /* Tarjeta (celular): la acción baja a su renglón, a 44 px. */
-.tv-tarjeta .tv-btn { min-height: 44px; padding: 0 var(--s-5); font-size: var(--fs-2); }
+.tv-tarjeta .tv-btn { min-height: 44px; font-size: var(--fs-2); }
 .tv-tarjeta .tv-acc .sv-icono { width: 44px; height: 44px; }
 /* En las columnas de la Semana no cabe texto y acción lado a lado. */
 .sv .tv { flex-wrap: wrap; gap: var(--s-1); padding: 7px 8px; margin-bottom: 5px; }
 .sv .tv-dir { font-size: var(--fs-1); }
-.sv .tv-btn { min-height: 28px; padding: 0 10px; }
+.sv .tv-acc { width: 100%; flex-wrap: nowrap; justify-content: flex-start; }
+.sv .tv-btn { flex: none; width: 80px; min-height: 28px; }
+/* Enlace con palabras bajo el botón: «Cómo llegar», «Ver semana». */
+.tv-enlace {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 28px;
+  padding: 0; border: 0; background: none; color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  font: 500 var(--fs-1) var(--font-sans); text-decoration: underline; text-underline-offset: 2px;
+}
+.tv-enlace:hover { color: var(--ink); }
+.tv-enlace:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--r-ctl); }
+/* Celular: al lado del botón, el texto queda en media pantalla. La acción baja
+   a su renglón: el botón y a su derecha «Cómo llegar», también como botón. */
+@media (max-width: 599px) {
+  .tv-acc { width: 100%; flex-wrap: nowrap; justify-content: flex-start; }
+  .tv-btn, .sv .tv-btn { flex: none; width: 112px; font-size: var(--fs-2); }
+  .tv-enlace {
+    min-height: 44px; padding: 0 var(--s-3); border: 1px solid var(--line-2); border-radius: var(--r-ctl);
+    font-size: var(--fs-2); font-weight: 600; color: var(--ink); text-decoration: none;
+  }
+}
+/* Reordenar el día en el celular (useArrastreDiaSV). */
+.sv-orden-ayuda { margin: 0; font-size: var(--fs-1); color: var(--ink-3); }
+.sv-lista .tv[data-sv-orden] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+body.sv-arrastrando { -webkit-user-select: none; user-select: none; }
+.sv-arrastrada { opacity: .4; }
+.sv-cae-antes { box-shadow: 0 -4px 0 var(--ink); }
+.sv-cae-despues { box-shadow: 0 4px 0 var(--ink); }
+.sv-fantasma {
+  position: fixed; top: 0; left: 0; z-index: 400; max-width: 240px; padding: var(--s-2) var(--s-3); pointer-events: none;
+  background: var(--ink); color: var(--surface); border-radius: var(--r-ctl); box-shadow: var(--shadow-md);
+  font: 700 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .sv .tv[draggable="true"] { cursor: grab; }
 /* Táctil: 44 px también dentro de la Semana (gana a la regla de arriba). */
 @media (pointer: coarse) {
   .tv .tv-btn { min-height: 44px; }
   .tv .tv-acc .sv-icono { width: 44px; height: 44px; }
+  .tv-enlace { min-height: 44px; }
 }
 
 /* ── Marco: cabecera móvil, menú de perfil y «+» (arquitectura 2026-10-27,
@@ -4778,7 +4809,7 @@ tr.clic:hover td { background: var(--surface-2); }
 
 /* Desde 900 la tarjeta usa los controles del renglón: 44 px es para el pulgar. */
 @media (min-width: 900px) {
-  .tv-tarjeta .tv-btn { min-height: 36px; padding: 0 var(--s-4); font-size: var(--fs-1); }
+  .tv-tarjeta .tv-btn { min-height: 36px; font-size: var(--fs-1); }
   .tv-tarjeta .tv-acc .sv-icono { width: 36px; height: 36px; }
   .tv-tarjeta .tv-dir { font-size: var(--fs-2); }
 }
@@ -4840,10 +4871,6 @@ tr.clic:hover td { background: var(--surface-2); }
 .tv-e-completado.sel, .tv-e-completado:focus-within { opacity: 1; }
 /* En Buscar se consultan: se leen igual que las demás (decisión del usuario). */
 .buscar-pantalla .tv-e-completado { opacity: 1; }
-/* Sin botón (con panel la acción vive en la ficha), el icono del mapa va en la
-   esquina: un renglón solo para él alargaba toda la lista. */
-.buscar-pantalla .tv-acc:not(:has(.tv-btn, .vc-btn, .btn-accion)) { position: absolute; top: var(--s-2); right: var(--s-2); width: auto; }
-.buscar-pantalla .tv:has(.tv-acc:not(:has(.tv-btn, .vc-btn, .btn-accion))) .tv-txt { padding-right: 36px; }
 @media (hover: hover) { .tv-e-completado:hover { opacity: 1; } }
 /* Un solo botón lleno por pantalla (2026-10-28, decisión del usuario): la
    acción de cada tarjeta va en tinte; el lleno queda para la placa de la

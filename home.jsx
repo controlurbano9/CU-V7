@@ -300,11 +300,10 @@ function AlertaCard({ alerta, mostrarInspector, onContinuar }) {
   return (
     <TarjetaVisita f={alerta.f} densidad="renglon" opts={{ veTodo: !!mostrarInspector }}
       onAccion={onContinuar} urgente={urgente} tiempo={alerta.motivo}
+      mapa={false}
       extra={alerta.irSemana ? (
-        <button type="button" className="al-icono" title="Ver en su semana"
-          aria-label="Ver en su semana" onClick={() => irASemana(alerta.irSemana)}>
-          <Icon.Agenda size={14} />
-        </button>
+        <button type="button" className="tv-enlace" title="Ver en su semana"
+          onClick={() => irASemana(alerta.irSemana)}>Ver semana</button>
       ) : null} />
   );
 }

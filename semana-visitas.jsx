@@ -157,8 +157,145 @@ function RutaDia({ dia, datos, miNombre, onCerrar }) {
   );
 }
 
+// ── Reordenar en el celular (2026-10-30, decisión del usuario: sin flechas) ──
+// Como las fotos del informe: con el dedo, mantener presionado y arrastrar;
+// deslizar sigue siendo desplazar la página. Con el mouse, al mover. Nada se
+// mueve hasta soltar: una raya marca dónde cae.
+function useArrastreDiaSV(contRef, activo, alSoltar) {
+  const cb = React.useRef(alSoltar);
+  cb.current = alSoltar;
+  useEffectSV(() => {
+    const cont = contRef.current;
+    if (!activo || !cont) return undefined;
+    let g = null;
+    const tvDe = (el) => (el && el.closest ? el.closest('.tv[data-sv-idx]') : null);
+    const limpiarCaida = () => {
+      if (g.sobre) g.sobre.classList.remove('sv-cae-antes', 'sv-cae-despues');
+      g.sobre = null;
+    };
+    const marcar = () => {
+      const bajo = tvDe(document.elementFromPoint(g.x, g.y));
+      if (!bajo || !cont.contains(bajo)) return; // en un hueco sigue valiendo la última
+      limpiarCaida();
+      if (bajo === g.origen) return;
+      const r = bajo.getBoundingClientRect();
+      const antes = g.y < r.top + r.height / 2;
+      // Junto a su propio sitio soltar no cambia nada: sin raya.
+      const sig = antes ? bajo : bajo.nextElementSibling;
+      if (sig === g.origen || sig === g.origen.nextElementSibling) return;
+      g.sobre = bajo;
+      g.antes = antes;
+      bajo.classList.add(antes ? 'sv-cae-antes' : 'sv-cae-despues');
+    };
+    const ubicar = () => {
+      if (g.fantasma) g.fantasma.style.transform = 'translate(' + (g.x + g.dx) + 'px,' + (g.y + g.dy) + 'px)';
+    };
+    const autoDesplazar = () => {
+      if (!g || !g.activo) return;
+      const margen = 96;
+      const abajo = window.innerHeight - 73;   // las pestañas fijas
+      let v = 0;
+      if (g.y < margen) v = (g.y - margen) / 5;
+      else if (g.y > abajo - margen) v = (g.y - abajo + margen) / 5;
+      if (v) {
+        document.scrollingElement.scrollTop += Math.max(-16, Math.min(16, v));
+        marcar();
+      }
+      g.raf = requestAnimationFrame(autoDesplazar);
+    };
+    const activar = () => {
+      g.activo = true;
+      try { cont.setPointerCapture(g.id); } catch (e) { /* el puntero ya no existe */ }
+      document.body.classList.add('sv-arrastrando');
+      g.origen.classList.add('sv-arrastrada');
+      const f = document.createElement('div');
+      f.className = 'sv-fantasma';
+      const dir = g.origen.querySelector('.tv-dir');
+      f.textContent = dir ? dir.textContent : '';
+      document.body.appendChild(f);
+      g.fantasma = f;
+      // Con el dedo va encima, para que se vea dónde cae; con el mouse, al lado.
+      g.dx = g.tipo === 'mouse' ? 14 : -f.offsetWidth / 2;
+      g.dy = g.tipo === 'mouse' ? 14 : -f.offsetHeight - 28;
+      ubicar();
+      g.raf = requestAnimationFrame(autoDesplazar);
+    };
+    const terminar = (cancelar) => {
+      if (!g) return;
+      const h = g;
+      clearTimeout(h.timer);
+      cancelAnimationFrame(h.raf);
+      window.removeEventListener('pointermove', alMover);
+      window.removeEventListener('pointerup', alSoltarP);
+      window.removeEventListener('pointercancel', alCancelar);
+      if (h.activo) {
+        document.body.classList.remove('sv-arrastrando');
+        h.origen.classList.remove('sv-arrastrada');
+        if (h.fantasma) h.fantasma.remove();
+        const sobre = h.sobre, antes = h.antes;
+        limpiarCaida();
+        // El toque que termina el arrastre no debe abrir la tarjeta.
+        const parar = (e) => { e.stopPropagation(); e.preventDefault(); };
+        window.addEventListener('click', parar, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', parar, true), 400);
+        if (!cancelar && sobre) {
+          const sig = antes ? sobre : sobre.nextElementSibling;
+          const antesDe = sig && sig.matches('.tv[data-sv-idx]') ? Number(sig.getAttribute('data-sv-idx')) : null;
+          cb.current(Number(h.origen.getAttribute('data-sv-idx')), antesDe);
+        }
+      }
+      g = null;
+    };
+    const alMover = (e) => {
+      if (!g || e.pointerId !== g.id) return;
+      g.x = e.clientX;
+      g.y = e.clientY;
+      if (!g.activo) {
+        if (Math.abs(g.x - g.x0) + Math.abs(g.y - g.y0) <= 8) return;
+        if (g.tipo !== 'mouse') { terminar(true); return; } // el dedo se movió antes de tiempo: era desplazar
+        activar();
+      }
+      ubicar();
+      marcar();
+    };
+    const alSoltarP = (e) => { if (g && e.pointerId === g.id) terminar(false); };
+    const alCancelar = (e) => { if (g && e.pointerId === g.id) terminar(true); };
+    const alBajar = (e) => {
+      if (e.button > 0 || g) return;
+      if (e.target.closest && e.target.closest('button, a, input, select')) return;
+      const origen = tvDe(e.target);
+      if (!origen || !origen.hasAttribute('data-sv-orden')) return;
+      g = { id: e.pointerId, tipo: e.pointerType, origen, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+        activo: false, timer: null, raf: 0, sobre: null, antes: false, fantasma: null, dx: 0, dy: 0 };
+      if (e.pointerType !== 'mouse') {
+        const este = g;
+        g.timer = setTimeout(() => {
+          if (g !== este) return;
+          if (navigator.vibrate) navigator.vibrate(15);
+          activar();
+        }, 350);
+      }
+      window.addEventListener('pointermove', alMover);
+      window.addEventListener('pointerup', alSoltarP);
+      window.addEventListener('pointercancel', alCancelar);
+    };
+    // Sin esto el navegador toma el dedo para desplazar y cancela el arrastre.
+    const alTocarMover = (e) => { if (g && g.activo) e.preventDefault(); };
+    const alMenu = (e) => { if (g && g.tipo !== 'mouse') e.preventDefault(); };
+    cont.addEventListener('pointerdown', alBajar);
+    cont.addEventListener('touchmove', alTocarMover, { passive: false });
+    cont.addEventListener('contextmenu', alMenu);
+    return () => {
+      terminar(true);
+      cont.removeEventListener('pointerdown', alBajar);
+      cont.removeEventListener('touchmove', alTocarMover);
+      cont.removeEventListener('contextmenu', alMenu);
+    };
+  }, [activo]);
+}
+
 // ── Tarjeta de visita ──────────────────────────────────────────
-function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver, onDrop, onSubir, onBajar, inspectores, onReasignar, marca }) {
+function SemanaCard({ f, movil, onAbrir, n, arrastrable, ordenable, onDragStart, onDragOver, onDrop, inspectores, onReasignar, marca }) {
   // Reasignar (solo ADMIN): tocar el nombre del inspector abre la lista.
   const [reasignando, setReasignando] = useStateSV(false);
   const [ocupada, setOcupada] = useStateSV(false);
@@ -180,6 +317,7 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
     <TarjetaVisita f={f} densidad="renglon" sinTiempo n={n} marca={marca}
       opts={{ veTodo: !!(inspectores && inspectores.length) }}
       onAccion={onAbrir}
+      mapa={movil ? 'texto' : 'icono'}
       inspector={puedeReasignar ? (
         <button type="button" className="sv-insp" title="Reasignar a otro inspector"
           aria-expanded={reasignando} onClick={(ev) => { ev.stopPropagation(); setReasignando(!reasignando); }}
@@ -188,18 +326,13 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, onDragStart, onDragOver
           {nombreCortoVisita(f) || 'Reasignar'}
         </button>
       ) : undefined}
-      extra={movil && (onSubir || onBajar) ? (<>
-        <button type="button" className="sv-orden" aria-label="Subir en el orden del día"
-          disabled={!onSubir} onClick={onSubir}>↑</button>
-        <button type="button" className="sv-orden" aria-label="Bajar en el orden del día"
-          disabled={!onBajar} onClick={onBajar}>↓</button>
-      </>) : null}
       pie={puedeReasignar ? (
         <PanelSeleccionInspector f={f} busy={ocupada} abierto={reasignando}
           inspectores={inspectores.map(n => ({ nombre: n }))}
           accion="asignar" conFecha onAsignar={reasignar} />
       ) : null}
-      arrastre={{ draggable: arr, onDragStart: arr ? onDragStart : undefined, onDragOver, onDrop }} />
+      arrastre={{ draggable: arr, onDragStart: arr ? onDragStart : undefined, onDragOver, onDrop,
+        'data-sv-idx': f._idx, 'data-sv-orden': ordenable ? '1' : undefined }} />
   );
 }
 
@@ -231,6 +364,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   const [aviso, setAviso] = useStateSV(null);         // {texto, deshacer}
   const avisoRef = React.useRef(null);
   const gridRef = React.useRef(null);
+  const listaRef = React.useRef(null);
   const [movil, setMovil] = useStateSV(() => {
     try { return window.matchMedia(SV_MOVIL).matches; } catch (e) { return false; }
   });
@@ -380,9 +514,9 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
     }
   }
 
-  // Arrastrar en escritorio: al mismo día reordena; a otro, mueve (admin).
-  function soltar(dia, lista, antesDe) {
-    const idx = arrastre;
+  // Arrastrar: al mismo día reordena; a otro, mueve (admin, en escritorio).
+  function soltar(dia, lista, antesDe, idxDedo) {
+    const idx = idxDedo != null ? idxDedo : arrastre;
     setArrastre(null);
     if (idx == null) return;
     const f = datosEf.find((x) => x._idx === idx);
@@ -393,20 +527,8 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
       if (puedeMover(f) && dia >= hoy) moverDeDia(f, dia);
       return;
     }
-    const resto = lista.filter((x) => x._idx !== idx);
-    let k = antesDe == null ? resto.length : resto.findIndex((x) => x._idx === antesDe);
-    if (k < 0) k = resto.length;
-    const nueva = resto.slice(0, k).concat([f], resto.slice(k));
-    if (nueva.every((x, i) => x._idx === lista[i]._idx)) return;
-    guardarOrden(dia, nueva);
-  }
-
-  function mover(dia, lista, i, delta) {
-    const j = i + delta;
-    if (j < 0 || j >= lista.length) return;
-    const nueva = lista.slice();
-    const t = nueva[i]; nueva[i] = nueva[j]; nueva[j] = t;
-    guardarOrden(dia, nueva);
+    const nueva = reordenarVisitaDia(lista, idx, antesDe);
+    if (nueva) guardarOrden(dia, nueva);
   }
 
   const pieOrden = (dia, lista) => lista.some((f) => ordenDiaDe(f, formatearFecha(dia)) != null) && (
@@ -468,8 +590,12 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   // viejas — y se leía como trabajo por hacer. agruparSemana lo sigue dando.
   const pie = null;
 
+  // Antes de cualquier return (React #310).
+  useArrastreDiaSV(listaRef, movil, (idx, antesDe) => soltar(dias[sel], porDia[sel], antesDe, idx));
+
   // ── Móvil: tira de días + lista del día ──
   if (movil) {
+    const ordenables = porDia[sel].filter((f) => puedeOrdenar(f)).length;
     return (
       <div className="sv">
         {cabecera}
@@ -485,7 +611,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
             </button>
           ))}
         </div>
-        <div className="sv-lista">
+        <div className="sv-lista" ref={listaRef}>
           {/* Solo con onAbrirDia (admin): la tira de días sigue seleccionando;
               agendar tiene su botón propio para no robarle el toque al día. */}
           {(onAbrirDia || conRuta[sel]) && (
@@ -503,15 +629,14 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
             </div>
           )}
           {porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
-          {porDia[sel].map((f, i) => {
-            const ord = puedeOrdenar(f) && porDia[sel].length > 1;
-            return (
-              <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1} marca={!!enAtencion && enAtencion.has(f._idx)}
-                inspectores={inspectores} onReasignar={onReasignar}
-                onSubir={ord && i > 0 ? () => mover(dias[sel], porDia[sel], i, -1) : null}
-                onBajar={ord && i < porDia[sel].length - 1 ? () => mover(dias[sel], porDia[sel], i, 1) : null} />
-            );
-          })}
+          {ordenables > 0 && porDia[sel].length > 1 && (
+            <p className="sv-orden-ayuda">Para cambiar el orden, mantén presionada una visita y arrástrala.</p>
+          )}
+          {porDia[sel].map((f, i) => (
+            <SemanaCard key={f._idx || i} f={f} movil onAbrir={onAbrir} n={i + 1} marca={!!enAtencion && enAtencion.has(f._idx)}
+              inspectores={inspectores} onReasignar={onReasignar}
+              ordenable={puedeOrdenar(f) && porDia[sel].length > 1} />
+          ))}
           {pieOrden(dias[sel], porDia[sel])}
         </div>
         {pie}

@@ -1691,6 +1691,18 @@ function visitasDelDia(filas, fecha, nombre) {
 // y sin "°" según la hoja, y las filas migradas de V2 traen 'N/A' en vez de
 // vacío (mismo criterio que _hayOrdenReal de nueva-visita.jsx). Vivía en
 // visita-card.jsx; se movió aquí porque entregablesFaltantes la necesita.
+// La lista del día tras soltar la visita `idx` antes de `antesDe` (null = al
+// final). null si queda igual o la visita no está en la lista.
+function reordenarVisitaDia(lista, idx, antesDe) {
+  var f = lista.filter(function (x) { return x._idx === idx; })[0];
+  if (!f) return null;
+  var resto = lista.filter(function (x) { return x._idx !== idx; });
+  var k = antesDe == null ? resto.length : resto.findIndex(function (x) { return x._idx === antesDe; });
+  if (k < 0) k = resto.length;
+  var nueva = resto.slice(0, k).concat([f], resto.slice(k));
+  return nueva.every(function (x, i) { return x._idx === lista[i]._idx; }) ? null : nueva;
+}
+
 function ordenPoliciaDe(f) {
   var s = String((f && (f['N° ORDEN DE POLICIA'] || f['N ORDEN DE POLICIA'])) || '').trim();
   var u = s.toUpperCase();
@@ -5126,6 +5138,7 @@ var _cuUtilsExports = {
   fechaLargaAgenda: fechaLargaAgenda,
   visitasDelDia: visitasDelDia,
   ordenPoliciaDe: ordenPoliciaDe,
+  reordenarVisitaDia: reordenarVisitaDia,
   idArchivoDrive: idArchivoDrive,
   entregablesFaltantes: entregablesFaltantes,
   agruparMisVisitas: agruparMisVisitas,

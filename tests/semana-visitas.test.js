@@ -246,3 +246,15 @@ test('offsetSemanaDe -- sin fecha legible devuelve null', () => {
   assert.equal(offsetSemanaDe('', new Date(2026, 8, 16)), null);
   assert.equal(offsetSemanaDe('N/A', new Date(2026, 8, 16)), null);
 });
+
+test('reordenarVisitaDia: subir, bajar, al final; sin cambio o ajena devuelve null', () => {
+  const { reordenarVisitaDia: r } = require('../utils.js');
+  const L = [{ _idx: 1 }, { _idx: 2 }, { _idx: 3 }];
+  const ids = (x) => x.map((v) => v._idx);
+  assert.deepEqual(ids(r(L, 3, 1)), [3, 1, 2]);
+  assert.deepEqual(ids(r(L, 1, 3)), [2, 1, 3]);
+  assert.deepEqual(ids(r(L, 1, null)), [2, 3, 1]);
+  assert.equal(r(L, 2, 3), null);
+  assert.equal(r(L, 3, null), null);
+  assert.equal(r(L, 9, 1), null);
+});

@@ -128,8 +128,10 @@ de 1 px en `--line-2` y radio `--r-card`.
 | Cerrada | aro con una raya | `--ink-4` | `.anillo-cerrado` |
 
 La dirección va en **condensada 700** (`.tv-dir`, `styles.css:4799`; `--fs-3` en tarjeta,
-`--fs-2` en renglón). La acción va siempre en su propio renglón, debajo del texto, con los iconos a su lado: a 44 px en
-celular y a 36 desde 900 (decisión del usuario, 2026-10-30). La selección es un filete interior de 2 px
+`--fs-2` en renglón). La acción va a la derecha del texto y todos los botones miden 96 px; debajo, con palabras, el enlace
+«Cómo llegar» o, en Atención, «Ver semana» (`.tv-enlace`; decisión del usuario, 2026-10-30). En celular
+(<600) baja a su renglón: botón de 112 × 44 px y a su derecha «Cómo llegar», también como botón. En la
+Semana de escritorio, botón de 80 px con el pin, porque no cabe el texto. La selección es un filete interior de 2 px
 amarillo (`.tv.sel`, `styles.css:4578`).
 
 ## 5. El anillo de estado y la tarjeta completada
