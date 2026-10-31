@@ -4841,7 +4841,7 @@ function tarjetaVisita(f, opts) {
   var dir = String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
   var t = { estado: estado, estadoTxt: _TV_ESTADO_TXT[estado] || estado, tiempo: '', demora: false,
     dir: dir || 'Sin dirección', dirVisible: dir ? direccionVisible(dir) : 'Sin dirección',
-    ident: identificadorVisita(f), ubic: ubicacionCortaVisita(f), falta: [], accion: null,
+    ident: identificadorVisita(f), ubic: ubicacionCortaVisita(f), accion: null,
     mapa: estado === 'ASIGNADO' || estado === 'INICIADO',
     inspector: opts.veTodo ? nombreCortoVisita(f) : '',
     radicada: formatearFecha(f['FECHA RADICADO'] || '') };
@@ -4864,7 +4864,6 @@ function tarjetaVisita(f, opts) {
     n = diasSinCompletar(f, ref);
     t.tiempo = _tvDias(n, 'sin completar');
     t.demora = n != null && n >= _TV_DEMORA;
-    t.falta = entregablesFaltantes(f);
     t.accion = 'Continuar';
   } else if (estado === 'COMPLETADO') {
     var fv = parsearFecha(f['FECHA DE VISITA'] || '');

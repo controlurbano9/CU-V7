@@ -4666,7 +4666,6 @@ tr.clic:hover td { background: var(--surface-2); }
 /* El rojo es solo para lo urgente (audiencia en ≤3 días) y la demora (≥5 días
    hábiles), además de los errores (2026-10-28, decisión del usuario). Lo que
    falta, «vencida» y la prioridad alta van en tinta. */
-.tv-falta { margin-top: 2px; font-size: var(--fs-1); font-weight: 600; color: var(--ink); }
 .tv-demora { color: var(--red); font-weight: 600; }
 .tv-acc { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
 .tv-btn {

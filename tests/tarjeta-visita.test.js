@@ -40,11 +40,9 @@ test('asignada hoy: «hoy», sin demora', () => {
   assert.equal(t.demora, false);
 });
 
-test('iniciada: Continuar y lo que falta', () => {
+test('iniciada: Continuar', () => {
   const t = tarjetaVisita(fila({ 'ESTADO VISITA': 'INICIADO', 'FECHA DE VISITA': '20/10/2026' }), { hoy: HOY });
   assert.equal(t.accion, 'Continuar');
-  assert.ok(t.falta.indexOf('Acta') !== -1);
-  assert.ok(t.falta.indexOf('Registro fotográfico') !== -1);
 });
 
 test('completada: fecha corta, sin acción ni «Cómo llegar»', () => {
@@ -53,12 +51,10 @@ test('completada: fecha corta, sin acción ni «Cómo llegar»', () => {
   assert.equal(t.tiempo, '29 sep');
   assert.equal(t.accion, null);
   assert.equal(t.mapa, false);
-  assert.deepEqual(t.falta, []);
 });
 
 test('completada sin acta (V2 en papel): la tarjeta no dice «Falta»', () => {
   const t = tarjetaVisita(fila({ 'ESTADO VISITA': 'COMPLETADO' }), { hoy: HOY });
-  assert.deepEqual(t.falta, []);
 });
 
 test('pendiente sin asignar: sin reloj (no cuenta desde el radicado), sin acción propia', () => {
@@ -115,4 +111,9 @@ test('dirección que es coordenada: se ve «Punto GPS»', () => {
   const t = tarjetaVisita(fila({ 'DIRECCION INFRACCION': '6.3456, -75.5512', 'ESTADO VISITA': 'ASIGNADO' }), { hoy: HOY });
   assert.equal(t.dirVisible, 'Punto GPS');
   assert.equal(t.dir, '6.3456, -75.5512');
+});
+
+test('la tarjeta no dice lo que falta: eso va en la ficha', () => {
+  const t = tarjetaVisita({ 'ESTADO VISITA': 'INICIADO' }, { hoy: new Date(2026, 9, 30), puede: true });
+  assert.equal(t.falta, undefined);
 });
