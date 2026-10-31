@@ -654,9 +654,6 @@ function VisorFotos({ fotos, inicio, onCerrar }) {
           <Icon.Close size={20} />
         </button>
         <h2 id="rfm-ver-titulo" className="rfm-titulo">{'Foto ' + (idx + 1) + ' de ' + n}</h2>
-        {foto && foto.link && (
-          <a className="btn-accion rfm-drive" href={foto.link} target="_blank" rel="noopener noreferrer">Abrir en Drive</a>
-        )}
       </header>
       <div className="rfm-foto">
         <VisorFotoRF foto={foto} idx={idx} n={n} onElegir={setSel} />
@@ -2211,11 +2208,14 @@ function _PanelPredio(p) {
   else if (p.estadoBusq === 'buscando') lineaDir = 'Buscando la dirección en catastro…';
   else if (p.estadoBusq === 'no-reconocible') lineaDir = 'La dirección no tiene placa reconocible para catastro: el predio se toma del punto en el mapa.';
   else if (p.estadoBusq === 'sin-catastro') lineaDir = 'Catastro no disponible (sin conexión): el predio se toma del punto en el mapa.';
-  else if (p.predioDir && !p.predioDir.exacta && !p.predioDir.terrenos.length) lineaDir = 'Dirección no encontrada en catastro: el predio se toma del punto en el mapa.';
+  else if (p.predioDir && !p.predioDir.exacta && (!p.predioDir.terrenos.length || (p.hayPin && !p.terrenoElegido))) lineaDir = 'Dirección no encontrada en catastro: el predio se toma del punto en el mapa.';
   // Candidatos: placas cercanas (no exacta) o varios terrenos con la misma
-  // dirección sin pin que desempate.
-  const candidatos = !p.predioDir ? [] :
-    !p.predioDir.exacta ? p.predioDir.terrenos :
+  // dirección, solo mientras sirven para decidir: sin pin que desempate y sin
+  // ubicación confirmada (2026-10-30, decisión del usuario: con el punto ya
+  // puesto, otras direcciones confundían). Si ya eligió una, sigue visible
+  // para poder cambiarla.
+  const candidatos = (!p.predioDir || p.vigente) ? [] :
+    !p.predioDir.exacta ? (!p.hayPin || p.terrenoElegido ? p.predioDir.terrenos : []) :
     (p.predioDir.terrenos.length > 1 && !p.hayPin ? p.predioDir.terrenos : []);
   return (
     <div className={'predio-panel' + (p.vigente ? ' predio-vigente' : '')}>
@@ -2250,7 +2250,7 @@ function _PanelPredio(p) {
           <div className="predio-nota">
             {p.predioDir.exacta
               ? p.predioDir.terrenos.length + ' predios con esta dirección. ¿Cuál es?'
-              : 'No está exacta en catastro. Cercanas en la misma cuadra:'}
+              : 'Esa placa no está en catastro. ¿Es alguna de estas? Si no, ubica el punto en el mapa.'}
           </div>
           <div className="predio-chips">
             {candidatos.map(function (t) {
