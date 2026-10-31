@@ -197,7 +197,7 @@ medidas en los bancos a 375/390, 1366/1440 y 1920:
 | Regla | Qué quiere decir | Dónde |
 |---|---|---|
 | **Un botón lleno por pantalla** | La acción de cada tarjeta (`.tv-btn`) va en tinte; llena solo en la placa de la siguiente visita. En el formulario el único lleno es «Guardar»: «Generar»/«Abrir» de los entregables van en tinte | `.tv-btn`, `.nv-entregables .ent-btn` |
-| **Rojo solo para lo urgente** | Audiencia en ≤3 días, demora de ≥5 días hábiles y errores. «Falta: …», «vencida», contadores de pestaña van en tinta | `.tv-falta`, `.nv-falta`, `.adm-tab-n` |
+| **Rojo solo para lo urgente** | Audiencia en ≤3 días, demora de ≥5 días hábiles y errores. «Falta: …», «vencida», contadores de pestaña van en tinta. La tarjeta de visita no dice lo que falta (decisión del usuario, 2026-10-30): eso va en la ficha y en el formulario | `.nv-falta`, `.adm-tab-n` |
 | **Un solo reloj** | Desde la asignación: «N días sin iniciar» / «N días sin completar»; pendiente sin asignar = «sin asignar» | `_tvDias` (`utils.js`) |
 | **Puntos de estado de 10 px** | Mismo punto en secciones del formulario (verde completa / ámbar pendiente, ya no ✓) y entregables; centrado con el título | `.sec-ind-*`, `.ent-dot` |
 | **Sin tarjetas anidadas** | «Predio», «Norma POT» y «Revisión del texto» son bloques planos separados por una línea dentro de su sección; la única caja es la ficha catastral | `.predio-panel`, `.norma-panel`, `#nv-revisar-bloque` |
