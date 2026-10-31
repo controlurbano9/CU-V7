@@ -803,7 +803,10 @@ function AppV6() {
   //   supervisor: Inicio · Buscar · Audiencias · Norma
   //   admin:      Inicio · Buscar · Agenda · Audiencias · Norma (+ Administración)
   // Admin y supervisor suman «Mis visitas» solo si tienen visitas propias. El
-  // inspector ya no tiene «Citaciones»: pide la cita desde el «+» (decisión 4).
+  // inspector pide la cita desde el «+» (decisión 4) y consulta las suyas en
+  // «Citaciones»: en el menú de usuario, o como pestaña en escritorio, que no
+  // tiene ese menú (2026-10-30, decisión del usuario; la cita recién pedida no
+  // sale en la tarjeta hasta guardar la visita).
   const tabs = [];
   if (veTodas) tabs.push({ k: 'home', label: 'Inicio', Icono: Icon.Home });
   if (!veTodas || conMisVisitas) tabs.push({ k: 'mis-visitas', label: 'Mis visitas', Icono: Icon.Visits });
@@ -816,6 +819,7 @@ function AppV6() {
   if (veTodas && isDesktop) tabs.push({ k: 'tablero', label: 'Tablero', Icono: Icon.Tablero });
   if (esAdmin && isDesktop) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
   if (veTodas) tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
+  else if (isDesktop) tabs.push({ k: 'audiencias', label: 'Citaciones', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
 
   const enFormulario = pantalla === 'nueva-visita';
@@ -858,6 +862,11 @@ function AppV6() {
             {veTodas && !isDesktop && (
               <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('tablero'); }}>
                 <Icon.Tablero size={18} /> Tablero
+              </button>
+            )}
+            {!veTodas && (
+              <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('audiencias'); }}>
+                <Icon.Audiencia size={18} /> Citaciones
               </button>
             )}
             {esAdmin && (

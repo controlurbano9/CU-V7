@@ -4438,7 +4438,9 @@ button.sv-col-head {
 
 /* Celular (<900): rejilla de un día con selector, táctil a 44 px */
 @media (max-width: 899px) {
-  .au-pantalla { padding: 0 0 32px; }
+  /* #content-desktop no da margen en el celular: el mismo de .pantalla y
+     .pad-bottom, o el contenido toca los bordes y lo tapan las pestañas. */
+  .au-pantalla { padding: 16px 16px calc(124px + env(safe-area-inset-bottom)); }
   .au-cab h1 { font-size: var(--fs-4); }
   .au-btn-nov { min-height: var(--tap); }
   .au-btn-pedir { min-height: var(--tap); }
