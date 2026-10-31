@@ -359,13 +359,13 @@ test('calidadTablero — las siete categorías con su regla', () => {
 // ── _infraccionSoloCatalogo (mudada de nueva-visita.jsx) ───────
 
 test('_infraccionSoloCatalogo — los chips del catálogo pasan, el texto libre de V2 no', () => {
-  assert.equal(_infraccionSoloCatalogo('A1: Áreas protegidas'), 'A1: Áreas protegidas');
+  assert.equal(_infraccionSoloCatalogo('A1: Áreas protegidas'), 'A1: Área protegida o afectada');
   assert.equal(_infraccionSoloCatalogo('A1: Áreas protegidas | D13: Materiales en vía'),
-    'A1: Áreas protegidas | D13: Materiales en vía');
+    'A1: Área protegida o afectada | D13: Materiales o escombros en espacio público');
   assert.equal(_infraccionSoloCatalogo('No se evidencia infracción'), 'No se evidencia infracción');
   assert.equal(_infraccionSoloCatalogo('#9,11 Y 12'), '');
   assert.equal(_infraccionSoloCatalogo('A1: Áreas protegidas | #9,11 Y 12'),
-    'A1: Áreas protegidas', 'mezcla: se queda solo con el chip');
+    'A1: Área protegida o afectada', 'mezcla: se queda solo con el chip');
   assert.equal(_infraccionSoloCatalogo(''), '');
   assert.equal(_infraccionSoloCatalogo(null), '');
 });

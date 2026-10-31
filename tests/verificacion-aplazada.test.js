@@ -38,7 +38,7 @@ test('posiciones sobre el texto original, sin solapes', () => {
 });
 
 // ── R20 / aplaza ─────────────────────────────────────────────
-const A2 = 'A2: Distinto a la licencia (pisos, unidades, áreas)';
+const A2 = 'A2: Desconociendo la licencia';
 const APLAZA = 'Hay quince (15) destinaciones. Esta circunstancia deberá ser objeto de verificación.';
 
 test('R20: con licencia aportada pide justificación', () => {
@@ -97,8 +97,11 @@ test('lo guardado con el nombre viejo se lee con el nuevo', () => {
   assert.equal(U._infraccionSoloCatalogo('A2: Diferente a lo aprobado | C12: Destinación no autorizada'),
     A2 + ' | C12: Facilitar usos del suelo no autorizados');
   assert.equal(U._infraccionSoloCatalogo('C9: Uso distinto licencia | C10: Ubicación incorrecta | C11: Usos suelo prohibidos'),
-    'C9: Uso distinto al de la licencia | C10: Ubicación distinta a la licencia | C11: Uso del suelo no permitido');
-  assert.equal(U.nombreChipVigente('A1: Áreas protegidas'), 'A1: Áreas protegidas');
+    'C9: Uso diferente al de la licencia | C10: Ubicación diferente a la de la licencia | C11: Contravenir usos del suelo');
+  assert.equal(U.nombreChipVigente('A1: Áreas protegidas'), 'A1: Área protegida o afectada');
+  // Nombre intermedio (2026-10-29) y nombre vigente llegan al mismo chip.
+  assert.equal(U.nombreChipVigente('A2: Distinto a la licencia (pisos, unidades, áreas)'), A2);
+  assert.equal(U.nombreChipVigente('A4: Sin licencia o caducada'), 'A4: Sin licencia o caducada');
 });
 
 test('renombrar no vence la revisión sellada con el nombre viejo', () => {
@@ -107,6 +110,16 @@ test('renombrar no vence la revisión sellada con el nombre viejo', () => {
   assert.notEqual(nuevo, viejo);
   assert.equal(U.huellaRevision('texto', '', nuevo, ''), U.huellaRevision('texto', '', viejo, ''));
   assert.equal(U.chipsConNombreSellado(nuevo), viejo);
+});
+
+test('renombrar el 2026-10-30 tampoco vence revisiones: A1, D13 y los nombres intermedios', () => {
+  const viejo = 'A1: Áreas protegidas | D13: Materiales en vía';
+  const nuevo = U._infraccionSoloCatalogo(viejo);
+  assert.equal(nuevo, 'A1: Área protegida o afectada | D13: Materiales o escombros en espacio público');
+  assert.equal(U.huellaRevision('t', '', nuevo, ''), U.huellaRevision('t', '', viejo, ''));
+  assert.equal(U.chipsConNombreSellado('A2: Distinto a la licencia (pisos, unidades, áreas)'), 'A2: Diferente a lo aprobado');
+  assert.equal(U.chipsConNombreSellado(A2), 'A2: Diferente a lo aprobado');
+  assert.equal(U.chipsConNombreSellado('A1: Área protegida o afectada'), 'A1: Áreas protegidas');
 });
 
 test('Buscar: A2 entero aunque lleve comas, y el texto libre de V2 se parte', () => {

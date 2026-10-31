@@ -2382,30 +2382,30 @@ function ordenarCasosBuscar(lista, orden, q) {
 // al acta/informe y lo que cuenta el tablero no puedan divergir.
 const CONTRAVENCION_GRUPOS = [
   { literal: 'Literal A', opciones: [
-    { val: 'A1: Áreas protegidas', l: 'A1: Áreas protegidas' },
-    { val: 'A2: Distinto a la licencia (pisos, unidades, áreas)', l: 'A2: Distinto a la licencia (pisos, unidades, áreas)' },
-    { val: 'A3: Bienes uso público (Antejardín)', l: 'A3: Bienes uso público (Antejardín)' },
+    { val: 'A1: Área protegida o afectada', l: 'A1: Área protegida o afectada' },
+    { val: 'A2: Desconociendo la licencia', l: 'A2: Desconociendo la licencia' },
+    { val: 'A3: Bien de uso público o espacio público', l: 'A3: Bien de uso público o espacio público' },
     { val: 'A4: Sin licencia o caducada', l: 'A4: Sin licencia o caducada' },
   ]},
   { literal: 'Literal C', opciones: [
-    { val: 'C9: Uso distinto al de la licencia', l: 'C9: Uso distinto al de la licencia' },
-    { val: 'C10: Ubicación distinta a la licencia', l: 'C10: Ubicación distinta a la licencia' },
-    { val: 'C11: Uso del suelo no permitido', l: 'C11: Uso del suelo no permitido' },
+    { val: 'C9: Uso diferente al de la licencia', l: 'C9: Uso diferente al de la licencia' },
+    { val: 'C10: Ubicación diferente a la de la licencia', l: 'C10: Ubicación diferente a la de la licencia' },
+    { val: 'C11: Contravenir usos del suelo', l: 'C11: Contravenir usos del suelo' },
     { val: 'C12: Facilitar usos del suelo no autorizados', l: 'C12: Facilitar usos del suelo no autorizados' },
   ]},
   { literal: 'Literal D', opciones: [
-    { val: 'D13: Materiales en vía', l: 'D13: Materiales en vía' },
-    { val: 'D14: Sanitarios provisionales', l: 'D14: Sanitarios provisionales' },
-    { val: 'D15: Protecciones seguridad', l: 'D15: Protecciones seguridad' },
-    { val: 'D16: Llantas sucias', l: 'D16: Llantas sucias' },
-    { val: 'D17: Residuos inmediatos', l: 'D17: Residuos inmediatos' },
-    { val: 'D18: Retiro escombros', l: 'D18: Retiro escombros' },
-    { val: 'D19: Seguridad personal', l: 'D19: Seguridad personal' },
-    { val: 'D20: Emisión partículas', l: 'D20: Emisión partículas' },
-    { val: 'D21: Contaminación agua', l: 'D21: Contaminación agua' },
-    { val: 'D22: Reparar daños públicos', l: 'D22: Reparar daños públicos' },
-    { val: 'D23: Reparar daños vecinos', l: 'D23: Reparar daños vecinos' },
-    { val: 'D24: Horario restringido', l: 'D24: Horario restringido' },
+    { val: 'D13: Materiales o escombros en espacio público', l: 'D13: Materiales o escombros en espacio público' },
+    { val: 'D14: Sin unidades sanitarias', l: 'D14: Sin unidades sanitarias' },
+    { val: 'D15: Sin protecciones ni señalización', l: 'D15: Sin protecciones ni señalización' },
+    { val: 'D16: Sin limpiar llantas', l: 'D16: Sin limpiar llantas' },
+    { val: 'D17: Sin limpiar residuos en espacio público', l: 'D17: Sin limpiar residuos en espacio público' },
+    { val: 'D18: Sin retirar andamios ni escombros', l: 'D18: Sin retirar andamios ni escombros' },
+    { val: 'D19: Sin casco ni equipo de seguridad', l: 'D19: Sin casco ni equipo de seguridad' },
+    { val: 'D20: Sin controlar partículas', l: 'D20: Sin controlar partículas' },
+    { val: 'D21: Sin aislar de fuentes de agua', l: 'D21: Sin aislar de fuentes de agua' },
+    { val: 'D22: Sin reparar daños en lo público', l: 'D22: Sin reparar daños en lo público' },
+    { val: 'D23: Sin reparar daños a colindantes', l: 'D23: Sin reparar daños a colindantes' },
+    { val: 'D24: Obra en horario no permitido', l: 'D24: Obra en horario no permitido' },
   ]},
 ];
 const CONTRAVENCION_ESPECIAL = 'No se evidencia infracción';
@@ -2433,14 +2433,40 @@ const _CONTRAVENCION_VALIDAS = new Set(
 // es el que sale en el acta. La huella de la revisión (_normChipsRevision) y
 // la del informe siguen con el viejo: renombrar no vence lo ya revisado.
 const _CONTRAVENCION_RENOMBRADAS = {
-  'A2: Diferente a lo aprobado': 'A2: Distinto a la licencia (pisos, unidades, áreas)',
-  'C9: Uso distinto licencia': 'C9: Uso distinto al de la licencia',
-  'C10: Ubicación incorrecta': 'C10: Ubicación distinta a la licencia',
-  'C11: Usos suelo prohibidos': 'C11: Uso del suelo no permitido',
+  'A2: Diferente a lo aprobado': 'A2: Desconociendo la licencia',
+  'C9: Uso distinto licencia': 'C9: Uso diferente al de la licencia',
+  'C10: Ubicación incorrecta': 'C10: Ubicación diferente a la de la licencia',
+  'C11: Usos suelo prohibidos': 'C11: Contravenir usos del suelo',
   'C12: Destinación no autorizada': 'C12: Facilitar usos del suelo no autorizados',
 };
+// 2026-10-30 (decisión del usuario): los nombres dicen lo que dice la ley.
+Object.assign(_CONTRAVENCION_RENOMBRADAS, {
+  'A1: Áreas protegidas': 'A1: Área protegida o afectada',
+  'A2: Distinto a la licencia (pisos, unidades, áreas)': 'A2: Desconociendo la licencia',
+  'A3: Bienes uso público (Antejardín)': 'A3: Bien de uso público o espacio público',
+  'C9: Uso distinto al de la licencia': 'C9: Uso diferente al de la licencia',
+  'C10: Ubicación distinta a la licencia': 'C10: Ubicación diferente a la de la licencia',
+  'C11: Uso del suelo no permitido': 'C11: Contravenir usos del suelo',
+  'D13: Materiales en vía': 'D13: Materiales o escombros en espacio público',
+  'D14: Sanitarios provisionales': 'D14: Sin unidades sanitarias',
+  'D15: Protecciones seguridad': 'D15: Sin protecciones ni señalización',
+  'D16: Llantas sucias': 'D16: Sin limpiar llantas',
+  'D17: Residuos inmediatos': 'D17: Sin limpiar residuos en espacio público',
+  'D18: Retiro escombros': 'D18: Sin retirar andamios ni escombros',
+  'D19: Seguridad personal': 'D19: Sin casco ni equipo de seguridad',
+  'D20: Emisión partículas': 'D20: Sin controlar partículas',
+  'D21: Contaminación agua': 'D21: Sin aislar de fuentes de agua',
+  'D22: Reparar daños públicos': 'D22: Sin reparar daños en lo público',
+  'D23: Reparar daños vecinos': 'D23: Sin reparar daños a colindantes',
+  'D24: Horario restringido': 'D24: Obra en horario no permitido',
+});
+// El nombre sellado es el más antiguo de cada chip: va primero en la lista.
 const _CONTRAVENCION_NOMBRE_SELLADO = Object.keys(_CONTRAVENCION_RENOMBRADAS)
-  .reduce((m, viejo) => { m[_CONTRAVENCION_RENOMBRADAS[viejo]] = viejo; return m; }, {});
+  .reduce((m, viejo) => {
+    const nuevo = _CONTRAVENCION_RENOMBRADAS[viejo];
+    if (!m[nuevo]) m[nuevo] = viejo;
+    return m;
+  }, {});
 function nombreChipVigente(s) {
   const t = String(s || '').trim();
   return _CONTRAVENCION_RENOMBRADAS[t] || t;
@@ -2448,7 +2474,7 @@ function nombreChipVigente(s) {
 // Lista de chips (' | ') con el nombre con que se sellaron las huellas.
 function chipsConNombreSellado(v) {
   return String(v || '').split(' | ')
-    .map(s => { const t = s.trim(); return _CONTRAVENCION_NOMBRE_SELLADO[t] || t; }).join(' | ');
+    .map(s => { const t = nombreChipVigente(s); return _CONTRAVENCION_NOMBRE_SELLADO[t] || t; }).join(' | ');
 }
 function _infraccionSoloCatalogo(v) {
   const chips = String(v || '').split(' | ').map(nombreChipVigente)
@@ -3439,7 +3465,7 @@ var COMPORTAMIENTO_INDETERMINADO_IA ='Ninguno: el inspector marcó «No se pudo 
   'puede afirmar que no hay infracción.';
 
 // Los chips de «Tipificación y medidas» (TIPO DE INFRACCION, separados por
-// ' | ', p. ej. 'A3: Bienes uso público (Antejardín) | D13: Materiales en
+// ' | ', p. ej. 'A3: Bien de uso público o espacio público | D13: Materiales en
 // vía') en la forma que necesita «Mejorar con IA» para comparar la
 // calificación del texto contra lo marcado:
 //   []                → no hay nada marcado todavía

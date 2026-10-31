@@ -1543,6 +1543,9 @@ function _ChipsContravencion({ value, onChange, ofrecerIndeterminada }) {
     if (!value) return [];
     return value.split(sep).map(s => s.trim()).filter(Boolean);
   }, [value]);
+  // Chip cuyo texto de la ley se abrió con ⓘ, sin marcarlo. Uno a la vez.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- falso positivo, como arriba
+  const [leyAbierta, setLeyAbierta] = React.useState(null);
 
   const esNoInfraccion = seleccionados.includes(CONTRAVENCION_ESPECIAL);
   const esIndeterminada = seleccionados.includes(CONTRAVENCION_INDETERMINADA);
@@ -1560,22 +1563,38 @@ function _ChipsContravencion({ value, onChange, ofrecerIndeterminada }) {
             {grupo.literal}
           </div>
           <div className="chips chips-rejilla">
-            {grupo.opciones.map(opt => (
-              <button key={opt.val} type="button"
-                className={'chip' + (seleccionados.includes(opt.val) ? ' activo' : '')}
-                onClick={() => toggle(opt.val)}>
-                {opt.l}
-              </button>
-            ))}
+            {grupo.opciones.map(opt => {
+              const marcado = seleccionados.includes(opt.val);
+              const ley = textoLeyChip(opt.val);
+              const cod = opt.val.split(':')[0];
+              return (
+                <React.Fragment key={opt.val}>
+                  <div className="chip-celda">
+                    <button type="button" title={ley}
+                      className={'chip' + (marcado ? ' activo' : '')}
+                      onClick={() => toggle(opt.val)}>
+                      {opt.l}
+                    </button>
+                    {/* Marcado, el texto ya está a la vista. */}
+                    {!marcado && (
+                      <button type="button" className="chip-info" title={ley}
+                        aria-expanded={leyAbierta === opt.val}
+                        aria-label={'Texto de la ley de ' + cod}
+                        onClick={() => setLeyAbierta(leyAbierta === opt.val ? null : opt.val)}>
+                        <Icon.Info size={15} />
+                      </button>
+                    )}
+                  </div>
+                  {/* El nombre corto no basta para decidir (2026-10-29): el
+                      texto de la ley va bajo el chip marcado, y bajo el que
+                      se consulta con ⓘ (2026-10-30). */}
+                  {(marcado || leyAbierta === opt.val) && (
+                    <p className="chip-ley"><strong>{cod}</strong> «{ley}».</p>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
-          {/* El texto de la ley bajo cada chip marcado (2026-10-29): el
-              nombre corto no basta para decidir (C12 se marcaba por las
-              unidades de más). */}
-          {grupo.opciones.filter(opt => seleccionados.includes(opt.val)).map(opt => (
-            <p key={opt.val} className="chip-ley">
-              <strong>{opt.val.split(':')[0]}</strong> «{textoLeyChip(opt.val)}».
-            </p>
-          ))}
         </div>
       ))}
       {/* Opción especial */}
@@ -4002,8 +4021,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   }, [d.estadoObra]);
 
   // ── Sugerencias de tipificación según POT + catastro ──
-  // Predio público (catastro municipal)              → A3: Bienes uso público (Antejardín)
-  // Suelo de protección o retiro de quebrada (POT)   → A1: Áreas protegidas
+  // Predio público (catastro municipal)              → A3: Bien de uso público o espacio público
+  // Suelo de protección o retiro de quebrada (POT)   → A1: Área protegida o afectada
   // Ambas condiciones                                → A1 + A3 (suma)
   // El inspector debe aceptar para aplicarlas. Al aceptar reemplazamos
   // SOLO el grupo A (preservando chips C/D que el inspector haya marcado).
@@ -4026,10 +4045,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         : (_esProtegido
             ? 'el predio está en suelo de protección'
             : 'el predio está dentro del retiro de quebrada');
-      s.push({ val: 'A1: Áreas protegidas', razon: razon });
+      s.push({ val: 'A1: Área protegida o afectada', razon: razon });
     }
     if (_esPublico) {
-      s.push({ val: 'A3: Bienes uso público (Antejardín)', razon: 'el predio es del Municipio de Bello' });
+      s.push({ val: 'A3: Bien de uso público o espacio público', razon: 'el predio es del Municipio de Bello' });
     }
     return s;
   })();
