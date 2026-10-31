@@ -529,12 +529,27 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .chips-rejilla {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* dense: el texto de la ley ocupa su renglón y el chip siguiente sube a
+     llenar el hueco que deja. */
+  grid-auto-flow: dense;
   margin-bottom: 0;
 }
 @media (min-width: 600px) {
   .chips-rejilla { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
-.chips-rejilla > .chip { justify-content: flex-start; text-align: left; line-height: 1.25; }
+.chip-celda { position: relative; display: flex; min-width: 0; }
+.chip-celda > .chip { flex: 1; min-width: 0; justify-content: flex-start; padding-right: 34px; text-align: left; line-height: 1.25; }
+.chip-info {
+  position: absolute; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center;
+  width: 34px; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer;
+}
+.chip-info:hover, .chip-info[aria-expanded="true"] { color: var(--ink); }
+.chip-info:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: var(--r-ctl); }
+@media (pointer: coarse) {
+  .chip-celda > .chip { padding-right: 44px; }
+  .chip-info { width: 44px; }
+}
+.chips-rejilla > .chip-ley { grid-column: 1 / -1; margin: 0 0 var(--s-1); }
 /* Texto de la ley bajo el chip marcado del art. 135 (2026-10-29). */
 /* La rejilla no deja margen abajo (main sí): el texto va 8 px bajo los chips. */
 .chip-ley { margin: var(--s-2) 0 10px; max-width: 72ch; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-3); }

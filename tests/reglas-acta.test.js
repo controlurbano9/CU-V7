@@ -104,7 +104,7 @@ test('R16: A1 y A4 juntos no bloquean; piden justificación', () => {
 });
 
 test('alternarContravencion: A1 convive con A4 y va primero', () => {
-  const A1 = 'A1: Áreas protegidas';
+  const A1 = 'A1: Área protegida o afectada';
   assert.equal(_infraccionSoloCatalogo(A4 + ' | ' + A1), A1 + ' | ' + A4);
   assert.deepEqual(alternarContravencion([A4, A3], A1), [A1, A4, A3]);
   assert.deepEqual(alternarContravencion([A1], A4), [A1, A4]);

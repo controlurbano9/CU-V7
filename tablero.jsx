@@ -26,9 +26,9 @@ const TB_METRICAS = {
   dias: { t: 'Días a visita (mediana)', u: ' d' },
 };
 const TB_INFR = {
-  A1: 'A1 · Áreas protegidas',
-  A2: 'A2 · Diferente a lo aprobado',
-  A3: 'A3 · Bienes de uso público',
+  A1: 'A1 · Área protegida o afectada',
+  A2: 'A2 · Desconociendo la licencia',
+  A3: 'A3 · Bien de uso público o espacio público',
   A4: 'A4 · Sin licencia o caducada',
   NO: 'No se evidencia infracción',
   X: 'Texto libre de V2 (sin tipificar)',
