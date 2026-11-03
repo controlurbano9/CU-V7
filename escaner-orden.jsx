@@ -381,6 +381,22 @@ function _eoEsPdf(f) {
   return f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
 }
 
+// Cuántas páginas trae un PDF (su contenido como texto binario), o null si
+// no se puede saber. Cuenta los objetos /Type /Page; si no hay (las apps que
+// comprimen los objetos en /ObjStm los esconden), usa el /Count del árbol
+// /Pages. La orden tiene 2 páginas: un PDF de 1 no se sube (2026-11-03).
+function _eoPaginasPdf(bin) {
+  const s = String(bin || '');
+  const paginas = s.match(/\/Type\s*\/Page(?![a-zA-Z])/g);
+  if (paginas && paginas.length) return paginas.length;
+  let max = null;
+  (s.match(/<<[^<>]*\/Type\s*\/Pages[^<>]*>>/g) || []).forEach(function (dic) {
+    const m = /\/Count\s+(\d+)/.exec(dic);
+    if (m && (max == null || +m[1] > max)) max = +m[1];
+  });
+  return max;
+}
+
 // Archivo → base64 pelado (sin el prefijo data:). Para el PDF que ya trae
 // escaneado el inspector: no se reprocesa nada, se sube tal cual llegó.
 function _eoBase64(file) {
@@ -480,7 +496,12 @@ function _eoRespirar() {
   return new Promise(function (r) { setTimeout(r, 30); });
 }
 
-// Icono de recorte (no está en Icon.*; va aquí para no tocar icons.jsx).
+// La orden de policía en papel tiene dos páginas (2026-11-03, decisión del
+// usuario): el escáner las pide una a una y avisa si se va a subir con menos.
+// Una tercera se puede agregar (anexo), pero no se ofrece de entrada.
+const EO_PAGINAS_ORDEN = 2;
+
+// Iconos que no están en Icon.* (van aquí para no tocar icons.jsx).
 function _EoIconoRecorte({ size }) {
   return (
     <svg width={size || 16} height={size || 16} viewBox="0 0 24 24" fill="none"
@@ -491,24 +512,132 @@ function _EoIconoRecorte({ size }) {
     </svg>
   );
 }
+// Girar 90° a la derecha. No es el ↻ de Icon.Refresh: ese dice «reemplazar»
+// en los renglones de los entregables, y aquí estaban a 100 px uno del otro.
+function _EoIconoGirar({ size }) {
+  return (
+    <svg width={size || 16} height={size || 16} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <rect x="3" y="9" width="12" height="12" rx="1.5" />
+      <path d="M10 4h4a6 6 0 0 1 6 6v3" />
+      <path d="M17 10l3 3 3-3" />
+    </svg>
+  );
+}
+
+// «Atrás» del celular cierra el editor o el visor, no la visita: misma
+// mecánica que VisorFotos (nueva-visita.jsx). Al abrir se agrega una entrada
+// al historial y cerrar siempre pasa por history.back(); el popstate corre
+// `alCerrar`. app.jsx ignora ese popstate mientras _cuVisorFotos esté arriba.
+// Esc cierra igual que «atrás».
+function useCapaEO(alCerrar) {
+  const alCerrarRef = useRefEO(alCerrar);
+  alCerrarRef.current = alCerrar;
+  const cerrandoRef = useRefEO(false);
+  function cerrar() {
+    if (cerrandoRef.current) return;
+    cerrandoRef.current = true;
+    history.back();
+  }
+  useEffectEO(function () {
+    history.pushState(history.state, '');
+    window._cuVisorFotos = true;
+    function alVolver() { alCerrarRef.current(); }
+    function tecla(e) { if (e.key === 'Escape') cerrar(); }
+    window.addEventListener('popstate', alVolver);
+    window.addEventListener('keydown', tecla);
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return function () {
+      window._cuVisorFotos = false;
+      window.removeEventListener('popstate', alVolver);
+      window.removeEventListener('keydown', tecla);
+      document.body.style.overflow = previo;
+    };
+  }, []);
+  return cerrar;
+}
+
+// ─── Páginas guardadas en el teléfono ──────────────────────────
+// Las páginas capturadas vivían solo en memoria: en un Android barato la
+// pestaña se descarta mientras la cámara está abierta y, al volver, las fotos
+// ya no estaban. Se guardan las fotos originales (no el JPEG procesado) en
+// IndexedDB por visita y orden hasta que la orden se sube, se encola o se
+// descarta; al reabrir la visita se reprocesan. Una semana como máximo.
+const EO_IDB = 'cu_escaner_v1';
+const EO_IDB_STORE = 'sesiones';
+const EO_SESION_MS = 7 * 24 * 60 * 60 * 1000;
+
+function _eoIdb() {
+  return new Promise(function (resolve, reject) {
+    if (typeof indexedDB === 'undefined') { reject(new Error('sin IndexedDB')); return; }
+    const r = indexedDB.open(EO_IDB, 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore(EO_IDB_STORE); };
+    r.onsuccess = function () { resolve(r.result); };
+    r.onerror = function () { reject(r.error); };
+  });
+}
+function _eoClaveSesion(fila, orden) {
+  return String(fila) + '|' + String(orden || '').trim().toUpperCase();
+}
+// `valor` null borra la sesión.
+function _eoSesionGuardar(clave, valor) {
+  return _eoIdb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction(EO_IDB_STORE, 'readwrite');
+      const st = tx.objectStore(EO_IDB_STORE);
+      if (valor) st.put(valor, clave); else st.delete(clave);
+      tx.oncomplete = function () { db.close(); resolve(); };
+      tx.onerror = function () { db.close(); reject(tx.error); };
+    });
+  });
+}
+// Lee la sesión de `clave` y de paso borra las de más de una semana.
+function _eoSesionLeer(clave) {
+  return _eoIdb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction(EO_IDB_STORE, 'readwrite');
+      const st = tx.objectStore(EO_IDB_STORE);
+      let encontrada = null;
+      const cur = st.openCursor();
+      cur.onsuccess = function () {
+        const c = cur.result;
+        if (!c) return;
+        const vieja = !c.value || !c.value.ts || Date.now() - c.value.ts > EO_SESION_MS;
+        if (vieja) c.delete();
+        else if (c.key === clave) encontrada = c.value;
+        c.continue();
+      };
+      tx.oncomplete = function () { db.close(); resolve(encontrada); };
+      tx.onerror = function () { db.close(); reject(tx.error); };
+    });
+  });
+}
 
 // ─── Editor de recorte ─────────────────────────────────────────
-// Pantalla completa, foto encajada y 4 esquinas arrastrables sobre ella.
-// Al arrastrar, una lupa en la esquina opuesta muestra el punto ampliado:
-// el dedo tapa justo la esquina que se está ajustando.
+// Pantalla completa con el armazón del visor de fotos (.rfm): cabecera clara,
+// la foto sobre fondo oscuro y las acciones abajo en placa clara. Antes era
+// todo negro y «Listo» (tinta) no se veía sobre el fondo (#15140F sobre
+// #111): el botón principal era el que menos se notaba. Las 4 esquinas van en
+// el amarillo de la selección. Al arrastrar, una lupa en la esquina opuesta
+// muestra el punto ampliado: el dedo tapa justo la esquina que se ajusta.
+// Con teclado: Tab a una esquina y flechas (Mayús = paso largo); «Listo» arranca
+// con el foco, así que Enter lo confirma.
 const EO_LUPA = 120, EO_ZOOM = 2.5;
+const EO_ESQUINAS = ['superior izquierda', 'superior derecha', 'inferior derecha', 'inferior izquierda'];
 
-function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
+function EditorRecorteEO({ pagina, titulo, onFin }) {
   const [cuad, setCuad]       = useStateEO(pagina.cuad || [[0, 0], [1, 0], [1, 1], [0, 1]]);
   const [caja, setCaja]       = useStateEO({ w: 0, h: 0 });
   const [arrastre, setArrastre] = useStateEO(-1);
   const zonaRef = useRefEO(null);
+  const listoRef = useRefEO(null);
+  // Lo que se decidió (Listo o cerrar) viaja hasta el popstate.
+  const resultadoRef = useRefEO({ aplicar: false });
+  const cerrar = useCapaEO(function () { onFin(resultadoRef.current); });
 
-  useEffectEO(function () {
-    const previo = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return function () { document.body.style.overflow = previo; };
-  }, []);
+  useEffectEO(function () { if (listoRef.current) listoRef.current.focus(); }, []);
 
   // Mide el área disponible y encaja la foto (contain) dentro de ella.
   useEffectEO(function () {
@@ -540,6 +669,23 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
     });
   }
   function soltar() { setArrastre(-1); }
+  function teclaEsquina(i, e) {
+    const paso = e.shiftKey ? 0.05 : 0.01;
+    const d = { ArrowLeft: [-paso, 0], ArrowRight: [paso, 0], ArrowUp: [0, -paso], ArrowDown: [0, paso] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    setCuad(function (prev) {
+      return prev.map(function (p, j) {
+        return j === i ? [Math.min(1, Math.max(0, p[0] + d[0])), Math.min(1, Math.max(0, p[1] + d[1]))] : p;
+      });
+    });
+  }
+  function listo() {
+    const q = _eoOrdenarEsquinas(cuad);
+    // Recorte = foto entera: no hay nada que enderezar.
+    resultadoRef.current = { aplicar: true, cuad: _eoAreaCuad(q) > 0.995 ? null : q };
+    cerrar();
+  }
 
   const pts = cuad.map(function (p) { return [p[0] * caja.w, p[1] * caja.h]; });
   const poli = pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
@@ -547,41 +693,34 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
   // La lupa se va al lado contrario del dedo.
   const lupaIzq = activo && activo[0] > caja.w / 2;
 
-  const cuerpo = (
-    <div role="dialog" aria-modal="true" aria-label="Recortar página" style={{
-      position: 'fixed', inset: 0, zIndex: 9000, background: '#111',
-      display: 'flex', flexDirection: 'column', color: '#fff',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
-        <button type="button" onClick={onCancelar} className="btn-icono"
-          aria-label="Cerrar sin cambiar el recorte" title="Cerrar"
-          style={{ color: '#fff' }}>
+  return ReactDOM.createPortal(
+    <div className="rfm eo-capa" role="dialog" aria-modal="true" aria-labelledby="eo-ed-titulo">
+      <header className="rfm-top">
+        <button type="button" className="btn-icono" onClick={cerrar} aria-label="Cerrar sin cambiar el recorte">
           <Icon.Close size={20} />
         </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{titulo}</div>
-          <div style={{ fontSize: 13, opacity: 0.75 }}>Arrastre las esquinas a los bordes de la hoja</div>
+        <div className="eo-tit">
+          <h2 id="eo-ed-titulo" className="rfm-titulo">{titulo}</h2>
+          <p className="eo-ayuda">Lleva cada esquina al borde de la hoja</p>
         </div>
-      </div>
+      </header>
 
-      <div ref={zonaRef} style={{
-        flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        position: 'relative', overflow: 'hidden',
-      }}>
+      <div ref={zonaRef} className="eo-escena">
         {caja.w > 0 && (
           <div style={{ position: 'relative', width: caja.w, height: caja.h, touchAction: 'none' }}
             onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
             <img src={pagina.vista.url} alt="" draggable={false}
               style={{ width: caja.w, height: caja.h, display: 'block', userSelect: 'none' }} />
-            <svg width={caja.w} height={caja.h} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+            <svg width={caja.w} height={caja.h} className="eo-recorte">
               {/* Oscurece lo que queda fuera del recorte (evenodd). */}
-              <path fillRule="evenodd" fill="rgba(0,0,0,0.5)"
+              <path className="eo-fuera" fillRule="evenodd"
                 d={'M0,0H' + caja.w + 'V' + caja.h + 'H0Z M' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' L') + 'Z'} />
-              <polygon points={poli} fill="none" stroke="#60a5fa" strokeWidth="2" />
+              <polygon className="eo-borde" points={poli} />
               {pts.map(function (p, i) {
                 return (
-                  <g key={i} style={{ cursor: 'grab' }}
+                  <g key={i} className="eo-esquina" tabIndex={0} role="button"
+                    aria-label={'Esquina ' + EO_ESQUINAS[i] + ': muévela con las flechas'}
+                    onKeyDown={function (e) { teclaEsquina(i, e); }}
                     onPointerDown={function (e) {
                       e.preventDefault();
                       try { e.currentTarget.ownerSVGElement.parentNode.setPointerCapture(e.pointerId); } catch (err) {}
@@ -589,50 +728,109 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
                     }}>
                     {/* Blanco táctil de 44 px; lo visible es el círculo de 11. */}
                     <circle cx={p[0]} cy={p[1]} r="22" fill="transparent" />
-                    <circle cx={p[0]} cy={p[1]} r="11" fill="rgba(96,165,250,0.35)"
-                      stroke="#fff" strokeWidth="2" />
+                    <circle className="eo-punto" cx={p[0]} cy={p[1]} r="11" />
                   </g>
                 );
               })}
             </svg>
             {activo && (
-              <div aria-hidden="true" style={{
-                position: 'absolute', top: 8, left: lupaIzq ? 8 : undefined, right: lupaIzq ? undefined : 8,
-                width: EO_LUPA, height: EO_LUPA, borderRadius: '50%', border: '2px solid #fff',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.6)', pointerEvents: 'none',
-                backgroundImage: 'url(' + pagina.vista.url + ')', backgroundRepeat: 'no-repeat',
+              <div aria-hidden="true" className="eo-lupa" style={{
+                left: lupaIzq ? 8 : undefined, right: lupaIzq ? undefined : 8,
+                width: EO_LUPA, height: EO_LUPA,
+                backgroundImage: 'url(' + pagina.vista.url + ')',
                 backgroundSize: (caja.w * EO_ZOOM) + 'px ' + (caja.h * EO_ZOOM) + 'px',
                 backgroundPosition: (EO_LUPA / 2 - activo[0] * EO_ZOOM) + 'px ' + (EO_LUPA / 2 - activo[1] * EO_ZOOM) + 'px',
-                backgroundColor: '#000',
               }}>
-                <div style={{ position: 'absolute', left: EO_LUPA / 2 - 1, top: EO_LUPA / 2 - 10, width: 2, height: 20, background: '#60a5fa' }} />
-                <div style={{ position: 'absolute', top: EO_LUPA / 2 - 1, left: EO_LUPA / 2 - 10, height: 2, width: 20, background: '#60a5fa' }} />
+                <i className="eo-mira-v" /><i className="eo-mira-h" />
               </div>
             )}
           </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, padding: '10px 12px 14px' }}>
-        <button type="button" className="btn-accion" style={{ flex: 1, minHeight: 44 }}
+      <footer className="eo-pie">
+        <button type="button" className="btn-texto"
           onClick={function () { setCuad([[0, 0], [1, 0], [1, 1], [0, 1]]); }}>
-          Foto completa
+          Usar la foto completa
         </button>
-        <button type="button" className="btn-principal" style={{ flex: 1, minHeight: 44, marginTop: 0 }}
-          onClick={function () {
-            const q = _eoOrdenarEsquinas(cuad);
-            // Recorte = foto entera: no hay nada que enderezar.
-            const entera = _eoAreaCuad(q) > 0.995;
-            onListo(entera ? null : q);
-          }}>
+        <button ref={listoRef} type="button" className="btn-principal eo-pie-ok" onClick={listo}>
           Listo
         </button>
-      </div>
-    </div>
+      </footer>
+    </div>,
+    document.body
   );
-  return (typeof ReactDOM !== 'undefined' && ReactDOM.createPortal)
-    ? ReactDOM.createPortal(cuerpo, document.body)
-    : cuerpo;
+}
+
+// ─── Visor de una página ya procesada ──────────────────────────
+// Tocar una miniatura abre la página como saldrá en el PDF, grande: es la
+// revisión de verdad (antes, una miniatura de 46 × 60 px de una hoja de
+// 1275 × 1950 donde no se leía nada). Desde aquí se recorta, se gira, se
+// cambia de lugar o se quita. Recortar y quitar cierran el visor; girar y
+// mover se ven en el momento.
+function VisorPaginaEO({ paginas, inicio, ocupado, onAccion }) {
+  const [sel, setSel] = useStateEO(inicio);
+  const accionRef = useRefEO(null);
+  const cerrarRef = useRefEO(null);
+  const cerrar = useCapaEO(function () { onAccion(accionRef.current); });
+  useEffectEO(function () { if (cerrarRef.current) cerrarRef.current.focus(); }, []);
+
+  const n = paginas.length;
+  const idx = Math.min(sel, Math.max(0, n - 1));
+  const p = paginas[idx];
+  const total = Math.max(EO_PAGINAS_ORDEN, n);
+  function salirCon(accion) { accionRef.current = accion; cerrar(); }
+
+  return ReactDOM.createPortal(
+    <div className="rfm eo-capa" role="dialog" aria-modal="true" aria-labelledby="eo-ver-titulo">
+      <header className="rfm-top">
+        <button ref={cerrarRef} type="button" className="btn-icono" onClick={cerrar} aria-label="Cerrar">
+          <Icon.Close size={20} />
+        </button>
+        <div className="eo-tit">
+          <h2 id="eo-ver-titulo" className="rfm-titulo">{'Página ' + (idx + 1) + ' de ' + total}</h2>
+          <p className="eo-ayuda">Así queda en el PDF</p>
+        </div>
+      </header>
+
+      <div className="eo-escena">
+        {p && <img className="eo-ver-img" src={p.dataUrl} alt={'Página ' + (idx + 1) + ' de la orden'} />}
+        {ocupado && <div className="rfm-fallo" role="status">{ocupado}</div>}
+        {idx > 0 && (
+          <button type="button" className="rfm-nav izq" aria-label="Página anterior" onClick={function () { setSel(idx - 1); }}>
+            <Icon.ChevronLeft size={22} />
+          </button>
+        )}
+        {idx < n - 1 && (
+          <button type="button" className="rfm-nav der" aria-label="Página siguiente" onClick={function () { setSel(idx + 1); }}>
+            <Icon.ChevronRight size={22} />
+          </button>
+        )}
+      </div>
+
+      <footer className="eo-pie eo-pie-acc">
+        <button type="button" className="btn-accion" disabled={!!ocupado}
+          onClick={function () { salirCon({ tipo: 'recortar', id: p.id }); }}>
+          <_EoIconoRecorte size={16} /> Recortar
+        </button>
+        <button type="button" className="btn-accion" disabled={!!ocupado}
+          onClick={function () { onAccion({ tipo: 'girar', id: p.id }, true); }}>
+          <_EoIconoGirar size={16} /> Girar
+        </button>
+        {idx > 0 && (
+          <button type="button" className="btn-accion" disabled={!!ocupado}
+            onClick={function () { onAccion({ tipo: 'antes', id: p.id }, true); setSel(idx - 1); }}>
+            <Icon.ChevronLeft size={16} /> Pasar a página {idx}
+          </button>
+        )}
+        <button type="button" className="btn-texto eo-quitar" disabled={!!ocupado}
+          onClick={function () { salirCon({ tipo: 'quitar', id: p.id }); }}>
+          Quitar
+        </button>
+      </footer>
+    </div>,
+    document.body
+  );
 }
 
 // ─── Componente ────────────────────────────────────────────────
@@ -651,11 +849,18 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
   // Páginas por revisar en el editor, en orden. Al capturar se abre el
   // editor con cada toma nueva, como el escáner del iPhone.
   const [porRecortar, setPorRecortar] = useStateEO([]);
+  const [verIdx, setVerIdx]       = useStateEO(null);  // página abierta en el visor
+  const [quitada, setQuitada]     = useStateEO(null);  // { pagina, idx } para «Deshacer»
   const inputRef = useRefEO(null);
   // id del ítem de la cola offline con la orden de esta visita (si lo hay).
   const idColaRef = useRefEO(null);
   const onSubidoRef = useRefEO(onSubido);
   onSubidoRef.current = onSubido;
+  // El reemplazo de una orden ya escaneada se confirma al tocar ↻, antes de
+  // tomar las fotos; al subir ya no se vuelve a preguntar.
+  const reemplazoOkRef = useRefEO(false);
+  // No se guarda nada en el teléfono antes de haber leído lo que ya había.
+  const sesionLeidaRef = useRefEO(false);
 
   // El link puede llegar después: al reabrir una visita el efecto que carga
   // la fila desde BD corre luego del primer render.
@@ -695,6 +900,60 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     });
   }, []);
 
+  // Páginas que quedaron en el teléfono sin subir (pestaña descartada, salir
+  // de la visita): se reprocesan desde las fotos originales.
+  useEffectEO(function () {
+    sesionLeidaRef.current = false;
+    if (!fila) return;
+    let vivo = true;
+    _eoSesionLeer(_eoClaveSesion(fila, orden)).then(async function (s) {
+      if (!vivo) return;
+      const guardadas = (s && s.paginas) || [];
+      if (!guardadas.length) { sesionLeidaRef.current = true; return; }
+      setOcupado('Recuperando las páginas…');
+      const out = [];
+      for (const g of guardadas) {
+        try {
+          await _eoRespirar();
+          const img = await _eoLeerImagen(g.file);
+          const r = _eoProcesar(img, g.rot, g.cuad);
+          out.push({ id: g.id, file: g.file, rot: g.rot, cuad: g.cuad,
+                     vista: _eoPreparar(img, g.rot).vista, dataUrl: r.dataUrl, w: r.w, h: r.h });
+        } catch (err) { /* una foto ilegible se pierde; las demás siguen */ }
+      }
+      if (!vivo) return;
+      sesionLeidaRef.current = true;
+      // Si mientras tanto ya empezó otra sesión, se conserva esa (copia nueva
+      // para que el efecto de abajo la guarde).
+      setPaginas(function (prev) { return prev.length ? prev.slice() : out; });
+      setOcupado('');
+    }).catch(function () { sesionLeidaRef.current = true; });
+    return function () { vivo = false; };
+  }, [fila, orden]);
+
+  // Cada cambio de páginas queda en el teléfono; sin páginas, se borra.
+  useEffectEO(function () {
+    if (!fila || !sesionLeidaRef.current) return;
+    _eoSesionGuardar(_eoClaveSesion(fila, orden), paginas.length ? {
+      ts: Date.now(),
+      paginas: paginas.map(function (p) { return { id: p.id, file: p.file, rot: p.rot, cuad: p.cuad }; }),
+    } : null).catch(function () {});
+  }, [paginas, fila, orden]);
+
+  // Una orden ya escaneada (o en cola): escanear otra la reemplaza. Se
+  // pregunta aquí, antes de tomar las fotos, y no al final.
+  async function abrirSelector() {
+    if ((link || pendiente) && !paginas.length && !reemplazoOkRef.current) {
+      const ok = await appConfirm(link
+        ? 'Esta visita ya tiene la orden escaneada. Si escaneas otra, reemplaza a la anterior al subirla.'
+        : 'Esta visita ya tiene una orden en cola. Si escaneas otra, la reemplaza al subirla.',
+        { titulo: 'Reemplazar la orden', btnOk: 'Escanear otra' });
+      if (!ok) return;
+      reemplazoOkRef.current = true;
+    }
+    if (inputRef.current) inputRef.current.click();
+  }
+
   async function alSeleccionar(e) {
     const archivos = Array.from(e.target.files || []);
     if (inputRef.current) inputRef.current.value = '';   // permite reelegir la misma foto
@@ -704,13 +963,24 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     const pdf = archivos.find(_eoEsPdf);
     if (pdf) {
       if (archivos.length > 1) {
-        appAlert('Se seleccionó un PDF: se sube ese archivo y se ignora el resto. ' +
-                 'Para armar el PDF desde fotos, seleccione solo imágenes.',
+        appAlert('Elegiste un PDF: se sube ese archivo y no las fotos. ' +
+                 'Para armar el PDF con fotos, elige solo imágenes.',
           { tono: 'aviso', titulo: 'Se usa el PDF' });
       }
-      setOcupado('Leyendo PDF...');
+      setOcupado('Leyendo el PDF…');
       try {
-        await subirBase64(await _eoBase64(pdf));
+        const b64 = await _eoBase64(pdf);
+        // Si se puede leer cuántas páginas trae y son menos de las de la
+        // orden, no se sube. Si no se puede saber, se sube.
+        const n = _eoPaginasPdf(atob(b64));
+        if (n != null && n < EO_PAGINAS_ORDEN) {
+          setOcupado('');
+          appAlert('El PDF tiene ' + n + (n === 1 ? ' página' : ' páginas') + ' y la orden de policía tiene ' +
+            EO_PAGINAS_ORDEN + '. Escanea las dos páginas en tu app y vuelve a subirlo.',
+            { tono: 'aviso', titulo: 'Falta una página' });
+          return;
+        }
+        await subirBase64(b64);
       } catch (err) {
         setOcupado('');
         appAlert('No se pudo leer el PDF: ' + (err.message || err),
@@ -720,13 +990,16 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     }
 
     const validos = archivos.filter(function (f) { return f.size <= 12 * 1024 * 1024; });
-    if (validos.length < archivos.length) {
-      appAlert((archivos.length - validos.length) + ' imagen(es) superan 12MB y se descartaron.',
-        { tono: 'aviso', titulo: 'Imagen muy grande' });
+    const pesadas = archivos.length - validos.length;
+    if (pesadas) {
+      appAlert(pesadas === 1 ? 'Una foto pesa más de 12 MB y se descartó.'
+                             : pesadas + ' fotos pesan más de 12 MB y se descartaron.',
+        { tono: 'aviso', titulo: 'Foto muy pesada' });
     }
     if (!validos.length) return;
 
-    setOcupado('Procesando páginas...');
+    setQuitada(null);
+    setOcupado(validos.length > 1 ? 'Procesando las páginas…' : 'Procesando la página…');
     const nuevas = [];
     for (const f of validos) {
       try {
@@ -745,7 +1018,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     setPorRecortar(function (prev) { return prev.concat(nuevas.map(function (n) { return n.id; })); });
     setOcupado('');
     if (!nuevas.length) {
-      appAlert('No se pudo procesar ninguna de las imágenes seleccionadas.',
+      appAlert('No se pudo procesar ninguna de las fotos elegidas.',
         { tono: 'error', titulo: 'Escaneo fallido' });
     }
   }
@@ -771,36 +1044,65 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
     setOcupado('');
   }
 
-  function rotar(idx) {
-    const p = paginas[idx];
+  function girar(id) {
+    const p = paginas.find(function (x) { return x.id === id; });
     if (!p) return;
     // El recorte gira con la hoja: no hay que volver a ajustar las esquinas.
-    reprocesar(p.id, { rot: (p.rot + 90) % 360, cuad: p.cuad ? _eoRotarCuad(p.cuad, 90) : null }, 'Girando...');
+    reprocesar(id, { rot: (p.rot + 90) % 360, cuad: p.cuad ? _eoRotarCuad(p.cuad, 90) : null }, 'Girando…');
   }
 
-  function cerrarEditor(id, cuadNuevo, aplicar) {
+  function finEditor(id, res) {
     setPorRecortar(function (prev) { return prev.filter(function (x) { return x !== id; }); });
-    if (!aplicar) return;
+    if (!res || !res.aplicar) return;
     const p = paginas.find(function (x) { return x.id === id; });
-    if (p && JSON.stringify(p.cuad) !== JSON.stringify(cuadNuevo)) {
-      reprocesar(id, { cuad: cuadNuevo }, 'Recortando...');
+    if (p && JSON.stringify(p.cuad) !== JSON.stringify(res.cuad)) {
+      reprocesar(id, { cuad: res.cuad }, 'Recortando…');
     }
   }
 
-  function eliminar(idx) {
-    const id = paginas[idx] && paginas[idx].id;
-    setPaginas(function (prev) { return prev.filter(function (_, i) { return i !== idx; }); });
+  function quitar(id) {
+    const idx = paginas.findIndex(function (x) { return x.id === id; });
+    if (idx < 0) return;
+    setQuitada({ pagina: paginas[idx], idx: idx });
+    setPaginas(function (prev) { return prev.filter(function (x) { return x.id !== id; }); });
     setPorRecortar(function (prev) { return prev.filter(function (x) { return x !== id; }); });
   }
+  function deshacerQuitar() {
+    if (!quitada) return;
+    const q = quitada;
+    setQuitada(null);
+    setPaginas(function (prev) { const c = prev.slice(); c.splice(Math.min(q.idx, c.length), 0, q.pagina); return c; });
+  }
 
-  function mover(idx, dir) {
-    const dest = idx + dir;
+  // Una página un lugar antes (con dos páginas, las intercambia).
+  function moverAntes(id) {
     setPaginas(function (prev) {
-      if (dest < 0 || dest >= prev.length) return prev;
-      const copia = prev.slice();
-      const tmp = copia[idx]; copia[idx] = copia[dest]; copia[dest] = tmp;
-      return copia;
+      const i = prev.findIndex(function (x) { return x.id === id; });
+      if (i <= 0) return prev;
+      const c = prev.slice();
+      const t = c[i - 1]; c[i - 1] = c[i]; c[i] = t;
+      return c;
     });
+  }
+
+  // Lo que pide el visor. `sigueAbierto`: girar y mover se ven ahí mismo.
+  function accionVisor(accion, sigueAbierto) {
+    if (!sigueAbierto) setVerIdx(null);
+    if (!accion) return;
+    if (accion.tipo === 'recortar') {
+      setPorRecortar(function (prev) { return [accion.id].concat(prev.filter(function (x) { return x !== accion.id; })); });
+    } else if (accion.tipo === 'girar') girar(accion.id);
+    else if (accion.tipo === 'antes') moverAntes(accion.id);
+    else if (accion.tipo === 'quitar') quitar(accion.id);
+  }
+
+  async function descartar() {
+    const n = paginas.length;
+    const ok = await appConfirm(n === 1 ? '¿Descartar la página escaneada?' : '¿Descartar las ' + n + ' páginas escaneadas?',
+      { titulo: 'Descartar el escaneo', btnOk: 'Descartar', peligro: true });
+    if (!ok) return;
+    setPaginas([]); setPorRecortar([]); setQuitada(null);
+    reemplazoOkRef.current = false;
   }
 
   // Único camino de subida: lo usan el PDF traído de la app de escaneo y el
@@ -809,43 +1111,46 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
   async function subirBase64(base64) {
     if (!idCarpetaVisita || !fila) {
       setOcupado('');
-      appAlert('Guarde la visita primero: la orden se sube a la carpeta de Drive de la visita, que aún no existe.',
+      appAlert('Guarda la visita primero: la orden se sube a la carpeta de Drive de la visita, que aún no existe.',
         { tono: 'aviso', titulo: 'Falta guardar' });
       return;
     }
-    if (link || pendiente) {
+    // Normalmente ya se confirmó al tocar ↻; esto queda para una sesión
+    // recuperada del teléfono sobre una visita que ya tiene la orden.
+    if ((link || pendiente) && !reemplazoOkRef.current) {
       const ok = await appConfirm(link
-        ? 'Ya hay una orden escaneada para esta visita. El PDF anterior se reemplaza por este. ¿Continuar?'
-        : 'Ya hay una orden en cola para esta visita. Al subirse, la reemplaza este PDF. ¿Continuar?',
-        { titulo: 'Reemplazar orden' });
+        ? 'Esta visita ya tiene la orden escaneada. El PDF anterior se reemplaza por este. ¿Continuar?'
+        : 'Esta visita ya tiene una orden en cola. Al subirse, la reemplaza este PDF. ¿Continuar?',
+        { titulo: 'Reemplazar la orden' });
       if (!ok) { setOcupado(''); return; }
     }
     if (base64.length > EO_MAX_BASE64) {
       setOcupado('');
       appAlert('El PDF quedó demasiado pesado (' + (base64.length / 1048576).toFixed(1) +
-               ' MB). Elimine páginas repetidas, baje la calidad en la app de escaneo ' +
-               'o vuelva a tomar las fotos más de cerca.',
+               ' MB). Quita las páginas repetidas, baja la calidad en la app de escaneo ' +
+               'o vuelve a tomar las fotos más de cerca.',
         { tono: 'error', titulo: 'PDF muy pesado' });
       return;
     }
 
     try {
       const nombre = 'ORDEN_POLICIA_' + String(orden || 'SN').replace(/[\/\\:*?"<>|]/g, '-') + '.pdf';
-      setOcupado('Subiendo a Drive...');
+      setOcupado('Subiendo a Drive…');
       const r = await subirOrdenPolicia(idCarpetaVisita, fila, base64, nombre, orden || '', radicadoFila, idVisita);
 
       setOcupado('');
+      reemplazoOkRef.current = false;
       if (r.encolado) {
         idColaRef.current = r.localId;
         setPendiente(true);
-        setPaginas([]);
-        appAlert('Sin conexión: la orden quedó en cola y se subirá a Drive automáticamente al recuperar señal.',
+        setPaginas([]); setQuitada(null);
+        appAlert('Sin conexión: la orden quedó en cola y se subirá a Drive sola al volver la señal.',
           { tono: 'aviso', titulo: 'Orden en cola' });
         return;
       }
       setPendiente(false);
       setLink(r.link || '');
-      setPaginas([]);
+      setPaginas([]); setQuitada(null);
       if (typeof onSubido === 'function') onSubido(r.link || '');
       // La copia local de la BD no tiene el link nuevo: sin esto Inicio y
       // Buscar seguían mostrando la visita sin orden hasta otro refresco.
@@ -870,10 +1175,12 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
   }
 
   async function generarYSubir() {
-    if (!paginas.length) return;
+    // La orden tiene dos páginas: con menos no se sube (2026-11-03, decisión
+    // del usuario). El botón ya está apagado; esto es por si acaso.
+    if (paginas.length < EO_PAGINAS_ORDEN) return;
 
     try {
-      setOcupado('Armando PDF...');
+      setOcupado('Armando el PDF…');
       const JsPDF = await cargarJsPDF();
       const doc = new JsPDF({ unit: 'mm', format: EO_PAGINA_MM, orientation: 'portrait', compress: true });
       const [ANCHO, ALTO] = EO_PAGINA_MM;
@@ -903,10 +1210,15 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
   const sesionAbierta = paginas.length > 0;
   // Con la orden subida o en cola, capturar otra es reemplazarla (↻).
   const hayOrden = !!link || pendiente;
+  const faltan = Math.max(0, EO_PAGINAS_ORDEN - paginas.length);
+  const total = Math.max(EO_PAGINAS_ORDEN, paginas.length);
 
   const idEditor = porRecortar[0];
   const paginaEditor = idEditor ? paginas.find(function (x) { return x.id === idEditor; }) : null;
   const numEditor = paginaEditor ? paginas.indexOf(paginaEditor) + 1 : 0;
+
+  const textoSubir = paginas.length > EO_PAGINAS_ORDEN
+    ? 'Subir la orden · ' + paginas.length + ' páginas' : 'Subir la orden';
 
   // El componente renderiza su propio FilaEntregable: es quien conoce el
   // link, las páginas y el estado de la sesión, así que ser dueño del
@@ -921,102 +1233,87 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
       // lo explica el aviso de arriba de la zona (`ent-motivo`).
       meta={!idCarpetaVisita || link || pendiente
         ? 'Papel firmado · PDF'
-        : (requeridaPara ? 'Necesaria para generar ' + requeridaPara : 'Suba el PDF de su app de escaneo o tome fotos')}
+        : (requeridaPara ? 'Necesaria para generar ' + requeridaPara + ' · 2 páginas'
+                         : 'Dos páginas: una foto de cada una, o el PDF de tu app de escaneo')}
       estadoTono={link ? 'ok' : (pendiente ? 'pend' : (idCarpetaVisita ? 'pend' : 'apagado'))}
       estadoTexto={pendiente ? 'En cola' : (link ? 'Escaneada' : 'Sin escanear')}
       procesando={bloqueado && !sesionAbierta}
       slot={(pendiente || sesionAbierta) && idCarpetaVisita ? (
         <div className="ent-slot-orden">
-          {pendiente && (
-            <div style={{
-              marginBottom: 12, padding: '10px 12px', background: 'var(--amarillo-bg)',
-              border: '1px dashed var(--amarillo)', borderRadius: 8, fontSize: 13,
-              display: 'flex', alignItems: 'center', gap: 8, color: 'var(--cafe)',
-            }}>
-              <Icon.ArrowUp size={14} />
-              Orden en cola — se sube sola al recuperar conexión.
-            </div>
+          {pendiente && !sesionAbierta && (
+            <p className="eo-cola">
+              <Icon.ArrowUp size={14} /> Orden en cola: se sube sola al volver la señal.
+            </p>
           )}
 
-          {sesionAbierta && (<>
-            <div style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 8 }}>
-              Formato oficio (8.5 × 13"). Tome la hoja entera sobre una superficie oscura; con ✂ ajusta el recorte.
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--texto-suave)' }}>
-                {paginas.length} página(s) — revise antes de subir
+          {sesionAbierta && (
+            <div className="eo-sesion">
+              <div className="eo-hojas">
+                {paginas.map(function (p, i) {
+                  return (
+                    <button key={p.id} type="button" className="eo-hoja" disabled={bloqueado}
+                      onClick={function () { setVerIdx(i); }}
+                      aria-label={'Ver la página ' + (i + 1) + ' de ' + total}>
+                      <span className="eo-hoja-img"><img src={p.dataUrl} alt="" /></span>
+                      <span className="eo-hoja-n">Página {i + 1}</span>
+                    </button>
+                  );
+                })}
+                {faltan > 0 && (
+                  <button type="button" className="eo-hoja eo-hoja-falta" disabled={bloqueado} onClick={abrirSelector}>
+                    <span className="eo-hoja-img">
+                      <Icon.Camera size={24} />
+                      <span>Tomar la foto</span>
+                    </span>
+                    <span className="eo-hoja-n">Página {paginas.length + 1}</span>
+                  </button>
+                )}
               </div>
-              {paginas.map(function (p, i) {
-                return (
-                  <div key={p.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                    padding: 8, background: 'var(--gris-bg)', borderRadius: 8,
-                  }}>
-                    {/* contain, no cover: la miniatura está para revisar que
-                        la hoja salió completa y derecha — recortarla al
-                        centro escondería justo los bordes que hay que ver. */}
-                    <img src={p.dataUrl} alt={'Página ' + (i + 1)} style={{
-                      width: 46, height: 60, objectFit: 'contain',
-                      borderRadius: 4, border: '1px solid var(--borde-med)', background: '#fff',
-                    }} />
-                    <div style={{ flex: '1 1 90px', fontSize: 13, fontWeight: 600 }}>
-                      Página {i + 1}
-                      <div style={{ fontWeight: 400, color: 'var(--texto-suave)', fontSize: 13 }}>
-                        {p.cuad ? 'Recortada' : 'Foto completa'}
-                      </div>
-                    </div>
-                    {/* Los 5 botones de 44px no caben junto a la miniatura en
-                        390px: van en su propio grupo para envolver enteros a
-                        la línea de abajo en vez de partirse. */}
-                    <div style={{ display: 'flex', marginLeft: 'auto' }}>
-                      <button type="button" onClick={function () { mover(i, -1); }}
-                        disabled={i === 0 || bloqueado} title="Subir"
-                        className="btn-icono" aria-label={'Subir página ' + (i + 1)}>
-                        <Icon.ChevronUp size={16} />
-                      </button>
-                      <button type="button" onClick={function () { mover(i, 1); }}
-                        disabled={i === paginas.length - 1 || bloqueado} title="Bajar"
-                        className="btn-icono" aria-label={'Bajar página ' + (i + 1)}>
-                        <Icon.Chevron size={16} />
-                      </button>
-                      <button type="button"
-                        onClick={function () { setPorRecortar(function (prev) { return [p.id].concat(prev.filter(function (x) { return x !== p.id; })); }); }}
-                        disabled={bloqueado} title="Recortar"
-                        className="btn-icono" aria-label={'Recortar página ' + (i + 1)}>
-                        <_EoIconoRecorte size={16} />
-                      </button>
-                      <button type="button" onClick={function () { rotar(i); }}
-                        disabled={bloqueado} title="Girar 90°"
-                        className="btn-icono" aria-label={'Girar página ' + (i + 1)}>
-                        <Icon.Refresh size={16} />
-                      </button>
-                      <button type="button" onClick={function () { eliminar(i); }}
-                        disabled={bloqueado} title="Eliminar"
-                        className="btn-icono peligro" aria-label={'Eliminar página ' + (i + 1)}>
-                        <Icon.Close size={16} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+              <p className="eo-ayuda-sesion">Toca una página para verla grande, recortarla o girarla.</p>
 
-            <button type="button" onClick={generarYSubir} disabled={bloqueado || porRecortar.length > 0}
-              aria-busy={bloqueado}
-              className="btn-principal secundario" style={{ fontSize: 15, marginTop: 14 }}>
-              {bloqueado ? ocupado : 'Generar PDF y subir a Drive'}
-            </button>
-          </>)}
+              {quitada && (
+                <p className="eo-quitada" role="status">
+                  Quitaste la página {quitada.idx + 1}.
+                  <button type="button" className="btn-texto" onClick={deshacerQuitar}>Deshacer</button>
+                </p>
+              )}
+
+              {/* Apagado, dice por qué (regla de los entregables: .ent-motivo). */}
+              {faltan > 0 && (
+                <p id={'eo-motivo-' + fila} className="ent-motivo eo-motivo">
+                  Falta la página {paginas.length + 1}: tómale la foto para subir la orden.
+                </p>
+              )}
+              <button type="button" className="btn-accion eo-subir" onClick={generarYSubir}
+                disabled={bloqueado || porRecortar.length > 0 || faltan > 0} aria-busy={bloqueado}
+                aria-describedby={faltan > 0 ? 'eo-motivo-' + fila : undefined}>
+                {bloqueado && <span className="spinner-btn" aria-hidden="true" />}
+                {bloqueado ? ocupado : textoSubir}
+              </button>
+              <div className="eo-sesion-sec">
+                {faltan === 0 && (
+                  <button type="button" className="btn-texto" disabled={bloqueado} onClick={abrirSelector}>
+                    <Icon.Plus size={14} /> Otra página
+                  </button>
+                )}
+                <button type="button" className="btn-texto" disabled={bloqueado} onClick={descartar}>
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
 
           {paginaEditor && !bloqueado && (
             <EditorRecorteEO
               key={paginaEditor.id + '_' + paginaEditor.rot}
               pagina={paginaEditor}
-              titulo={'Página ' + numEditor + (porRecortar.length > 1 ? ' · faltan ' + (porRecortar.length - 1) : '')}
-              onCancelar={function () { cerrarEditor(paginaEditor.id, null, false); }}
-              onListo={function (q) { cerrarEditor(paginaEditor.id, q, true); }}
+              titulo={'Página ' + numEditor + ' de ' + total}
+              onFin={function (res) { finEditor(paginaEditor.id, res); }}
             />
+          )}
+          {verIdx != null && paginas.length > 0 && !paginaEditor && (
+            <VisorPaginaEO paginas={paginas} inicio={verIdx} ocupado={ocupado}
+              onAccion={accionVisor} />
           )}
         </div>
       ) : undefined}
@@ -1024,23 +1321,22 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
       {link && (
         <a href={link} target="_blank" rel="noopener noreferrer" className="btn-accion ent-btn">Abrir</a>
       )}
-      {/* Con la orden ya escaneada (o en cola), reemplazarla es la misma
-          acción que regenerar un documento: mismo icono ↻ que acta, registro
-          e informe, no un botón de texto aparte. Sin escanear sí es acción
-          principal. */}
-      {idCarpetaVisita && (hayOrden ? (
+      {/* Con la sesión abierta, sus propias casillas agregan páginas: el botón
+          del renglón sobraría. Con la orden ya escaneada (o en cola),
+          reemplazarla es la misma acción que regenerar un documento: mismo
+          icono ↻ que acta, registro e informe. */}
+      {idCarpetaVisita && !sesionAbierta && (hayOrden ? (
         <button type="button" className="btn-icono" disabled={bloqueado}
           aria-label="Reemplazar el escaneo de la orden de policía"
           aria-busy={bloqueado} title="Reemplazar escaneo"
-          onClick={function () { if (inputRef.current) inputRef.current.click(); }}>
+          onClick={abrirSelector}>
           {bloqueado
             ? <span className="spinner-btn" aria-hidden="true" />
             : <Icon.Refresh size={18} />}
         </button>
       ) : (
         <button type="button" className="btn-accion ent-btn" disabled={bloqueado}
-          aria-busy={bloqueado}
-          onClick={function () { if (inputRef.current) inputRef.current.click(); }}>
+          aria-busy={bloqueado} onClick={abrirSelector}>
           {bloqueado && <span className="spinner-btn" aria-hidden="true" />}
           Escanear
         </button>

@@ -5672,3 +5672,55 @@ button.tb-det-n { cursor: pointer; }
   .tb-det-b::before, .tb-det-b i { top: 50%; bottom: auto; height: 10px; margin-top: -5px; }
   .tb-token button { width: 44px; height: 44px; }
 }
+
+/* ── Escáner de órdenes de policía (2026-11-03) ──────────────────────────
+   Crítica del 2026-11-03 (.impeccable/critique/…escaner-orden-jsx.md). El
+   editor de recorte y el visor de página usan el armazón del visor de fotos
+   (.rfm): cabecera clara, la hoja sobre fondo oscuro y las acciones en placa
+   clara. Antes el editor era todo negro y «Listo» (tinta) no se veía. Las
+   esquinas del recorte son una selección: van en el amarillo de la valla.
+   Por debajo de los diálogos de la app (appAlert / appConfirm en 9999). */
+.eo-capa { z-index: 9000; }
+.eo-tit { flex: 1; min-width: 0; }
+.eo-tit .rfm-titulo { font-family: var(--font-cond); font-size: var(--fs-3); font-weight: 700; line-height: 1.2; }
+.eo-ayuda { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.eo-escena { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #191612; }
+.eo-recorte { position: absolute; inset: 0; overflow: visible; }
+.eo-fuera { fill: rgba(21,20,15,.55); }
+.eo-borde { fill: none; stroke: var(--valla); stroke-width: 2; }
+.eo-esquina { cursor: grab; outline: none; }
+.eo-punto { fill: rgba(242,194,0,.35); stroke: var(--valla); stroke-width: 2.5; }
+.eo-esquina:focus-visible .eo-punto { stroke: var(--surface); stroke-width: 4; }
+.eo-lupa { position: absolute; top: 8px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 2px 10px rgba(0,0,0,.6); pointer-events: none; background-repeat: no-repeat; background-color: #000; }
+.eo-mira-v, .eo-mira-h { position: absolute; background: var(--valla); }
+.eo-mira-v { left: calc(50% - 1px); top: calc(50% - 10px); width: 2px; height: 20px; }
+.eo-mira-h { top: calc(50% - 1px); left: calc(50% - 10px); width: 20px; height: 2px; }
+.eo-ver-img { max-width: calc(100% - 32px); max-height: calc(100% - 32px); object-fit: contain; background: var(--surface); box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+.eo-pie { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+.eo-pie-ok { width: auto; min-width: 160px; margin: 0; }
+.eo-pie-acc { justify-content: flex-start; }
+.eo-pie-acc .btn-accion { min-height: 44px; font-size: var(--fs-2); }
+.eo-quitar { margin-left: auto; }
+
+/* La sesión: una casilla por página, del alto de la hoja oficio, para ver
+   que la hoja salió completa y derecha (antes, miniaturas de 46 × 60 px).
+   La página que falta es una casilla punteada que abre la cámara. */
+.eo-sesion { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.eo-hojas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.eo-hoja { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
+.eo-hoja-img { display: flex; align-items: center; justify-content: center; aspect-ratio: 8.5 / 13; border: 1px solid var(--line-2); border-radius: var(--r-card); background: var(--surface); overflow: hidden; }
+.eo-hoja-img img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.eo-hoja-n { font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }
+.eo-hoja-falta .eo-hoja-img { flex-direction: column; gap: 6px; border-style: dashed; background: var(--carril); color: var(--ink-3); font-size: var(--fs-1); font-weight: 600; }
+.eo-hoja:focus-visible { outline: none; }
+.eo-hoja:focus-visible .eo-hoja-img { box-shadow: 0 0 0 3px var(--brand-glow); border-color: var(--ink); }
+.eo-hoja:disabled { cursor: default; opacity: .6; }
+@media (hover: hover) and (pointer: fine) {
+  .eo-hoja:not(:disabled):hover .eo-hoja-img { border-color: var(--ink-3); }
+}
+.eo-ayuda-sesion { margin: 0; font-size: var(--fs-1); color: var(--ink-3); }
+.eo-quitada { display: flex; align-items: center; gap: 4px; margin: 0; font-size: var(--fs-1); color: var(--ink-2); }
+.eo-subir { width: 100%; min-height: 48px; font-size: var(--fs-2); }
+.eo-sesion-sec { display: flex; gap: 8px; }
+.eo-sesion-sec .btn-texto:last-child { margin-left: auto; }
+.eo-cola { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--r-card); background: var(--amber-bg); color: var(--ink-2); font-size: var(--fs-1); }
