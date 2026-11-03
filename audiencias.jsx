@@ -799,9 +799,10 @@ function AudienciasScreen({ usuario }) {
   // Meses con cupos para el filtro de la lista («abril 2027»…).
   const mesesCupos = useMemoAU(function () {
     const vistos = {}; const out = [];
+    const hoyM = parsearFecha(formatearFecha(_auHoy()));
     ((datos && datos.cupos) || []).forEach(function (c) {
       const d = parsearFecha(c.fecha);
-      if (!d) return;
+      if (!d || (hoyM && d < hoyM)) return;   // como la lista: de hoy en adelante
       const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
       if (vistos[k]) return;
       vistos[k] = 1;
@@ -1138,8 +1139,11 @@ function AudienciasScreen({ usuario }) {
   function filaCupo(c) {
     const E = _AU_ESTADOS_CUPOS[c.estado] || { texto: c.estado, anillo: 'pendiente' };
     const on = !!selCupos[c.idCupo];
+    // _auCaso puede devolver la etiqueta del expediente (JSX): se intercala con
+    // « · », no con join, que la volvía «[object Object]».
     const det = c.estado === 'RESERVADO'
-      ? [_auCaso(c), c.citado, c.reservadoPor ? titleCaseNombre(c.reservadoPor) : ''].filter(Boolean).join(' · ')
+      ? [_auCaso(c), c.citado, c.reservadoPor ? titleCaseNombre(c.reservadoPor) : ''].filter(Boolean)
+          .map(function (p, i) { return <React.Fragment key={i}>{i ? ' · ' : ''}{p}</React.Fragment>; })
       : c.estado === 'BLOQUEADO' ? (c.motivoBloqueo || '') : '';
     return (
       <div className={'au-cl-cupo' + (on ? ' sel' : '')} key={c.idCupo}>
@@ -1166,7 +1170,13 @@ function AudienciasScreen({ usuario }) {
   }
 
   function renderCupos() {
-    const filtrados = filtrarCuposLista(datos.cupos, {
+    // Solo de hoy en adelante: la agenda trae también las pasadas para la Lista,
+    // y un cupo pasado ya no se agrega, bloquea ni elimina.
+    const hoyCupos = parsearFecha(formatearFecha(_auHoy()));
+    const filtrados = filtrarCuposLista((datos.cupos || []).filter(function (c) {
+      const d = parsearFecha(c.fecha);
+      return !d || !hoyCupos || d >= hoyCupos;
+    }), {
       mes: fMes === 'todos' ? '' : fMes,
       estado: fEstado === 'todos' ? '' : fEstado,
       sustanciador: filtroSus

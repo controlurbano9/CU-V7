@@ -5761,7 +5761,7 @@ button.tb-det-n { cursor: pointer; }
 .au-cl-filtros { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .au-cl-filtro { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .au-cl-filtro > span { font-size: var(--fs-1); color: var(--ink-4); margin-right: 2px; }
-.au-cl-fila .au-cl-agregar { margin-left: auto; min-height: var(--tap); padding: 0 18px; }
+.au-cl-fila .au-cl-agregar { width: auto; flex: none; margin-left: auto; min-height: var(--tap); padding: 0 18px; }
 .au-cl-btn-filtros { display: none; }
 
 /* Aviso de cupos por apartar (atención, no error) */
