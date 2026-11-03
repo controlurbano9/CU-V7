@@ -5724,3 +5724,23 @@ button.tb-det-n { cursor: pointer; }
 .eo-sesion-sec { display: flex; gap: 8px; }
 .eo-sesion-sec .btn-texto:last-child { margin-left: auto; }
 .eo-cola { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--r-card); background: var(--amber-bg); color: var(--ink-2); font-size: var(--fs-1); }
+
+/* ── Programar inspección al lugar (2026-11-03): en el pie de gestión de la
+   ficha (ficha-visita.jsx). Sencillo: un botón y, al abrirlo, los tres datos
+   en un renglón que envuelve. Todo a 44 px en táctil. ── */
+.pi { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pi-motivo { margin: 0; font-size: var(--fs-1); color: var(--ink-3); }
+.pi-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.pi-campo { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-1); color: var(--ink-3); }
+.pi-campo label, .pi-lbl { font-size: var(--fs-1); color: var(--ink-3); }
+.pi-campo input, .pi-campo select {
+  min-height: var(--tap-min); padding: 4px 8px;
+  border-radius: var(--r-sm); border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2);
+  font-family: inherit; font-size: var(--fs-2);
+}
+.pi-fijo { display: flex; align-items: center; min-height: var(--tap-min);
+  font-size: var(--fs-2); color: var(--ink); }
+.pi-acciones { display: flex; gap: 8px; margin-left: auto; }
+.pi-error { margin: 0; font-size: var(--fs-1); color: var(--rojo); }
+@media (pointer: coarse) { .pi .vc-btn, .pi-campo input, .pi-campo select, .pi-fijo { min-height: 44px; } }

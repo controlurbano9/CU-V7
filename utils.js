@@ -2095,7 +2095,9 @@ var BUSCAR_ESTADOS_VIVOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO'];
 // gestiona.
 var _PENDIENTE_BUSCAR = { 'PENDIENTE': 1, 'PENDIENTES': 1, 'PROGRAMADA': 1, 'PQR PENDIENTE': 1, 'PENDIENTE PQR': 1 };
 function esNoCompetenciaFila(f) {
-  return /NO\s+COMPETENCIA/.test(String((f && f['ATENCION PQR']) || '').toUpperCase());
+  // La inspección al lugar de un radicado viejo es un proceso abierto, no caducidad.
+  return /NO\s+COMPETENCIA/.test(String((f && f['ATENCION PQR']) || '').toUpperCase()) &&
+    !esInspeccionLugar(f);
 }
 function estadoBuscarDe(f) {
   var e = _normEstadoVisitaBD((f && (f['ESTADO VISITA'] || f[13])) || '');
@@ -4872,13 +4874,156 @@ function _puntoVisitaSemana(f) {
 // Orden en que se muestran (y se recorren) las visitas de un día: primero las
 // ordenadas a mano, en su orden; las demás, por el recorrido más corto desde la
 // Alcaldía (decisión del usuario: sin ordenar, las tarjetas van como la ruta sugerida).
+// Las inspecciones al lugar van primero, por hora: tienen cita con las partes.
 function ordenarVisitasDia(lista, fechaTxt) {
-  var manual = [], resto = [];
-  (lista || []).forEach(function (f) { (ordenDiaDe(f, fechaTxt) != null ? manual : resto).push(f); });
+  var fijas = [], manual = [], resto = [];
+  (lista || []).forEach(function (f) {
+    (esInspeccionLugar(f) && horaProgramadaDe(f) ? fijas : ordenDiaDe(f, fechaTxt) != null ? manual : resto).push(f);
+  });
+  fijas.sort(function (a, b) { return horaAudienciasMin(horaProgramadaDe(a)) - horaAudienciasMin(horaProgramadaDe(b)); });
   manual.sort(function (a, b) { return ordenDiaDe(a, fechaTxt) - ordenDiaDe(b, fechaTxt); });
   var ruta = rutaMasCortaDesde(resto.map(function (f) { return { f: f, punto: _puntoVisitaSemana(f) }; }))
     .map(function (p) { return p.f; });
-  return manual.concat(ruta);
+  return fijas.concat(manual, ruta);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Inspecciones al lugar (2026-11-03, decisiones del usuario). Son una prueba
+// del proceso, con fecha y hora fijas, y se vuelven visitas del caso:
+// columnas DILIGENCIA, HORA_PROGRAMADA y NOTA_DILIGENCIA de BD VISITAS.
+// Las agenda el despacho; la importación del Excel se hizo una sola vez y
+// después se programan en la app (admin y supervisores, ProgramarInspeccion
+// en ficha-visita.jsx): si el caso ya tuvo visita, va el mismo inspector; si
+// no, lo elige quien programa. A veces se documentan con acta: el documento
+// no cambia por ser inspección.
+// Pruebas: tests/inspecciones-lugar.test.js.
+// ═══════════════════════════════════════════════════════════════
+function esInspeccionLugar(f) {
+  return /INSPECCI[OÓ]N AL LUGAR/i.test(String((f && f['DILIGENCIA']) || ''));
+}
+function horaProgramadaDe(f) {
+  return String((f && f['HORA_PROGRAMADA']) || '').trim();
+}
+
+// «Inspección al lugar · mié 4 · 9:00 a. m.» para la tarjeta; `sinDia` (la
+// Semana, donde el día ya es la columna) lo deja en la hora. Completada: null.
+function inspeccionVisitaTexto(f, opts) {
+  if (!esInspeccionLugar(f)) return null;
+  if (_normEstadoVisitaBD(f['ESTADO VISITA'] || '').indexOf('COMPLETAD') === 0) return null;
+  opts = opts || {};
+  var partes = ['Inspección al lugar'];
+  if (!opts.sinDia) {
+    var d = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
+    if (d) {
+      var ref = opts.hoy instanceof Date ? opts.hoy : (parsearFecha(opts.hoy) || new Date());
+      var base = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+      var dc = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - base) / 86400000);
+      partes.push(dc === 0 ? 'hoy' : dc === 1 ? 'mañana'
+        : _DIAS_CORTOS[d.getDay()] + ' ' + d.getDate() + (dc < 0 || dc > 60 ? ' ' + _MESES_ES[d.getMonth()].slice(0, 3) : ''));
+    }
+  }
+  var hora = horaProgramadaDe(f);
+  if (hora) partes.push(horaBonitaAudiencias(hora));
+  return { texto: partes.join(' · '), nota: String(f['NOTA_DILIGENCIA'] || '').trim() };
+}
+
+// '14:30' → '2:30PM': el <input type="time"> habla HH:mm y la columna
+// HORA_PROGRAMADA guarda el formato del Excel ('9:00AM').
+function horaParaBD(hhmm) {
+  var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm == null ? '' : hhmm).trim());
+  if (!m) return '';
+  var h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+  if (h > 23 || mi > 59) return '';
+  return (h % 12 || 12) + ':' + m[2] + (h < 12 ? 'AM' : 'PM');
+}
+
+// '2:30PM' → '14:30', para el <input type="time">. Acepta la hora sin
+// AM/PM y las 12 de cada mitad del día ('12:30AM' → '00:30', '12:30PM' →
+// '12:30'), que horaAudienciasMin no distingue.
+function horaParaInput(hora) {
+  var m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(String(hora == null ? '' : hora).trim());
+  if (!m) return '';
+  var h = parseInt(m[1], 10);
+  if (m[3] && m[3].toUpperCase() === 'PM' && h < 12) h += 12;
+  if (m[3] && m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+  if (h > 23 || parseInt(m[2], 10) > 59) return '';
+  return String(h).padStart(2, '0') + ':' + m[2];
+}
+
+// Qué se puede hacer con la inspección al lugar de un caso, mirando todas sus
+// visitas (`visitasDelCaso(datos, f)`). La programa en la app quien ve todas
+// las visitas (ProgramarInspeccion, ficha-visita.jsx); las reglas son las
+// decisiones del usuario del 2026-11-03, en este orden:
+//   1. rol sin veTodasLasVisitas → puede:false, sin motivo (no se muestra nada)
+//   2. hay una inspección PENDIENTE/ASIGNADA → se reprograma esa fila,
+//      `actual` la precarga; el inspector es el de esa fila (se cambia solo
+//      si no hubo visita anterior)
+//   3. hay una visita INICIADA → puede:false, se completa antes
+//   4. hay una visita PENDIENTE/ASIGNADA (sin diligencia) → se monta en ella
+//   5. si no → visita nueva, sobre la última del caso
+// Inspector anterior: el diligenciador de la última visita INICIADA o
+// COMPLETADA (por N° de visita). Si existe → fijo:true (va él, no se elige).
+// Devuelve { puede, motivo, modo: 'nueva'|'montar'|'reprogramar', fila,
+// radicado, nVisita, inspector, fijo, actual: { fecha, hora } } — `fila` es
+// el destino (montar/reprogramar) o el origen (nueva: la última del caso).
+function inspeccionDelCaso(visitas, rol) {
+  var base = { puede: false, motivo: '', modo: null, fila: null, radicado: '',
+    nVisita: null, inspector: '', fijo: false, actual: null };
+  if (!veTodasLasVisitas(rol)) return base;
+  var lista = (visitas || []).filter(Boolean);
+  if (!lista.length) return base;
+  // Estado de la fila sin la caducidad de la columna A: una visita viva de un
+  // radicado viejo sigue viva para el backend (no deja abrir otra al lado).
+  var estadoDe = function (f) {
+    var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
+    if (e === 'COMPLETADO' || e === 'COMPLETADA') return 'COMPLETADO';
+    if (_PENDIENTE_BUSCAR[e]) return 'PENDIENTE';
+    if (e === 'ASIGNADO' || e === 'ASIGNADA') return 'ASIGNADO';
+    if (e === 'INICIADO' || e === 'INICIADA') return 'INICIADO';
+    return 'CERRADO';
+  };
+  var rad = function (f) { return String(f['RADICADO'] || '').trim(); };
+  // En orden de visita (numerarVisitasRadicado): la última del caso y el
+  // número de la nueva salen de la numeración, igual que en la gestión. Las
+  // filas que no son visita (n=null) van al final y no cuentan como última.
+  var ord = numerarVisitasRadicado(lista);
+  var conN = ord.filter(function (x) { return x.n != null; });
+  var nDe = {};
+  ord.forEach(function (x) { nDe[x.f._idx] = x.n; });
+  var nDeF = function (f) { return nDe[f._idx] || parseInt(f['N° VISITA'] || f['N VISITA'], 10) || 1; };
+  var ultima = conN.length ? conN[conN.length - 1].f : lista[0];
+  var previa = ord.filter(function (x) {
+    var e = estadoDe(x.f);
+    return (e === 'INICIADO' || e === 'COMPLETADO') && primerVisitador(visitadoresBD(x.f));
+  }).pop();
+  var inspPrevio = previa ? primerVisitador(visitadoresBD(previa.f)) : '';
+
+  var vivaInsp = ord.filter(function (x) {
+    var e = estadoDe(x.f);
+    return esInspeccionLugar(x.f) && (e === 'PENDIENTE' || e === 'ASIGNADO');
+  })[0];
+  if (vivaInsp) return { puede: true, motivo: '', modo: 'reprogramar', fila: vivaInsp.f._idx,
+    radicado: rad(vivaInsp.f), nVisita: nDeF(vivaInsp.f),
+    inspector: primerVisitador(visitadoresBD(vivaInsp.f)) || inspPrevio || '',
+    fijo: !!inspPrevio,
+    actual: { fecha: vivaInsp.f['FECHA ASIGNACION VISITA'] || '', hora: horaProgramadaDe(vivaInsp.f) } };
+
+  var iniciada = ord.filter(function (x) { return estadoDe(x.f) === 'INICIADO'; })[0];
+  if (iniciada) return Object.assign(base, {
+    motivo: 'La visita ' + nDeF(iniciada.f) + ' está iniciada: complétala antes de programar.' });
+
+  var viva = ord.filter(function (x) {
+    var e = estadoDe(x.f);
+    return e === 'PENDIENTE' || e === 'ASIGNADO';
+  })[0];
+  if (viva) return { puede: true, motivo: '', modo: 'montar', fila: viva.f._idx,
+    // Sin visita anterior se propone a quien ya la tiene asignada.
+    radicado: rad(viva.f), nVisita: nDeF(viva.f), inspector: inspPrevio || primerVisitador(visitadoresBD(viva.f)),
+    fijo: !!inspPrevio, actual: null };
+
+  var nMax = Math.max.apply(null, conN.map(function (x) { return x.n || 0; }).concat([0]));
+  return { puede: true, motivo: '', modo: 'nueva', fila: ultima._idx, radicado: rad(ultima),
+    nVisita: nMax + 1, inspector: inspPrevio, fijo: !!inspPrevio, actual: null };
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
@@ -5121,6 +5266,12 @@ var _cuUtilsExports = {
   atencionInicio: atencionInicio,
   agendaAudienciasDias: agendaAudienciasDias,
   citaVisitaTexto: citaVisitaTexto,
+  esInspeccionLugar: esInspeccionLugar,
+  horaProgramadaDe: horaProgramadaDe,
+  inspeccionVisitaTexto: inspeccionVisitaTexto,
+  inspeccionDelCaso: inspeccionDelCaso,
+  horaParaBD: horaParaBD,
+  horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,
   nombreCortoVisita: nombreCortoVisita,
   ubicacionCortaVisita: ubicacionCortaVisita,

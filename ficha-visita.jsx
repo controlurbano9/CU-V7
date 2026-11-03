@@ -72,6 +72,9 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   const terminada = completa || cerrada;
   const empezada = est === 'INICIADO' || terminada;
   const esAdmin = usuario && usuario.rol === 'ADMIN';
+  // Programar inspección al lugar (2026-11-03): admin y supervisores. El
+  // supervisor no gestiona la visita, pero sí agenda la inspección.
+  const veProgramarInsp = !!usuario && veTodasLasVisitas(usuario.rol);
   const tono = cerrada ? { cls: '', label: motivoCierreBuscar(f) } : (_ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' });
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
   const barrio = f['BARRIO/VEREDA'] || f['BARRIO'] || '';
@@ -233,7 +236,16 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
               </div>
               {nVisita && <div><div className="l">Visita</div><div className="v">{nVisita}</div></div>}
               {fRadicado && <div><div className="l">Fecha de radicado</div><div className="v">{fRadicado}</div></div>}
-              {fAsignada && <div><div className="l">Asignada</div><div className="v">{fAsignada}</div></div>}
+              {fAsignada && !esInspeccionLugar(f) && <div><div className="l">Asignada</div><div className="v">{fAsignada}</div></div>}
+              {/* Inspección al lugar: día y hora los fijó el despacho; la nota es suya. */}
+              {esInspeccionLugar(f) && (
+                <div>
+                  <div className="l">Inspección al lugar</div>
+                  <div className="v">{formatearFecha(f['FECHA ASIGNACION VISITA'] || '') || '—'}
+                    {horaProgramadaDe(f) ? ' · ' + horaBonitaAudiencias(horaProgramadaDe(f)) : ''}</div>
+                  {f['NOTA_DILIGENCIA'] && <div className="l">{f['NOTA_DILIGENCIA']}</div>}
+                </div>
+              )}
               {fVisita && <div><div className="l">Fecha de visita</div><div className="v">{fVisita}</div></div>}
               {quienes.length > 0 && (
                 <div>
@@ -311,8 +323,161 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
       </div>
 
       {/* Gestión (E5 la inyecta): barra fija al pie, fuera de la información
-          (decisión del usuario 2026-10-12). */}
-      {gestion && <div className="fv-gestion-pie">{gestion}</div>}
+          (decisión del usuario 2026-10-12). La inspección al lugar se programa
+          en esa misma barra: mientras carga (o para un inspector) queda vacía y
+          el CSS la esconde (`.fv-gestion-pie:empty`). */}
+      {(gestion || veProgramarInsp) && (
+        <div className="fv-gestion-pie">
+          {gestion}
+          {veProgramarInsp && <ProgramarInspeccion f={f} usuario={usuario} visitas={visitas} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Programar inspección al lugar (2026-11-03, decisiones del usuario): el
+// despacho ya no pasa por el Excel — admin y supervisores fijan aquí el día,
+// la hora y el inspector. Qué toca hacer con el caso (montar en la visita
+// viva, reprogramar la que ya existe o crear una) lo decide
+// inspeccionDelCaso (utils.js); esto solo pregunta y manda al backend
+// (programarInspecciones, el mismo contrato que usó el importador).
+// ═══════════════════════════════════════════════════════════════
+function ProgramarInspeccion({ f, usuario, visitas }) {
+  const [abierto, setAbierto] = useStateFV(false);
+  const [fecha, setFecha] = useStateFV('');
+  const [hora, setHora] = useStateFV('');
+  const [inspector, setInspector] = useStateFV('');
+  const [error, setError] = useStateFV('');
+  const [ocupado, setOcupado] = useStateFV(false);
+  const [caso, setCaso] = useStateFV(null);
+  const [refresco, setRefresco] = useStateFV(0);
+  const [inspectores, setInspectores] = useStateFV([]);
+
+  // Las visitas del caso llegan por prop (Buscar) o se leen de la BD (Mis
+  // visitas, Tablero): leerVisitas() sin opciones sirve la copia local al
+  // instante. El prop `visitas` cambia de identidad en cada render del
+  // caller, así que se lee por ref y solo se re-lee al cambiar de visita.
+  const visitasRef = useRefFV(visitas);
+  visitasRef.current = visitas;
+  useEffectFV(() => {
+    const v = visitasRef.current;
+    if (v && v.length) { setCaso(v); return; }
+    let vivo = true;
+    leerVisitas().then(r => { if (vivo && r && r.datos) setCaso(visitasDelCaso(r.datos, f)); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [f._idx, refresco]);
+  // La lista de inspectores solo hace falta al elegir; se pide una vez.
+  useEffectFV(() => {
+    let vivo = true;
+    listarInspectoresActivos().then(l => { if (vivo) setInspectores(l || []); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+
+  const plan = caso ? inspeccionDelCaso(caso, usuario && usuario.rol) : null;
+  // Cargando, o rol que no programa (puede:false sin motivo): nada aquí.
+  if (!plan || (!plan.puede && !plan.motivo)) return null;
+
+  const abrir = () => {
+    setError('');
+    // Precarga solo la inspección que ya existe (reprogramar).
+    setFecha(plan.actual && plan.actual.fecha ? plan.actual.fecha.split('/').reverse().join('-') : '');
+    setHora(plan.actual ? horaParaInput(plan.actual.hora) : '');
+    setInspector(plan.inspector || '');
+    setAbierto(true);
+  };
+
+  const guardar = async () => {
+    setOcupado(true); setError('');
+    try {
+      const r = await gasPost({ accion: 'programarInspecciones', items: [{
+        modo: plan.modo, fila: plan.fila, radicadoConocido: plan.radicado,
+        inspector: inspector.trim(), fecha: _isoADDMMAAAA(fecha), hora: horaParaBD(hora),
+        nota: '', expediente: '' }] });
+      const item = r && Array.isArray(r.resultados) ? r.resultados[0] : null;
+      if (r && r.ok && item && item.ok) {
+        invalidarCache('visitas');
+        // Como la gestión: fuerza la red y toma el caso fresco (las pantallas
+        // se repintan solas con cu-visitas-actualizadas).
+        leerVisitas({ forzar: true })
+          .then(res => { if (res && res.datos) setCaso(visitasDelCaso(res.datos, f)); })
+          .catch(() => {});
+        setAbierto(false);
+      } else {
+        setError((item && item.error) || (r && r.error) || 'No se pudo programar la inspección.');
+      }
+    } catch (e) {
+      setError((e && e.message) || 'No se pudo programar la inspección.');
+    } finally { setOcupado(false); }
+  };
+
+  // ¿Quién elige al inspector? Fijo = quien hizo la visita anterior va él.
+  // En reprogramar, vacío conserva el de la fila; montar y nueva lo exigen.
+  const elige = !plan.fijo;
+  const asignables = inspectoresAsignables(inspectores);
+  // El inspector que ya estaba (p. ej. con la inspección asignada) puede no
+  // estar entre los asignables: entra como opción extra para no perderlo.
+  const extra = inspector && !asignables.some(i => i.nombre === inspector) ? inspector : '';
+  const puedeGuardar = !!fecha && !!hora && !ocupado &&
+    (plan.fijo || plan.modo === 'reprogramar' || !!inspector.trim());
+
+  if (!plan.puede) {
+    return (
+      <div className="pi">
+        <button type="button" className="vc-btn" disabled>Programar inspección</button>
+        <p className="pi-motivo">{plan.motivo}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="pi">
+      {!abierto ? (
+        <button type="button" className="vc-btn" onClick={abrir}>
+          {plan.modo === 'reprogramar' ? 'Cambiar inspección' : 'Programar inspección'}
+        </button>
+      ) : (
+        <div className="pi-form">
+          <div className="pi-campo">
+            <label htmlFor={'pi-f-' + f._idx}>Día</label>
+            <input id={'pi-f-' + f._idx} type="date" value={fecha}
+              onChange={e => setFecha(e.target.value)} />
+          </div>
+          <div className="pi-campo">
+            <label htmlFor={'pi-h-' + f._idx}>Hora</label>
+            <input id={'pi-h-' + f._idx} type="time" step={1800} value={hora}
+              onChange={e => setHora(e.target.value)} />
+          </div>
+          <div className="pi-campo">
+            {elige
+              ? <label htmlFor={'pi-i-' + f._idx}>Inspector</label>
+              : <span className="pi-lbl">Inspector</span>}
+            {elige ? (
+              <select id={'pi-i-' + f._idx} value={inspector}
+                onChange={e => setInspector(e.target.value)}>
+                {plan.modo === 'reprogramar' ? (
+                  <option value="">{inspector ? 'Sin cambiar' : 'Sin asignar'}</option>
+                ) : !inspector && <option value="">Elegir</option>}
+                {extra && <option value={extra}>{titleCaseNombre(extra)}</option>}
+                {asignables.map(i =>
+                  <option key={i.nombre} value={i.nombre}>{titleCaseNombre(i.nombre)}</option>)}
+              </select>
+            ) : (
+              // La hizo él la vez pasada: va él (decisión del usuario).
+              <span className="pi-fijo">{titleCaseNombre(inspector) || '—'}</span>
+            )}
+          </div>
+          <div className="pi-acciones">
+            <button type="button" className="vc-btn" onClick={guardar} disabled={!puedeGuardar}>
+              {ocupado ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button type="button" className="vc-btn" onClick={() => { setAbierto(false); setError(''); }}
+              disabled={ocupado}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {error && <p className="pi-error" role="alert">{error}</p>}
     </div>
   );
 }

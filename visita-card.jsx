@@ -76,6 +76,8 @@ function EstadoAnillo({ estado }) {
 function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, urgente, sinTiempo,
   ident, ubic, radicada, aviso, inspector, n, extra, pie, sel, arrastre, marca, mapa }) {
   const t = tarjetaVisita(f, Object.assign({ puede: puedeDiligenciar(f) }, opts));
+  // Inspección al lugar: cita fija con las partes (en la Semana, solo la hora).
+  const dil = inspeccionVisitaTexto(f, { sinDia: !!sinTiempo });
   const renglon = densidad === 'renglon';
   const acc = accion === null ? null
     : accion ? accion
@@ -110,6 +112,7 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
         <div className="tv-meta">
           {meta.map((m, i) => <React.Fragment key={i}><span className="tv-m">{m}{i < meta.length - 1 && <span className="tv-sep"> ·</span>}</span>{' '}</React.Fragment>)}
         </div>
+        {dil && <div className="tv-meta tv-cita"><b>{dil.texto}</b>{dil.nota && <> · {dil.nota}</>}</div>}
         {aviso}
       </div>
       {(acc || (t.mapa && mapa !== false) || extra) && (

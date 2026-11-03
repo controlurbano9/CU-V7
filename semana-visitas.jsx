@@ -467,8 +467,11 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
     return esAdmin || String(f['VISITADOR(ES)'] || '').toUpperCase().indexOf(String(miNombre || '').toUpperCase()) >= 0;
   }
   // Mover de día: solo el admin y solo una asignada que no se ha iniciado.
+  // La inspección al lugar no: el día y la hora se citaron con las partes;
+  // se cambian en la ficha con «Cambiar inspección».
   function puedeMover(f) {
-    return esAdmin && normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'ASIGNADO';
+    return esAdmin && normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'ASIGNADO' &&
+      !esInspeccionLugar(f);
   }
 
   async function guardarOrden(dia, lista) {

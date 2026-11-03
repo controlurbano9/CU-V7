@@ -485,7 +485,11 @@ function _procesarVisitas(filas, nums) {
   // NO COMPETENCIA fuera de la app (decisión del usuario, 2026-09-25), salvo
   // Buscar: un radicado viejo tiene que encontrarse (2026-10-15). Van aparte,
   // en `noCompetencia`, y solo Buscar las junta con `datos`.
-  const esNC = o => jAt >= 0 && _esNoCompetencia(o[jAt]);
+  // Una inspección al lugar no es caducidad: el despacho tiene el proceso
+  // abierto (2026-11-03). Sin esto, la de un radicado de hace más de 3 años
+  // quedaba escondida al visitador que tiene que ir.
+  const esNC = o => jAt >= 0 && _esNoCompetencia(o[jAt]) &&
+    !/INSPECCI[OÓ]N AL LUGAR/i.test(String(o['DILIGENCIA'] || ''));
   return { headers, datos: todas.filter(o => !esNC(o)), noCompetencia: todas.filter(esNC) };
 }
 
