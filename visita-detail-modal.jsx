@@ -15,6 +15,8 @@
 // `gestion` (opcional) es un elemento React que FichaVisita inyecta en su
 // bloque de gestión — lo usa Buscar para que el admin tenga sus acciones
 // (asignar, completar, seguimiento) también en «Ver datos» sin panel.
+// Sin `gestion`, al admin se la arma el modal (2026-11-03, decisión del
+// usuario: gestionar también desde la ficha que abre Inicio).
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateVD, useEffect: useEffectVD, useRef: useRefVD } = React;
 
@@ -23,17 +25,56 @@ let _refrescarVisitaDetail = null;
 
 // «Continuar» desde el modal: se cierra primero y luego se abre el formulario,
 // para que el velo no quede tapando la pantalla nueva.
-function VisitaDetailModalHost({ onContinuar }) {
+function VisitaDetailModalHost({ onContinuar, onNuevaVisita }) {
   const [fila, setFila] = useStateVD(null);
   const [gestion, setGestion] = useStateVD(null);
   const [extra, setExtra] = useStateVD(null);        // { visitas, onElegirVisita } del caso
   const abiertaRef = useRefVD(null);   // _idx de la visita abierta (null = cerrado)
-  const cerrar = () => { abiertaRef.current = null; setFila(null); };
+
+  // Gestión propia: la ficha la abrió una pantalla que no trae la suya
+  // (Inicio, Audiencias, Mis visitas en el celular) y quien mira es admin
+  // (el supervisor ve, no gestiona). Buscar sigue mandando la suya. Las
+  // visitas del caso salen de la lista en memoria, la misma de las pantallas.
+  const usuario = (typeof SESSION_V6 !== 'undefined' && SESSION_V6.leer()) || {};
+  const propia = !!fila && gestion == null && usuario.rol === 'ADMIN';
+  const [datos, setDatos] = useStateVD([]);
+  const [inspectores, setInspectores] = useStateVD([]);
+  // Lista nueva: la ficha abierta pasa a su fila de ahí (estado, inspector y
+  // entregables tras asignar o completar). Una fila que ya no es de su
+  // radicado (se corrió en el Sheet) no se toma.
+  const aplicarDatos = (lista) => {
+    setDatos(lista);
+    setFila(prev => {
+      if (!prev || abiertaRef.current !== prev._idx) return prev;
+      const nueva = lista.find(x => x._idx === prev._idx &&
+        claveRadicado(x['RADICADO']) === claveRadicado(prev['RADICADO']));
+      return nueva || prev;
+    });
+  };
+  const recargar = () => leerVisitas({ forzar: true })
+    .then(r => aplicarDatos(r.datos)).catch(() => {});
+  const acciones = useGestionVisita({ datos, recargar });
+
+  useEffectVD(() => {
+    if (!propia) return;
+    let vivo = true;
+    const leer = () => leerVisitas().then(r => { if (vivo) aplicarDatos(r.datos); }).catch(() => {});
+    leer();
+    const fuera = suscribirVisitas(leer);
+    return () => { vivo = false; fuera(); };
+  }, [propia]);
+  useEffectVD(() => {
+    if (!propia || inspectores.length) return;
+    listarInspectoresActivos().then(l => setInspectores(l || [])).catch(() => {});
+  }, [propia]);
+
+  const cerrar = () => { abiertaRef.current = null; setFila(null); acciones.setAsignandoFila(null); };
 
   useEffectVD(() => {
     _pushVisitaDetail = function(f, g, x) {
       abiertaRef.current = f ? f._idx : null;
       setFila(f); setGestion(g != null ? g : null); setExtra(x || null);
+      acciones.setAsignandoFila(null);
     };
     // Datos nuevos de la misma visita (tras completar, asignar…): solo si
     // sigue abierta; nunca la reabre.
@@ -52,7 +93,14 @@ function VisitaDetailModalHost({ onContinuar }) {
   }, [fila]);
 
   if (!fila) return null;
-  return <VisitaDetailUI f={fila} onCerrar={cerrar} gestion={gestion}
+  // Sin la lista todavía no hay barra: con la fila sola, un caso con otra
+  // visita pendiente ofrecería «+ Nueva visita».
+  const gestionPropia = propia && datos.length > 0 ? (
+    <GestionVisita f={fila} todas={visitasDelCaso(datos, fila)} inspectores={inspectores}
+      acciones={acciones}
+      onNuevaVisita={onNuevaVisita ? (base, n) => { cerrar(); onNuevaVisita(base, n); } : null} />
+  ) : null;
+  return <VisitaDetailUI f={fila} onCerrar={cerrar} gestion={gestion || gestionPropia}
     visitas={extra && extra.visitas} onElegirVisita={extra && extra.onElegirVisita}
     onContinuar={onContinuar ? (idx, f) => { cerrar(); onContinuar(idx, f); } : null} />;
 }

@@ -76,9 +76,12 @@ test('la lista parte de filtrarBuscar con TODOS los grupos (sin excepciones)', (
 });
 
 // ── Gestión del admin ───────────────────────────────────────────
+// Vive en gestion-visita.jsx desde 2026-11-03 (la comparten Buscar y el modal
+// «Ver datos» de Inicio).
 test('la gestión no ofrece «+ Nueva visita» sobre un caso sin radicado real', () => {
-  const m = /const radicadoReal = [^;]*;/.exec(srcBuscar);
-  assert.ok(m, 'no se encontró radicadoReal en buscar.jsx (GestionBQ)');
+  const srcGestion = fs.readFileSync(path.join(raizDir, 'gestion-visita.jsx'), 'utf8');
+  const m = /const radicadoReal = [^;]*;/.exec(srcGestion);
+  assert.ok(m, 'no se encontró radicadoReal en gestion-visita.jsx (GestionVisita)');
   assert.ok(/esRadicadoDeCaso\(/.test(m[0]),
     'puedeNueva debe descartar los casos sin radicado real con esRadicadoDeCaso');
 });

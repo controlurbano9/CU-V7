@@ -139,8 +139,9 @@ test('backend: el control corre antes del dedup y del switch', opts, () => {
 });
 
 test('cliente: asignar, desasignar y completar mandan radicadoConocido', () => {
-  // asignarRadicado vive en asignarVisitaAdmin (visita-card.jsx), compartida con Inicio.
-  const buscar = fs.readFileSync(path.join(__dirname, '..', 'buscar.jsx'), 'utf8') +
+  // asignarRadicado vive en asignarVisitaAdmin (visita-card.jsx), compartida con Inicio;
+  // el resto, en useGestionVisita (gestion-visita.jsx), de Buscar y del modal «Ver datos».
+  const buscar = fs.readFileSync(path.join(__dirname, '..', 'gestion-visita.jsx'), 'utf8') +
     fs.readFileSync(path.join(__dirname, '..', 'visita-card.jsx'), 'utf8');
   for (const accion of ['asignarRadicado', 'crearNuevaVisitaAsignada', 'desasignarRadicado', 'completarRegistro']) {
     const i = buscar.indexOf("accion: '" + accion + "'");

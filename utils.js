@@ -2051,6 +2051,7 @@ function barrioPotDe(idx, fila) {
 // que trabajaba con datos inventados; aquí cada «caso» se arma desde una fila real de
 // BD VISITAS (por nombre de columna, nunca por índice).
 //   prepararCasoBuscar(f, idxBarrios, hoy)   → caso con todo lo derivado, una sola vez por fila
+//   visitasDelCaso(datos, f)                 → las filas del caso de f (misma clave del grupo)
 //   filtrosBuscarVacios()                    → estado inicial (todos los estados, completadas incluidas)
 //   filtrarBuscar(casos, S, excepto)         → casos que pasan; `excepto` deja fuera un grupo
 //                                              (así cada faceta cuenta sus alternativas, no «0»)
@@ -2111,6 +2112,21 @@ function prioridadClaveBuscar(prioN) {
   if (!isFinite(prioN)) return 'Sin análisis';
   var p = nivelPrioridad(prioN);
   return p ? (p.nivel === 'Mínima' ? 'Baja' : p.nivel) : 'Sin análisis';
+}
+
+// Las visitas del caso de `f` dentro de `datos`, con la misma clave con que
+// Buscar agrupa (_claveGrupoBQ): el radicado normalizado. Una fila sin
+// radicado real (V2: «OPERATIVO», «QUEJA VERBAL»…) es un caso sola. `f` va
+// primero y una sola vez, aunque `datos` traiga otra copia de su fila. La
+// usa la gestión del admin en «Ver datos» (visita-detail-modal.jsx).
+function visitasDelCaso(datos, f) {
+  if (!f) return [];
+  var rad = _colBuscar(f, 'RADICADO');
+  if (!esRadicadoDeCaso(rad)) return [f];
+  var k = _normBuscar(rad);
+  return [f].concat((datos || []).filter(function (x) {
+    return x && x._idx !== f._idx && _normBuscar(_colBuscar(x, 'RADICADO')) === k;
+  }));
 }
 
 function prepararCasoBuscar(f, idxBarrios, hoy) {
@@ -5180,6 +5196,7 @@ var _cuUtilsExports = {
   BUSCAR_GRUPOS: BUSCAR_GRUPOS,
   prioridadClaveBuscar: prioridadClaveBuscar,
   prepararCasoBuscar: prepararCasoBuscar,
+  visitasDelCaso: visitasDelCaso,
   filtrosBuscarVacios: filtrosBuscarVacios,
   normEstadosBuscar: normEstadosBuscar,
   coincideBuscar: coincideBuscar,
