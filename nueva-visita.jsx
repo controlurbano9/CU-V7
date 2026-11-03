@@ -3652,6 +3652,21 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return () => { cancelado = true; clearTimeout(t); };
   }, [fase, _primeraVisita, estadoVisita, d.esOficio, d.direccion, d.orden, d.radicado, filaEditando]);
 
+  // Visitas del caso en un seguimiento con suspensión: si una visita anterior
+  // ya la decretó, el acta no exige la orden escaneada
+  // (faltaOrdenEscaneadaActa, utils.js). Una lectura de la copia local.
+  const [visitasCasoBD, setVisitasCasoBD] = React.useState(null);
+  React.useEffect(() => {
+    if (fase !== 'formulario' || _primeraVisita || d.suspension !== 'SI') return;
+    let vivo = true;
+    leerVisitas().then(r => { if (vivo) setVisitasCasoBD((r && r.datos) || []); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [fase, _primeraVisita, d.suspension]);
+  const exigeOrdenEscaneada = faltaOrdenEscaneadaActa({
+    suspension: d.suspension, orden: d.orden, linkOrden: d.linkOrdenPolicia,
+    nVisita: d.nVisita, radicado: d.radicado, fila: filaEditando,
+  }, visitasCasoBD);
+
   // ── Callback del modal: configura el formulario según la elección ──
   function handleModalResult(res) {
     // Borrón y cuenta nueva del autoguardado local: id efímero fresco para
@@ -5445,6 +5460,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const mConc = marcadoresPendientes(d.obsConclusion);
       if (mConc.length) faltan.push({ seccion: 'Conclusiones y revisión',
         nombre: 'Las conclusiones tienen datos por completar (' + mConc.slice(0, 3).join(', ') + '): escribe el dato o quítalo' });
+      // Suspensión decretada por primera vez en el caso: el acta sale con la
+      // orden firmada ya en Drive (2026-11-03, decisión del usuario). Sin
+      // sección: se resuelve en Entregables, no en un campo. Primera de la
+      // lista: el aviso muestra 20 y al final quedaba en «… y N más».
+      if (exigeOrdenEscaneada) faltan.unshift({ seccion: '',
+        nombre: 'La orden de policía ' + d.orden + ' escaneada: se decretó la suspensión de la obra. ' +
+          'Escanéala en «Orden de policía», en los entregables' });
     }
 
     return { faltan: faltan, seccionesConObligatorios: seccionesConObligatorios };
@@ -7005,6 +7027,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               radicadoFila={_radicadoFilaRef.current}
               idVisita={_idVisitaRef.current}
               orden={d.orden}
+              requeridaActa={exigeOrdenEscaneada && documentoVisita(d.documento) === 'ACTA'}
               linkInicial={d.linkOrdenPolicia}
               onSubido={link => setCampo('linkOrdenPolicia', link)}
             />

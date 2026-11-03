@@ -1719,6 +1719,26 @@ function ordenPoliciaDe(f) {
   return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
 }
 
+// ¿El acta espera la orden de policía escaneada? (2026-11-03, decisión del
+// usuario): sí cuando en esta visita se decreta la suspensión de la obra por
+// primera vez en el caso y la orden aún no está en Drive. Un seguimiento
+// sobre una obra que otra visita del mismo radicado ya suspendió no la exige.
+// Sin la lista de visitas (null) un seguimiento la exige igual: en la duda,
+// el acta espera la orden. Medido el 2026-11-03: desde el escáner (09/09), 6
+// de 22 actas con suspensión salieron sin la orden escaneada.
+//   v = { suspension, orden, linkOrden, nVisita, radicado, fila }
+function faltaOrdenEscaneadaActa(v, datos) {
+  if (!v || String(v.suspension || '').trim().toUpperCase() !== 'SI') return false;
+  if (!ordenPoliciaDe({ 'N° ORDEN DE POLICIA': v.orden }) || String(v.linkOrden || '').trim()) return false;
+  var n = parseInt(v.nVisita, 10) || 1;
+  if (n <= 1 || !Array.isArray(datos)) return true;
+  var esta = { RADICADO: v.radicado, _idx: v.fila };
+  return !visitasDelCaso(datos, esta).some(function (x) {
+    return x !== esta && (parseInt(x['N° VISITA'] || x['N VISITA'], 10) || 1) < n &&
+      String(x['SUSPENSION DE LA OBRA'] || '').trim().toUpperCase() === 'SI';
+  });
+}
+
 // Expediente del caso (col EXPEDIENTE, 2026-10-19): dígitos o vacío. 'NUEVO'
 // no es un expediente, es «aún sin expediente» — misma lectura que el campo
 // al asignar, donde vacío significa NUEVO. tests/expediente.test.js.
@@ -5197,6 +5217,7 @@ var _cuUtilsExports = {
   prioridadClaveBuscar: prioridadClaveBuscar,
   prepararCasoBuscar: prepararCasoBuscar,
   visitasDelCaso: visitasDelCaso,
+  faltaOrdenEscaneadaActa: faltaOrdenEscaneadaActa,
   filtrosBuscarVacios: filtrosBuscarVacios,
   normEstadosBuscar: normEstadosBuscar,
   coincideBuscar: coincideBuscar,
