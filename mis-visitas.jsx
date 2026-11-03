@@ -217,7 +217,7 @@ function SiguienteVisitaMV({ s, conPanel, elegida, onElegir, onContinuar }) {
         onClick={(e) => { e.stopPropagation(); abrir(); }}>{t.dirVisible}</button>
       <div className="tv-meta">{[t.ident.principal, t.ubic].filter(Boolean).join(' · ')}</div>
       {cita && <div className={'tv-meta' + (cita.urgente ? ' tv-demora' : '')}>{cita.texto}</div>}
-      {dil && <div className="tv-meta"><b>{dil.texto}</b>{dil.nota && <> · {dil.nota}</>}</div>}
+      {dil && <div className="tv-meta"><b>{dil.texto}</b></div>}
       <div className="mv-sig-acc" onClick={(e) => e.stopPropagation()}>
         {t.accion && <button type="button" className="tv-btn" onClick={() => onContinuar(f._idx, f)}>{t.accion}</button>}
         <BotonMapaVisita f={f} variante="vc" />

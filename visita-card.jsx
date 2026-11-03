@@ -112,7 +112,7 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
         <div className="tv-meta">
           {meta.map((m, i) => <React.Fragment key={i}><span className="tv-m">{m}{i < meta.length - 1 && <span className="tv-sep"> ·</span>}</span>{' '}</React.Fragment>)}
         </div>
-        {dil && <div className="tv-meta tv-cita"><b>{dil.texto}</b>{dil.nota && <> · {dil.nota}</>}</div>}
+        {dil && <div className="tv-meta tv-cita"><b>{dil.texto}</b></div>}
         {aviso}
       </div>
       {(acc || (t.mapa && mapa !== false) || extra) && (
