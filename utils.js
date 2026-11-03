@@ -1719,23 +1719,28 @@ function ordenPoliciaDe(f) {
   return (u === 'N/A' || u === 'NA' || u === 'NO APLICA') ? '' : s;
 }
 
-// ¿El acta espera la orden de policía escaneada? (2026-11-03, decisión del
-// usuario): sí cuando en esta visita se decreta la suspensión de la obra por
-// primera vez en el caso y la orden aún no está en Drive. Un seguimiento
-// sobre una obra que otra visita del mismo radicado ya suspendió no la exige.
-// Sin la lista de visitas (null) un seguimiento la exige igual: en la duda,
-// el acta espera la orden. Medido el 2026-11-03: desde el escáner (09/09), 6
-// de 22 actas con suspensión salieron sin la orden escaneada.
-//   v = { suspension, orden, linkOrden, nVisita, radicado, fila }
-function faltaOrdenEscaneadaActa(v, datos) {
-  if (!v || String(v.suspension || '').trim().toUpperCase() !== 'SI') return false;
-  if (!ordenPoliciaDe({ 'N° ORDEN DE POLICIA': v.orden }) || String(v.linkOrden || '').trim()) return false;
+// ¿El documento de la visita (acta o informe) espera la orden de policía
+// escaneada? (decisiones del usuario 2026-11-03): sí con toda orden nueva —
+// un N° de orden real que ninguna visita anterior del mismo radicado tenía —
+// mientras no esté en Drive. Con o sin suspensión: en oficio hay orden
+// aunque no se suspenda. Un seguimiento que repite la orden de una visita
+// anterior no la exige (ese papel es de la otra visita). Sin la lista de
+// visitas (null) un seguimiento la exige igual: en la duda, se espera la
+// orden. Medido el 2026-11-03: desde el escáner (09/09), 12 de 30 visitas
+// con orden la dejaron sin escanear (6 de oficio sin suspensión).
+//   v = { orden, linkOrden, nVisita, radicado, fila }
+function faltaOrdenEscaneada(v, datos) {
+  var orden = ordenPoliciaDe({ 'N° ORDEN DE POLICIA': v && v.orden });
+  if (!orden || String(v.linkOrden || '').trim()) return false;
   var n = parseInt(v.nVisita, 10) || 1;
   if (n <= 1 || !Array.isArray(datos)) return true;
+  // «2026-9-386» y «2026-09-386» son la misma orden.
+  var clave = normOrdenAudiencias(orden) || orden.toUpperCase();
   var esta = { RADICADO: v.radicado, _idx: v.fila };
   return !visitasDelCaso(datos, esta).some(function (x) {
-    return x !== esta && (parseInt(x['N° VISITA'] || x['N VISITA'], 10) || 1) < n &&
-      String(x['SUSPENSION DE LA OBRA'] || '').trim().toUpperCase() === 'SI';
+    if (x === esta || (parseInt(x['N° VISITA'] || x['N VISITA'], 10) || 1) >= n) return false;
+    var o = ordenPoliciaDe(x);
+    return !!o && (normOrdenAudiencias(o) || o.toUpperCase()) === clave;
   });
 }
 
@@ -5217,7 +5222,7 @@ var _cuUtilsExports = {
   prioridadClaveBuscar: prioridadClaveBuscar,
   prepararCasoBuscar: prepararCasoBuscar,
   visitasDelCaso: visitasDelCaso,
-  faltaOrdenEscaneadaActa: faltaOrdenEscaneadaActa,
+  faltaOrdenEscaneada: faltaOrdenEscaneada,
   filtrosBuscarVacios: filtrosBuscarVacios,
   normEstadosBuscar: normEstadosBuscar,
   coincideBuscar: coincideBuscar,

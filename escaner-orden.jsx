@@ -637,9 +637,9 @@ function EditorRecorteEO({ pagina, titulo, onListo, onCancelar }) {
 
 // ─── Componente ────────────────────────────────────────────────
 
-// `requeridaActa`: la suspensión se decretó por primera vez en el caso y el
-// acta no se genera sin la orden escaneada (faltaOrdenEscaneadaActa).
-function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, orden, requeridaActa, linkInicial, onSubido }) {
+// `requeridaPara` ('el acta' / 'el informe' / ''): la orden es nueva y ese
+// documento no se genera sin ella escaneada (faltaOrdenEscaneada, utils.js).
+function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, orden, requeridaPara, linkInicial, onSubido }) {
   // paginas: [{ id, file, rot, cuad, vista, dataUrl, w, h }] — se guarda el
   // File original para que rotar o recortar reprocese desde la fuente en vez
   // de degradar el JPEG. `cuad` = esquinas de la hoja normalizadas a [0,1]
@@ -921,7 +921,7 @@ function EscanerOrdenPolicia({ idCarpetaVisita, fila, radicadoFila, idVisita, or
       // lo explica el aviso de arriba de la zona (`ent-motivo`).
       meta={!idCarpetaVisita || link || pendiente
         ? 'Papel firmado · PDF'
-        : (requeridaActa ? 'Necesaria para generar el acta' : 'Suba el PDF de su app de escaneo o tome fotos')}
+        : (requeridaPara ? 'Necesaria para generar ' + requeridaPara : 'Suba el PDF de su app de escaneo o tome fotos')}
       estadoTono={link ? 'ok' : (pendiente ? 'pend' : (idCarpetaVisita ? 'pend' : 'apagado'))}
       estadoTexto={pendiente ? 'En cola' : (link ? 'Escaneada' : 'Sin escanear')}
       procesando={bloqueado && !sesionAbierta}

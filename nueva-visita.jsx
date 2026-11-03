@@ -3652,20 +3652,29 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return () => { cancelado = true; clearTimeout(t); };
   }, [fase, _primeraVisita, estadoVisita, d.esOficio, d.direccion, d.orden, d.radicado, filaEditando]);
 
-  // Visitas del caso en un seguimiento con suspensión: si una visita anterior
-  // ya la decretó, el acta no exige la orden escaneada
-  // (faltaOrdenEscaneadaActa, utils.js). Una lectura de la copia local.
+  // Toda orden nueva se escanea antes del acta o del informe (2026-11-03,
+  // decisión del usuario). En un seguimiento, una orden que ya tenía una
+  // visita anterior del caso no es nueva (faltaOrdenEscaneada, utils.js):
+  // para saberlo, una lectura de la copia local.
   const [visitasCasoBD, setVisitasCasoBD] = React.useState(null);
+  const _conOrden = _hayOrdenReal(d.orden);
   React.useEffect(() => {
-    if (fase !== 'formulario' || _primeraVisita || d.suspension !== 'SI') return;
+    if (fase !== 'formulario' || _primeraVisita || !_conOrden) return;
     let vivo = true;
     leerVisitas().then(r => { if (vivo) setVisitasCasoBD((r && r.datos) || []); }).catch(() => {});
     return () => { vivo = false; };
-  }, [fase, _primeraVisita, d.suspension]);
-  const exigeOrdenEscaneada = faltaOrdenEscaneadaActa({
-    suspension: d.suspension, orden: d.orden, linkOrden: d.linkOrdenPolicia,
+  }, [fase, _primeraVisita, _conOrden]);
+  const exigeOrdenEscaneada = faltaOrdenEscaneada({
+    orden: d.orden, linkOrden: d.linkOrdenPolicia,
     nVisita: d.nVisita, radicado: d.radicado, fila: filaEditando,
   }, visitasCasoBD);
+  // Lo que falta, para el aviso de generar el acta o el informe. Sin
+  // sección: se resuelve en Entregables, no en un campo.
+  const faltaOrdenItem = exigeOrdenEscaneada ? {
+    seccion: '',
+    nombre: 'La orden de policía ' + d.orden + ' escaneada: toda orden nueva se sube. ' +
+      'Escanéala en «Orden de policía», en los entregables',
+  } : null;
 
   // ── Callback del modal: configura el formulario según la elección ──
   function handleModalResult(res) {
@@ -5460,13 +5469,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const mConc = marcadoresPendientes(d.obsConclusion);
       if (mConc.length) faltan.push({ seccion: 'Conclusiones y revisión',
         nombre: 'Las conclusiones tienen datos por completar (' + mConc.slice(0, 3).join(', ') + '): escribe el dato o quítalo' });
-      // Suspensión decretada por primera vez en el caso: el acta sale con la
-      // orden firmada ya en Drive (2026-11-03, decisión del usuario). Sin
-      // sección: se resuelve en Entregables, no en un campo. Primera de la
-      // lista: el aviso muestra 20 y al final quedaba en «… y N más».
-      if (exigeOrdenEscaneada) faltan.unshift({ seccion: '',
-        nombre: 'La orden de policía ' + d.orden + ' escaneada: se decretó la suspensión de la obra. ' +
-          'Escanéala en «Orden de policía», en los entregables' });
+      // Toda orden nueva sale con el acta ya escaneada (2026-11-03). Primera
+      // de la lista: el aviso muestra 20 y al final quedaba en «… y N más».
+      if (faltaOrdenItem) faltan.unshift(faltaOrdenItem);
     }
 
     return { faltan: faltan, seccionesConObligatorios: seccionesConObligatorios };
@@ -5562,6 +5567,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // de los mismos campos del formulario y un dato faltante se traduce en
     // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
     const faltanInf = _evaluarFormulario().faltan;
+    // Si la visita se documenta con informe, la orden nueva se exige aquí
+    // como en el acta (2026-11-03, decisión del usuario).
+    if (faltaOrdenItem && documentoVisita(d.documento) === 'INFORME') faltanInf.unshift(faltaOrdenItem);
     if (faltanInf.length > 0) {
       await _avisarFaltantes(faltanInf, 'generar el informe');
       return;
@@ -5726,6 +5734,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const archivo = e.target.files && e.target.files[0];
     e.target.value = ''; // permite volver a elegir el mismo archivo
     if (!archivo || _docOcupadoRef.current) return;
+    // El informe hecho por fuera no pasa por los campos, pero la orden nueva
+    // sí se exige si el informe es el documento de la visita (2026-11-03).
+    if (faltaOrdenItem && documentoVisita(d.documento) === 'INFORME') {
+      await _avisarFaltantes([faltaOrdenItem], 'subir el informe');
+      return;
+    }
     if (!/\.docx$/i.test(archivo.name)) {
       appAlert('El informe debe ser un documento de Word (.docx). Si está en .doc o en otro formato, ábrelo en Word y usa «Guardar como» → Documento de Word (.docx).',
         { tono: 'aviso', titulo: 'Formato no admitido' });
@@ -7027,7 +7041,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               radicadoFila={_radicadoFilaRef.current}
               idVisita={_idVisitaRef.current}
               orden={d.orden}
-              requeridaActa={exigeOrdenEscaneada && documentoVisita(d.documento) === 'ACTA'}
+              requeridaPara={exigeOrdenEscaneada ? (documentoVisita(d.documento) === 'INFORME' ? 'el informe' : 'el acta') : ''}
               linkInicial={d.linkOrdenPolicia}
               onSubido={link => setCampo('linkOrdenPolicia', link)}
             />
