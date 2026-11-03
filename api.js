@@ -936,6 +936,23 @@ async function liberarCupoAudiencias(idCupo, motivo) {
   return gasPost({ accion: 'liberarCupo', idCupo, motivo: motivo || '' });
 }
 
+// ── «Cupos» como lista (2026-11-03): escrituras del admin sobre la hoja
+// AUDIENCIAS. Escrituras (no van en _ACCIONES_SOLO_LECTURA): gasPost les
+// agrega requestId, así un reintento no duplica nada.
+// `cupos` = [{ fecha: 'DD/MM/YYYY', hora: '9:00AM', sustanciador }]
+async function agregarCuposAudiencias(cupos) {
+  return gasPost({ accion: 'agregarCupos', cupos: cupos || [] });
+}
+async function confirmarCuposAudiencias(ids) {
+  return gasPost({ accion: 'confirmarCuposApartados', ids: ids || [] });
+}
+async function eliminarCuposAudiencias(ids) {
+  return gasPost({ accion: 'eliminarCupos', ids: ids || [] });
+}
+async function bloquearCuposAudiencias(ids, motivo) {
+  return gasPost({ accion: 'bloquearCupos', ids: ids || [], motivo: motivo || '' });
+}
+
 // ── Pedir cita (TASK 3b): la cita se pide en campo ──
 // `caso` = { radicado, ordenPolicia }: uno de los dos.
 async function listarCuposAudiencias(caso) {

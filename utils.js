@@ -4653,6 +4653,99 @@ function filtrarListaAudiencias(cupos, opts) {
   });
 }
 
+// ── «Cupos» como lista (2026-11-03) — lógica de la vista del admin ──
+
+// Clave de duplicado: día + minutos de la hora + sustanciador normalizado
+// (la misma que _claveCupoAS del backend: '9:00AM' === '9:00 a. m.').
+function _claveCupoLista(fechaTxt, minutos, sustN) {
+  var d = parsearFecha(fechaTxt);
+  if (!d) return String(fechaTxt) + '|' + minutos + '|' + sustN;
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate() + '|' + minutos + '|' + sustN;
+}
+
+// Vista previa de «Agregar cupos»: las mismas reglas que _planAgregarCupos
+// del backend, calculadas en el cliente para enseñar el resultado antes de
+// escribir. `existentes` = cupos de agendaAudiencias; `seleccion` =
+// { desde, hasta ('DD/MM/YYYY'), dias: [0-6], horas: ['9:00AM'],
+// sustanciadores: [nombre] }; `hoy` = Date. Se omiten fecha pasada, fin de
+// semana, festivo, los que ya existen y los repetidos en el propio pedido.
+// Devuelve { crear: [{fecha, hora, sustanciador}], omitidos: [{..., motivo}] }
+// con lo de `crear` listo para el POST.
+function previsualizarCupos(existentes, seleccion, hoy) {
+  var out = { crear: [], omitidos: [] };
+  var sel = seleccion || {};
+  var d1 = parsearFecha(sel.desde), d2 = parsearFecha(sel.hasta);
+  if (!d1 || !d2 || d2 < d1) return out;
+  var vistos = {};
+  (existentes || []).forEach(function (c) {
+    if (!c || !c.fecha || !c.hora || !c.sustanciador) return;
+    vistos[_claveCupoLista(c.fecha, horaAudienciasMin(c.hora), normNombreAudiencias(c.sustanciador))] = true;
+  });
+  var ref = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  var dias = sel.dias || [], horas = sel.horas || [], susts = sel.sustanciadores || [];
+  for (var f = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
+       f <= d2; f.setDate(f.getDate() + 1)) {
+    var fechaTxt = _padFecha(f.getDate(), f.getMonth() + 1, f.getFullYear());
+    var dow = f.getDay();
+    for (var i = 0; i < dias.length; i++) {
+      if (dias[i] !== dow) continue;
+      for (var j = 0; j < horas.length; j++) {
+        for (var k = 0; k < susts.length; k++) {
+          var pedido = { fecha: fechaTxt, hora: String(horas[j]), sustanciador: String(susts[k]) };
+          var omitir = function (motivo) { pedido.motivo = motivo; out.omitidos.push(pedido); };
+          var min = horaAudienciasMin(pedido.hora);
+          if (min >= 24 * 60) { omitir('hora no válida'); continue; }
+          if (f < ref) { omitir('fecha pasada'); continue; }
+          if (dow === 0 || dow === 6) { omitir('fin de semana'); continue; }
+          if (!esDiaHabil(f)) { omitir('festivo'); continue; }
+          var clave = _claveCupoLista(fechaTxt, min, normNombreAudiencias(pedido.sustanciador));
+          if (vistos[clave]) { omitir('ya existe'); continue; }
+          vistos[clave] = true;
+          out.crear.push({ fecha: fechaTxt, hora: pedido.hora, sustanciador: pedido.sustanciador });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// 'DD/MM/YYYY' → 'YYYY-MM' para el filtro de mes ('' si ilegible).
+function _mesCupoLista(fechaTxt) {
+  var d = parsearFecha(fechaTxt);
+  return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : '';
+}
+
+// Filtro de la lista de cupos: mes ('YYYY-MM'), estado ('' = todos) y
+// sustanciador (se compara normalizado). Orden por fecha y hora.
+function filtrarCuposLista(cupos, opts) {
+  opts = opts || {};
+  var mes = String(opts.mes || ''), estado = String(opts.estado || '');
+  var sust = normNombreAudiencias(opts.sustanciador || '');
+  return (cupos || []).filter(function (c) {
+    if (mes && _mesCupoLista(c.fecha) !== mes) return false;
+    if (estado && c.estado !== estado) return false;
+    if (sust && normNombreAudiencias(c.sustanciador) !== sust) return false;
+    return true;
+  }).slice().sort(function (a, b) {
+    var da = parsearFecha(a.fecha), db = parsearFecha(b.fecha);
+    if (da && db && da - db) return da - db;
+    return horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora);
+  });
+}
+
+// Resumen de una línea: conteos por estado y la última fecha del grupo.
+function resumenCuposLista(cupos) {
+  var r = { libres: 0, citados: 0, bloqueados: 0, porApartar: 0, hasta: '' };
+  (cupos || []).forEach(function (c) {
+    if (c.estado === 'RESERVADO') r.citados++;
+    else if (c.estado === 'BLOQUEADO') r.bloqueados++;
+    else if (c.estado === 'POR_APARTAR') r.porApartar++;
+    else r.libres++;
+    if (String(c.fecha) > r.hasta) r.hasta = String(c.fecha);
+  });
+  return r;
+}
+
 // ── «Pedir cita» (TASK 3b, 2026-10-21) ──
 // La cita se pide en campo por radicado o por N° de Orden de Policía.
 
@@ -4923,7 +5016,8 @@ function inspeccionVisitaTexto(f, opts) {
     }
   }
   var hora = horaProgramadaDe(f);
-  if (hora) partes.push(horaBonitaAudiencias(hora));
+  // Sin a. m./p. m.: las horas de inspección van de 8 a 4 (decisión del usuario).
+  if (hora) partes.push(horaCortaInspeccion(hora));
   return { texto: partes.join(' · '), nota: String(f['NOTA_DILIGENCIA'] || '').trim() };
 }
 
@@ -5024,6 +5118,61 @@ function inspeccionDelCaso(visitas, rol) {
   var nMax = Math.max.apply(null, conN.map(function (x) { return x.n || 0; }).concat([0]));
   return { puede: true, motivo: '', modo: 'nueva', fila: ultima._idx, radicado: rad(ultima),
     nVisita: nMax + 1, inspector: inspPrevio, fijo: !!inspPrevio, actual: null };
+}
+
+// ── Día y hora sugeridos para la inspección (2026-11-03, decisiones del
+// usuario): las inspecciones se agrupan por cercanía. Cada grupo de comunas
+// vecinas tiene su día (lunes 1-2-3, martes 4-5-6, miércoles 7-8-9, jueves
+// 10-11-12, viernes rurales; ninguna espera más de una semana) y las horas son
+// 8, 9, 10, 11, 1, 2, 3 y 4, que se dicen sin a. m./p. m. (se sabe la franja).
+// Es sugerencia: quien programa puede elegir otro día. En BD la hora va con
+// AM/PM, el formato del Excel del despacho.
+var HORAS_INSPECCION = ['8:00AM', '9:00AM', '10:00AM', '11:00AM', '1:00PM', '2:00PM', '3:00PM', '4:00PM'];
+var DIAS_GRUPO_INSPECCION = { 1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3, 10: 4, 11: 4, 12: 4, RURAL: 5 };
+var ANTICIPACION_INSPECCION = 3; // días hábiles para citar a las partes
+
+// '9:00AM' → '9:00'; '1:00PM' → '1:00'. Sin hora legible: tal cual.
+function horaCortaInspeccion(hora) {
+  var m = /^(\d{1,2}):(\d{2})/.exec(String(hora == null ? '' : hora).trim());
+  return m ? parseInt(m[1], 10) + ':' + m[2] : String(hora || '').trim();
+}
+
+// Día de la semana (1 = lunes … 5 = viernes) que le toca a la comuna de la
+// visita; null sin comuna conocida.
+function diaGrupoInspeccion(f) {
+  var c = String((f && f['COMUNA']) || '').trim().toUpperCase();
+  var barrio = String((f && (f['BARRIO/VEREDA'] || f['BARRIO'])) || '').trim();
+  if (c === 'RURAL' || c === 'VEREDA' || /^v(da|ereda)\b/i.test(barrio)) return DIAS_GRUPO_INSPECCION.RURAL;
+  return DIAS_GRUPO_INSPECCION[claveComunaAgenda(c)] || null;
+}
+
+// Fechas sugeridas para la inspección del caso: las 3 próximas del día de su
+// grupo, hábiles y con la anticipación mínima, cada una con cuántas
+// inspecciones lleva ya y la primera hora libre (del inspector, si se sabe;
+// si no, de nadie). Sin comuna: las 3 próximas fechas hábiles.
+//   → [{ fecha: 'DD/MM/YYYY', n, hora }]
+function sugerenciasInspeccion(f, datos, inspector, hoy) {
+  var ref = hoy instanceof Date ? hoy : (parsearFecha(hoy) || new Date());
+  var dia = diaGrupoInspeccion(f);
+  var d = _soloFecha(ref);
+  for (var k = 0; k < ANTICIPACION_INSPECCION; k++) d = moverDiaHabil(d, 1);
+  var quien = normNombreAudiencias(inspector);
+  var out = [];
+  for (var i = 0; i < 60 && out.length < 3; i++) {
+    if (esDiaHabil(d) && (!dia || d.getDay() === dia)) {
+      var fecha = formatearFecha(d);
+      var ese = (datos || []).filter(function (x) {
+        return esInspeccionLugar(x) && formatearFecha(x['FECHA ASIGNACION VISITA'] || '') === fecha;
+      });
+      var ocupadas = ese.filter(function (x) {
+        return !quien || normNombreAudiencias(primerVisitador(visitadoresBD(x))) === quien;
+      }).map(function (x) { return horaAudienciasMin(horaProgramadaDe(x)); });
+      var libre = HORAS_INSPECCION.filter(function (h) { return ocupadas.indexOf(horaAudienciasMin(h)) < 0; })[0];
+      out.push({ fecha: fecha, n: ese.length, hora: libre || HORAS_INSPECCION[0] });
+    }
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return out;
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
@@ -5270,6 +5419,10 @@ var _cuUtilsExports = {
   horaProgramadaDe: horaProgramadaDe,
   inspeccionVisitaTexto: inspeccionVisitaTexto,
   inspeccionDelCaso: inspeccionDelCaso,
+  HORAS_INSPECCION: HORAS_INSPECCION,
+  horaCortaInspeccion: horaCortaInspeccion,
+  diaGrupoInspeccion: diaGrupoInspeccion,
+  sugerenciasInspeccion: sugerenciasInspeccion,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,
@@ -5285,6 +5438,10 @@ var _cuUtilsExports = {
   agruparAudienciasPorSustanciador: agruparAudienciasPorSustanciador,
   proximoDiaAudiencias: proximoDiaAudiencias,
   filtrarListaAudiencias: filtrarListaAudiencias,
+  // Cupos como lista (2026-11-03)
+  previsualizarCupos: previsualizarCupos,
+  filtrarCuposLista: filtrarCuposLista,
+  resumenCuposLista: resumenCuposLista,
   // Pedir cita (TASK 3b)
   normOrdenAudiencias: normOrdenAudiencias,
   mismoCasoAudiencias: mismoCasoAudiencias,

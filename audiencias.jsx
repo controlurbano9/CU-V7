@@ -335,6 +335,373 @@ function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar }) 
   );
 }
 
+// ── «Cupos» como lista (2026-11-03) ──────────────────────────
+// El chip «Cupos» dejó de ser la semana y pasó a la lista de la maqueta
+// propuesta-cupos.html: resumen, filtros, agregar/bloquear/eliminar y
+// selección múltiple. Solo el admin acciona; el supervisor ve la lista sin
+// casillas ni acciones.
+
+var _AU_ESTADOS_CUPOS = {
+  POR_APARTAR: { texto: 'Por apartar', anillo: 'pendiente' },
+  RESERVADO:   { texto: 'Citado',     anillo: 'iniciado' },
+  LIBRE:       { texto: 'Libre',      anillo: 'completado' },
+  BLOQUEADO:   { texto: 'Bloqueado',  anillo: 'cerrado' },
+};
+
+function _auPluralCupo(n) { return n === 1 ? 'cupo' : 'cupos'; }
+
+// Copia al portapapeles con el respaldo de copiarFilaExcel: si el
+// portapapeles falla, el texto sale en una hoja para copiarlo a mano.
+async function _auCopiarConRespaldo(texto, titulo) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch (e) {
+    await appAlert(texto.replace(/\t/g, ' · '), { titulo: titulo || 'Copiar' });
+    return false;
+  }
+}
+
+// 'yyyy-mm-dd' del input date → 'dd/mm/yyyy' de la BD.
+function _auIsoADdmmaaaa(iso) {
+  return String(iso || '').split('-').reverse().join('/');
+}
+
+// Hoja «Agregar cupos»: rango, días, horas y sustanciadores, con la vista
+// previa calculada en el cliente (previsualizarCupos, utils.js).
+function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
+  const [desde, setDesde] = useStateAU('');
+  const [hasta, setHasta] = useStateAU('');
+  const [dias, setDias] = useStateAU({ 1: true, 2: true, 3: true, 4: true, 5: true });
+  const [horas, setHoras] = useStateAU({ '9:00AM': true, '2:00PM': true });
+  const [otra, setOtra] = useStateAU(false);
+  const [otraHora, setOtraHora] = useStateAU('10:30');
+  const [susts, setSusts] = useStateAU(null);   // null = todos marcados
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+
+  const sustElegidos = susts === null
+    ? sustanciadores.map(function (s) { return s.nombre; })
+    : Object.keys(susts);
+
+  function seleccion() {
+    const horasSel = Object.keys(horas);
+    if (otra) {
+      const m = /^(\d{1,2}):(\d{2})/.exec(otraHora || '');
+      if (m) {
+        const h24 = +m[1];
+        horasSel.push((h24 % 12 || 12) + ':' + m[2] + (h24 < 12 ? 'AM' : 'PM'));
+      }
+    }
+    return {
+      desde: _auIsoADdmmaaaa(desde),
+      hasta: _auIsoADdmmaaaa(hasta),
+      dias: Object.keys(dias).map(Number),
+      horas: horasSel,
+      sustanciadores: sustElegidos
+    };
+  }
+
+  const prev = previsualizarCupos(existentes, seleccion(), hoy);
+  const incompleto = !desde || !hasta || !Object.keys(dias).length ||
+    !Object.keys(horas).length || !sustElegidos.length;
+  const porMotivo = {};
+  prev.omitidos.forEach(function (o) { porMotivo[o.motivo] = (porMotivo[o.motivo] || 0) + 1; });
+
+  async function confirmar() {
+    if (incompleto || !prev.crear.length || enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await agregarCuposAudiencias(prev.crear);
+      if (!r.ok) { setError(r.error || 'No se pudieron crear los cupos.'); setEnviando(false); return; }
+      setEnviando(false);
+      onListo(r);
+    } catch (e) {
+      setError(e.message || 'No se pudieron crear los cupos.'); setEnviando(false);
+    }
+  }
+
+  const chip = function (on, txt, fn, clave) {
+    return <button type="button" key={clave} className={'au-chip' + (on ? ' on' : '')}
+      aria-pressed={on ? 'true' : 'false'} onClick={fn}>{txt}</button>;
+  };
+
+  return (
+    <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Agregar cupos"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Agregar cupos</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        <div className="au-cl-campo">
+          <label htmlFor="au-cl-desde">Desde</label>
+          <input id="au-cl-desde" type="date" value={desde} onChange={function (e) { setDesde(e.target.value); }} />
+        </div>
+        <div className="au-cl-campo">
+          <label htmlFor="au-cl-hasta">Hasta</label>
+          <input id="au-cl-hasta" type="date" value={hasta} onChange={function (e) { setHasta(e.target.value); }} />
+        </div>
+        <div className="au-cl-campo">
+          <span>Días de la semana</span>
+          <div className="au-cl-chips">
+            {[[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V']].map(function (p) {
+              return chip(!!dias[p[0]], p[1], function () {
+                setDias(function (d) { const n = Object.assign({}, d); if (n[p[0]]) delete n[p[0]]; else n[p[0]] = true; return n; });
+              }, 'dia' + p[0]);
+            })}
+          </div>
+        </div>
+        <div className="au-cl-campo">
+          <span>Horas</span>
+          <div className="au-cl-chips">
+            {[['9:00AM', '9:00 a. m.'], ['2:00PM', '2:00 p. m.']].map(function (p) {
+              return chip(!!horas[p[0]], p[1], function () {
+                setHoras(function (h) { const n = Object.assign({}, h); if (n[p[0]]) delete n[p[0]]; else n[p[0]] = true; return n; });
+              }, 'hora' + p[0]);
+            })}
+            {chip(otra, 'Otra hora', function () { setOtra(!otra); }, 'otra')}
+          </div>
+        </div>
+        {otra && (
+          <div className="au-cl-campo">
+            <label htmlFor="au-cl-otra">Hora nueva</label>
+            <input id="au-cl-otra" type="time" value={otraHora} onChange={function (e) { setOtraHora(e.target.value); }} />
+          </div>
+        )}
+        <div className="au-cl-campo">
+          <span>Sustanciadores</span>
+          <div className="au-cl-chips">
+            {sustanciadores.map(function (s) {
+              return chip(susts === null || !!susts[s.nombre], titleCaseNombre(s.nombre), function () {
+                setSusts(function (prev) {
+                  const actuales = prev === null
+                    ? sustanciadores.map(function (x) { return x.nombre; })
+                    : Object.keys(prev);
+                  const n = {};
+                  let hay = false;
+                  actuales.forEach(function (x) { if (x === s.nombre) hay = true; else n[x] = true; });
+                  if (!hay) n[s.nombre] = true;
+                  return n;
+                });
+              }, 'sust' + s.norm);
+            })}
+          </div>
+        </div>
+        <div className="au-cl-pre">
+          {incompleto ? (
+            <p className="au-cl-err">Elige un rango válido, al menos un día, una hora y un sustanciador.</p>
+          ) : (
+            <p>
+              {'Se crean '}<b>{prev.crear.length}</b>{' ' + _auPluralCupo(prev.crear.length)}
+              {porMotivo['ya existe'] ? ' · ' + porMotivo['ya existe'] +
+                (porMotivo['ya existe'] === 1 ? ' ya existe (se omite)' : ' ya existen (se omiten)') : null}
+              {porMotivo.festivo ? ' · ' + porMotivo.festivo +
+                (porMotivo.festivo === 1 ? ' cae en festivo (se omite)' : ' caen en festivo (se omiten)') : null}
+              {(porMotivo['fecha pasada'] || porMotivo['fin de semana']) ? ' · ' +
+                ((porMotivo['fecha pasada'] || 0) + (porMotivo['fin de semana'] || 0)) + ' fuera de rango o fin de semana (se omiten)' : null}
+            </p>
+          )}
+        </div>
+        {error && <p className="au-cl-err">{error}</p>}
+        <div className="au-cl-acc">
+          <button type="button" className="btn-principal btn-chico"
+            disabled={incompleto || !prev.crear.length || enviando} onClick={confirmar}>
+            {enviando ? 'Creando…' : (incompleto ? 'Crear cupos' : 'Crear ' + prev.crear.length + ' ' + _auPluralCupo(prev.crear.length))}
+          </button>
+          <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Hoja «Bloquear»: motivo obligatorio, lista de cupos y aviso de citaciones
+// afectadas (no se cancelan).
+function BloquearCuposHoja({ cupos, citados, onCerrar, onListo }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
+  const [motivo, setMotivo] = useStateAU('');
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+  if (!cupos.length) {
+    return (
+      <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Bloquear"
+        onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+        <div className="au-hoj">
+          <div className="au-hoj-cab">
+            <div className="t"><b>Bloquear</b></div>
+            <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+          </div>
+          <p className="au-cl-info">No hay cupos por bloquear en esa selección.</p>
+          <div className="au-cl-acc">
+            <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  async function confirmar() {
+    if (!motivo.trim() || enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await bloquearCuposAudiencias(cupos.map(function (c) { return c.idCupo; }), motivo.trim());
+      if (!r.ok) { setError(r.error || 'No se pudieron bloquear los cupos.'); setEnviando(false); return; }
+      setEnviando(false);
+      onListo();
+    } catch (e) {
+      setError(e.message || 'No se pudieron bloquear los cupos.'); setEnviando(false);
+    }
+  }
+  return (
+    <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Bloquear"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Bloquear</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        <p className="au-cl-info">Se bloquean <b>{cupos.length}</b> {_auPluralCupo(cupos.length)}:</p>
+        <div className="au-cl-lineas">
+          {cupos.map(function (c) {
+            return <div key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)}</div>;
+          })}
+        </div>
+        {citados.length > 0 && (
+          <p className="au-cl-err"><b>{citados.length} citaci{citados.length === 1 ? 'ón cae' : 'ones caen'} en esos días.</b> No se cancelan.</p>
+        )}
+        <div className="au-cl-campo">
+          <span>Motivo (obligatorio)</span>
+          <div className="au-cl-chips">
+            {['Vacaciones', 'Comisión', 'Capacitación', 'Festivo local'].map(function (m) {
+              return <button type="button" key={m} className={'au-chip' + (motivo === m ? ' on' : '')}
+                onClick={function () { setMotivo(m); }}>{m}</button>;
+            })}
+          </div>
+          <input type="text" placeholder="Escribe el motivo" value={motivo}
+            onChange={function (e) { setMotivo(e.target.value); }} />
+        </div>
+        {error && <p className="au-cl-err">{error}</p>}
+        <div className="au-cl-acc">
+          <button type="button" className="btn-principal btn-chico" disabled={!motivo.trim() || enviando} onClick={confirmar}>
+            {enviando ? 'Bloqueando…' : 'Bloquear'}
+          </button>
+          <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Hoja «Bloquear el día»: novedad TODOS/DIA de un solo día (reutiliza
+// guardarNovedadAudiencias). Avisa si ese día hay citaciones.
+function BloquearDiaHoja({ fecha, citados, onCerrar, onListo }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
+  const [motivo, setMotivo] = useStateAU('');
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+  async function confirmar() {
+    if (!motivo.trim() || enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await guardarNovedadAudiencias({ desde: fecha, hasta: fecha, sustanciador: 'TODOS', franja: 'DIA', motivo: motivo.trim() });
+      if (!r.ok) { setError(r.error || 'No se pudo bloquear el día.'); setEnviando(false); return; }
+      setEnviando(false);
+      onListo();
+    } catch (e) {
+      setError(e.message || 'No se pudo bloquear el día.'); setEnviando(false);
+    }
+  }
+  return (
+    <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Bloquear el día"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Bloquear el día</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        <p className="au-cl-info"><b>{_auMayus(_auFechaLarga(fecha))}</b></p>
+        {citados.length > 0 && (
+          <p className="au-cl-err"><b>{citados.length} citaci{citados.length === 1 ? 'ón cae' : 'ones caen'} en ese día.</b> No se cancelan.</p>
+        )}
+        <div className="au-cl-campo">
+          <span>Motivo (obligatorio)</span>
+          <div className="au-cl-chips">
+            {['Vacaciones', 'Comisión', 'Capacitación', 'Festivo local'].map(function (m) {
+              return <button type="button" key={m} className={'au-chip' + (motivo === m ? ' on' : '')}
+                onClick={function () { setMotivo(m); }}>{m}</button>;
+            })}
+          </div>
+          <input type="text" placeholder="Escribe el motivo" value={motivo}
+            onChange={function (e) { setMotivo(e.target.value); }} />
+        </div>
+        {error && <p className="au-cl-err">{error}</p>}
+        <div className="au-cl-acc">
+          <button type="button" className="btn-principal btn-chico" disabled={!motivo.trim() || enviando} onClick={confirmar}>
+            {enviando ? 'Bloqueando…' : 'Bloquear'}
+          </button>
+          <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Hoja «Eliminar»: confirma; si alguno era libre (ya en el Excel), recuerda
+// liberarlo allá con «Copiar lista».
+function EliminarCuposHoja({ cupos, onCerrar, onListo }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+  const [copiado, setCopiado] = useStateAU(false);
+  const hayLibre = cupos.some(function (c) { return c.estado === 'LIBRE'; });
+  const tsv = cupos.map(function (c) {
+    return c.fecha + '\t' + horaBonitaAudiencias(c.hora) + '\t' + titleCaseNombre(c.sustanciador);
+  }).join('\n');
+  async function confirmar() {
+    if (enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await eliminarCuposAudiencias(cupos.map(function (c) { return c.idCupo; }));
+      if (!r.ok) { setError(r.error || 'No se pudieron eliminar los cupos.'); setEnviando(false); return; }
+      setEnviando(false);
+      onListo();
+    } catch (e) {
+      setError(e.message || 'No se pudieron eliminar los cupos.'); setEnviando(false);
+    }
+  }
+  async function copiar() {
+    const ok = await _auCopiarConRespaldo(tsv, 'Cupos para liberar en el Excel');
+    if (ok) setCopiado(true);
+  }
+  return (
+    <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Eliminar cupos"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Eliminar {cupos.length > 1 ? 'cupos' : 'cupo'}</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        <p className="au-cl-info">{cupos.length > 1 ? 'Los turnos dejan de existir.' : 'El turno deja de existir.'}</p>
+        <div className="au-cl-lineas">
+          {cupos.map(function (c) {
+            return <div key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)}</div>;
+          })}
+        </div>
+        {hayLibre && <p className="au-cl-info"><b>Ya estaba apartado en el Excel: libéralo también allá.</b></p>}
+        {error && <p className="au-cl-err">{error}</p>}
+        <div className="au-cl-acc">
+          <button type="button" className="btn-principal btn-chico" disabled={enviando} onClick={confirmar}>
+            {enviando ? 'Eliminando…' : 'Eliminar'}
+          </button>
+          {hayLibre && <button type="button" className="au-cl-texto" onClick={copiar}>{copiado ? '✓ Copiado' : 'Copiar lista'}</button>}
+          <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Pantalla ────────────────────────────────────────────────────
 function AudienciasScreen({ usuario }) {
   const [datos, setDatos] = useStateAU(null); // {cupos, novedadesActivas, ultimaFechaConCupo}
@@ -346,8 +713,13 @@ function AudienciasScreen({ usuario }) {
   const [vista, setVista] = useStateAU('agenda');
   const [filtroSus, setFiltroSus] = useStateAU(''); // '' = todos; norm(nombre)
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
-  const [offsetSem, setOffsetSem] = useStateAU(0);
-  const [diaCel, setDiaCel] = useStateAU(0);
+  // «Cupos» como lista (2026-11-03): filtros, selección y hoja de gestión.
+  const [fMes, setFMes] = useStateAU('todos');        // 'todos' | 'YYYY-MM'
+  const [fEstado, setFEstado] = useStateAU('todos');  // 'todos' | estado del cupo
+  const [fCuposAbiertos, setFCuposAbiertos] = useStateAU(false);
+  const [selCupos, setSelCupos] = useStateAU({});     // idCupo → true
+  const [hojaCupo, setHojaCupo] = useStateAU(null);   // {t, ids} | {t:'agregar'} | {t:'dia', fecha}
+  const [copiadoApartar, setCopiadoApartar] = useStateAU(false);
   const [lis, setLis] = useStateAU({ q: '' });
   const [novAbierta, setNovAbierta] = useStateAU(false);
   const [novForm, setNovForm] = useStateAU(false);
@@ -424,7 +796,19 @@ function AudienciasScreen({ usuario }) {
     return suscribirVisitas(leer);
   }, []);
 
-  const dias = useMemoAU(() => agruparAudienciasPorDia((datos && datos.cupos) || []), [datos]);
+  // Meses con cupos para el filtro de la lista («abril 2027»…).
+  const mesesCupos = useMemoAU(function () {
+    const vistos = {}; const out = [];
+    ((datos && datos.cupos) || []).forEach(function (c) {
+      const d = parsearFecha(c.fecha);
+      if (!d) return;
+      const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      if (vistos[k]) return;
+      vistos[k] = 1;
+      out.push({ k: k, d: d, txt: _AU_MESES[d.getMonth()] + ' ' + d.getFullYear() });
+    });
+    return out.sort(function (a, b) { return a.d - b.d; });
+  }, [datos]);
   const hoyTxt = formatearFecha(_auHoy());
   const sustanciadores = useMemoAU(() => {
     const vistos = {}; const out = [];
@@ -546,44 +930,86 @@ function AudienciasScreen({ usuario }) {
     setTimeout(function () { setCopiado(''); }, 1500);
   }
 
+  // ── Escrituras de «Cupos» como lista (solo admin) ──
+  // Desbloquear = quitar la novedad que bloquea esos cupos (puede abarcar
+  // muchos); el texto dice cuál se quita y cuántos cupos libera.
+  async function desbloquearCupo(c) {
+    if (ocupado) return;
+    const nov = novedades.find(function (n) { return String(n.id) === String(c.novedadId); });
+    if (!nov) {
+      await appAlert('Este bloqueo no tiene una novedad asociada: no se puede quitar desde aquí.', { tono: 'error' });
+      return;
+    }
+    const n = (datos.cupos || []).filter(function (x) { return String(x.novedadId) === String(nov.id); }).length;
+    const ok = await appConfirm(
+      'Quita el bloqueo «' + (nov.motivo || '') + '» de ' +
+      (nov.sustanciador === 'TODOS' ? 'todos' : titleCaseNombre(nov.sustanciador)) +
+      ' del ' + nov.desde + (nov.hasta !== nov.desde ? ' al ' + nov.hasta : '') + ': ' +
+      n + ' cupo' + (n === 1 ? '' : 's') + '.',
+      { titulo: 'Desbloquear', btnOk: 'Sí, desbloquear', btnCancel: 'Cancelar' });
+    if (!ok) return;
+    setOcupado(true);
+    try {
+      const r = await desactivarNovedadAudiencias(nov.id);
+      if (!r.ok) await appAlert(r.error || 'No se pudo quitar el bloqueo.', { tono: 'error' });
+      else await cargar();
+    } catch (e) {
+      await appAlert('No se pudo quitar el bloqueo: ' + (e.message || e), { tono: 'error' });
+    }
+    setOcupado(false);
+  }
+
+  // «Copiar lista para el Excel» del aviso de por apartar: una fila por cupo,
+  // fecha, hora y sustanciador separados por tabulador.
+  async function copiarApartarTSV() {
+    const tsv = (datos.cupos || []).filter(function (c) { return c.estado === 'POR_APARTAR'; })
+      .map(function (c) { return c.fecha + '\t' + horaBonitaAudiencias(c.hora) + '\t' + titleCaseNombre(c.sustanciador); })
+      .join('\n');
+    const ok = await _auCopiarConRespaldo(tsv, 'Cupos por apartar');
+    if (ok) {
+      setCopiadoApartar(true);
+      setTimeout(function () { setCopiadoApartar(false); }, 2500);
+    }
+  }
+
+  async function confirmarApartar() {
+    if (ocupado) return;
+    const ids = (datos.cupos || []).filter(function (c) { return c.estado === 'POR_APARTAR'; })
+      .map(function (c) { return c.idCupo; });
+    const ok = await appConfirm('¿Ya apartaste los ' + ids.length + ' cupos en el Excel del despacho?',
+      { titulo: 'Apartar cupos', btnOk: 'Sí, ya los aparté', btnCancel: 'Cancelar' });
+    if (!ok) return;
+    setOcupado(true);
+    try {
+      const r = await confirmarCuposAudiencias(ids);
+      if (!r.ok) {
+        await appAlert(r.error || 'No se pudieron confirmar los cupos.', { tono: 'error' });
+      } else {
+        const nc = (r.noConfirmados || []).length;
+        if (nc) await appAlert('El servidor no confirmó ' + nc + ' cupo' + (nc === 1 ? '' : 's') +
+          ' (ya no estaban por apartar).', { tono: 'error' });
+        await cargar();
+      }
+    } catch (e) {
+      await appAlert('No se pudieron confirmar los cupos: ' + (e.message || e), { tono: 'error' });
+    }
+    setOcupado(false);
+  }
+
+  // Lo que el servidor omitió al crear cupos (ya existían, festivo…).
+  function avisarOmitidosCupos(r) {
+    const om = (r && r.omitidos) || [];
+    if (!om.length) return;
+    const lista = om.slice(0, 10).map(function (o) {
+      return o.fecha + ' · ' + horaBonitaAudiencias(o.hora) + ' · ' + titleCaseNombre(o.sustanciador) +
+        (o.motivo ? ' (' + o.motivo + ')' : '');
+    }).join('\n');
+    appAlert(lista + (om.length > 10 ? '\n…' : ''),
+      { titulo: 'El servidor omitió ' + om.length + ' cupo' + (om.length === 1 ? '' : 's') });
+  }
+
   // ── Derivados de vista ──
   const soloMias = esInsp && misCitas;
-
-  const cuposDeDiaFiltrados = function (dia) {
-    if (!dia) return [];
-    return dia.cupos.filter(function (c) {
-      return !filtroSus || normNombreAudiencias(c.sustanciador) === filtroSus;
-    });
-  };
-
-  const semanas = useMemoAU(function () {
-    // Días agrupados por semana (lunes a domingo), por offset desde la semana
-    // actual: las pasadas quedan en offsets negativos (antes se amontonaban en la 0).
-    const hoy = _auHoy();
-    const lunesHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - ((hoy.getDay() + 6) % 7));
-    const out = { min: 0, max: 0 };
-    dias.forEach(function (d) {
-      const f = parsearFecha(d.fecha);
-      if (!f) return;
-      const k = Math.floor((f - lunesHoy) / (7 * 86400000));
-      (out[k] = out[k] || []).push(d);
-      out.min = Math.min(out.min, k); out.max = Math.max(out.max, k);
-    });
-    return out;
-  }, [dias]);
-
-  const diasSem = semanas[offsetSem] || [];
-  const semanaInfo = useMemoAU(function () {
-    let cupos = 0, citados = 0;
-    diasSem.forEach(function (d) {
-      const vis = cuposDeDiaFiltrados(d);
-      cupos += vis.length;
-      citados += vis.filter(function (c) { return c.estado === 'RESERVADO'; }).length;
-    });
-    const primera = diasSem[0] ? diasSem[0].fecha : '';
-    const ultima = diasSem.length ? diasSem[diasSem.length - 1].fecha : '';
-    return { cupos: cupos, citados: citados, primera: primera, ultima: ultima };
-  }, [diasSem, filtroSus]);
 
   const listaRows = useMemoAU(function () {
     if (!datos) return [];
@@ -610,10 +1036,6 @@ function AudienciasScreen({ usuario }) {
   function clicableCita(c) {
     if (esAdmin || esSup) return true;
     return normNombreAudiencias(c.reservadoPor) === yo;
-  }
-
-  function bloqueoLinea(texto, extra) {
-    return <div className="au-dia-bloq">{texto}{extra ? ' · ' + extra : ''}</div>;
   }
 
   // ═ early returns: todos los hooks ya corrieron ═
@@ -686,78 +1108,154 @@ function AudienciasScreen({ usuario }) {
     );
   }
 
-  // ── Vista Semana ──
-  function tarjetaCupo(c, clave) {
-    const mia = normNombreAudiencias(c.reservadoPor) === yo;
-    const clicable = c.estado === 'RESERVADO' && (esAdmin || esSup || mia);
-    const Tag = clicable ? 'button' : 'div';
-    const clase = 'au-cupo ' + (c.estado === 'RESERVADO' ? 'citado' : c.estado === 'BLOQUEADO' ? 'novedad' : 'libre');
-    const etiqueta = c.estado === 'RESERVADO' ? 'Citado' : c.estado === 'BLOQUEADO' ? 'Sin audiencia' : 'Libre';
+  // ── Vista Cupos (2026-11-03): la lista de la maqueta propuesta-cupos.html ──
+  function estadoCupoTxt(c) {
+    const E = _AU_ESTADOS_CUPOS[c.estado];
+    return E ? E.texto : String(c.estado || '');
+  }
+
+  function accionesCupo(c) {
+    const btn = function (act, txt) {
+      return (
+        <button type="button" key={act} className="btn-neutro btn-chico au-cl-act-btn"
+          onClick={function () {
+            if (act === 'bloquear') setHojaCupo({ t: 'bloquear', ids: [c.idCupo] });
+            else if (act === 'eliminar') setHojaCupo({ t: 'eliminar', ids: [c.idCupo] });
+            else if (act === 'cita') setCitaAbierta(c);
+            else if (act === 'desbloquear') desbloquearCupo(c);
+          }}>
+          {txt}
+        </button>
+      );
+    };
+    if (c.estado === 'LIBRE') return [btn('bloquear', 'Bloquear'), btn('eliminar', 'Eliminar')];
+    if (c.estado === 'POR_APARTAR') return [btn('eliminar', 'Eliminar')];
+    if (c.estado === 'RESERVADO') return [btn('cita', 'Ver cita')];
+    if (c.estado === 'BLOQUEADO') return [btn('desbloquear', 'Desbloquear')];
+    return null;
+  }
+
+  function filaCupo(c) {
+    const E = _AU_ESTADOS_CUPOS[c.estado] || { texto: c.estado, anillo: 'pendiente' };
+    const on = !!selCupos[c.idCupo];
+    const det = c.estado === 'RESERVADO'
+      ? [_auCaso(c), c.citado, c.reservadoPor ? titleCaseNombre(c.reservadoPor) : ''].filter(Boolean).join(' · ')
+      : c.estado === 'BLOQUEADO' ? (c.motivoBloqueo || '') : '';
     return (
-      <Tag className={clase} key={clave} type={clicable ? 'button' : undefined}
-        onClick={clicable ? function () { setCitaAbierta(c); } : undefined}
-        title={c.estado === 'BLOQUEADO' ? 'Día sin audiencias · ' + c.motivoBloqueo : undefined}>
-        <span className="h1l">
-          <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
-          <span className="au-estado">{etiqueta}</span>
-        </span>
-        {c.estado === 'RESERVADO' ? <>
-          <span className="exp">{_auCaso(c)}</span>
-          <span className="quien">{[c.citado, soloMias ? '' : titleCaseNombre(c.reservadoPor || '')].filter(Boolean).join(' · ')}</span>
-        </> : (filtroSus ? null : <span className="sus">{titleCaseNombre(c.sustanciador)}</span>)}
-      </Tag>
+      <div className={'au-cl-cupo' + (on ? ' sel' : '')} key={c.idCupo}>
+        {esAdmin && (
+          <label className="au-cl-sel">
+            <input type="checkbox" checked={on}
+              aria-label={'Seleccionar ' + c.fecha + ', ' + horaBonitaAudiencias(c.hora) + ', ' + titleCaseNombre(c.sustanciador)}
+              onChange={function () {
+                setSelCupos(function (prev) {
+                  const n = Object.assign({}, prev);
+                  if (n[c.idCupo]) delete n[c.idCupo]; else n[c.idCupo] = true;
+                  return n;
+                });
+              }} />
+          </label>
+        )}
+        <span className="au-cl-hora">{horaBonitaAudiencias(c.hora)}</span>
+        <span className="au-cl-sust">{titleCaseNombre(c.sustanciador)}</span>
+        <span className="au-cl-estado"><EstadoAnillo estado={E.anillo} /><b>{E.texto}</b></span>
+        <span className="au-cl-det">{det}</span>
+        {esAdmin && <div className="au-cl-act">{accionesCupo(c)}</div>}
+      </div>
     );
   }
 
-  function renderSemana() {
-    const idxCel = Math.max(0, Math.min(diaCel, diasSem.length - 1));
+  function renderCupos() {
+    const filtrados = filtrarCuposLista(datos.cupos, {
+      mes: fMes === 'todos' ? '' : fMes,
+      estado: fEstado === 'todos' ? '' : fEstado,
+      sustanciador: filtroSus
+    });
+    const res = resumenCuposLista(filtrados);
+    const porDia = [];
+    const porFecha = {};
+    filtrados.forEach(function (c) {
+      if (!porFecha[c.fecha]) { porFecha[c.fecha] = []; porDia.push(c.fecha); }
+      porFecha[c.fecha].push(c);
+    });
+    const porApartar = (datos.cupos || []).filter(function (c) { return c.estado === 'POR_APARTAR'; });
+    const nFiltros = (fMes !== 'todos' ? 1 : 0) + (fEstado !== 'todos' ? 1 : 0);
+    const chip = function (on, txt, fn, clave) {
+      return <button type="button" key={clave} className={'au-chip' + (on ? ' on' : '')}
+        aria-pressed={on ? 'true' : 'false'} onClick={fn}>{txt}</button>;
+    };
     return (
-      <div>
-        <div className="au-sem-bar">
-          <button type="button" className="au-flecha" disabled={offsetSem <= semanas.min}
-            onClick={function () { setOffsetSem(offsetSem - 1); setDiaCel(0); }} aria-label="Semana anterior">‹</button>
-          <div className="au-sem-tit">
-            {semanaInfo.primera
-              ? 'Semana del ' + semanaInfo.primera + ' al ' + semanaInfo.ultima
-              : 'Semana sin audiencias'}
-            <small>{semanaInfo.citados} cita{semanaInfo.citados === 1 ? '' : 's'} · {semanaInfo.cupos - semanaInfo.citados} libre{semanaInfo.cupos - semanaInfo.citados === 1 ? '' : 's'}</small>
+      <div className={esAdmin ? '' : 'au-cl-sinadm'}>
+        <p className="au-cl-resumen">
+          <b>{res.libres}</b> {res.libres === 1 ? 'libre' : 'libres'} · <b>{res.citados}</b> {res.citados === 1 ? 'citado' : 'citados'} ·
+          {' '}<b>{res.bloqueados}</b> {res.bloqueados === 1 ? 'bloqueado' : 'bloqueados'}
+          {res.porApartar > 0 && <> · <b>{res.porApartar}</b> por apartar</>}
+          {res.hasta && <> · hasta el {res.hasta}</>}
+        </p>
+        <div className="au-cl-fila">
+          <div className={'au-cl-filtros' + (fCuposAbiertos ? ' abierta' : '')} id="au-cl-filtros">
+            <span className="au-cl-filtro">
+              <span>Mes</span>
+              {chip(fMes === 'todos', 'Todos', function () { setFMes('todos'); }, 'mes-todos')}
+              {mesesCupos.map(function (m) { return chip(fMes === m.k, m.txt, function () { setFMes(m.k); }, m.k); })}
+            </span>
+            <span className="au-cl-filtro">
+              <span>Estado</span>
+              {chip(fEstado === 'todos', 'Todos', function () { setFEstado('todos'); }, 'est-todos')}
+              {[['POR_APARTAR', 'Por apartar'], ['LIBRE', 'Libre'], ['RESERVADO', 'Citado'], ['BLOQUEADO', 'Bloqueado']]
+                .map(function (p) { return chip(fEstado === p[0], p[1], function () { setFEstado(p[0]); }, p[0]); })}
+            </span>
           </div>
-          <button type="button" className="au-flecha" disabled={offsetSem >= semanas.max}
-            onClick={function () { setOffsetSem(offsetSem + 1); setDiaCel(0); }} aria-label="Semana siguiente">›</button>
+          <button type="button" className="au-chip au-cl-btn-filtros" aria-expanded={fCuposAbiertos ? 'true' : 'false'}
+            aria-controls="au-cl-filtros" onClick={function () { setFCuposAbiertos(!fCuposAbiertos); }}>
+            {nFiltros ? 'Filtros · ' + nFiltros : 'Filtros'}
+          </button>
+          {esAdmin && (
+            <button type="button" className="btn-principal au-cl-agregar" onClick={function () { setHojaCupo({ t: 'agregar' }); }}>
+              Agregar cupos
+            </button>
+          )}
         </div>
-        {!diasSem.length ? (
-          <p className="au-vacio-hoy">Sin cupos esta semana (festivo o sin audiencias del bloque).</p>
-        ) : (<>
-          <div className="au-dia-tabs" role="group" aria-label="Elegir día">
-            {diasSem.map(function (d, i) {
-              return <button type="button" key={d.fecha} className={'au-chip' + (i === idxCel ? ' on' : '')}
-                onClick={function () { setDiaCel(i); }}>{_auDiaCorto(d.fecha)}</button>;
-            })}
+        {esAdmin && porApartar.length > 0 && (
+          <div className="au-cl-aviso">
+            <span className="au-cl-aviso-txt">
+              <b>{porApartar.length} {porApartar.length === 1 ? 'cupo' : 'cupos'} por apartar en el Excel.</b> Hasta confirmarlos, nadie puede pedirlos.
+            </span>
+            <span className="au-cl-aviso-btn">
+              <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={copiarApartarTSV}>
+                {copiadoApartar ? '✓ Copiado' : 'Copiar lista para el Excel'}
+              </button>
+              <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={confirmarApartar}>Ya los aparté</button>
+            </span>
           </div>
-          <div className="au-dias">
-            {diasSem.map(function (d, i) {
-              const vis = cuposDeDiaFiltrados(d);
-              const todoBloqueado = vis.length > 0 && vis.every(function (c) { return c.estado === 'BLOQUEADO'; });
-              const libres = vis.filter(function (c) { return c.estado === 'LIBRE'; }).length;
-              const mostrar = soloMias ? vis.filter(function (c) {
-                return c.estado === 'RESERVADO' && normNombreAudiencias(c.reservadoPor) === yo;
-              }) : vis;
-              return (
-                <div className={'au-dia' + (i === idxCel ? ' on' : '')} key={d.fecha}>
-                  <div className="au-dia-cab">
-                    <b>{_auDiaCorto(d.fecha)}</b>
-                    <span>{todoBloqueado ? 'sin audiencias'
-                      : soloMias ? (mostrar.length ? mostrar.length + ' tuya' + (mostrar.length === 1 ? '' : 's') : 'sin citas tuyas')
-                      : (vis.length ? (vis.length - libres) + ' cita' + (vis.length - libres === 1 ? '' : 's') + ' · ' + libres + ' libre' + (libres === 1 ? '' : 's') : 'sin cupos')}</span>
-                  </div>
-                  {todoBloqueado
-                    ? bloqueoLinea(vis[0].motivoBloqueo)
-                    : mostrar.map(function (c, j) { return tarjetaCupo(c, d.fecha + j); })}
-                </div>
-              );
-            })}
-          </div>
-        </>)}
+        )}
+        {!filtrados.length && <p className="au-vacio-hoy">No hay cupos con esos filtros.</p>}
+        {porDia.map(function (fecha) {
+          const dia = porFecha[fecha];
+          const nl = dia.filter(function (c) { return c.estado === 'LIBRE'; }).length;
+          const nc = dia.filter(function (c) { return c.estado === 'RESERVADO'; }).length;
+          const partes = [];
+          if (nl) partes.push(nl + (nl === 1 ? ' libre' : ' libres'));
+          if (nc) partes.push(nc + (nc === 1 ? ' citado' : ' citados'));
+          if (!partes.length) {
+            const t = estadoCupoTxt(dia[0]).toLowerCase();
+            partes.push(dia.length + ' ' + (t === 'por apartar' ? t : t + 's'));
+          }
+          return (
+            <div className="au-cl-dia" key={fecha}>
+              <div className="au-cl-dia-cab">
+                <h2>{_auMayus(_auFechaLarga(fecha))}</h2>
+                <span className="au-cl-dia-n">{partes.join(' · ')}</span>
+                {esAdmin && (
+                  <button type="button" className="au-cl-texto" onClick={function () { setHojaCupo({ t: 'dia', fecha: fecha }); }}>
+                    Bloquear el día
+                  </button>
+                )}
+              </div>
+              {dia.map(filaCupo)}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -957,8 +1455,20 @@ function AudienciasScreen({ usuario }) {
 
   // ── Pantalla ──
   const franjaNovTxt = esAdmin || esSup ? (datos.novedadesActivas ? ' · ' + datos.novedadesActivas : '') : '';
+  const selCuposIds = Object.keys(selCupos);
+  const selCuposLista = selCuposIds
+    .map(function (id) { return (datos.cupos || []).find(function (c) { return c.idCupo === id; }); })
+    .filter(Boolean);
+  const selCitados = selCuposLista.filter(function (c) { return c.estado === 'RESERVADO'; });
+  const hojaCuposLista = hojaCupo && hojaCupo.ids
+    ? hojaCupo.ids.map(function (id) { return (datos.cupos || []).find(function (c) { return c.idCupo === id; }); }).filter(Boolean)
+    : [];
+  const hojaDiaCitados = hojaCupo && hojaCupo.t === 'dia'
+    ? (datos.cupos || []).filter(function (c) { return c.fecha === hojaCupo.fecha && c.estado === 'RESERVADO'; })
+    : [];
+  const barraCuposVisible = vista === 'sem' && selCuposIds.length > 0;
   return (
-    <div className="au-pantalla">
+    <div className={'au-pantalla' + (barraCuposVisible ? ' au-cl-con-barra' : '')}>
       <header className="au-cab">
         <h1>{esInsp ? 'Citaciones' : 'Audiencias'}</h1>
         {!esSup && (
@@ -985,9 +1495,12 @@ function AudienciasScreen({ usuario }) {
       <div className={esAdmin ? 'au-grid' : ''}>
       <div className="au-principal">
       <div className="au-topbar">
-        <button type="button" className={'au-chip' + (vista === 'agenda' ? ' on' : '')} onClick={function () { setVista('agenda'); }}>Agenda</button>
-        {!esInsp && <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')} onClick={function () { setVista('sem'); }}>Cupos</button>}
-        <button type="button" className={'au-chip' + (vista === 'lis' ? ' on' : '')} onClick={function () { setVista('lis'); }}>Lista</button>
+        <button type="button" className={'au-chip' + (vista === 'agenda' ? ' on' : '')}
+          onClick={function () { setVista('agenda'); setSelCupos({}); }}>Agenda</button>
+        {!esInsp && <button type="button" className={'au-chip' + (vista === 'sem' ? ' on' : '')}
+          onClick={function () { setVista('sem'); setFCuposAbiertos(false); }}>Cupos</button>}
+        <button type="button" className={'au-chip' + (vista === 'lis' ? ' on' : '')}
+          onClick={function () { setVista('lis'); setSelCupos({}); }}>Lista</button>
         <span className="sp"></span>
         {esInsp
           ? [['mias', 'Mis citas'], ['todas', 'Todas']].map(function (par) {
@@ -1004,7 +1517,7 @@ function AudienciasScreen({ usuario }) {
       </div>
 
       {vista === 'agenda' && renderAgenda()}
-      {vista === 'sem' && renderSemana()}
+      {vista === 'sem' && renderCupos()}
       {vista === 'lis' && renderLista()}
       </div>
 
@@ -1021,6 +1534,41 @@ function AudienciasScreen({ usuario }) {
         <PedirCitaHoja usuario={usuario} agenda={datos.cupos} cuposIniciales={cuposPedir}
           onCerrar={function () { setPedirAbierto(false); }}
           onReservada={function () { cargar(); precargarCupos(); }} />
+      )}
+      {barraCuposVisible && (
+        <div className="au-cl-barra" role="region" aria-label="Cupos seleccionados">
+          <span className="au-cl-barra-cuenta">{selCuposIds.length} {selCuposIds.length === 1 ? 'seleccionado' : 'seleccionados'}</span>
+          {selCitados.length > 0 && (
+            <span className="au-cl-ignora">{selCitados.length} {selCitados.length === 1 ? 'citado se ignora' : 'citados se ignoran'}</span>
+          )}
+          <span className="au-cl-barra-acc">
+            <button type="button" className="btn-neutro" onClick={function () { setHojaCupo({ t: 'bloquear', ids: selCuposIds }); }}>Bloquear</button>
+            <button type="button" className="btn-neutro" onClick={function () { setHojaCupo({ t: 'eliminar', ids: selCuposIds }); }}>Eliminar</button>
+            <button type="button" className="au-cl-texto" onClick={function () { setSelCupos({}); }}>Quitar selección</button>
+          </span>
+        </div>
+      )}
+      {hojaCupo && hojaCupo.t === 'agregar' && (
+        <AgregarCuposHoja existentes={datos.cupos} sustanciadores={sustanciadores} hoy={_auHoy()}
+          onCerrar={function () { setHojaCupo(null); }}
+          onListo={function (r) { setHojaCupo(null); avisarOmitidosCupos(r); cargar(); }} />
+      )}
+      {hojaCupo && hojaCupo.t === 'bloquear' && (
+        <BloquearCuposHoja
+          cupos={hojaCuposLista.filter(function (c) { return c.estado !== 'RESERVADO' && c.estado !== 'BLOQUEADO'; })}
+          citados={hojaCuposLista.filter(function (c) { return c.estado === 'RESERVADO'; })}
+          onCerrar={function () { setHojaCupo(null); }}
+          onListo={function () { setHojaCupo(null); setSelCupos({}); cargar(); }} />
+      )}
+      {hojaCupo && hojaCupo.t === 'eliminar' && (
+        <EliminarCuposHoja cupos={hojaCuposLista.filter(function (c) { return c.estado !== 'RESERVADO'; })}
+          onCerrar={function () { setHojaCupo(null); }}
+          onListo={function () { setHojaCupo(null); setSelCupos({}); cargar(); }} />
+      )}
+      {hojaCupo && hojaCupo.t === 'dia' && (
+        <BloquearDiaHoja fecha={hojaCupo.fecha} citados={hojaDiaCitados}
+          onCerrar={function () { setHojaCupo(null); }}
+          onListo={function () { setHojaCupo(null); cargar(); }} />
       )}
       {citaAbierta && (
         <CitaHoja cita={citaAbierta} esAdmin={esAdmin} ocupado={ocupado}

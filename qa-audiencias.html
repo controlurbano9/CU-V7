@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<!--
+  Banco de pruebas de la pestaña «Audiencias» (TASK 3a, no versionado).
+  Monta AudienciasScreen del bundle con la red deshabilitada y las funciones
+  de api.js sobrepasadas con datos inventados (marzo–junio de 2027, 3
+  sustanciadores). «Hoy» es lunes 05/04/2027 (window._AU_HOY).
+    Barra de arriba: rol (Admin / Supervisor Patricia / Inspector Alejandro),
+    «hoy» ficticio (lun 05/04 · mar 13/04 bloqueado · jue 08/04 sin
+    audiencias), aviso de cupos (normal / por acabarse) y hoja vacía.
+  Las escrituras (guardar/quitar novedad, liberar, marcar Excel) mutan los
+  datos del banco y refrescan; nada sale de esta página.
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QA — Audiencias</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<style>
+  #qa-bar { position: sticky; top: 0; z-index: 500; display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center;
+    padding: 8px 12px; background: #1F1B16; color: #F5F1EB; font: 600 12px Inter, sans-serif; }
+  #qa-bar button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 6px;
+    background: rgba(245,241,235,.14); color: rgba(245,241,235,.8); font: 600 12px Inter, sans-serif; cursor: pointer; }
+  #qa-bar button.on { background: #F5F1EB; color: #1F1B16; }
+  #qa-bar small { font-weight: 500; font-size: 10px; opacity: .6; }
+</style>
+</head>
+<body>
+<div id="qa-bar"></div>
+<div id="root"></div>
+<script>
+(function () {
+  const v = '?b=' + Date.now();
+  document.write('<link rel="stylesheet" href="styles.css' + v + '">');
+  ['env.js', 'offline-queue.js', 'api.js', 'utils.js', 'bundle.min.js'].forEach(function (f) {
+    document.write('<scr' + 'ipt src="' + f + v + '"></scr' + 'ipt>');
+  });
+})();
+</script>
+<script>
+'use strict';
+const _params = new URLSearchParams(location.search);
+const CASO = _params.get('caso') || '';
+window._AU_HOY = _params.get('hoy') || '2027-04-05';
+
+// La red del banco: solo lo que sale de esta página falla; el resto pasa.
+const _fetchReal = window.fetch.bind(window);
+window.fetch = function (rec) {
+  const url = String((rec && rec.url) || rec || '');
+  if (!/^https?:/.test(url) || url.indexOf(location.origin) === 0 || /googleapis|gstatic|unpkg/.test(url)) {
+    return _fetchReal.apply(null, arguments);
+  }
+  return Promise.reject(new Error('QA: red deshabilitada'));
+};
+try { navigator.clipboard.writeText = function (t) { return Promise.resolve(t); }; } catch (e) {}
+
+// ── Datos inventados ──
+const SUST = ['VICTOR QUIROZ', 'PATRICIA LOPEZ', 'JUANSE PEREZ'];
+const CITA = (id, fecha, hora, sus, extra) => Object.assign({
+  idCupo: id, fecha: fecha, dia: '', hora: hora, sustanciador: sus, estado: 'RESERVADO',
+  radicado: '', expediente: '', citado: '', documentoCitado: '', reservadoPor: '',
+  enviadoExcel: '', visitaCompletada: true, direccion: ''
+}, extra || {});
+function diaCupos(fecha, extras) {
+  // 9:00 V/P/J · 2:00 V/J (la precarga del Excel del despacho)
+  const out = [
+    { idCupo: fecha + '-0900-VICTOR', fecha: fecha, hora: '9:00AM', sustanciador: 'VICTOR QUIROZ', estado: 'LIBRE' },
+    { idCupo: fecha + '-0900-PATRICIA', fecha: fecha, hora: '9:00AM', sustanciador: 'PATRICIA LOPEZ', estado: 'LIBRE' },
+    { idCupo: fecha + '-0900-JUANSE', fecha: fecha, hora: '9:00AM', sustanciador: 'JUANSE PEREZ', estado: 'LIBRE' },
+    { idCupo: fecha + '-1400-VICTOR', fecha: fecha, hora: '2:00PM', sustanciador: 'VICTOR QUIROZ', estado: 'LIBRE' },
+    { idCupo: fecha + '-1400-JUANSE', fecha: fecha, hora: '2:00PM', sustanciador: 'JUANSE PEREZ', estado: 'LIBRE' },
+  ];
+  (extras || []).forEach(function (e) {
+    const i = out.findIndex(function (c) { return c.idCupo === e.idCupo; });
+    if (i >= 0) out[i] = e; else out.push(e);
+  });
+  return out;
+}
+function bloquear(cupos, sus, motivo) {
+  return cupos.map(function (c) {
+    return (!sus || c.sustanciador === sus) ? Object.assign({}, c, { estado: 'BLOQUEADO', motivoBloqueo: motivo }) : c;
+  });
+}
+let DATA_QA = { cupos: [], novedadesActivas: 0, ultimaFechaConCupo: '30/12/2027' };
+let NOVEDADES_QA = [];
+function cargarDatosQA() {
+  if (CASO === 'vacio') {
+    DATA_QA = { cupos: [], novedadesActivas: 0, ultimaFechaConCupo: '' };
+    NOVEDADES_QA = [];
+    return;
+  }
+  NOVEDADES_QA = [
+    { id: 'n1', desde: '10/05/2027', hasta: '21/05/2027', sustanciador: 'PATRICIA LOPEZ', franja: 'DIA', motivo: 'Vacaciones', activa: true },
+    { id: 'n2', desde: '13/04/2027', hasta: '13/04/2027', sustanciador: 'TODOS', franja: 'DIA', motivo: 'Jornada de capacitación', activa: true },
+    { id: 'n3', desde: '07/04/2027', hasta: '07/04/2027', sustanciador: 'VICTOR QUIROZ', franja: 'DIA', motivo: 'Comisión de servicio', activa: true },
+    { id: 'n4', desde: '16/06/2027', hasta: '16/06/2027', sustanciador: 'TODOS', franja: 'DIA', motivo: 'Jornada de capacitación', activa: true },
+  ];
+  const sem = function (lun, mar, mie) {
+    let out = [];
+    out = out.concat(diaCupos(lun), diaCupos(mar), diaCupos(mie));
+    return out;
+  };
+  DATA_QA.cupos = []
+    .concat(sem('05/04/2027', '06/04/2027', '07/04/2027'))
+    .concat(sem('12/04/2027', '13/04/2027', '14/04/2027'))
+    .concat(sem('19/04/2027', '20/04/2027', '21/04/2027'));
+  const poner = (c) => { const i = DATA_QA.cupos.findIndex(function (x) { return x.idCupo === c.idCupo; }); DATA_QA.cupos[i] = c; };
+  // Semana 1: cita pendiente sin documento (Alejandro) y cita lista con C.C. (Mauricio).
+  poner(CITA('05/04/2027-0900-PATRICIA', '05/04/2027', '9:00AM', 'PATRICIA LOPEZ', {
+    radicado: '20272041228', expediente: '2201', citado: 'Carlos Ramírez',
+    reservadoPor: 'ALEJANDRO HERNANDEZ', visitaCompletada: false, direccion: 'CL 50 # 32-10',
+    reservadoEn: '05/04/2027 08:10' }));
+  poner(CITA('05/04/2027-1400-VICTOR', '05/04/2027', '2:00PM', 'VICTOR QUIROZ', {
+    radicado: '20272051100', expediente: '2243', citado: 'María F. Gómez',
+    documentoCitado: '43123456', reservadoPor: 'MAURICIO HERRERA', direccion: 'CR 48 # 63-21' }));
+  poner(CITA('06/04/2027-0900-VICTOR', '06/04/2027', '9:00AM', 'VICTOR QUIROZ', {
+    radicado: '20272093456', expediente: '2287', citado: 'Alberto Ospina',
+    documentoCitado: '9876543', reservadoPor: 'ALEJANDRO HERNANDEZ', direccion: 'CL 45 # 75A-12' }));
+  poner(CITA('06/04/2027-1400-JUANSE', '06/04/2027', '2:00PM', 'JUANSE PEREZ', {
+    radicado: '20272104315', expediente: '2301', citado: 'Luz A. Cano',
+    reservadoPor: 'MAURICIO HERRERA', visitaCompletada: false, direccion: 'CRA 31C # 12-45',
+    reservadoEn: '05/04/2027 09:40' }));
+  // Una cita pedida por N° de orden sin visita en la base (oficio aún sin registrar).
+  poner(CITA('14/04/2027-0900-JUANSE', '14/04/2027', '9:00AM', 'JUANSE PEREZ', {
+    radicado: '', ordenPolicia: '2027-09-031', reservadoPor: 'MAURICIO HERRERA', sinVisita: true,
+    visitaCompletada: false }));
+  // Mié 07: comisión de Víctor (novedad de un solo sustanciador).
+  // Semana 2: mar 13 bloqueado entero (novedad TODOS); lun 12 una cita.
+  poner(CITA('12/04/2027-0900-PATRICIA', '12/04/2027', '9:00AM', 'PATRICIA LOPEZ', {
+    radicado: '20272125870', expediente: '2312', citado: 'Diana Restrepo',
+    documentoCitado: '22119900', reservadoPor: 'ALEJANDRO HERNANDEZ', direccion: 'CL 33 # 48-21' }));
+  // Semana 3.
+  poner(CITA('19/04/2027-0900-VICTOR', '19/04/2027', '9:00AM', 'VICTOR QUIROZ', {
+    radicado: '20272146102', expediente: '2345', citado: 'Jorge Berrío',
+    documentoCitado: '5566778', reservadoPor: 'MAURICIO HERRERA', direccion: 'CL 50 # 32-10' }));
+  poner(CITA('20/04/2027-1400-JUANSE', '20/04/2027', '2:00PM', 'JUANSE PEREZ', {
+    radicado: '20272159320', expediente: '2360', citado: 'Sandra Villegas',
+    documentoCitado: '1029384', reservadoPor: 'ALEJANDRO HERNANDEZ', direccion: 'DIAG 30A # 55-19' }));
+  // Citaciones pasadas (ya en el Excel, marzo) para «Lista · Incluir pasadas».
+  [
+    ['10/03/2027-1400-JUANSE', '10/03/2027', '2:00PM', 'JUANSE PEREZ', 'Tulio Zuluaga', '19456723', 'ALEJANDRO HERNANDEZ', '2141'],
+    ['15/03/2027-0900-VICTOR', '15/03/2027', '9:00AM', 'VICTOR QUIROZ', 'Ricardo Torres', '71234567', 'MAURICIO HERRERA', '2150'],
+    ['17/03/2027-1400-PATRICIA', '17/03/2027', '2:00PM', 'PATRICIA LOPEZ', 'Marta Ospina', '', 'ALEJANDRO HERNANDEZ', '2162'],
+    ['22/03/2027-0900-JUANSE', '22/03/2027', '9:00AM', 'JUANSE PEREZ', 'Pedro Nel Ruiz', '5287654', 'MAURICIO HERRERA', '2175'],
+    ['24/03/2027-0900-VICTOR', '24/03/2027', '9:00AM', 'VICTOR QUIROZ', 'Luz E. Patiño', '1023456789', 'ALEJANDRO HERNANDEZ', '2180'],
+    ['29/03/2027-1400-PATRICIA', '29/03/2027', '2:00PM', 'PATRICIA LOPEZ', 'Andrés Salazar', '', 'MAURICIO HERRERA', '2190'],
+    ['31/03/2027-0900-JUANSE', '31/03/2027', '9:00AM', 'JUANSE PEREZ', 'Gloria Vélez', '3456789', 'ALEJANDRO HERNANDEZ', '2196'],
+    ['02/04/2027-1400-VICTOR', '02/04/2027', '2:00PM', 'VICTOR QUIROZ', 'Humberto Díaz', '8877665', 'MAURICIO HERRERA', '2198'],
+  ].forEach(function (p) {
+    DATA_QA.cupos.push(CITA(p[0], p[1], p[2], p[3], {
+      radicado: '2027' + p[7] + '88', expediente: p[7], citado: p[4],
+      documentoCitado: p[5], reservadoPor: p[6], enviadoExcel: '20/03/2027' }));
+  });
+  // Novedades aplicadas al estado (07/04 Víctor y 13/04 TODOS).
+  DATA_QA.cupos = DATA_QA.cupos.map(function (c) {
+    if (c.fecha === '07/04/2027' && c.sustanciador === 'VICTOR QUIROZ' && c.estado === 'LIBRE') {
+      return Object.assign({}, c, { estado: 'BLOQUEADO', motivoBloqueo: 'Comisión de servicio', novedadId: 'n3' });
+    }
+    if (c.fecha === '13/04/2027' && c.estado === 'LIBRE') {
+      return Object.assign({}, c, { estado: 'BLOQUEADO', motivoBloqueo: 'Jornada de capacitación', novedadId: 'n2' });
+    }
+    return c;
+  });
+  // Cupos creados en la app, pendientes de apartar en el Excel (2026-11-03):
+  // el miércoles 21/04 entero y el 9:00 de Víctor del 20/04.
+  DATA_QA.cupos = DATA_QA.cupos.map(function (c) {
+    if (c.fecha === '21/04/2027' && c.estado === 'LIBRE') return Object.assign({}, c, { estado: 'POR_APARTAR' });
+    if (c.idCupo === '20/04/2027-0900-VICTOR') return Object.assign({}, c, { estado: 'POR_APARTAR' });
+    return c;
+  });
+  DATA_QA.novedadesActivas = 4;
+  DATA_QA.ultimaFechaConCupo = AVISO_QA === 'cerca' ? _cerca() : '30/12/2027';
+}
+function _cerca() {
+  const d = new Date(Date.now() + 5 * 86400000);
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+// ── Sobrepaso de api.js (los globals del bundle) ──
+window.agendaAudiencias = function () { return Promise.resolve({ ok: true, cupos: DATA_QA.cupos, novedades: NOVEDADES_QA, novedadesActivas: DATA_QA.novedadesActivas, ultimaFechaConCupo: DATA_QA.ultimaFechaConCupo }); };
+window.listarNovedadesAudiencias = function () { return Promise.resolve(NOVEDADES_QA); };
+window.guardarNovedadAudiencias = function (n) {
+  NOVEDADES_QA.push(Object.assign({ id: 'n' + Date.now(), activa: true }, n));
+  DATA_QA.novedadesActivas = NOVEDADES_QA.length;
+  return Promise.resolve({ ok: true, afectadas: [
+    CITA('10/05/2027-0900-PATRICIA', '10/05/2027', '9:00AM', 'PATRICIA LOPEZ', { expediente: '2312', citado: 'Diana Restrepo' }),
+    CITA('12/05/2027-0900-PATRICIA', '12/05/2027', '9:00AM', 'PATRICIA LOPEZ', { expediente: '2345', citado: 'Jorge Berrío' }),
+    CITA('17/05/2027-0900-PATRICIA', '17/05/2027', '9:00AM', 'PATRICIA LOPEZ', { expediente: '2360', citado: 'Sandra Villegas' }),
+  ] });
+};
+window.desactivarNovedadAudiencias = function (id) {
+  NOVEDADES_QA = NOVEDADES_QA.filter(function (n) { return n.id !== id; });
+  DATA_QA.novedadesActivas = NOVEDADES_QA.length;
+  // «Desbloquear» de la lista de cupos: los cupos de esa novedad vuelven.
+  DATA_QA.cupos = DATA_QA.cupos.map(function (c) {
+    if (c.novedadId === id && c.estado === 'BLOQUEADO') {
+      return Object.assign({}, c, { estado: 'LIBRE', novedadId: '', motivoBloqueo: '' });
+    }
+    return c;
+  });
+  return Promise.resolve({ ok: true });
+};
+// ── «Cupos» como lista (2026-11-03): escrituras del admin ──
+window.agregarCuposAudiencias = function (cupos) {
+  const creados = [], omitidos = [];
+  (cupos || []).forEach(function (p) {
+    const existe = DATA_QA.cupos.some(function (c) {
+      return c.fecha === p.fecha && c.hora === p.hora && c.sustanciador === p.sustanciador;
+    });
+    if (existe) { omitidos.push(Object.assign({}, p, { motivo: 'ya existe' })); return; }
+    const c = Object.assign({ idCupo: p.fecha + '-' + p.hora + '-' + p.sustanciador, estado: 'POR_APARTAR' }, p);
+    DATA_QA.cupos.push(c);
+    creados.push(c);
+  });
+  return Promise.resolve({ ok: true, creados: creados, omitidos: omitidos });
+};
+window.confirmarCuposAudiencias = function (ids) {
+  const confirmados = [], noConfirmados = [];
+  (ids || []).forEach(function (id) {
+    const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === id; });
+    if (i < 0 || DATA_QA.cupos[i].estado !== 'POR_APARTAR') {
+      noConfirmados.push({ idCupo: id, motivo: 'ya no está por apartar' });
+      return;
+    }
+    DATA_QA.cupos[i] = Object.assign({}, DATA_QA.cupos[i], { estado: 'LIBRE' });
+    confirmados.push(id);
+  });
+  return Promise.resolve({ ok: true, confirmados: confirmados, noConfirmados: noConfirmados });
+};
+window.eliminarCuposAudiencias = function (ids) {
+  const eliminados = [];
+  (ids || []).forEach(function (id) {
+    const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === id; });
+    if (i < 0) return;
+    const c = DATA_QA.cupos[i];
+    eliminados.push({ idCupo: c.idCupo, fecha: c.fecha, hora: c.hora, sustanciador: c.sustanciador, estabaEnExcel: c.estado === 'LIBRE' });
+    DATA_QA.cupos.splice(i, 1);
+  });
+  return Promise.resolve({ ok: true, eliminados: eliminados, rechazados: [] });
+};
+window.bloquearCuposAudiencias = function (ids, motivo) {
+  const bloqueados = [];
+  const idNov = 'n' + Date.now();
+  let desde = '', hasta = '';
+  const susts = {};
+  (ids || []).forEach(function (id) {
+    const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === id; });
+    if (i < 0 || DATA_QA.cupos[i].estado === 'RESERVADO') return;
+    const c = DATA_QA.cupos[i];
+    DATA_QA.cupos[i] = Object.assign({}, c, { estado: 'BLOQUEADO', motivoBloqueo: motivo, novedadId: idNov });
+    bloqueados.push(id);
+    if (!desde || c.fecha < desde) desde = c.fecha;
+    if (!hasta || c.fecha > hasta) hasta = c.fecha;
+    susts[c.sustanciador] = true;
+  });
+  if (bloqueados.length) {
+    const nombres = Object.keys(susts);
+    NOVEDADES_QA.push({ id: idNov, desde: desde, hasta: hasta,
+      sustanciador: nombres.length === 1 ? nombres[0] : 'TODOS', franja: 'DIA', motivo: motivo, activa: true });
+    DATA_QA.novedadesActivas = NOVEDADES_QA.length;
+  }
+  return Promise.resolve({ ok: true, bloqueados: bloqueados, rechazados: [] });
+};
+window.liberarCupoAudiencias = function (idCupo) {
+  const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === idCupo; });
+  if (i >= 0) DATA_QA.cupos[i] = Object.assign({}, DATA_QA.cupos[i], { estado: 'LIBRE', radicado: '', citado: '' });
+  return Promise.resolve({ ok: true });
+};
+const _tsv = (r) => [r.radicado, '02/03/2027', 'JUAN PÉREZ', r.citado, r.direccion, r.fecha, r.hora,
+  r.sustanciador, r.expediente || 'NUEVO', 'Citación visita Control Urbano · ' + r.reservadoPor].join('\t');
+window.listaDiariaExcelAudiencias = function () {
+  const lista = DATA_QA.cupos.filter(function (c) {
+    return c.estado === 'RESERVADO' && c.visitaCompletada && parsearFecha(c.fecha) >= parsearFecha('05/04/2027');
+  });
+  return Promise.resolve({ ok: true, total: lista.length, lista: lista.map(function (c, i) {
+    return Object.assign({}, c, { filaTSV: _tsv(c), filaExcel: 3400 + i });
+  }) });
+};
+// Pedir cita: cupos libres de hoy en adelante y 3 apartados guardados.
+window.listarCuposAudiencias = function (caso) {
+  if (SIN_SENAL_QA) return Promise.reject(new Error('Failed to fetch'));
+  const libres = DATA_QA.cupos.filter(function (c) {
+    return c.estado === 'LIBRE' && parsearFecha(c.fecha) >= parsearFecha('05/04/2027');
+  });
+  const propias = caso ? DATA_QA.cupos.filter(function (c) {
+    return c.estado === 'RESERVADO' && mismoCasoAudiencias(c, caso);
+  }) : [];
+  return Promise.resolve({ ok: true, cupos: libres, propias: propias });
+};
+window.apartarCuposAudiencias = function () { return Promise.resolve({ ok: true, apartados: [] }); };
+window.cuposApartadosGuardados = function () {
+  return [
+    { idCupo: '21/04/2027-0900-PATRICIA', fecha: '21/04/2027', hora: '9:00AM', sustanciador: 'PATRICIA LOPEZ', estado: 'APARTADO' },
+    { idCupo: '21/04/2027-1400-VICTOR', fecha: '21/04/2027', hora: '2:00PM', sustanciador: 'VICTOR QUIROZ', estado: 'APARTADO' },
+  ];
+};
+window.reservarCupoAudiencias = function (caso, cupo) {
+  if (SIN_SENAL_QA) return Promise.resolve({ ok: true, encolado: true, cupo: cupo });
+  const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === cupo.idCupo; });
+  DATA_QA.cupos[i] = Object.assign({}, DATA_QA.cupos[i], { estado: 'RESERVADO', radicado: caso.radicado,
+    ordenPolicia: caso.ordenPolicia, reservadoPor: ROLES[ROL_QA].usuario, reservadoEn: '05/04/2027 10:15',
+    visitaCompletada: false });
+  return Promise.resolve({ ok: true, cupo: DATA_QA.cupos[i] });
+};
+// «Ver datos» de una cita: filas mínimas de BD VISITAS.
+window.leerVisitas = function () {
+  const deCitas = DATA_QA.cupos.filter(function (c) { return c.estado === 'RESERVADO' && c.radicado; }).map(function (c, i) {
+    return { _idx: i + 2, RADICADO: c.radicado, ID_VISITA: 'ID-' + c.radicado, DIRECCION: c.direccion,
+      'ESTADO VISITA': c.visitaCompletada ? 'COMPLETADO' : 'INICIADO', EXPEDIENTE: c.expediente,
+      'VISITADOR(ES)': c.reservadoPor, BARRIO: 'Niquía', COMUNA: '3' };
+  });
+  // Agenda de hoy (05/04/2027) de Alejandro: dos visitas, una ya con cita.
+  const agenda = [
+    { RADICADO: '20272041228', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'ALEJANDRO HERNANDEZ',
+      'FECHA ASIGNACION VISITA': '05/04/2027', 'DIRECCION INFRACCION': 'CL 50 # 32-10', 'BARRIO/VEREDA': 'Niquía', EXPEDIENTE: '2201' },
+    { RADICADO: '20272133450', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'ALEJANDRO HERNANDEZ',
+      'FECHA ASIGNACION VISITA': '05/04/2027', 'DIRECCION INFRACCION': 'CL 48 # 33-15', 'BARRIO/VEREDA': 'Santa Ana' },
+    { RADICADO: 'OFICIO-2027-09-012', 'ESTADO VISITA': 'INICIADO', 'VISITADOR(ES)': 'ALEJANDRO HERNANDEZ',
+      'FECHA DE VISITA': '05/04/2027', 'N° ORDEN DE POLICIA': '2027-09-012', 'DIRECCION INFRACCION': 'CR 65 # 66-39', 'BARRIO/VEREDA': 'París' },
+  ];
+  return Promise.resolve({ datos: agenda.concat(deCitas) });
+};
+
+// ── Barra del banco ──
+const ROLES = {
+  admin: { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Profesional Especializado' },
+  sup: { usuario: 'PATRICIA LOPEZ', rol: 'SUPERVISOR', cargo: 'Sustanciadora' },
+  insp: { usuario: 'ALEJANDRO HERNANDEZ', rol: 'INSPECTOR', cargo: 'Inspector' },
+};
+let ROL_QA = 'admin';
+let AVISO_QA = '';
+let SIN_SENAL_QA = false;
+cargarDatosQA();
+const bar = document.getElementById('qa-bar');
+function renderBar() {
+  bar.innerHTML = '';
+  const seg = (items, actual, fn) => {
+    items.forEach(function (it) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = it[1];
+      b.className = it[0] === actual ? 'on' : '';
+      b.onclick = function () { fn(it[0]); };
+      bar.appendChild(b);
+    });
+  };
+  seg([['admin', 'Admin'], ['sup', 'Supervisor (Patricia)'], ['insp', 'Inspector (Alejandro)']], ROL_QA, function (r) { ROL_QA = r; renderTodo(); });
+  const sp = document.createElement('small'); sp.textContent = '«Hoy» es'; bar.appendChild(sp);
+  seg([['2027-04-05', 'Lun 05/04'], ['2027-04-13', 'Mar 13/04 (bloq.)'], ['2027-04-08', 'Jue 08/04']], window._AU_HOY, function (h) { window._AU_HOY = h; renderTodo(); });
+  sp2 = document.createElement('small'); sp2.textContent = 'Cupos'; bar.appendChild(sp2);
+  seg([['', 'Hasta 30/12'], ['cerca', 'Por acabarse']], AVISO_QA, function (a) { AVISO_QA = a; cargarDatosQA(); renderTodo(); });
+  const sp3 = document.createElement('small'); sp3.textContent = 'Señal'; bar.appendChild(sp3);
+  seg([[false, 'Con señal'], [true, 'Sin señal']], SIN_SENAL_QA, function (v) { SIN_SENAL_QA = v; renderTodo(); });
+  if (!CASO) {
+    const vac = document.createElement('button');
+    vac.type = 'button'; vac.textContent = '→ hoja vacía';
+    vac.onclick = function () { location.search = '?caso=vacio'; };
+    bar.appendChild(vac);
+  } else {
+    const back = document.createElement('button');
+    back.type = 'button'; back.textContent = '→ datos';
+    back.onclick = function () { location.search = ''; };
+    bar.appendChild(back);
+  }
+}
+var sp2;
+var _qaRoot = null;
+function renderTodo() {
+  if (typeof window._AU_ULTIMO !== 'undefined') window._AU_ULTIMO = null;
+  renderBar();
+  if (!_qaRoot) _qaRoot = ReactDOM.createRoot(document.getElementById('root'));
+  _qaRoot.render(
+    React.createElement(AudienciasScreen, { usuario: ROLES[ROL_QA], key: ROL_QA + '|' + window._AU_HOY + '|' + AVISO_QA + '|' + CASO }));
+}
+renderTodo();
+</script>
+</body>
+</html>
