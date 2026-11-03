@@ -39,7 +39,10 @@ function cargarBackend() {
     '_normOrdenPolicia', '_cupoDelCaso', '_reservaVigenteDelCaso',
     '_direccionConBarrio', '_filaExcelCitacion', '_visitaDeCupo', '_documentoDelCitado',
     // TASK 3a: estado del cupo para la pestaña «Audiencias».
-    '_estadoCupoAgenda'
+    '_estadoCupoAgenda',
+    // «Cupos como lista» (2026-11-03): id del Office Script, plan de agregar,
+    // decisión de eliminar.
+    '_idCupoAS', '_claveCupoAS', '_planAgregarCupos', '_decisionEliminarCupo'
   ];
   let codigo = '';
   const mEstado = /var ESTADO_CUPO_RESERVADO = 'RESERVADO';/.exec(src);
@@ -47,6 +50,7 @@ function cargarBackend() {
   codigo += mEstado[0] + '\n';
   const mEstadoVars = [
     /var ESTADO_CUPO_APARTADO = 'APARTADO';/,
+    /var ESTADO_CUPO_POR_APARTAR = 'POR_APARTAR';/,
     /var APARTADOS_MAX = 3;/,
     /var ANTICIPACION_MIN_HABILES = 3;/,
     /var DOCUMENTO_NO_APORTADO = 'NO APORTA';/
@@ -561,4 +565,90 @@ test('backend: la cita es del caso — gana la visita completada', opts, () => {
   assert.equal(B._visitaDeCupo(vis, { radicado: '20261011111' }), comp);
   const sinComp = { porRadicado: { '20261011111': viva }, compRadicado: {}, porIdVisita: {}, porOrden: {}, compOrden: {} };
   assert.equal(B._visitaDeCupo(sinComp, { radicado: '20261011111' }), viva);
+});
+
+// ── «Cupos como lista» (2026-11-03) ──
+
+test('backend: _idCupoAS — el mismo id que arma el Office Script', opts, () => {
+  const B = cargarBackend();
+  const f = B.fechaEnVm(2027, 3, 5); // 05/04/2027
+  assert.equal(B._idCupoAS(f, '9:00AM', 'VICTOR QUIROZ'), '20270405-0900-VICTOR');
+  assert.equal(B._idCupoAS(f, '2:00PM', 'VICTOR QUIROZ'), '20270405-1400-VICTOR');
+  assert.equal(B._idCupoAS(f, '12:00PM', 'VICTOR QUIROZ'), '20270405-1200-VICTOR');
+  // El primer nombre, sin tildes: 'JUANSE PINZÓN' → JUANSE.
+  assert.equal(B._idCupoAS(f, '9:00AM', 'JUANSE PINZÓN'), '20270405-0900-JUANSE');
+});
+
+test('backend: _planAgregarCupos — crea y omite por cada motivo', opts, () => {
+  const B = cargarBackend();
+  const hoy = new Date(2027, 3, 5); // lunes 05/04/2027
+  const existentes = [cupo()]; // 05/04/2027 · 9:00AM · VICTOR QUIROZ
+  const p = (extra) => Object.assign({
+    fecha: '06/04/2027', hora: '9:00AM', sustanciador: 'VICTOR QUIROZ'
+  }, extra);
+  const plan = B._planAgregarCupos(existentes, [
+    p({}),                                   // crea (martes 06/04)
+    p({ fecha: 'nada' }),                    // fecha no válida
+    p({ hora: '9:00' }),                     // hora no válida (sin AM/PM)
+    p({ sustanciador: ' ' }),                // sin sustanciador
+    p({ fecha: '04/04/2027' }),              // fecha pasada (domingo anterior a hoy)
+    p({ fecha: '10/04/2027' }),              // fin de semana (sábado)
+    p({ fecha: '12/07/2027' }),              // festivo: Chiquinquirá → lunes 12/07/2027
+    p({ hora: '2:00PM' }),                   // crea (mismo día, otra hora)
+    p({}),                                   // ya existe: repetido dentro del pedido
+    p({ fecha: '05/04/2027' }),              // ya existe contra los cupos existentes
+    p({ fecha: '13/07/2027', hora: '9:00 am', sustanciador: 'patricia lópez' }) // crea
+  ], hoy);
+  assert.equal(plan.crear.length, 3);
+  // Fecha como Date por partes (06/04/2027), texto DD/MM/YYYY y día en minúscula.
+  assert.equal(plan.crear[0].fecha.getDate(), 6);
+  assert.equal(plan.crear[0].fecha.getMonth(), 3);
+  assert.equal(plan.crear[0].fecha.getFullYear(), 2027);
+  assert.equal(plan.crear[0].fechaTexto, '06/04/2027');
+  assert.equal(plan.crear[0].dia, 'martes');
+  assert.equal(plan.crear[0].idCupo, '20270406-0900-VICTOR');
+  assert.equal(plan.crear[1].idCupo, '20270406-1400-VICTOR');
+  assert.equal(plan.crear[2].idCupo, '20270713-0900-PATRICIA');
+  assert.deepEqual(Array.from(plan.omitidos.map(o => o.motivo)), [
+    'fecha no válida', 'hora no válida', 'sin sustanciador',
+    'fecha pasada', 'fin de semana', 'festivo', 'ya existe', 'ya existe'
+  ]);
+  // El omitido conserva los datos del pedido (para el reporte al admin).
+  assert.equal(plan.omitidos[5].fecha, '12/07/2027');
+  assert.equal(plan.omitidos[5].sustanciador, 'VICTOR QUIROZ');
+});
+
+test('backend: _decisionEliminarCupo — libre y POR_APARTAR se pueden, lo demás no', opts, () => {
+  const B = cargarBackend();
+  assert.equal(B._decisionEliminarCupo('LIBRE'), null);
+  assert.equal(B._decisionEliminarCupo(''), null);
+  assert.equal(B._decisionEliminarCupo('POR_APARTAR'), null);
+  assert.equal(B._decisionEliminarCupo('RESERVADO'), 'Tiene una cita: libérala primero');
+  assert.equal(B._decisionEliminarCupo('APARTADO'), 'Está apartado por un inspector');
+  assert.equal(B._decisionEliminarCupo('CANCELADO'), 'Estado CANCELADO');
+});
+
+test('backend: un POR_APARTAR no sale en _cuposDisponibles', opts, () => {
+  const B = cargarBackend();
+  const libres = B._cuposDisponibles([
+    cupo(),
+    cupo({ idCupo: '20270412-0900-VICTOR', fecha: new Date(2027, 3, 12),
+      estado: 'POR_APARTAR' })
+  ], [], HOY);
+  assert.deepEqual(Array.from(libres.map(c => c.idCupo)), ['20270405-0900-VICTOR']);
+});
+
+test('backend: _estadoCupoAgenda — POR_APARTAR sale tal cual; BLOQUEADO trae novedadId', opts, () => {
+  const B = cargarBackend();
+  const porApartar = B._estadoCupoAgenda(cupo({ estado: 'POR_APARTAR' }), []);
+  assert.equal(porApartar.estado, 'POR_APARTAR');
+  assert.equal(porApartar.motivoBloqueo, '');
+  const novedad = { id: 'NOV-1', desde: new Date(2027, 3, 5), hasta: new Date(2027, 3, 5),
+    sustanciador: 'TODOS', franja: 'DIA', motivo: 'Capacitación', activa: true };
+  const bloqueado = B._estadoCupoAgenda(cupo(), [novedad]);
+  assert.equal(bloqueado.estado, 'BLOQUEADO');
+  assert.equal(bloqueado.motivoBloqueo, 'Capacitación');
+  assert.equal(bloqueado.novedadId, 'NOV-1');
+  // Un cupo libre no trae novedadId.
+  assert.equal(B._estadoCupoAgenda(cupo(), []).novedadId, undefined);
 });
