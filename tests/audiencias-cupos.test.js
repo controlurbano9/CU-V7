@@ -37,7 +37,7 @@ function cargarBackend() {
     '_visitaEstaCompletada',
     // TASK 3b: cita pedida en campo por radicado u orden, fila del Excel.
     '_normOrdenPolicia', '_cupoDelCaso', '_reservaVigenteDelCaso',
-    '_direccionConBarrio', '_filaExcelCitacion', '_visitaDeCupo',
+    '_direccionConBarrio', '_filaExcelCitacion', '_visitaDeCupo', '_documentoDelCitado',
     // TASK 3a: estado del cupo para la pestaña «Audiencias».
     '_estadoCupoAgenda'
   ];
@@ -441,6 +441,26 @@ test('backend: _reservaVigenteDelCaso — la más próxima, de hoy en adelante, 
   assert.equal(B._reservaVigenteDelCaso([a], '', HOY, ''), null);
 });
 
+// La lista de audiencias decía «Sin documento» cuando se citaba a quien atendió
+// (CITADO vacío): solo se miraba DOCUMENTO_CITADO (2026-11-03).
+test('backend: _documentoDelCitado — el del citado, o la cédula de quien atendió', opts, () => {
+  const B = cargarBackend();
+  // Se citó a otra persona: su documento, tal cual (NO APORTA incluido).
+  assert.equal(B._documentoDelCitado({ citado: 'PEDRO', documentoCitado: '43123456', atiende: 'ANA', idAtiende: '70327988' }), '43123456');
+  assert.equal(B._documentoDelCitado({ citado: 'PEDRO', documentoCitado: 'NO APORTA', atiende: 'ANA', idAtiende: '70327988' }), 'NO APORTA');
+  assert.equal(B._documentoDelCitado({ citado: 'PEDRO', documentoCitado: '', atiende: 'ANA', idAtiende: '70327988' }), '');
+  // Se cita a quien atendió: su cédula, con o sin puntos.
+  assert.equal(B._documentoDelCitado({ citado: '', atiende: 'ANA', idAtiende: '70327988' }), '70327988');
+  assert.equal(B._documentoDelCitado({ citado: '', atiende: 'ANA', idAtiende: '1.000.564.849' }), '1000564849');
+  // Lo que no es una cédula no cuenta.
+  for (const id of ['No aporta', 'No se atiende / No suministra datos', '900123456-7', 'PPT 123456', '1234', '']) {
+    assert.equal(B._documentoDelCitado({ citado: '', atiende: 'ANA', idAtiende: id }), '', '«' + id + '»');
+  }
+  // Sin nadie a quien citar, o sin visita, nada.
+  assert.equal(B._documentoDelCitado({ citado: '', atiende: '', idAtiende: '70327988' }), '');
+  assert.equal(B._documentoDelCitado(null), '');
+});
+
 test('backend: _filaExcelCitacion — 10 columnas en el orden del Excel, citado de la visita', opts, () => {
   const B = cargarBackend();
   const c = cupo({ estado: 'RESERVADO', radicado: '20261011111', reservadoPor: 'ALEJANDRO GIRALDO' });
@@ -459,6 +479,9 @@ test('backend: _filaExcelCitacion — 10 columnas en el orden del Excel, citado 
   // «No aportó documento»: solo el nombre.
   assert.equal(B._filaExcelCitacion(c, Object.assign({}, visita,
     { citado: 'PEDRO RUIZ', documentoCitado: 'NO APORTA' }))[3], 'PEDRO RUIZ');
+  // Se cita a quien atendió: su cédula sale de ID PERSONA ATIENDE, sin puntos.
+  assert.equal(B._filaExcelCitacion(c, Object.assign({}, visita, { idAtiende: '43.123.456' }))[3],
+    'MARÍA GÓMEZ - C.C. 43123456');
   assert.equal(B._visitaEstaCompletada({ estado: 'COMPLETADA' }), true);
   assert.equal(B._visitaEstaCompletada(null), false);
 });
