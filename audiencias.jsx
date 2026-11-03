@@ -896,7 +896,8 @@ function AudienciasScreen({ usuario }) {
   // ── Citaciones visitas completadas (solo admin): copiar y pegar en el Excel ──
   function renderCompletadas() {
     if (!excel) return null;
-    const lista = excel.lista || [];
+    // Las del backend (cupos del bloque) + las citas escritas a mano en una visita completada.
+    const lista = citacionesCompletadasExcel(excel.lista, filas, hoyTxt);
     return (
       <section className="au-caja" aria-labelledby="au-t-exc">
         <h2 id="au-t-exc">Citaciones visitas completadas</h2>
@@ -906,7 +907,7 @@ function AudienciasScreen({ usuario }) {
               <span className="t">
                 <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
                 {r.fechaCompletada && <small>Completada {formatearFecha(r.fechaCompletada)}</small>}
-                <small>{titleCaseNombre(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
+                <small>{r.sustanciador ? titleCaseNombre(r.sustanciador) : 'sin sustanciador'} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
               </span>
               <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
                 aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"

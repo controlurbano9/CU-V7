@@ -4857,6 +4857,63 @@ function agendaAudienciasDias(filas, cupos, desdeTxt, opts) {
   }).filter(function (g) { return g.citas.length > 0; });
 }
 
+// «Citaciones visitas completadas» (solo admin): el backend solo arma las de
+// los cupos del bloque. Las citas escritas a mano en FECHA CITACION de una
+// visita COMPLETADO no estaban (2026-11-03: la del 19/11/2026 salía en la
+// Agenda y no aquí). Se suman las de hoy en adelante (las pasadas ya están en
+// el Excel), sin repetir un caso que ya trae el backend, con la misma fila de
+// 10 columnas de _filaExcelCitacion y sin sustanciador (no se deduce).
+// Orden: completada más reciente primero, como el backend.
+function citacionesCompletadasExcel(listaBackend, filas, hoyTxt) {
+  var lista = (listaBackend || []).slice();
+  var hoy = parsearFecha(hoyTxt);
+  var limpio = function (s) { return String(s == null ? '' : s).replace(/[\t\r\n]+/g, ' ').trim(); };
+  (filas || []).forEach(function (f) {
+    if (_normEstadoVisitaBD(f['ESTADO VISITA'] || '') !== 'COMPLETADO') return;
+    var t = String(f['FECHA CITACION'] || '');
+    var d = parsearFecha(t);
+    if (!d || (hoy && d < hoy)) return;
+    var caso = casoDeVisitaAudiencias(f);
+    if (lista.some(function (r) { return mismoCasoAudiencias(r, caso); })) return;
+    var sep = t.indexOf('·');
+    var hora = sep === -1 ? '' : t.slice(sep + 1).replace(/[\s.]/g, '').toUpperCase();
+    var citado = String(f['CITADO'] || '').trim();
+    var doc = '';
+    if (citado) doc = String(f['DOCUMENTO_CITADO'] || '').trim();
+    else {
+      citado = String(f['NOMBRE PERSONA ATIENDE'] || '').trim().replace(/^no se atiende.*$/i, '');
+      var id = String(f['ID PERSONA ATIENDE'] || '').trim();
+      var dig = id.replace(/\D/g, '');
+      if (/^[\d.\s]+$/.test(id) && /^\d{5,12}$/.test(dig)) doc = dig;
+    }
+    var citadoTxt = citado + (doc && doc !== 'NO APORTA' ? ' - C.C. ' + doc : '');
+    var dir = caso.direccion, bar = caso.barrio;
+    var dirTxt = !bar ? dir : !dir ? bar :
+      dir.toUpperCase().indexOf(bar.toUpperCase()) !== -1 ? dir : dir + ' - ' + bar;
+    var exp = /^\d+$/.test(caso.expediente || '') ? caso.expediente : 'NUEVO';
+    var fecha = formatearFecha(d);
+    var fila = [
+      caso.radicado || caso.ordenPolicia, f['FECHA RADICADO'],
+      f['DENUNCIANTE/REMITENTE'] || f['DENUNCIANTE'], citadoTxt, dirTxt,
+      fecha, hora, '', exp, ''
+    ].map(limpio);
+    lista.push({
+      idCupo: 'visita-' + (f['ID_VISITA'] || caso.radicado || caso.ordenPolicia),
+      filaExcel: null, fecha: fecha, hora: hora, sustanciador: '',
+      radicado: fila[0], ordenPolicia: caso.ordenPolicia, expediente: exp, citado: citadoTxt,
+      direccion: dirTxt, reservadoPor: '',
+      fechaCompletada: String(f['FECHA DEVOLUCION'] || f['FECHA DE VISITA'] || '').trim(),
+      filaTSV: fila.join('\t')
+    });
+  });
+  var ord = function (r) { var x = parsearFecha(r.fechaCompletada); return x ? x.getTime() : 0; };
+  var fe = function (r) { var x = parsearFecha(r.fecha); return x ? x.getTime() : 0; };
+  return lista.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+    return ord(b.r) - ord(a.r) || fe(a.r) - fe(b.r) ||
+      horaAudienciasMin(a.r.hora) - horaAudienciasMin(b.r.hora) || a.i - b.i;
+  }).map(function (x) { return x.r; });
+}
+
 // ── Orden del día en la Semana (2026-10-22) ──────────────────────
 // ORDEN_DIA = 'DD/MM/YYYY#n': el orden que el admin o el inspector le dieron a
 // la visita ese día. Solo vale para ese día: si la visita cambia de día, se ignora.
@@ -5480,6 +5537,7 @@ var _cuUtilsExports = {
   hallazgosTablero: hallazgosTablero,
   calidadTablero: calidadTablero,
   fichaAreaTablero: fichaAreaTablero,
+  citacionesCompletadasExcel: citacionesCompletadasExcel,
   CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
   CONTRAVENCION_INDETERMINADA: CONTRAVENCION_INDETERMINADA,

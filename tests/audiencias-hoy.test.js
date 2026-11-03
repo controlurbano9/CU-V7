@@ -134,3 +134,34 @@ test('agendaAudienciasDias: un grupo por día desde la fecha pedida, en orden; s
 test('agendaAudienciasDias: sin audiencias por delante, lista vacía', () => {
   assert.deepEqual(agendaAudienciasDias([], [cupo({ fecha: '01/04/2027' })], '02/04/2027', {}), []);
 });
+
+// ── «Citaciones visitas completadas»: también las citas escritas a mano ──
+const { citacionesCompletadasExcel } = require('../utils.js');
+
+test('citacionesCompletadasExcel suma la cita manual de una visita completada', () => {
+  const f = visita({
+    RADICADO: '20261126691', 'ESTADO VISITA': 'COMPLETADO', ID_VISITA: 'V-1',
+    'FECHA CITACION': '19/11/2026 · 11:00 a. m.', 'FECHA DEVOLUCION': '03/11/2026',
+    'FECHA RADICADO': '01/10/2026', 'DENUNCIANTE/REMITENTE': 'Ana',
+    'NOMBRE PERSONA ATIENDE': 'Santiago Gomez', 'ID PERSONA ATIENDE': '1.020.427.948'
+  });
+  const back = [{ idCupo: 'c1', radicado: '20261093596', fecha: '07/04/2027', hora: '9:00AM', fechaCompletada: '29/10/2026' }];
+  const r = citacionesCompletadasExcel(back, [f], '03/11/2026');
+  assert.equal(r.length, 2);
+  assert.equal(r[0].radicado, '20261126691'); // completada más reciente primero
+  assert.equal(r[0].hora, '11:00AM');
+  assert.equal(r[0].sustanciador, '');
+  assert.equal(r[0].filaTSV.split('\t').length, 10);
+  assert.equal(r[0].filaTSV.split('\t')[3], 'Santiago Gomez - C.C. 1020427948');
+  assert.equal(r[0].filaTSV.split('\t')[4], 'CL 50 # 32-10 - Niquía');
+});
+
+test('citacionesCompletadasExcel no repite el caso del backend ni suma pasadas o no completadas', () => {
+  const back = [{ idCupo: 'c1', radicado: '20272041299', fecha: '05/04/2027', hora: '9:00AM', fechaCompletada: '29/10/2026' }];
+  const filas = [
+    visita({ 'ESTADO VISITA': 'COMPLETADO' }),                                   // mismo caso que el backend
+    visita({ RADICADO: '1', 'ESTADO VISITA': 'COMPLETADO', 'FECHA CITACION': '01/10/2026 · 9:00 a. m.' }), // pasada
+    visita({ RADICADO: '2' })                                                    // INICIADO
+  ];
+  assert.equal(citacionesCompletadasExcel(back, filas, '03/11/2026').length, 1);
+});
