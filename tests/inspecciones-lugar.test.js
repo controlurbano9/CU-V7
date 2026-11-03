@@ -124,8 +124,8 @@ test('inspeccionDelCaso: filas que no son visita no cuentan como última', () =>
 test('inspección al lugar: texto de la tarjeta, sale de NO COMPETENCIA y va primero en el día', () => {
   const f = { DILIGENCIA: 'INSPECCION AL LUGAR', HORA_PROGRAMADA: '9:00AM', 'ESTADO VISITA': 'ASIGNADO',
     'FECHA ASIGNACION VISITA': '04/11/2026', NOTA_DILIGENCIA: 'URGENTE', 'ATENCION PQR': 'NO COMPETENCIA' };
-  assert.deepEqual(inspeccionVisitaTexto(f, { hoy: HOY }), { texto: 'Inspección al lugar · mañana · 9:00 a. m.', nota: 'URGENTE' });
-  assert.equal(inspeccionVisitaTexto(f, { sinDia: true }).texto, 'Inspección al lugar · 9:00 a. m.');
+  assert.deepEqual(inspeccionVisitaTexto(f, { hoy: HOY }), { texto: 'Inspección al lugar · mañana · 9:00', nota: 'URGENTE' });
+  assert.equal(inspeccionVisitaTexto(f, { sinDia: true }).texto, 'Inspección al lugar · 9:00');
   assert.equal(inspeccionVisitaTexto(Object.assign({}, f, { 'ESTADO VISITA': 'COMPLETADO' })), null);
   assert.equal(inspeccionVisitaTexto({ 'ESTADO VISITA': 'ASIGNADO' }), null);
   assert.equal(esNoCompetenciaFila(f), false);
@@ -134,4 +134,38 @@ test('inspección al lugar: texto de la tarjeta, sale de NO COMPETENCIA y va pri
   const nueve = Object.assign({ _idx: 3, RADICADO: 'nueve' }, f);
   const otra = { _idx: 1, RADICADO: 'otra', LATITUD: '6.3365', LONGITUD: '-75.5585' };
   assert.deepEqual(ordenarVisitasDia([otra, once, nueve], '04/11/2026').map(x => x.RADICADO), ['nueve', 'once', 'otra']);
+});
+
+// ── Día y hora sugeridos (2026-11-03): grupos de comunas por día y horas 8-4 ──
+const { diaGrupoInspeccion, horaCortaInspeccion, sugerenciasInspeccion, HORAS_INSPECCION } = require('../utils.js');
+
+test('horas de inspección: 8 a 11 y 1 a 4, dichas sin a. m./p. m.', () => {
+  assert.deepEqual(HORAS_INSPECCION.map(horaCortaInspeccion), ['8:00', '9:00', '10:00', '11:00', '1:00', '2:00', '3:00', '4:00']);
+  assert.equal(horaCortaInspeccion('10:30AM'), '10:30');
+});
+
+test('diaGrupoInspeccion: lunes 1-2-3 … jueves 10-11-12, viernes rurales', () => {
+  assert.equal(diaGrupoInspeccion({ COMUNA: '2' }), 1);
+  assert.equal(diaGrupoInspeccion({ COMUNA: 5 }), 2);
+  assert.equal(diaGrupoInspeccion({ COMUNA: '08' }), 3);
+  assert.equal(diaGrupoInspeccion({ COMUNA: '12' }), 4);
+  assert.equal(diaGrupoInspeccion({ COMUNA: 'Vereda' }), 5);
+  assert.equal(diaGrupoInspeccion({ COMUNA: '', 'BARRIO/VEREDA': 'Vda. Hato Viejo' }), 5);
+  assert.equal(diaGrupoInspeccion({ COMUNA: '' }), null);
+});
+
+test('sugerenciasInspeccion: próximos días del grupo, con anticipación y hora libre', () => {
+  const hoy = new Date(2026, 10, 3); // martes 03/11/2026
+  const insp = (fecha, hora, vis) => ({ DILIGENCIA: 'INSPECCION AL LUGAR', 'FECHA ASIGNACION VISITA': fecha,
+    HORA_PROGRAMADA: hora, 'VISITADOR(ES)': vis, 'ESTADO VISITA': 'ASIGNADO' });
+  const datos = [insp('11/11/2026', '8:00AM', 'MAURICIO HERRERA'), insp('11/11/2026', '9:00AM', 'ALEJANDRO HERNANDEZ')];
+  // Comuna 8 → miércoles; 3 días hábiles después del martes 03 = viernes 06 → miércoles 11.
+  const s = sugerenciasInspeccion({ COMUNA: '8' }, datos, 'MAURICIO HERRERA', hoy);
+  assert.deepEqual(s.map(x => x.fecha), ['11/11/2026', '18/11/2026', '25/11/2026']);
+  assert.equal(s[0].n, 2);
+  assert.equal(s[0].hora, '9:00AM'); // Mauricio ya tiene las 8
+  // Sin inspector: la primera hora que nadie tiene.
+  assert.equal(sugerenciasInspeccion({ COMUNA: '8' }, datos, '', hoy)[0].hora, '10:00AM');
+  // Sin comuna: los próximos días hábiles.
+  assert.deepEqual(sugerenciasInspeccion({}, [], '', hoy).map(x => x.fecha), ['06/11/2026', '09/11/2026', '10/11/2026']);
 });

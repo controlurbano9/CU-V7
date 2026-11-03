@@ -242,7 +242,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 <div>
                   <div className="l">Inspección al lugar</div>
                   <div className="v">{formatearFecha(f['FECHA ASIGNACION VISITA'] || '') || '—'}
-                    {horaProgramadaDe(f) ? ' · ' + horaBonitaAudiencias(horaProgramadaDe(f)) : ''}</div>
+                    {horaProgramadaDe(f) ? ' · ' + horaCortaInspeccion(horaProgramadaDe(f)) : ''}</div>
                   {f['NOTA_DILIGENCIA'] && <div className="l">{f['NOTA_DILIGENCIA']}</div>}
                 </div>
               )}
@@ -354,6 +354,8 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
   const [caso, setCaso] = useStateFV(null);
   const [refresco, setRefresco] = useStateFV(0);
   const [inspectores, setInspectores] = useStateFV([]);
+  // Toda la BD: las inspecciones ya programadas cuentan para sugerir día y hora.
+  const [todas, setTodas] = useStateFV([]);
 
   // Las visitas del caso llegan por prop (Buscar) o se leen de la BD (Mis
   // visitas, Tablero): leerVisitas() sin opciones sirve la copia local al
@@ -363,10 +365,14 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
   visitasRef.current = visitas;
   useEffectFV(() => {
     const v = visitasRef.current;
-    if (v && v.length) { setCaso(v); return; }
+    if (v && v.length) setCaso(v);
     let vivo = true;
-    leerVisitas().then(r => { if (vivo && r && r.datos) setCaso(visitasDelCaso(r.datos, f)); })
-      .catch(() => {});
+    leerVisitas().then(r => {
+      if (!vivo || !r || !r.datos) return;
+      const t = r.datos.concat(r.noCompetencia || []);
+      setTodas(t);
+      if (!(v && v.length)) setCaso(visitasDelCaso(t, f));
+    }).catch(() => {});
     return () => { vivo = false; };
   }, [f._idx, refresco]);
   // La lista de inspectores solo hace falta al elegir; se pide una vez.
@@ -380,11 +386,15 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
   // Cargando, o rol que no programa (puede:false sin motivo): nada aquí.
   if (!plan || (!plan.puede && !plan.motivo)) return null;
 
+  const aIso = (ddmmaaaa) => String(ddmmaaaa || '').split('/').reverse().join('-');
   const abrir = () => {
     setError('');
-    // Precarga solo la inspección que ya existe (reprogramar).
-    setFecha(plan.actual && plan.actual.fecha ? plan.actual.fecha.split('/').reverse().join('-') : '');
-    setHora(plan.actual ? horaParaInput(plan.actual.hora) : '');
+    // La inspección que ya existe se precarga; si no, la primera sugerencia
+    // (día del grupo de comunas y primera hora libre del inspector).
+    const s = sugerenciasInspeccion(f, todas, plan.inspector, new Date())[0];
+    const actual = plan.actual && plan.actual.fecha ? plan.actual : null;
+    setFecha(actual ? aIso(actual.fecha) : s ? aIso(s.fecha) : '');
+    setHora(actual ? actual.hora : s ? s.hora : '');
     setInspector(plan.inspector || '');
     setAbierto(true);
   };
@@ -394,7 +404,7 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
     try {
       const r = await gasPost({ accion: 'programarInspecciones', items: [{
         modo: plan.modo, fila: plan.fila, radicadoConocido: plan.radicado,
-        inspector: inspector.trim(), fecha: _isoADDMMAAAA(fecha), hora: horaParaBD(hora),
+        inspector: inspector.trim(), fecha: _isoADDMMAAAA(fecha), hora,
         nota: '', expediente: '' }] });
       const item = r && Array.isArray(r.resultados) ? r.resultados[0] : null;
       if (r && r.ok && item && item.ok) {
@@ -422,6 +432,12 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
   const extra = inspector && !asignables.some(i => i.nombre === inspector) ? inspector : '';
   const puedeGuardar = !!fecha && !!hora && !ocupado &&
     (plan.fijo || plan.modo === 'reprogramar' || !!inspector.trim());
+  // Próximas fechas del día de su grupo de comunas, con cuántas lleva cada una.
+  const sug = abierto ? sugerenciasInspeccion(f, todas, inspector, new Date()) : [];
+  // Una hora vieja fuera de la lista (p. ej. 10:30 del Excel) se conserva.
+  const horas = hora && HORAS_INSPECCION.indexOf(hora) < 0 ? [hora].concat(HORAS_INSPECCION) : HORAS_INSPECCION;
+  const DIAS_C = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const fechaCorta = (t) => { const d = parsearFecha(t); return d ? DIAS_C[d.getDay()] + ' ' + d.getDate() : t; };
 
   if (!plan.puede) {
     return (
@@ -439,6 +455,17 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
         </button>
       ) : (
         <div className="pi-form">
+          {sug.length > 0 && (
+            <div className="pi-sug" role="group" aria-label="Días sugeridos">
+              {sug.map(s => (
+                <button key={s.fecha} type="button" className="vc-btn"
+                  aria-pressed={aIso(s.fecha) === fecha}
+                  onClick={() => { setFecha(aIso(s.fecha)); setHora(s.hora); }}>
+                  {fechaCorta(s.fecha)}{s.n > 0 && <span className="pi-n"> · {s.n}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="pi-campo">
             <label htmlFor={'pi-f-' + f._idx}>Día</label>
             <input id={'pi-f-' + f._idx} type="date" value={fecha}
@@ -446,8 +473,10 @@ function ProgramarInspeccion({ f, usuario, visitas }) {
           </div>
           <div className="pi-campo">
             <label htmlFor={'pi-h-' + f._idx}>Hora</label>
-            <input id={'pi-h-' + f._idx} type="time" step={1800} value={hora}
-              onChange={e => setHora(e.target.value)} />
+            <select id={'pi-h-' + f._idx} value={hora} onChange={e => setHora(e.target.value)}>
+              {!hora && <option value="">Elegir</option>}
+              {horas.map(h => <option key={h} value={h}>{horaCortaInspeccion(h)}</option>)}
+            </select>
           </div>
           <div className="pi-campo">
             {elige
