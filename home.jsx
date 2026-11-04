@@ -156,7 +156,10 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const mesNombre = d => d.toLocaleDateString('es-CO', { month: 'long' });
   const mesActualTxt = mesNombre(hoyR);
   const mesAnteriorTxt = mesNombre(new Date(hoyR.getFullYear(), hoyR.getMonth() - 1, 1));
-  const num = n => (cargando ? '—' : n);
+  // Sin datos por un error de carga los indicadores dicen «—», no «0»: un
+  // «0 Pendientes» junto al aviso de error se leía como «no hay trabajo»
+  // (revisión móvil 2026-11-04).
+  const num = n => (cargando || (error && !datos.length) ? '—' : n);
   // Primera carga sin copia local: desde los 3 s se dice qué se espera.
   const escalon = useEscalera(cargando);
   const porCompletar = stats.asignadas + stats.iniciadas;
