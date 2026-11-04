@@ -208,6 +208,19 @@ medidas en los bancos a 375/390, 1366/1440 y 1920:
 | **Leyenda del mapa por capa** | Un renglón por color (retiro, amenaza, suelo de protección, DRMI) y solo la categoría que cae en el pin, con nombre limpio | `leyendaPOTPorCapa` (`utils.js`) |
 | **Agenda en el menú del celular** | Abajo, como mucho 5 pestañas | `app.jsx` |
 
+## 8c. Audiencias (revisión del 2026-11-04)
+
+| Regla | Qué quiere decir | Dónde |
+|---|---|---|
+| **Los cupos no usan los anillos de la visita** | El anillo cuenta el recorrido de una visita; en un cupo «Libre» llevaba el de *Completada* (verde con ✓) y se leía como «ya está hecho». El cupo lleva un **punto de 10 px** con su palabra: libre `--green`, por apartar `--amber`, citado `--info`, bloqueado **aro** `--ink-4` (forma distinta, no solo color) | `.au-cl-punto` |
+| **Un botón lleno** | «Pedir cita» es el único lleno; «Agregar cupos» va en tinte | `.au-btn-pedir`, `.au-cl-agregar` |
+| **Vistas ≠ filtros** | Agenda / Cupos / Lista en el control segmentado de Agenda › Inspecciones (`.ag-seg`, 44 px en celular); sustanciador y «Mis citas» en chips con `aria-pressed` | `.au-seg`, `.au-filtro` |
+| **Dos personas, con rótulo** | En una fila con inspector y sustanciador: «Insp. …» y «Sust. …»; en «Mis citas» no se repite el nombre de quien mira | `_auInsp`, `_auSust` |
+| **Bloquear, en Cupos** | El admin bloquea todo desde la vista Cupos: cupos marcados, «Bloquear el día» y «Días sin audiencias». El supervisor conserva «Días sin audiencias» en la cabecera | `VistaCupos` |
+| **Celular: la barra hace el lote** | Los cupos libres y por apartar no repiten «Bloquear»/«Eliminar» en la fila: se marcan y se usa la barra de abajo. «Ver cita» y «Desbloquear» quedan en la fila | `.au-cl-act-lote` |
+| **Riel del admin** | ≥1200 a la derecha; más angosto, **arriba** y solo en Agenda (copiar al Excel es su tarea del día) | `.au-riel` |
+| **Cita pasada** | Dice «Audiencia pasada» en neutro, no «✓ Cita confirmada» en verde | `.au-pconf.pasada` |
+
 ## 9. Movimiento
 
 Las transiciones existentes son **cortas (0,08–0,35 s)** y solo donde comunican estado: menús,
