@@ -42,12 +42,6 @@ function _iaColor(nombre, inspectores) {
   return k < 0 ? 'var(--ink-4)' : 'var(--it-i' + (k % 4 + 1) + ')';
 }
 function _iaPrimer(n) { return String(n || '').trim().split(/\s+/)[0].toUpperCase(); }
-// 'C 4' / 'Rural' / '' — la comuna dice por qué la tarjeta está (o no) en su día.
-function _iaComuna(f) {
-  if (diaGrupoInspeccion(f) === 5) return 'Rural';
-  const c = claveComunaAgenda(f && f['COMUNA']);
-  return c && c !== 'RURAL' ? 'C ' + c : '';
-}
 
 function InspeccionesAgenda({ usuario, segmento }) {
   // Hooks antes de cualquier early return (React #310).
@@ -190,15 +184,13 @@ function InspeccionesAgenda({ usuario, segmento }) {
       fecha: semana.dias[k].fecha, hora: h, nota: '', expediente: '' });
   }
 
-  // Tarjeta: dirección → radicado y expediente completos (rotulados) →
-  // inspector · comuna · aviso de zona. Antes decía «Mauricio · 09-304»
+  // Tarjeta: dirección e «Inspector · Exp. 2201». Sin expediente, el
+  // radicado completo (identificadorVisita). Antes decía «Mauricio · 09-304»
   // (los 6 últimos del radicado), que no se entendía.
   const tarjeta = (it) => {
     const completa = /^COMPLETAD/.test(it.estado);
     const mover = !completa && !/^INICIAD/.test(it.estado);
-    const rad = String(it.f['RADICADO'] || '').trim();
-    const exp = expedienteDe(it.f);
-    const com = _iaComuna(it.f);
+    const id = identificadorVisita(it.f).principal;
     const ins = titleCaseNombre(it.inspector).split(' ')[0] || 'Sin inspector';
     const abrir = () => window.abrirVisitaDetail && window.abrirVisitaDetail(it.f);
     return (
@@ -206,21 +198,13 @@ function InspeccionesAgenda({ usuario, segmento }) {
           (resaltada === it.f._idx ? ' nueva' : '')}
         style={{ '--c': _iaColor(it.inspector, inspectores) }}
         role="button" tabIndex={0}
-        aria-label={_iaDir(it.f) + ', radicado ' + (rad || 'sin radicado') + ', ' + (exp ? 'expediente ' + exp : 'sin expediente') +
-          ', ' + ins + (com ? ', ' + com : '') + (it.fueraZona ? ', fuera de la zona del día' : '') + (completa ? ', completada' : '')}
+        title={it.fueraZona ? 'Fuera de la zona del día' : undefined}
+        aria-label={_iaDir(it.f) + ', ' + ins + ', ' + (id ? id.replace(/^Exp\./, 'expediente') : 'sin radicado') +
+          (it.fueraZona ? ', fuera de la zona del día' : '')}
         draggable={mover} onDragStart={() => { arrastre.current = { item: it }; }}
         onClick={abrir} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}>
-        <b className="it-t-dir">{_iaDir(it.f)}</b>
-        <dl className="it-t-ids">
-          <dt>Rad.</dt><dd>{rad || '—'}</dd>
-          <dt>Exp.</dt><dd className={exp ? '' : 'vacio'}>{exp || 'sin expediente'}</dd>
-        </dl>
-        <span className="it-t-pie">
-          <span className="it-q">{ins}</span>
-          {com ? ' · ' + com : ''}
-          {completa ? ' · hecha' : ''}
-        </span>
-        {it.fueraZona && <span className="it-t-fz">Fuera de la zona del día</span>}
+        <b>{_iaDir(it.f)}</b>
+        <span><span className="it-q">{ins}</span>{id ? ' · ' : ''}{id && <span className="it-id">{/^Exp\./.test(id) ? id : 'Rad. ' + id}</span>}</span>
       </div>
     );
   };
@@ -273,7 +257,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
             {resultados.map(c => (
               <button key={c.clave} type="button" onClick={() => elegir(c.ultima)}>
                 <b>{_iaDir(c.ultima)}</b>
-                <small>Rad. {c.radicado}{expedienteDe(c.ultima) ? ' · Exp. ' + expedienteDe(c.ultima) : ''} · {c.ultima['BARRIO/VEREDA'] || ''}{c.ultima['COMUNA'] ? ' · C' + c.ultima['COMUNA'] : ''}</small>
+                <small>{c.radicado} · {c.ultima['BARRIO/VEREDA'] || ''}{c.ultima['COMUNA'] ? ' · C' + c.ultima['COMUNA'] : ''}</small>
               </button>
             ))}
           </div>
@@ -326,7 +310,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
               draggable onDragStart={() => { elegir(b.f); arrastre.current = { bandeja: true }; }}>
               <button type="button" className="it-pend-b" onClick={() => elegir(b.f)}>
                 <b>{_iaDir(b.f)}</b>
-                <small>Rad. {b.f['RADICADO']}{expedienteDe(b.f) ? ' · Exp. ' + expedienteDe(b.f) : ''}{_iaComuna(b.f) ? ' · ' + _iaComuna(b.f) : ''}</small>
+                <small>{b.f['RADICADO']}{b.f['COMUNA'] ? ' · C' + b.f['COMUNA'] : ''}</small>
                 <small className="it-hace">Decretada el {b.fecha}{b.quien ? ' · ' + titleCaseNombre(b.quien).split(' ')[0] : ''}</small>
               </button>
               <button type="button" className="it-pend-x" aria-label={'Quitar ' + b.f['RADICADO'] + ' de Por programar'}

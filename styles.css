@@ -5861,14 +5861,10 @@ button.tb-det-n { cursor: pointer; }
 .it-tarj[draggable="true"] { cursor: grab; }
 .it-tarj::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--c); }
 .it-tarj:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
-.it-tarj .it-t-dir { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
-.it-t-ids { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 6px; margin: 0; }
-.it-t-ids dt { color: var(--ink-3); }
-.it-t-ids dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; color: var(--ink); }
-.it-t-ids dd.vacio { color: var(--ink-4); font-style: italic; }
-.it-t-pie { display: block; margin-top: 3px; color: var(--ink-3); }
+.it-tarj b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.it-tarj > span { display: block; color: var(--ink-3); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .it-tarj .it-q { color: var(--c); font-weight: 600; }
-.it-t-fz { display: block; margin-top: 2px; color: var(--amber); font-weight: 600; }
+.it-tarj .it-id { white-space: nowrap; }
 .it-tarj.fuera { border-style: dashed; border-color: var(--ink-4); }
 .it-tarj.hecha { opacity: .62; }
 .it-tarj.nueva { animation: it-llega .5s ease-out; }
