@@ -5232,6 +5232,76 @@ function sugerenciasInspeccion(f, datos, inspector, hoy) {
   return out;
 }
 
+// ── Tablero de inspecciones (Agenda › Inspecciones, 2026-11-03; maqueta
+// propuesta-inspecciones.html). La semana es una rejilla días × horas: cada
+// día es la zona de su grupo de comunas y cada casilla, una hora. El
+// componente (inspecciones-agenda.jsx) solo pinta.
+function _primerNombreInsp(n) {
+  return normNombreAudiencias(String(n || '').trim().split(/\s+/)[0]);
+}
+
+// Lunes de la semana de `d` (sábado y domingo saltan al lunes siguiente).
+function lunesInspecciones(d) {
+  var x = _soloFecha(d instanceof Date ? d : (parsearFecha(d) || new Date()));
+  var dia = x.getDay();
+  x.setDate(x.getDate() + (dia === 0 ? 1 : dia === 6 ? 2 : 1 - dia));
+  return x;
+}
+
+// Los 5 días de la semana del lunes dado y las inspecciones que caen en ellos.
+//   → { dias: [{ fecha, date }], items: [{ f, dia, hora, inspector, fueraZona, estado }] }
+function semanaInspecciones(datos, lunes) {
+  var l = lunesInspecciones(lunes);
+  var dias = [0, 1, 2, 3, 4].map(function (k) {
+    var d = new Date(l.getFullYear(), l.getMonth(), l.getDate() + k);
+    return { fecha: formatearFecha(d), date: d };
+  });
+  var items = [];
+  (datos || []).forEach(function (f) {
+    if (!esInspeccionLugar(f)) return;
+    var fecha = formatearFecha(f['FECHA ASIGNACION VISITA'] || '');
+    var k = dias.findIndex(function (d) { return d.fecha === fecha; });
+    if (k < 0) return;
+    var zona = diaGrupoInspeccion(f);
+    items.push({ f: f, dia: k, hora: horaProgramadaDe(f), inspector: primerVisitador(visitadoresBD(f)),
+      fueraZona: !!zona && zona !== dias[k].date.getDay(),
+      estado: _normEstadoVisitaBD(f['ESTADO VISITA'] || '') });
+  });
+  return { dias: dias, items: items };
+}
+
+// ¿Esa hora de ese día está libre? Con inspector, que él no tenga otra
+// inspección a esa hora; sin inspector, que quede alguno libre.
+function horaLibreInspeccion(items, dia, hora, inspector, excepto) {
+  var m = horaAudienciasMin(hora);
+  var ahi = (items || []).filter(function (x) {
+    return x.dia === dia && horaAudienciasMin(x.hora) === m && x.f !== excepto;
+  });
+  if (inspector) {
+    var yo = _primerNombreInsp(inspector);
+    return !ahi.some(function (x) { return _primerNombreInsp(x.inspector) === yo; });
+  }
+  return ahi.length < 2; // dos a la misma hora, una por inspector (maqueta)
+}
+
+// Bandeja «Por programar»: casos con la inspección decretada en Audiencias
+// (INSPECCION_DECRETADA = 'DD/MM/YYYY · Nombre') que aún no tienen hora. Un
+// renglón por caso, de lo más viejo a lo más nuevo.
+function bandejaInspecciones(datos) {
+  var vistos = {}, out = [];
+  (datos || []).forEach(function (f) {
+    var marca = String((f && f['INSPECCION_DECRETADA']) || '').trim();
+    if (!marca) return;
+    var k = claveRadicado(f['RADICADO']);
+    if (!k || vistos[k]) return;
+    vistos[k] = 1;
+    var p = marca.split(' · ');
+    out.push({ f: f, fecha: p[0], quien: p.slice(1).join(' · ') });
+  });
+  out.sort(function (a, b) { return (parsearFecha(a.fecha) || 0) - (parsearFecha(b.fecha) || 0); });
+  return out;
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 // ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──
 // Lo que dice cualquier tarjeta de visita de la app, siempre en el mismo
@@ -5480,6 +5550,10 @@ var _cuUtilsExports = {
   horaCortaInspeccion: horaCortaInspeccion,
   diaGrupoInspeccion: diaGrupoInspeccion,
   sugerenciasInspeccion: sugerenciasInspeccion,
+  lunesInspecciones: lunesInspecciones,
+  semanaInspecciones: semanaInspecciones,
+  horaLibreInspeccion: horaLibreInspeccion,
+  bandejaInspecciones: bandejaInspecciones,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,

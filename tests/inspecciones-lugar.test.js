@@ -169,3 +169,39 @@ test('sugerenciasInspeccion: próximos días del grupo, con anticipación y hora
   // Sin comuna: los próximos días hábiles.
   assert.deepEqual(sugerenciasInspeccion({}, [], '', hoy).map(x => x.fecha), ['06/11/2026', '09/11/2026', '10/11/2026']);
 });
+
+// ── Tablero de la semana (Agenda › Inspecciones) ──
+const { lunesInspecciones, semanaInspecciones, horaLibreInspeccion, bandejaInspecciones } = require('../utils.js');
+
+test('lunesInspecciones: el lunes de la semana; sábado y domingo saltan al siguiente', () => {
+  assert.equal(lunesInspecciones(new Date(2026, 10, 4)).getDate(), 2);  // mié 4 → lun 2
+  assert.equal(lunesInspecciones(new Date(2026, 10, 7)).getDate(), 9);  // sáb 7 → lun 9
+  assert.equal(lunesInspecciones(new Date(2026, 10, 9)).getDate(), 9);
+});
+
+test('semanaInspecciones: ubica cada inspección en su día y marca la que va fuera de zona', () => {
+  const ins = (o) => Object.assign({ DILIGENCIA: 'INSPECCION AL LUGAR', 'ESTADO VISITA': 'ASIGNADO' }, o);
+  const datos = [
+    ins({ 'FECHA ASIGNACION VISITA': '11/11/2026', HORA_PROGRAMADA: '9:00AM', COMUNA: '8', 'VISITADOR(ES)': 'MAURICIO HERRERA' }),
+    ins({ 'FECHA ASIGNACION VISITA': '09/11/2026', HORA_PROGRAMADA: '10:00AM', COMUNA: '8', 'VISITADOR(ES)': 'ALEJANDRO H' }),
+    ins({ 'FECHA ASIGNACION VISITA': '18/11/2026', HORA_PROGRAMADA: '9:00AM', COMUNA: '8' }),   // otra semana
+    { 'FECHA ASIGNACION VISITA': '11/11/2026', 'ESTADO VISITA': 'ASIGNADO' },                  // no es inspección
+  ];
+  const s = semanaInspecciones(datos, new Date(2026, 10, 10));
+  assert.equal(s.dias[0].fecha, '09/11/2026');
+  assert.deepEqual(s.items.map(x => [x.dia, x.hora, x.fueraZona]), [[2, '9:00AM', false], [0, '10:00AM', true]]);
+  assert.equal(horaLibreInspeccion(s.items, 2, '9:00AM', 'MAURICIO HERRERA LOPERA'), false);
+  assert.equal(horaLibreInspeccion(s.items, 2, '9:00AM', 'ALEJANDRO'), true);
+  assert.equal(horaLibreInspeccion(s.items, 2, '9:00AM', ''), true);   // queda un inspector libre
+});
+
+test('bandejaInspecciones: un renglón por caso, lo más viejo primero', () => {
+  const b = bandejaInspecciones([
+    { RADICADO: '20261102233', INSPECCION_DECRETADA: '03/11/2026 · JUAN SEBASTIAN PINZON' },
+    { RADICADO: '20261102233', INSPECCION_DECRETADA: '03/11/2026 · JUAN SEBASTIAN PINZON' },
+    { RADICADO: '20251110870', INSPECCION_DECRETADA: '01/11/2026 · VICTOR' },
+    { RADICADO: '20251110871', INSPECCION_DECRETADA: '' },
+  ]);
+  assert.deepEqual(b.map(x => x.f.RADICADO), ['20251110870', '20261102233']);
+  assert.equal(b[1].quien, 'JUAN SEBASTIAN PINZON');
+});

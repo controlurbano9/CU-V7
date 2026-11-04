@@ -129,7 +129,29 @@ function _tonoComuna(n) {
   return n > 20 ? '#2B2923' : n > 12 ? '#6B675E' : n > 5 ? '#9B978D' : n > 0 ? '#C9C6BD' : '#ECEAE4';
 }
 
+// Agenda con dos vistas (2026-11-03): «Visitas» (la de siempre, solo admin) e
+// «Inspecciones» (admin y supervisores; inspecciones-agenda.jsx). El
+// supervisor solo ve Inspecciones. «Ver en la Agenda» de la ficha abre
+// Inspecciones (marca IA_IR_KEY).
 function AgendaScreen({ usuario }) {
+  const esAdmin = usuario.rol === 'ADMIN';
+  const [vista, setVista] = useStateG(() => {
+    let ir = false;
+    try { ir = !!sessionStorage.getItem(IA_IR_KEY); } catch (e) {}
+    return !esAdmin || ir ? 'insp' : 'visitas';
+  });
+  const segmento = esAdmin ? (
+    <div className="ag-seg" role="group" aria-label="Vista de la agenda">
+      <button type="button" aria-pressed={vista === 'visitas'} onClick={() => setVista('visitas')}>Visitas</button>
+      <button type="button" aria-pressed={vista === 'insp'} onClick={() => setVista('insp')}>Inspecciones</button>
+    </div>
+  ) : <h1 className="page-title it-titulo">Inspecciones</h1>;
+  return vista === 'insp'
+    ? <div className="pantalla activa pad-bottom"><InspeccionesAgenda usuario={usuario} segmento={segmento} /></div>
+    : <AgendaVisitasScreen usuario={usuario} segmento={segmento} />;
+}
+
+function AgendaVisitasScreen({ usuario, segmento }) {
   const [data, setData]               = useStateG(null);
   const [cargando, setCargando]       = useStateG(true);
   const [error, setError]             = useStateG('');
@@ -348,6 +370,7 @@ function AgendaScreen({ usuario }) {
           </div>
         </div>
         <div className="ag-cab-der">
+          {segmento}
           {data && comunas && <span><b>{data.totalPendientes}</b> por agendar</span>}
           <button type="button" className="vc-btn" aria-expanded={reglasAbiertas}
             onClick={() => setReglasAbiertas(v => !v)}>

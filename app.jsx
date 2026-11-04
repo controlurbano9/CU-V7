@@ -541,6 +541,20 @@ function AppV6() {
     return () => window.removeEventListener('resize', onR);
   }, []);
 
+  // «Ver en la Agenda» (ficha de una inspección al lugar): la ficha deja la
+  // marca de semana y fila y pide ir a la Agenda, que abre en Inspecciones.
+  const navegarRefApp = useRefApp(null);
+  navegarRefApp.current = navegar;
+  useEffectApp(() => {
+    const ir = (e) => {
+      try { sessionStorage.setItem('cu_agenda_inspeccion', JSON.stringify(e.detail || {})); } catch (err) {}
+      if (window.cerrarVisitaDetail) window.cerrarVisitaDetail();
+      navegarRefApp.current('agenda');
+    };
+    window.addEventListener('cu-ir-agenda-inspeccion', ir);
+    return () => window.removeEventListener('cu-ir-agenda-inspeccion', ir);
+  }, []);
+
   // ── Purga de borradores locales del formulario "Nueva visita" ──
   // Antes existía una clave compartida 'cu_draft_v1_nuevo' bajo la que
   // todas las visitas en blanco escribían el autoguardado. Eso provocaba
@@ -817,7 +831,7 @@ function AppV6() {
   // Tablero territorial (E7): admin y supervisor. Pestaña solo en escritorio;
   // en el celular va al menú de usuario, como la Agenda (2026-10-29).
   if (veTodas && isDesktop) tabs.push({ k: 'tablero', label: 'Tablero', Icono: Icon.Tablero });
-  if (esAdmin && isDesktop) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
+  if (veTodas && isDesktop) tabs.push({ k: 'agenda', label: 'Agenda', Icono: Icon.Agenda });
   if (veTodas) tabs.push({ k: 'audiencias', label: 'Audiencias', Icono: Icon.Audiencia });
   else if (isDesktop) tabs.push({ k: 'audiencias', label: 'Citaciones', Icono: Icon.Audiencia });
   tabs.push({ k: 'consulta-norma', label: 'Norma',     Icono: Icon.Norma  });
@@ -869,7 +883,7 @@ function AppV6() {
                 <Icon.Audiencia size={18} /> Citaciones
               </button>
             )}
-            {esAdmin && (
+            {veTodas && (
               <button type="button" role="menuitem" onClick={() => { setMenuPerfil(false); navegar('agenda'); }}>
                 <Icon.Agenda size={18} /> Agenda
               </button>

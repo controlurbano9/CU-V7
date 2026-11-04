@@ -43,6 +43,8 @@ const ARCHIVOS = [
   'ficha-visita.jsx',
   'mis-visitas.jsx',
   'buscar.jsx',
+  // inspecciones-agenda.jsx antes de agenda.jsx (la vista Inspecciones)
+  'inspecciones-agenda.jsx',
   'agenda.jsx',
   // audiencias.jsx antes de app.jsx (la pestaña de audiencias del router)
   'audiencias.jsx',

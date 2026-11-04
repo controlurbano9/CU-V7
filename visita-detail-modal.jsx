@@ -333,6 +333,11 @@ window.abrirVisitaDetail = function(filaBD, gestion, extra) {
   }
 };
 
+// Cierra el modal (p. ej. «Ver en la Agenda» desde la ficha).
+window.cerrarVisitaDetail = function() {
+  if (_pushVisitaDetail) _pushVisitaDetail(null);
+};
+
 window.refrescarVisitaDetail = function(filaBD, gestion, extra) {
   if (_refrescarVisitaDetail) _refrescarVisitaDetail(filaBD, gestion, extra);
 };

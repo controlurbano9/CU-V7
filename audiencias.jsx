@@ -299,9 +299,16 @@ function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
 // Lo que se toca en Hoy, Semana o Lista. Es el único lugar desde donde el
 // admin libera una cita (antes estaba a un toque en cada fila). El
 // sustanciador abre de aquí el acta y el informe para preparar la audiencia.
-function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar }) {
+function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar }) {
   const hojaRef = useHojaTecladoAU(onCerrar);
+  // Inspección al lugar decretada en la audiencia (2026-11-03): el caso queda
+  // en «Por programar» de la Agenda › Inspecciones, sin fecha todavía.
+  const [decreto, setDecreto] = useStateAU('');   // '' | 'enviando' | 'ok' | mensaje de error
   const c = cita;
+  async function decretar() {
+    setDecreto('enviando');
+    try { await onDecretar(c); setDecreto('ok'); } catch (e) { setDecreto(e.message || 'No se pudo.'); }
+  }
   return (
     <div ref={hojaRef} className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Cita"
       onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
@@ -327,6 +334,16 @@ function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar }) 
           {c.linkInforme && <a className="btn-neutro" href={c.linkInforme} target="_blank" rel="noopener">Informe</a>}
           {!c.sinVisita && <button type="button" className="btn-neutro" onClick={onVerVisita}>Ver visita</button>}
         </div>
+        {onDecretar && !c.sinVisita && (
+          decreto === 'ok'
+            ? <p className="au-decreto ok">Inspección al lugar en «Por programar» de la Agenda</p>
+            : <>
+                <button type="button" className="btn-neutro au-decreto-btn" disabled={decreto === 'enviando'} onClick={decretar}>
+                  {decreto === 'enviando' ? 'Enviando…' : 'Decretar inspección al lugar'}
+                </button>
+                {decreto && decreto !== 'enviando' && <p className="au-decreto error" role="alert">{decreto}</p>}
+              </>
+        )}
         {esAdmin && (
           <button type="button" className="au-cita-liberar" disabled={ocupado} onClick={onLiberar}>Liberar cita</button>
         )}
@@ -849,6 +866,18 @@ function AudienciasScreen({ usuario }) {
       await appAlert('No se pudo liberar el cupo: ' + (e.message || e), { tono: 'error' });
     }
     setOcupado(false);
+  }
+
+  // «Decretar inspección al lugar» (hoja de la cita): marca el caso para la
+  // bandeja «Por programar» de la Agenda. La fila es la última visita del caso.
+  async function decretarInspeccionDe(c) {
+    const filas = (await leerVisitas()).datos || [];
+    const delCaso = filas.filter(function (x) { return _auMismoRad(x['RADICADO'], c.radicado); });
+    const f = delCaso.sort(function (a, b) { return (b._idx || 0) - (a._idx || 0); })[0];
+    if (!f) throw new Error('No se encontró la visita del radicado ' + (c.radicado || '?') + '.');
+    const r = await gasPost({ accion: 'decretarInspeccion', fila: f._idx, radicadoConocido: f['RADICADO'] });
+    if (r && r.ok === false) throw new Error(r.error || 'No se pudo.');
+    invalidarCache('visitas');
   }
 
   async function abrirCita(c) {
@@ -1585,7 +1614,8 @@ function AudienciasScreen({ usuario }) {
         <CitaHoja cita={citaAbierta} esAdmin={esAdmin} ocupado={ocupado}
           onCerrar={function () { setCitaAbierta(null); }}
           onVerVisita={function () { const c = citaAbierta; setCitaAbierta(null); abrirCita(c); }}
-          onLiberar={function () { liberarCupoDe(citaAbierta); }} />
+          onLiberar={function () { liberarCupoDe(citaAbierta); }}
+          onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null} />
       )}
     </div>
   );
