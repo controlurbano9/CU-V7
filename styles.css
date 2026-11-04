@@ -1984,21 +1984,10 @@ button.fg-celda { width: 100%; padding: 0; appearance: none; cursor: pointer; }
   .dlg-btn { flex: 0 0 auto; min-width: 116px; }
 }
 
-/* ── Spinner / cargando ──────────────────────────────────── */
-.cargando {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 48px;
-  color: var(--ink-3);
-  font-size: var(--fs-2); gap: 14px;
-}
-.spinner {
-  width: 26px; height: 26px;
-  border: 2px solid var(--surface-2);
-  border-top-color: var(--brand);
-  border-radius: 50%;
-  animation: girar .65s linear infinite;
-}
+/* ── Spinner ─────────────────────────────────────────────────
+   El .spinner de 26 px y su .cargando al centro se fueron con la propuesta
+   de esperas (2026-11-04): las pantallas esperan con esqueletos
+   (espera.jsx, bloque «VALLA DE OBRA · ESPERA» al final). */
 @keyframes girar { to { transform: rotate(360deg); } }
 
 /* Spinner en línea dentro de un botón. El formulario de visita no tenía
@@ -3439,7 +3428,6 @@ button.sv-col-head {
 .ag-cab-der { position: relative; margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--fs-1); color: var(--ink-3); }
 .ag-cab-der > span b { font: 600 var(--fs-2) var(--font-mono); color: var(--ink); }
 .ag-icono { width: 36px; padding: 0; }
-.ag-estado { padding: 48px; text-align: center; font-size: var(--fs-2); color: var(--ink-3); }
 .ag-vacio { padding: 14px 0; font-size: var(--fs-1); color: var(--ink-3); }
 
 /* Rediseño 2026-10-13 (maqueta propuesta-agenda-v3.html): el día de cada
@@ -3838,10 +3826,9 @@ button.sv-col-head {
 .rr-dot-ok { background: var(--green); }
 .rr-dot-esp { background: var(--amber); }
 .rr-dot-no { background: var(--ink-4); }
-.rr-girando { width: 12px; height: 12px; flex: none; border: 2px solid var(--line-2); border-top-color: var(--ink-3);
-  border-radius: 50%; animation: rr-girar .8s linear infinite; }
-@keyframes rr-girar { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .rr-girando { animation: none; } }
+/* «Buscando la dirección…» usa el .spinner-btn común (antes .rr-girando, con
+   su propio @keyframes; propuesta de esperas 2026-11-04). */
+.rr-fuente .spinner-btn { color: var(--ink-3); }
 .rr-banda { background: var(--red-bg); border-radius: var(--r-card); padding: 10px 12px; font-size: var(--fs-1); color: var(--ink);
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .rr-banda p { margin: 0; flex: 1 1 220px; }
@@ -4235,7 +4222,6 @@ button.sv-col-head {
 .au-aviso-linea { margin-bottom: 14px; padding: 9px 12px; border-radius: var(--r-card); background: var(--amber-bg);
   color: var(--amber); font: 600 var(--fs-1)/1.45 var(--font-sans); }
 .au-aviso-linea b { color: var(--amber); }
-.au-cargando { padding: 40px 0; text-align: center; font-size: var(--fs-1); color: var(--ink-3); }
 
 /* Barra de vistas + filtro de sustanciador / Mis citas */
 .au-topbar { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -5826,7 +5812,6 @@ button.tb-det-n { cursor: pointer; }
 .it-caso .it-motivo { color: var(--ink); font-weight: 600; }
 .it-x { margin-left: auto; width: 44px; height: 44px; border: 0; background: none; cursor: pointer; display: grid; place-items: center; color: var(--ink); }
 .it-error { margin: 0 0 14px; padding: 10px 12px; border-radius: var(--r-card); background: var(--red-bg); color: var(--red); font-size: var(--fs-1); }
-.it-vacio { color: var(--ink-3); }
 .it-cuerpo { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
 .it-bandeja { background: var(--surface); border-radius: var(--r-panel); padding: 14px; position: sticky; top: 16px; }
 .it-bandeja h2 { margin: 0; font-size: var(--fs-2); font-weight: 600; display: flex; gap: 6px; }
@@ -5921,3 +5906,159 @@ button.tb-det-n { cursor: pointer; }
 /* Cita de un día pasado: sin el verde de «confirmada». */
 .au-pconf.pasada { background: var(--surface-2); }
 .au-pconf.pasada .est { color: var(--ink-3); }
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ VALLA DE OBRA · ESPERA (2026-11-04, DESIGN.md §8d)           ║
+   ╚════════════════════════════════════════════════════════════╝
+   Las piezas de espera.jsx. Esperar no es lo activo ni lo elegido:
+   ni amarillo ni rojo. Tinta, papel y placa con filete de 1 px. */
+:root {
+  --espera-base: var(--surface-2);
+  --espera-luz: var(--surface-3);
+  --espera-barrido: 1.6s;
+}
+
+/* Esqueleto: barra plana con un barrido lento (decisión del usuario,
+   2026-11-04: animado). Con movimiento reducido queda quieto (regla global). */
+.esq { display: block; position: relative; overflow: hidden; background: var(--espera-base); border-radius: 4px; }
+.esq::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--espera-luz) 50%, transparent);
+  animation: esq-barrer var(--espera-barrido) ease-in-out infinite;
+}
+@keyframes esq-barrer { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .esq::after { display: none; } }
+
+/* Renglones con el alto del texto que reemplazan: 13 px × 1,4 = 18 px. */
+.esq-linea { height: 10px; margin: 4px 0; }
+.esq-dir { height: 14px; margin: 6px 0; }                  /* dirección 17 px de la tarjeta */
+.tv-renglon .esq-dir { height: 12px; margin: 4px 0; }      /* dirección 15 px del renglón */
+.esq-tv { cursor: default; }
+.esq-btn { width: 100%; height: 44px; border-radius: var(--r-ctl); }
+@media (min-width: 900px) {
+  .esq-btn { height: 36px; }
+  .tv-tarjeta .esq-dir { height: 12px; margin: 4px 0; }
+}
+.sv .esq-tv { min-height: 44px; }
+
+/* La placa de la siguiente visita espera en blanco con filete: el amarillo
+   llega con la visita (regla del amarillo, DESIGN.md §3). */
+.esq-placa {
+  margin: 0 0 var(--s-3); padding: var(--s-4);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
+}
+.esq-dir-grande { height: 24px; margin: 4px 0 9px; }
+.esq-meta-grande { height: 13px; margin: 8px 0 6px; }
+.esq-placa-acc { display: flex; gap: var(--s-2); margin-top: var(--s-3); }
+.esq-btn-placa { flex: 1; height: 52px; border-radius: var(--r-ctl); }
+
+/* Bloque genérico (paneles de Administración y Agenda). */
+.esq-g-bloque { display: grid; gap: var(--s-2); }
+.esq-bloque-item {
+  padding: var(--s-3) var(--s-4); background: var(--surface);
+  border: 1px solid var(--line-2); border-radius: var(--r-card);
+}
+.esq-cifra { height: 24px; margin: 6px 0; }
+
+/* Barra de actividad: una para la app. En el celular va dentro del borde
+   inferior de la cabecera negra, en papel; en escritorio (sin cabecera),
+   arriba de todo y en tinta. */
+.barra-actividad {
+  position: fixed; left: 0; right: 0; top: calc(var(--header-h, 0px) - 3px); z-index: 260;
+  height: 3px; overflow: hidden; pointer-events: none;
+  color: var(--surface); opacity: 0; transition: opacity .2s;
+}
+.barra-actividad.on { opacity: 1; }
+.barra-actividad::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%;
+  background: currentColor; animation: barra-correr 1.1s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes barra-correr { from { left: -40%; } to { left: 100%; } }
+@media (min-width: 900px) { .barra-actividad { top: 0; color: var(--ink); } }
+@media (prefers-reduced-motion: reduce) {
+  .barra-actividad::before { animation: none !important; left: 0; width: 100%; opacity: .7; }
+}
+
+/* Aviso de espera: placa con filete y texto plano. Flota abajo, al lado del
+   «+» (a la misma altura): dentro de la página empujaba el contenido al
+   aparecer y al irse, y arriba tapaba los controles de la cabecera. */
+.aviso-espera {
+  position: fixed; z-index: 8000; left: 16px; right: 82px; bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  min-height: 54px; box-sizing: border-box;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
+  font-size: var(--fs-2); color: var(--ink-2);
+}
+@media (min-width: 900px) { .aviso-espera { left: auto; right: 96px; bottom: 24px; width: 420px; min-height: 56px; } }
+.aviso-espera .spinner-btn { color: var(--ink-3); }
+.aviso-espera-txt { flex: 1 1 180px; min-width: 0; }
+.aviso-espera-btn { min-height: 44px; padding: 0 16px; }
+
+/* Error de carga: el molde de Agenda para todas las pantallas. */
+.error-carga {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+  margin: 0 0 var(--s-3); padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
+}
+.error-carga-txt { flex: 1 1 220px; min-width: 0; display: grid; gap: 2px; font-size: var(--fs-2); color: var(--ink-2); }
+.error-carga-txt b { color: var(--ink); font-weight: 600; }
+.error-carga-btn { min-height: 44px; padding: 0 18px; }
+.error-carga.compacto { padding: 10px 12px; }
+.error-carga.compacto .error-carga-txt { font-size: var(--fs-1); }
+
+/* Abrir una visita: la tarjeta tocada lleva filete interior de tinta y su
+   botón dice «Abriendo»; las demás se apagan para evitar el doble toque. */
+.tv.abriendo, .mv-sig.abriendo { box-shadow: inset 0 0 0 2px var(--ink); }
+.mv-sig.abriendo { box-shadow: 0 0 0 3px var(--ink); }
+body.abriendo-visita .tv:not(.abriendo):not(.esq-tv),
+body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none; transition: opacity .15s; }
+.tv-btn[aria-busy="true"] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: progress; }
+
+/* Movimiento reducido con un solo criterio: lo que dice «sigo trabajando»
+   (.spinner-btn, .icono-girando, la barra) sigue, lento o quieto; lo
+   decorativo (el barrido del esqueleto) se detiene. */
+
+/* Progreso con cuenta: la descarga del mapa y del POT para usar sin señal
+   (MapPrecacheIndicator, app.jsx). Antes, estilos en línea con alias viejos,
+   emoji y sombra. */
+.aviso-progreso {
+  position: fixed; z-index: 250; pointer-events: none; max-width: 260px;
+  display: grid; gap: 6px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
+  font-size: var(--fs-1); color: var(--ink-2);
+}
+.aviso-progreso b { font-weight: 600; color: var(--ink); }
+.aviso-progreso.listo b { color: var(--green-ink); }
+.aviso-progreso-fila { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.aviso-progreso-pista { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.aviso-progreso-pista span { display: block; height: 100%; background: var(--ink); border-radius: 2px; transition: width .3s; }
+
+/* Cola sin conexión (OfflineColaBadge, app.jsx): placa del sistema. */
+.cola-offline {
+  position: fixed; top: 60px; right: 12px; z-index: 8500; max-width: 300px;
+  display: grid; gap: 8px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card);
+  font-size: var(--fs-1); color: var(--ink-2);
+}
+.cola-offline.atascada { border-color: var(--red); }
+.cola-offline-cab {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px;
+  border: 0; background: none; cursor: pointer; font: 600 var(--fs-1) var(--font-sans); color: var(--ink); text-align: left;
+}
+.cola-offline-tit { flex: 1; }
+.cola-offline-ico { display: inline-flex; color: var(--ink-3); }
+.cola-offline.atascada .cola-offline-ico, .cola-offline.atascada .cola-offline-tit { color: var(--red); }
+.cola-offline-lista { max-height: 220px; overflow-y: auto; padding: 0 8px; }
+.cola-offline-item { padding: 6px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.cola-offline-item:last-child { border-bottom: 0; }
+.cola-offline-fila { display: flex; justify-content: space-between; gap: 6px; }
+.cola-offline-desc { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.cola-offline-desc > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cola-offline-item.atascado .cola-offline-desc { color: var(--red); font-weight: 600; }
+.cola-offline-n { color: var(--ink-3); }
+.cola-offline-item.atascado .cola-offline-n, .cola-offline-err { color: var(--red); }
+.cola-offline-err { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cola-offline-acc { display: flex; gap: 6px; }
+.cola-offline-acc .btn-neutro { flex: 1; min-height: 40px; padding: 0 10px; font-size: var(--fs-1); }
+.cola-offline-acc .cola-offline-borrar { flex: none; color: var(--red); }
+@media (max-width: 899px) { .cola-offline-acc .btn-neutro, .cola-offline-cab { min-height: 44px; } }

@@ -102,6 +102,8 @@ function MisVisitasScreen({ usuario, onContinuar }) {
   const elegir = (f) => setSelIdx(f._idx);
 
   const listo = !cargando && !error;
+  // Primera carga sin copia local: desde los 3 s se dice qué se espera.
+  const escalon = useEscalera(cargando);
   const fila = (x, tipo) => (
     <FilaMV key={x.f._idx} x={x} tipo={tipo} conPanel={conPanel} elegida={sel === x.f}
       verPrioridad={verPrioridad} onElegir={elegir} onContinuar={onContinuar} />
@@ -114,30 +116,31 @@ function MisVisitasScreen({ usuario, onContinuar }) {
         <div className="page-title">Mis visitas</div>
       </div>
 
-      {error && (
-        <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
-          {error} &middot;{' '}
-          <button onClick={() => cargar(true)} style={{
-            background: 'none', border: 'none', color: 'var(--brand-accent)',
-            cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',
-          }}>Reintentar</button>
-        </div>
-      )}
+      {error && <ErrorCarga titulo="No se pudieron cargar tus visitas." detalle={error} onReintentar={() => cargar(true)} />}
 
-      {cargando && (
-        <div className="cargando"><div className="spinner"></div>Cargando visitas...</div>
-      )}
-
-      {/* Una sola fila de chips: la Semana es una vista más, no otra capa. */}
-      {listo && (
+      {/* Una sola fila de chips: la Semana es una vista más, no otra capa.
+          Mientras carga ya está, con «—» en los conteos: al llegar los datos
+          la lista no salta. */}
+      {!error && (
         <div className="sv-chips mv-chips" role="group" aria-label="Vista">
-          {[['pend', 'Pendientes', nPend], ['semana', 'Semana', null], ['hechas', 'Completadas', nHechas]]
-            .filter(c => c[0] !== 'hechas' || nHechas > 0)
+          {[['pend', 'Pendientes', cargando ? '—' : nPend], ['semana', 'Semana', null], ['hechas', 'Completadas', cargando ? '—' : nHechas]]
+            .filter(c => c[0] !== 'hechas' || cargando || nHechas > 0)
             .map(c => (
               <button key={c[0]} type="button" aria-pressed={vista === c[0]}
                 className={'sv-chip' + (vista === c[0] ? ' activo' : '')}
                 onClick={() => setVista(c[0])}>{c[1]}{c[2] != null && <> {c[2]}</>}</button>
             ))}
+        </div>
+      )}
+
+      {cargando && (
+        <div className="mv-2col" aria-busy="true">
+          <div className="mv-lista">
+            <AvisoEspera escalon={escalon} que="tus visitas" />
+            {vista === 'semana'
+              ? <SemanaVisitas cargando datos={[]} esAdmin={false} miNombre={usuario.usuario.toUpperCase()} inspectores={[]} onAbrir={onContinuar} />
+              : <><Esqueleto tipo={vista === 'pend' ? 'placa' : 'tarjeta'} /><Esqueleto tipo="tarjeta" n={3} /></>}
+          </div>
         </div>
       )}
 
@@ -211,15 +214,19 @@ function SiguienteVisitaMV({ s, conPanel, elegida, onElegir, onContinuar }) {
   const cita = citaVisitaTexto(f);
   const dil = inspeccionVisitaTexto(f);
   const abrir = () => conPanel ? onElegir(f) : (window.abrirVisitaDetail && window.abrirVisitaDetail(f));
+  const abriendo = useAbriendoVisita() === f._idx;
   return (
-    <article className={'mv-sig' + (conPanel && elegida ? ' sel' : '')} onClick={abrir}>
+    <article className={'mv-sig' + (conPanel && elegida ? ' sel' : '') + (abriendo ? ' abriendo' : '')}
+      aria-busy={abriendo || undefined} onClick={abrir}>
       <button type="button" className="mv-sig-dir" title={t.dir}
         onClick={(e) => { e.stopPropagation(); abrir(); }}>{t.dirVisible}</button>
       <div className="tv-meta">{[t.ident.principal, t.ubic].filter(Boolean).join(' · ')}</div>
       {cita && <div className={'tv-meta' + (cita.urgente ? ' tv-demora' : '')}>{cita.texto}</div>}
       {dil && <div className="tv-meta"><b>{dil.texto}</b></div>}
       <div className="mv-sig-acc" onClick={(e) => e.stopPropagation()}>
-        {t.accion && <button type="button" className="tv-btn" onClick={() => onContinuar(f._idx, f)}>{t.accion}</button>}
+        {t.accion && (abriendo
+          ? <button type="button" className="tv-btn" aria-busy="true" disabled><span className="spinner-btn" aria-hidden="true" />Abriendo</button>
+          : <button type="button" className="tv-btn" onClick={() => onContinuar(f._idx, f)}>{t.accion}</button>)}
         <BotonMapaVisita f={f} variante="vc" />
       </div>
     </article>

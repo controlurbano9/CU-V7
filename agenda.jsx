@@ -334,6 +334,10 @@ function AgendaVisitasScreen({ usuario, segmento }) {
     setAsignando(false);
   }
 
+  // La agenda puede tardar hasta 45 s (api.js): desde los 3 s se dice qué se
+  // espera y desde los 10 s que la señal está lenta.
+  const escalon = useEscalera(cargando && !data);
+
   if (!esAdmin) {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido (solo ADMIN).</div>;
   }
@@ -376,8 +380,9 @@ function AgendaVisitasScreen({ usuario, segmento }) {
             onClick={() => setReglasAbiertas(v => !v)}>
             <Icon.Admin size={14} /> Reglas
           </button>
-          <button type="button" className="vc-btn ag-icono" aria-label="Recargar" title="Recargar"
-            onClick={() => cargar(true)} disabled={cargando}>
+          {/* Gira mientras recarga, como el ↻ de la cabecera. */}
+          <button type="button" className={'vc-btn ag-icono' + (cargando ? ' icono-girando' : '')} aria-label="Recargar" title="Recargar"
+            onClick={() => cargar(true)} disabled={cargando} aria-busy={cargando || undefined}>
             <Icon.Refresh size={14} />
           </button>
           {reglasAbiertas && (
@@ -389,14 +394,15 @@ function AgendaVisitasScreen({ usuario, segmento }) {
         </div>
       </header>
 
-      {cargando && !data && <div className="ag-estado">Cargando agenda…</div>}
-      {error && (
-        <div className="card" style={{ color: 'var(--red)' }}>
-          {/* Sin el error crudo en pantalla (revisión 2026-10-28): queda en el title. */}
-          <span title={error}>No se pudo cargar la agenda. Revisa la conexión y vuelve a intentar.</span>{' '}
-          <button type="button" className="vc-btn" onClick={() => cargar(true)}>Reintentar</button>
+      {cargando && !data && (
+        <div aria-busy="true">
+          <AvisoEspera escalon={escalon} que="la agenda" />
+          <Esqueleto tipo="bloque" n={3} />
         </div>
       )}
+      {/* Sin el error crudo en pantalla (revisión 2026-10-28): queda en el
+          title. Es el molde que ErrorCarga lleva a todas las pantallas. */}
+      {error && <ErrorCarga titulo="No se pudo cargar la agenda." detalle={error} onReintentar={() => cargar(true)} />}
       {data && !comunas && !error && (
         <div className="card">Esta agenda necesita el servidor actualizado. Recarga en unos minutos.</div>
       )}

@@ -344,7 +344,10 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, ordenable, onDragStart,
 
 // ── Componente principal ───────────────────────────────────────
 function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasignar, inspector: inspectorExt, onInspector, onAbrirDia,
-  offset: offsetExt, onOffset, enAtencion }) {
+  offset: offsetExt, onOffset, enAtencion, cargando }) {
+  // `cargando`: primera carga sin copia local. Se pintan los días y las
+  // columnas reales con esqueletos en vez de «Sin visitas» (propuesta de
+  // esperas, 2026-11-04): al llegar los datos la Semana no salta.
   const prefs0 = _svPrefs();
   // Con onOffset la semana la maneja Inicio, que pinta navegación y filtro en
   // una barra común a la Semana y a Alertas; la cabecera propia no se pinta.
@@ -606,7 +609,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   if (movil) {
     const ordenables = porDia[sel].filter((f) => puedeOrdenar(f)).length;
     return (
-      <div className="sv">
+      <div className="sv" aria-busy={cargando || undefined}>
         {cabecera}
         <div className="sv-tira">
           {dias.map((d, i) => (
@@ -615,7 +618,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
               aria-label={SV_ROTULOS[i] + ' ' + d.getDate() + ', ' + porDia[i].length + ' visitas'}>
               <span className="sv-dia-rot">{SV_ROTULOS[i]} {d.getDate()}</span>
               <span className={'sv-dia-num' + (porDia[i].length === 0 ? ' vacio' : '')}>
-                {porDia[i].length || '—'}
+                {cargando ? '—' : (porDia[i].length || '—')}
               </span>
             </button>
           ))}
@@ -637,7 +640,8 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
               )}
             </div>
           )}
-          {porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
+          {cargando && <Esqueleto tipo="renglon" n={3} />}
+          {!cargando && porDia[sel].length === 0 && <div className="sv-vacio">Sin visitas</div>}
           {ordenables > 0 && porDia[sel].length > 1 && (
             <p className="sv-orden-ayuda">Para cambiar el orden, mantén presionada una visita y arrástrala.</p>
           )}
@@ -657,7 +661,7 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
 
   // ── Escritorio: cinco columnas ──
   return (
-    <div className="sv">
+    <div className="sv" aria-busy={cargando || undefined}>
       {cabecera}
       <div className="sv-grid" ref={gridRef}>
         {dias.map((d, i) => (
@@ -685,7 +689,8 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
                 <Icon.Route size={14} /> Ruta
               </button>
             )}
-            {porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
+            {cargando && <Esqueleto tipo="renglon" n={i % 2 ? 1 : 2} />}
+            {!cargando && porDia[i].length === 0 && <div className="sv-vacio">Sin visitas</div>}
             {porDia[i].map((f, j) => (
               <SemanaCard key={f._idx || j} f={f} onAbrir={onAbrir} n={j + 1} marca={!!enAtencion && enAtencion.has(f._idx)}
                 inspectores={inspectores} onReasignar={onReasignar}

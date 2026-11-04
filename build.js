@@ -27,6 +27,9 @@ const ARCHIVOS = [
   // icons.jsx primero — expone window.Icon disponible para todos los demás
   'icons.jsx',
   'modal.jsx',
+  // espera.jsx: esqueletos, barra de actividad, aviso y error de carga;
+  // los consumen visita-card y todas las pantallas que esperan datos.
+  'espera.jsx',
   'informe-modal.jsx',
   'visita-detail-modal.jsx',
   'login.jsx',

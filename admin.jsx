@@ -56,6 +56,14 @@ function useAnchoPanelAdm() {
 // como hacía la vieja pestaña de Vigilancia.
 // onAbrirReglasAgenda (app.jsx): lleva a la Agenda con ⚙ Reglas abierto.
 // onNavegar (app.jsx): para abrir Buscar con el filtro de una persona.
+// Las tres lecturas de Administración y lo que necesita cada pestaña.
+const ADM_FUENTES = {
+  us:  { que: 'el equipo',     error: 'No se pudo cargar el equipo.' },
+  vis: { que: 'las visitas',   error: 'No se pudieron cargar las visitas.' },
+  log: { que: 'la actividad',  error: 'No se pudo cargar la actividad.' },
+};
+const ADM_REQUIERE = { equipo: ['us', 'vis'], bandeja: ['vis', 'log'], actividad: ['log'] };
+
 function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
   const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
   const [usuarios, setUsuarios] = useStateA([]);
@@ -66,8 +74,10 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
   // aparte de los otros datos: si falla, solo esas secciones lo dicen.
   const [pend, setPend]           = useStateA(null);   // {hallazgos, informesRechazados}
   const [pendError, setPendError] = useStateA('');
-  const [cargando, setCargando] = useStateA(true);
-  const [error, setError]       = useStateA('');
+  // Cada lectura por su cuenta (propuesta de esperas, 2026-11-04): antes la
+  // pantalla entera esperaba a la más lenta (3000 filas del log) y un fallo
+  // tumbaba todo. 'cargando' | 'ok' | mensaje de error.
+  const [fuentes, setFuentes] = useStateA({ us: 'cargando', vis: 'cargando', log: 'cargando' });
   const conPanel = useAnchoPanelAdm();
   const esAdmin = usuario.rol === 'ADMIN';
 
@@ -76,23 +86,17 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
     leerVisitas().then(r => setVisitas(r.datos || [])).catch(() => {});
   }), []);
 
-  async function cargar() {
-    setCargando(true); setError('');
-    try {
-      const [us, vis, lg] = await Promise.all([
-        listarUsuariosAdmin(),
-        leerVisitas(),
-        // Las últimas 3000 filas bastan para Actividad y para la última
-        // actividad de cada persona; antes bajaba la hoja entera.
-        leerLogAuditoria(3000),
-      ]);
-      setUsuarios(us || []);
-      setVisitas(vis.datos || []);
-      setLog(lg.values || []);
-      setLogTotal(lg.total || 0);
-    } catch (e) { setError(e.message); }
-    setCargando(false);
+  function cargarFuente(k) {
+    const marcar = (v) => setFuentes(prev => Object.assign({}, prev, { [k]: v }));
+    marcar('cargando');
+    const p = k === 'us' ? listarUsuariosAdmin().then(us => setUsuarios(us || []))
+      : k === 'vis' ? leerVisitas().then(r => setVisitas(r.datos || []))
+      // Las últimas 3000 filas bastan para Actividad y para la última
+      // actividad de cada persona; antes bajaba la hoja entera.
+      : leerLogAuditoria(3000).then(lg => { setLog(lg.values || []); setLogTotal(lg.total || 0); });
+    p.then(() => marcar('ok'), e => marcar((e && e.message) || 'No se pudo cargar.'));
   }
+  function cargar() { ['us', 'vis', 'log'].forEach(cargarFuente); }
 
   function cargarPendientes() {
     setPendError('');
@@ -137,6 +141,13 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
   // número no cuadraba con las filas de la Bandeja (revisión 2026-10-13).
   const nBandeja = nPorGenerar + vig.faltaOrden.length + (pend ? pend.hallazgos.length : 0);
 
+  // Lo que necesita cada pestaña. Equipo no espera al log: la última
+  // actividad dice «—» hasta que llega.
+  const requiere = ADM_REQUIERE[tab] || [];
+  const fallida = requiere.find(k => fuentes[k] !== 'cargando' && fuentes[k] !== 'ok');
+  const esperando = requiere.filter(k => fuentes[k] === 'cargando');
+  const escalon = useEscalera(esperando.length > 0);
+
   if (usuario.rol !== 'ADMIN') {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
   }
@@ -158,25 +169,21 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
         </div>
       </div>
 
-      {error && (
-        <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
-          {error} &middot;{' '}
-          <button onClick={cargar} style={{
-            background: 'none', border: 'none', color: 'var(--brand-accent)',
-            cursor: 'pointer', textDecoration: 'underline', font: 'inherit',
-            minHeight: 44, padding: '0 8px',
-          }}>Reintentar</button>
+      {fallida && <ErrorCarga titulo={ADM_FUENTES[fallida].error} detalle={fuentes[fallida]} onReintentar={() => cargarFuente(fallida)} />}
+      {!fallida && esperando.length > 0 && (
+        <div aria-busy="true">
+          <AvisoEspera escalon={escalon} que={esperando.map(k => ADM_FUENTES[k].que).join(' y ')} />
+          <Esqueleto tipo="bloque" n={3} />
         </div>
       )}
-      {cargando && <div className="cargando"><div className="spinner"></div>Cargando…</div>}
 
-      {!cargando && !error && (
+      {!fallida && !esperando.length && (
         tab === 'bandeja'    ? <TabBandeja vig={vig} logDesc={logDesc} recargarVisitas={recargarVisitas}
           pend={pend} pendError={pendError} onReintentarPend={cargarPendientes}
           onQuitarHallazgo={(fh) => setPend(p => p && Object.assign({}, p, {
             hallazgos: p.hallazgos.filter(h => h._filaHoja !== fh) }))} /> :
         tab === 'actividad'  ? <TabActividad log={log} total={logTotal} /> :
-        <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} conPanel={conPanel}
+        <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} logListo={fuentes.log === 'ok'} conPanel={conPanel}
           yo={usuario.usuario} onAbrirReglas={onAbrirReglasAgenda} onNavegar={onNavegar}
           recargarUsuarios={recargarUsuarios} />
       )}
@@ -450,7 +457,7 @@ function _actividadRelativa(d, hoy) {
   return { texto: 'hace ' + dias + ' días', dias: dias };
 }
 
-function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
+function TabEquipo({ usuarios, datos, logDesc, logListo, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
   const [sel, setSel]           = useStateA(null); // nombre de la persona elegida
   const [verInactivos, setVerInactivos] = useStateA(false);
   const hoy = useMemoA(() => new Date(), []);
@@ -460,11 +467,12 @@ function TabEquipo({ usuarios, datos, logDesc, conPanel, yo, onAbrirReglas, onNa
     (usuarios || []).forEach(u => {
       m[u.nombre] = {
         carga: cargaUsuario(datos, u.nombre, hoy),
-        act: _actividadRelativa(ultimaActividad(datos, logDesc, u.nombre), hoy),
+        // Sin el log la última actividad saldría vieja: «—» hasta que llegue.
+        act: logListo ? _actividadRelativa(ultimaActividad(datos, logDesc, u.nombre), hoy) : { texto: '—', dias: null },
       };
     });
     return m;
-  }, [usuarios, datos, logDesc, hoy]);
+  }, [usuarios, datos, logDesc, logListo, hoy]);
 
   const porDemora = (a, b) => {
     const ca = cargas[a.nombre] || { carga: {} }, cb = cargas[b.nombre] || { carga: {} };

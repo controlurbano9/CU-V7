@@ -56,6 +56,9 @@ function _entregablesFV(f, terminada) {
 function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion, visitas, onElegirVisita }) {
   const raizRef = useRefFV(null);
   const fijaRef = useRefFV(null);
+  // La visita se está abriendo (irContinuar, app.jsx): el botón lo dice.
+  const abriendoIdx = useAbriendoVisita();
+  const abriendo = !!f && abriendoIdx === f._idx;
   // ¿La ficha es ancha? (≥860 px de contenedor, la misma frontera del CSS):
   // el mapa y el predio pasan a su columna derecha.
   const [dosCols, setDosCols] = useStateFV(false);
@@ -262,8 +265,10 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
           {/* Botones solo con texto (decisión del usuario, ficha v2). */}
           <div className="fv-fija-acc">
             {!terminada && onContinuar && (puedeDiligenciar(f)
-              ? <button type="button" className="vc-btn vc-btn-cta" onClick={() => onContinuar(f._idx, f)}>
-                  {est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita'}
+              ? <button type="button" className="vc-btn vc-btn-cta" onClick={() => onContinuar(f._idx, f)}
+                  disabled={abriendo} aria-busy={abriendo || undefined}>
+                  {abriendo ? <><span className="spinner-btn" aria-hidden="true" /> Abriendo…</>
+                    : (est === 'INICIADO' ? 'Continuar visita' : 'Iniciar visita')}
                 </button>
               // Regla del diligenciador: al co-asignado se le dice quién la lleva.
               : <span className="vc-dilig">La lleva {quienes[0]}</span>)}

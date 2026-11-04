@@ -84,6 +84,9 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
     : t.accion ? { texto: t.accion, fn: () => onAccion && onAccion(f._idx, f) } : null;
   const abrir = () => onAbrir ? onAbrir(f) : (window.abrirVisitaDetail && window.abrirVisitaDetail(f));
   const sinPropagar = (fn) => (e) => { e.stopPropagation(); fn(); };
+  // Esta visita se está abriendo (irContinuar, app.jsx): filete de tinta y
+  // «Abriendo» en su botón, en cualquier pantalla donde esté.
+  const abriendo = useAbriendoVisita() === f._idx;
   const tiempoTxt = sinTiempo ? '' : (tiempo != null ? tiempo : t.tiempo);
   const tiempoNodo = tiempoTxt
     ? <span className={(urgente || (tiempo == null && t.demora)) ? 'tv-demora' : ''}>{tiempoTxt}</span>
@@ -99,8 +102,8 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
     radicada && t.radicada && t.estado !== 'PENDIENTE' && <span key="r">radicada {t.radicada}</span>, inspNodo].filter(Boolean);
 
   return (
-    <article className={'tv tv-' + (renglon ? 'renglon' : 'tarjeta') + ' tv-e-' + t.estado.toLowerCase() + (sel ? ' sel' : '')}
-      aria-current={sel || undefined} onClick={abrir} {...(arrastre || {})}>
+    <article className={'tv tv-' + (renglon ? 'renglon' : 'tarjeta') + ' tv-e-' + t.estado.toLowerCase() + (sel ? ' sel' : '') + (abriendo ? ' abriendo' : '')}
+      aria-current={sel || undefined} aria-busy={abriendo || undefined} onClick={abrir} {...(arrastre || {})}>
       {n && <span className="tv-n" aria-label={'Parada ' + n}>{n}</span>}
       <div className="tv-txt">
         {!renglon && <div className="tv-est">{estadoNodo}</div>}
@@ -117,7 +120,9 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
       </div>
       {(acc || (t.mapa && mapa !== false) || extra) && (
         <div className="tv-acc" onClick={(e) => e.stopPropagation()}>
-          {acc && <button type="button" className="tv-btn" onClick={acc.fn}>{acc.texto}</button>}
+          {acc && (abriendo
+            ? <button type="button" className="tv-btn" aria-busy="true" disabled><span className="spinner-btn" aria-hidden="true" />Abriendo</button>
+            : <button type="button" className="tv-btn" onClick={acc.fn}>{acc.texto}</button>)}
           {/* Con palabras: el icono solo se adivina (2026-10-30, decisión del
               usuario). `mapa`: 'icono' donde no cabe el texto, false donde no va. */}
           {t.mapa && mapa !== false && <BotonMapaVisita f={f} variante={mapa === 'icono' ? 'icono' : 'texto'} />}

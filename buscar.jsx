@@ -701,6 +701,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
   }, [S]);
 
   const listo = !cargando && !error;
+  const escalon = useEscalera(cargando);
   const visibles = lista.slice(0, limite);
   const ocultos = Math.max(0, lista.length - limite);
 
@@ -760,7 +761,7 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
                 aria-pressed={S.estados.includes(est)}
                 onClick={() => parcharS({ estados: normEstadosBuscar(toggleEnArr(S.estados, est)) })}>
                 <span className={'bq-dot ' + BQ_EST_DOT[est]} aria-hidden="true" />
-                {BQ_EST_L[est]} <i>{_n0BQ(conteosEstado[est])}</i>
+                {BQ_EST_L[est]} <i>{cargando ? '—' : _n0BQ(conteosEstado[est])}</i>
               </button>
               {est === 'INICIADO' && <span className="bq-sep-v" aria-hidden="true" />}
             </React.Fragment>
@@ -995,12 +996,15 @@ function BuscarScreen({ usuario, onContinuar, onNuevaVisita }) {
             </div>
           )}
 
+          {/* Primera carga sin copia local: la forma de la lista, y desde los
+              3 s qué se espera (propuesta de esperas, 2026-11-04). */}
           {cargando && (
-            <div className="cargando"><div className="spinner"></div>Cargando registros...</div>
+            <div aria-busy="true">
+              <AvisoEspera escalon={escalon} que="los registros" />
+              <Esqueleto tipo="tarjeta" n={4} />
+            </div>
           )}
-          {error && (
-            <div className="card" style={{ color: 'var(--rojo)' }}>Error: {error}</div>
-          )}
+          {error && <ErrorCarga titulo="No se pudieron cargar los registros." detalle={error} onReintentar={() => cargar(true)} />}
           {listo && lista.length === 0 && registrando && (
             <RegistrarRadicadoBQ radicado={claveRadicado(S.q)} idxBarrios={idxBarrios}
               onCancelar={() => setRegistrando(false)} onRegistrado={alRegistrar}
@@ -1852,7 +1856,7 @@ function RegistrarRadicadoBQ({ radicado, idxBarrios, onCancelar, onRegistrado, o
         <div className="rr-ubic rr-ancho" aria-live="polite">
           <span className="rr-lbl">{ubic.estado === 'vereda' ? 'Vereda' : 'Barrio y comuna'}</span>
           {buscando && (
-            <span className="rr-fuente"><span className="rr-girando" aria-hidden="true"></span>Buscando la dirección en catastro…</span>
+            <span className="rr-fuente"><span className="spinner-btn" aria-hidden="true"></span>Buscando la dirección en catastro…</span>
           )}
           {!buscando && !cambiando && ubic.barrio && (
             <>

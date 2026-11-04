@@ -290,7 +290,7 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar,
           {yaTiene ? (
             <p className="au-aviso-linea">Ya tiene cita: {_auDiaCorto(yaTiene.fecha)} · {horaBonitaAudiencias(yaTiene.hora)} · {titleCaseNombre(yaTiene.sustanciador)}</p>
           ) : cupos === null ? (
-            <p className="au-vacio-hoy">Cargando…</p>
+            <div aria-busy="true"><Esqueleto tipo="renglon" n={3} /></div>
           ) : !cupos.length ? (
             <p className="au-vacio-hoy">{sinSenal ? 'Sin señal y sin cupos apartados' : 'Sin cupos libres'}</p>
           ) : cupos.map(function (c) {
@@ -1478,18 +1478,28 @@ function AudienciasScreen({ usuario }) {
   }
   const abrirCita = function (c) { setHoja({ t: 'cita', cita: c }); };
 
+  // Desde los 3 s se dice qué se espera (escalonEspera, utils.js).
+  const escalon = useEscalera(cargando);
+
   // ═ early returns: todos los hooks ya corrieron ═
   const titulo = esInsp ? 'Citaciones' : 'Audiencias';
+  // Mientras carga, la cabecera ya está: antes la pantalla perdía hasta el
+  // título (propuesta de esperas, 2026-11-04).
   if (cargando) {
-    return <div className="au-pantalla"><p className="au-cargando">Cargando audiencias…</p></div>;
+    return (
+      <div className="au-pantalla" aria-busy="true">
+        <header className="au-cab"><h1>{titulo}</h1></header>
+        <AvisoEspera escalon={escalon} que={esInsp ? 'las citaciones' : 'la agenda de audiencias'} />
+        <Esqueleto tipo="renglon" n={6} />
+      </div>
+    );
   }
   if (error) {
     return (
       <div className="au-pantalla">
         <header className="au-cab"><h1>{titulo}</h1></header>
-        <div className="au-vacio"><b>No se pudo cargar</b>{error}
-          <button type="button" className="btn-accion" onClick={function () { cargar(); }}>Reintentar</button>
-        </div>
+        <ErrorCarga titulo={esInsp ? 'No se pudieron cargar las citaciones.' : 'No se pudo cargar la agenda de audiencias.'}
+          detalle={error} onReintentar={function () { cargar(); }} />
       </div>
     );
   }

@@ -5616,7 +5616,24 @@ function fotosParaVisor(fotos) {
   }).filter(function (f) { return f.id; });
 }
 
+// ── Escalera de espera (propuesta de esperas, 2026-11-04) ──────
+// Los mismos peldaños para toda la app. Antes de 0,4 s no se pinta nada (una
+// respuesta rápida no hace parpadear ningún indicador); desde 0,4 s se ve la
+// forma (esqueleto o spinner); desde 3 s se dice qué se espera; desde 10 s,
+// que la señal está lenta. El tope lo pone api.js (20 o 45 s): ahí manda el
+// error de cada pantalla.
+var ESPERA_PELDANOS = { forma: 400, dice: 3000, lenta: 10000 };
+function escalonEspera(ms) {
+  var t = Number(ms) || 0;
+  if (t >= ESPERA_PELDANOS.lenta) return 'lenta';
+  if (t >= ESPERA_PELDANOS.dice) return 'dice';
+  if (t >= ESPERA_PELDANOS.forma) return 'forma';
+  return 'nada';
+}
+
 var _cuUtilsExports = {
+  ESPERA_PELDANOS: ESPERA_PELDANOS,
+  escalonEspera: escalonEspera,
   idFotoDrive: idFotoDrive,
   fotosParaVisor: fotosParaVisor,
   tieneVisitasPropias: tieneVisitasPropias,
