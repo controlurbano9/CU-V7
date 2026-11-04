@@ -324,6 +324,20 @@ window.leerVisitas = function () {
   return Promise.resolve({ datos: agenda.concat(deCitas) });
 };
 
+// «Decretar inspección»: marca el radicado en memoria (la siguiente lectura lo trae).
+const DECRETADAS_QA = {};
+window.decretarInspeccionAudiencias = function (f) {
+  DECRETADAS_QA[f.RADICADO] = '05/04/2027 · ' + ROLES[ROL_QA].usuario;
+  return Promise.resolve({ ok: true });
+};
+const _leerVisitasQA = window.leerVisitas;
+window.leerVisitas = function () {
+  return _leerVisitasQA().then(function (r) {
+    r.datos.forEach(function (f) { if (DECRETADAS_QA[f.RADICADO]) f.INSPECCION_DECRETADA = DECRETADAS_QA[f.RADICADO]; });
+    return r;
+  });
+};
+
 // ── Barra del banco ──
 const ROLES = {
   admin: { usuario: 'DANIEL PEDRAZA', rol: 'ADMIN', cargo: 'Profesional Especializado' },

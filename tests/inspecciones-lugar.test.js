@@ -205,3 +205,16 @@ test('bandejaInspecciones: un renglón por caso, lo más viejo primero', () => {
   assert.deepEqual(b.map(x => x.f.RADICADO), ['20251110870', '20261102233']);
   assert.equal(b[1].quien, 'JUAN SEBASTIAN PINZON');
 });
+
+const { inspeccionesDecretadas } = require('../utils.js');
+
+test('inspeccionesDecretadas: radicados con la marca, por clave', () => {
+  const m = inspeccionesDecretadas([
+    { RADICADO: '20261102233', INSPECCION_DECRETADA: '03/11/2026 · JUAN' },
+    { RADICADO: '20261102233', INSPECCION_DECRETADA: '' },
+    { RADICADO: '20251110870', INSPECCION_DECRETADA: '' },
+    { RADICADO: '', INSPECCION_DECRETADA: '01/11/2026 · VICTOR' },
+  ]);
+  assert.deepEqual(Object.keys(m), ['20261102233']);
+  assert.equal(m['20261102233'], '03/11/2026 · JUAN');
+});

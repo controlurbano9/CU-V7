@@ -340,7 +340,7 @@ function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
 // admin libera una cita (antes estaba a un toque en cada fila). El
 // sustanciador abre de aquí el acta y el informe para preparar la audiencia.
 // Una cita de un día ya pasado no dice «Cita confirmada»: dice que ya pasó.
-function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar }) {
+function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar, yaDecretada }) {
   // Inspección al lugar decretada en la audiencia (2026-11-03): el caso queda
   // en «Por programar» de la Agenda › Inspecciones, sin fecha todavía.
   const [decreto, setDecreto] = useStateAU('');   // '' | 'enviando' | 'ok' | mensaje de error
@@ -378,7 +378,7 @@ function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLib
         {!c.sinVisita && <button type="button" className="btn-neutro" onClick={onVerVisita}>Ver visita</button>}
       </div>
       {onDecretar && !c.sinVisita && (
-        decreto === 'ok'
+        decreto === 'ok' || yaDecretada
           ? <p className="au-decreto ok">Inspección al lugar en «Por programar» de la Agenda</p>
           : <>
               <button type="button" className="btn-neutro au-decreto-btn" disabled={decreto === 'enviando'} onClick={decretar}>
@@ -771,22 +771,25 @@ function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerr
 // (traen sustanciador) y las citas anotadas en FECHA CITACION de la visita
 // (sin sustanciador: no se inventa). Nada se reubica en «hoy».
 // `sinInspector`: en «Mis citas» el inspector es quien mira, no se repite.
-function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, clicableCita, onAbrirCita }) {
+// `decreto(r, fecha)`: el botón «Decretar inspección» de la fila (o null).
+function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, clicableCita, onAbrirCita, decreto }) {
   if (!dias.length) return <p className="au-vacio-hoy">Sin audiencias de hoy en adelante</p>;
-  function fila(r, clave) {
+  function fila(r, clave, fecha) {
     const clicable = r.fuente === 'bloque' ? clicableCita(r.cupo) : !!(r.fila && window.abrirVisitaDetail);
     const Tag = clicable ? 'button' : 'div';
     const alClic = !clicable ? undefined : (r.fuente === 'bloque'
       ? function () { onAbrirCita(r.cupo); }
       : function () { window.abrirVisitaDetail(r.fila); });
     const sub = [r.direccion, sinInspector ? '' : _auInsp(r.inspector), filtroSus ? '' : _auSust(r.sustanciador)];
+    const dec = decreto ? decreto(r, fecha) : null;
     return (
-      <div className="au-row" key={clave}>
+      <div className={'au-row' + (dec ? ' au-row-dec' : '')} key={clave}>
         <span className="hora">{r.hora ? horaBonitaAudiencias(r.hora) : 'Sin hora'}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={alClic}>
           <b>{r.citado || _auCaso(r.caso)}</b>{r.citado ? <> · {_auCaso(r.caso)}</> : null}
           <small>{sub.filter(Boolean).join(' · ')}</small>
         </Tag>
+        {dec && <span className="au-dec">{dec}</span>}
       </div>
     );
   }
@@ -797,7 +800,7 @@ function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, clicableCita, onAb
           <div className={'au-grupo' + (g.fecha === hoyTxt ? ' hoy' : '')} key={g.fecha}>
             <h2>{g.fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(g.fecha))}
               <span className="au-grupo-n"> · {g.citas.length} audiencia{g.citas.length === 1 ? '' : 's'}</span></h2>
-            {g.citas.map(function (r, i) { return fila(r, g.fecha + i); })}
+            {g.citas.map(function (r, i) { return fila(r, g.fecha + i, g.fecha); })}
           </div>
         );
       })}
@@ -1100,7 +1103,9 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
 }
 
 // ── Vista Lista: todas las citas, también las pasadas ──
-function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita }) {
+// `decreto(c)`: el botón «Decretar inspección» de la fila (o null). Sin
+// `decreto` (inspector) la tabla no lleva esa columna.
+function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita, decreto }) {
   const n = rows.length;
   return (
     <div>
@@ -1115,7 +1120,7 @@ function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita }) {
         <div className="au-tabla">
           <table>
             <thead><tr><th>Fecha</th><th>Hora</th><th>Sustanciador</th><th>Exp./Radicado</th>
-              <th>Citado</th><th>Documento</th><th>Inspector</th></tr></thead>
+              <th>Citado</th><th>Documento</th><th>Inspector</th>{decreto && <th>Inspección</th>}</tr></thead>
             <tbody>
               {rows.map(function (c) {
                 // Con teclado se abre desde el botón de la fecha (la fila
@@ -1136,6 +1141,7 @@ function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita }) {
                     <td><b>{c.citado}</b></td>
                     <td>{c.citado ? _auDocTxt(c) : null}</td>
                     <td>{titleCaseNombre(c.reservadoPor || '')}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
+                    {decreto && <td className="au-dec-td">{decreto(c)}</td>}
                   </tr>
                 );
               })}
@@ -1147,15 +1153,26 @@ function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita }) {
             // Clicable = botón (foco y Enter/Espacio); si no, un div.
             const clic = clicableCita(c);
             const Fila = clic ? 'button' : 'div';
+            const cuerpo = (<>
+              <span className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></span>
+              <span className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</span>
+              <span className="l3">{_auCaso(c)} · {_auSust(c.sustanciador)}{c.reservadoPor ? ' · ' + _auInsp(c.reservadoPor) : ''}
+                {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</span>
+            </>);
+            const dec = decreto ? decreto(c) : null;
+            // Con el botón de decretar la fila no puede ser un botón (no se
+            // anidan): el borde va afuera y la parte que abre la cita, adentro.
+            if (dec) return (
+              <div className="au-lrow au-lrow-dec" key={c.idCupo}>
+                <Fila className={'au-lrow-b' + (clic ? ' clic' : '')} type={clic ? 'button' : undefined}
+                  onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
+                <span className="au-dec">{dec}</span>
+              </div>
+            );
             return (
               <Fila className={'au-lrow' + (clic ? ' clic' : '')} key={c.idCupo}
                 type={clic ? 'button' : undefined}
-                onClick={clic ? function () { onAbrirCita(c); } : undefined}>
-                <span className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></span>
-                <span className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</span>
-                <span className="l3">{_auCaso(c)} · {_auSust(c.sustanciador)}{c.reservadoPor ? ' · ' + _auInsp(c.reservadoPor) : ''}
-                  {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</span>
-              </Fila>
+                onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
             );
           })}
         </div>
@@ -1246,6 +1263,10 @@ function AudienciasScreen({ usuario }) {
   const [cuposPedir, setCuposPedir] = useStateAU(null);    // precargados para «Pedir cita»
   const [pendientes, setPendientes] = useStateAU([]);      // citas pedidas sin señal
   const [filas, setFilas] = useStateAU([]);        // BD VISITAS: citas viejas de la Agenda
+  // «Decretar inspección» en la fila de la cita (2026-11-04): la fila en curso
+  // y las recién decretadas (por radicado y por cupo) mientras BD se relee.
+  const [decretando, setDecretando] = useStateAU('');
+  const [recien, setRecien] = useStateAU({});
   // La hoja abierta de la pantalla, una a la vez: {t:'pedir'} | {t:'cita', cita}
   // | {t:'novedades'}. Las hojas de la vista Cupos viven en VistaCupos.
   const [hoja, setHoja] = useStateAU(null);
@@ -1379,6 +1400,8 @@ function AudienciasScreen({ usuario }) {
     return agendaAudienciasDias(filas, (datos && datos.cupos) || [], hoyTxt, opts);
   }, [filas, datos, hoyTxt, soloMias, filtroSus]);
 
+  const decretadas = useMemoAU(function () { return inspeccionesDecretadas(filas); }, [filas]);
+
   // Las del backend (cupos del bloque) + las citas escritas a mano en una visita completada.
   const completadas = useMemoAU(function () {
     return excel ? citacionesCompletadasExcel(excel.lista, filas, hoyTxt) : [];
@@ -1445,11 +1468,57 @@ function AudienciasScreen({ usuario }) {
 
   // «Decretar inspección al lugar» (hoja de la cita): marca el caso para la
   // bandeja «Por programar» de la Agenda.
-  async function decretarInspeccionDe(c) {
-    const filasBD = (await leerVisitas()).datos || [];
-    const f = visitaDeCitaAudiencias(filasBD, c);
+  // También la usa el botón de la fila (`fila`: la visita ya conocida, citas
+  // viejas de la Agenda). Al salir bien, la fila y la hoja dicen «decretada».
+  async function decretarInspeccionDe(c, fila) {
+    const f = fila || visitaDeCitaAudiencias((await leerVisitas()).datos || [], c);
     if (!f) throw new Error('No se encontró la visita ' + _casoTxtAU(c) + '.');
-    await decretarInspeccionAudiencias(f);
+    const r = await decretarInspeccionAudiencias(f);
+    if (r && r.ok === false) throw new Error(r.error || 'No se pudo decretar.');
+    setRecien(function (prev) {
+      const o = Object.assign({}, prev);
+      const k = claveRadicado(f['RADICADO']);
+      if (k) o[k] = true;
+      if (c && c.idCupo) o[c.idCupo] = true;
+      return o;
+    });
+    leerVisitas().then(function (x) { setFilas((x && x.datos) || []); }).catch(function () {});
+  }
+
+  // El botón de la fila de la cita: solo admin y supervisor, solo si la cita
+  // tiene visita y solo de hoy hacia atrás (se decreta en la audiencia).
+  // `r`: cupo (Lista) o renglón de la Agenda ({ fuente, cupo | fila, caso }).
+  function decretoDe(r, fechaTxt) {
+    if (!(esAdmin || esSup)) return null;
+    const cita = r.fuente === 'visita' ? null : (r.fuente === 'bloque' ? r.cupo : r);
+    const fila = r.fuente === 'visita' ? r.fila : null;
+    if (cita && cita.sinVisita) return null;
+    if (!cita && !fila) return null;
+    const d = parsearFecha(fechaTxt || (cita && cita.fecha)), h = parsearFecha(hoyTxt);
+    if (!d || !h || d > h) return null;
+    const rad = claveRadicado(fila ? fila['RADICADO'] : cita.radicado);
+    const k = cita ? cita.idCupo : 'fila-' + fila._idx;
+    if ((rad && (decretadas[rad] || recien[rad])) || recien[k]) {
+      return <span className="au-dec-ok">Inspección decretada</span>;
+    }
+    const caso = cita ? _casoTxtAU(cita) : 'del radicado ' + fila['RADICADO'];
+    async function decretar(e) {
+      e.stopPropagation();
+      const ok = await appConfirm('¿Decretar inspección al lugar ' + caso + '?\n\n' +
+        'El caso queda en «Por programar» de la Agenda › Inspecciones.',
+        { titulo: 'Decretar inspección', btnOk: 'Sí, decretar', btnCancel: 'Cancelar' });
+      if (!ok) return;
+      setDecretando(k);
+      try { await decretarInspeccionDe(cita, fila); } catch (err) {
+        await appAlert('No se pudo decretar la inspección: ' + (err.message || err), { tono: 'error' });
+      }
+      setDecretando('');
+    }
+    return (
+      <button type="button" className="btn-neutro btn-chico au-dec-btn" disabled={!!decretando} onClick={decretar}>
+        {decretando === k ? 'Enviando…' : 'Decretar inspección'}
+      </button>
+    );
   }
 
   async function abrirVisita(c) {
@@ -1575,7 +1644,7 @@ function AudienciasScreen({ usuario }) {
 
           {vista === 'agenda' && (
             <VistaAgenda dias={agendaDias} hoyTxt={hoyTxt} filtroSus={filtroSus} sinInspector={soloMias}
-              clicableCita={clicableCita} onAbrirCita={abrirCita} />
+              clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={(esAdmin || esSup) ? decretoDe : null} />
           )}
           {vista === 'cupos' && (
             <VistaCupos datos={datos} novedades={novedades} esAdmin={esAdmin} hoyTxt={hoyTxt}
@@ -1585,7 +1654,8 @@ function AudienciasScreen({ usuario }) {
           )}
           {vista === 'lista' && (
             <VistaLista rows={listaRows} q={q} setQ={setQ} esAdmin={esAdmin}
-              clicableCita={clicableCita} onAbrirCita={abrirCita} />
+              clicableCita={clicableCita} onAbrirCita={abrirCita}
+              decreto={(esAdmin || esSup) ? function (c) { return decretoDe(c); } : null} />
           )}
         </div>
 
@@ -1614,7 +1684,8 @@ function AudienciasScreen({ usuario }) {
           onCerrar={function () { setHoja(null); }}
           onVerVisita={function () { const c = hoja.cita; setHoja(null); abrirVisita(c); }}
           onLiberar={function () { liberarCupoDe(hoja.cita); }}
-          onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null} />
+          onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null}
+          yaDecretada={!!(recien[hoja.cita.idCupo] || decretadas[claveRadicado(hoja.cita.radicado)])} />
       )}
     </div>
   );

@@ -5366,6 +5366,19 @@ function horaLibreInspeccion(items, dia, hora, inspector, excepto) {
   return ahi.length < 2; // dos a la misma hora, una por inspector (maqueta)
 }
 
+// Radicados (claveRadicado) con la inspección al lugar ya decretada: la fila
+// de la cita en Audiencias dice «Inspección decretada» en lugar del botón.
+//   → { '20261102233': '03/11/2026 · JUAN SEBASTIAN PINZON', … }
+function inspeccionesDecretadas(datos) {
+  var out = {};
+  (datos || []).forEach(function (f) {
+    var marca = String((f && f['INSPECCION_DECRETADA']) || '').trim();
+    var k = marca ? claveRadicado(f['RADICADO']) : '';
+    if (k && !out[k]) out[k] = marca;
+  });
+  return out;
+}
+
 // Bandeja «Por programar»: casos con la inspección decretada en Audiencias
 // (INSPECCION_DECRETADA = 'DD/MM/YYYY · Nombre') que aún no tienen hora. Un
 // renglón por caso, de lo más viejo a lo más nuevo.
@@ -5636,6 +5649,7 @@ var _cuUtilsExports = {
   semanaInspecciones: semanaInspecciones,
   horaLibreInspeccion: horaLibreInspeccion,
   bandejaInspecciones: bandejaInspecciones,
+  inspeccionesDecretadas: inspeccionesDecretadas,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,
