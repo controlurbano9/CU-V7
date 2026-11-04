@@ -180,8 +180,34 @@ function _cerca() {
 }
 
 // ── Sobrepaso de api.js (los globals del bundle) ──
-window.agendaAudiencias = function () { return Promise.resolve({ ok: true, cupos: DATA_QA.cupos, novedades: NOVEDADES_QA, novedadesActivas: DATA_QA.novedadesActivas, ultimaFechaConCupo: DATA_QA.ultimaFechaConCupo }); };
-window.listarNovedadesAudiencias = function () { return Promise.resolve(NOVEDADES_QA); };
+// Con las «Citaciones visitas completadas» y sus marcas de pegada (solo admin),
+// como el backend desde el 2026-11-04 (listaDiariaExcel y listarNovedades ya no existen).
+let PEGADAS_QA = {};
+window.agendaAudiencias = function () {
+  const admin = ROLES[ROL_QA].rol === 'ADMIN';
+  return Promise.resolve({ ok: true, cupos: DATA_QA.cupos, novedades: NOVEDADES_QA,
+    novedadesActivas: DATA_QA.novedadesActivas, ultimaFechaConCupo: DATA_QA.ultimaFechaConCupo,
+    completadas: admin ? _completadasQA() : null, pegadas: admin ? PEGADAS_QA : null });
+};
+window.marcarPegadasExcelAudiencias = function (ids, pegada) {
+  (ids || []).forEach(function (id) {
+    if (pegada === false) delete PEGADAS_QA[id];
+    else PEGADAS_QA[id] = { en: '05/04/2027 10:20', por: ROLES[ROL_QA].usuario };
+  });
+  return Promise.resolve({ ok: true, cambios: (ids || []).length });
+};
+// Reprogramar: la cita pasa al cupo nuevo; el de antes queda libre.
+window.reprogramarCupoAudiencias = function (idCupo, idCupoNuevo, motivo) {
+  const i = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === idCupo; });
+  const j = DATA_QA.cupos.findIndex(function (c) { return c.idCupo === idCupoNuevo; });
+  if (i < 0 || j < 0) return Promise.reject(new Error('El cupo nuevo no existe.'));
+  const viejo = DATA_QA.cupos[i];
+  DATA_QA.cupos[j] = Object.assign({}, viejo, { idCupo: DATA_QA.cupos[j].idCupo, fecha: DATA_QA.cupos[j].fecha,
+    hora: DATA_QA.cupos[j].hora, sustanciador: DATA_QA.cupos[j].sustanciador, cupoAnterior: idCupo,
+    nota: 'Reprogramada por ' + ROLES[ROL_QA].usuario + ' el 05/04/2027 10:30' + (motivo ? ': ' + motivo : '') });
+  DATA_QA.cupos[i] = { idCupo: viejo.idCupo, fecha: viejo.fecha, hora: viejo.hora, sustanciador: viejo.sustanciador, estado: 'LIBRE' };
+  return Promise.resolve({ ok: true, cupo: DATA_QA.cupos[j] });
+};
 window.guardarNovedadAudiencias = function (n) {
   NOVEDADES_QA.push(Object.assign({ id: 'n' + Date.now(), activa: true }, n));
   DATA_QA.novedadesActivas = NOVEDADES_QA.length;
@@ -271,14 +297,14 @@ window.liberarCupoAudiencias = function (idCupo) {
 };
 const _tsv = (r) => [r.radicado, '02/03/2027', 'JUAN PÉREZ', r.citado, r.direccion, r.fecha, r.hora,
   r.sustanciador, r.expediente || 'NUEVO', 'Citación visita Control Urbano · ' + r.reservadoPor].join('\t');
-window.listaDiariaExcelAudiencias = function () {
-  const lista = DATA_QA.cupos.filter(function (c) {
+function _completadasQA() {
+  return DATA_QA.cupos.filter(function (c) {
     return c.estado === 'RESERVADO' && c.visitaCompletada && parsearFecha(c.fecha) >= parsearFecha('05/04/2027');
+  }).map(function (c, i) {
+    return Object.assign({}, c, { filaTSV: _tsv(c), filaExcel: 3400 + i, expediente: c.expediente || 'NUEVO',
+      fechaCompletada: '02/04/2027' });
   });
-  return Promise.resolve({ ok: true, total: lista.length, lista: lista.map(function (c, i) {
-    return Object.assign({}, c, { filaTSV: _tsv(c), filaExcel: 3400 + i });
-  }) });
-};
+}
 // Pedir cita: cupos libres de hoy en adelante y 3 apartados guardados.
 window.listarCuposAudiencias = function (caso) {
   if (SIN_SENAL_QA) return Promise.reject(new Error('Failed to fetch'));

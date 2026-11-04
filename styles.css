@@ -6083,3 +6083,17 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .cola-offline-acc .btn-neutro { flex: 1; min-height: 40px; padding: 0 10px; font-size: var(--fs-1); }
 .cola-offline-acc .cola-offline-borrar { flex: none; color: var(--red); }
 @media (max-width: 899px) { .cola-offline-acc .btn-neutro, .cola-offline-cab { min-height: 44px; } }
+
+/* ── Audiencias 2026-11-04 · lógica y arquitectura ──
+   «Citaciones visitas completadas»: copiar todas, marca de pegada y las ya
+   pegadas aparte (atenuadas como lo completado: se ven, pero ya está hecho). */
+.au-copiar-todas { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.au-copiar-todas svg { flex: none; }
+.au-peg-btn { display: inline-block; margin-top: 2px; padding-left: 0; }
+.au-ver-pegadas { display: block; margin-top: 8px; padding-left: 0; }
+.au-caja .au-row.au-pegada { opacity: .62; }
+.au-caja .au-row.au-pegada:hover, .au-caja .au-row.au-pegada:focus-within { opacity: 1; }
+/* «Reprogramar» de una citación que cae en una novedad: ya movida. */
+.au-afect-ok { color: var(--green-ink); font-weight: 600; }
+.au-aviso li .au-cl-texto { padding: 0 2px; }
+@media (max-width: 899px), (pointer: coarse) { .au-pantalla .au-copiar-todas { min-height: var(--tap); } }
