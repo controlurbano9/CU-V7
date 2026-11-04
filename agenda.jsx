@@ -5,8 +5,14 @@
 //   ⚙ Reglas tiene su día (meta 3, aunque salgan juntos) y cada visita va a
 //   uno solo. El tablero arranca armado con la sugerencia (borrador local);
 //   nada se escribe hasta «Asignar». «Iniciar visita» se hace desde Buscar.
-//   POST obtenerAgenda → { fecha, metaPorInspector, totalPendientes,
-//     comunas: [{ comuna, total, visitas: [candidata] }] }
+//   Las candidatas se calculan en el equipo sobre la copia local de BD
+//   VISITAS (candidatasAgenda, utils.js; réplica de obtenerAgendaDiaria del
+//   backend, tests/agenda-cliente.test.js): { totalPendientes,
+//     comunas: [{ comuna, total, visitas: [candidata] }] }. La pantalla abre
+//   en milisegundos y sin señal (2026-11-04; antes esperaba al servidor, que
+//   lee la base entera y reescribe la hoja PRIORIDAD). POST obtenerAgenda se
+//   sigue pidiendo por detrás, sin esperarlo, solo para que la hoja PRIORIDAD
+//   se mantenga al día como antes.
 //   POST confirmarAgenda { asignaciones: [{ inspector, fechaAsignacion, visitas }] }
 //   La regla vive en utils.js (armarBorradorAgenda, ordenarRuta,
 //   motivoPrioridad…; tests/agenda-inspector.test.js): aquí solo se pinta.
@@ -152,13 +158,12 @@ function AgendaScreen({ usuario }) {
 }
 
 function AgendaVisitasScreen({ usuario, segmento }) {
-  const [data, setData]               = useStateG(null);
   const [cargando, setCargando]       = useStateG(true);
   const [error, setError]             = useStateG('');
   const [dia, setDia]                 = useStateG(_diaInicial);
   const [cfg, setCfg]                 = useStateG(null);       // { visitasPorInspector, inspectoresAgenda }
   const [activos, setActivos]         = useStateG([]);         // usuarios activos (para ⚙ Reglas)
-  const [filasBD, setFilasBD]         = useStateG([]);
+  const [filasBD, setFilasBD]         = useStateG(null);     // null = aún sin la BD
   const [ediciones, setEdiciones]     = useStateG(leerEdicionesAgenda);
   const [filtro, setFiltro]           = useStateG(undefined);  // comuna; undefined = la del borrador; null = todas
   const [verMas, setVerMas]           = useStateG(false);
@@ -177,6 +182,12 @@ function AgendaVisitasScreen({ usuario, segmento }) {
     if (!esAdmin) return;
     cargar();
     cargarMapaComunas().then(setMapa);
+    // La hoja PRIORIDAD (Sheets) la escribe obtenerAgendaDiaria y nadie más:
+    // se pide por detrás para que siga al día, pero la pantalla no la espera
+    // ni usa su respuesta. Sin señal no se pide.
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      gasPost({ accion: 'obtenerAgenda' }).catch(() => {});
+    }
     try {
       if (sessionStorage.getItem(AGENDA_ABRIR_REGLAS_KEY)) {
         sessionStorage.removeItem(AGENDA_ABRIR_REGLAS_KEY);
@@ -185,25 +196,30 @@ function AgendaVisitasScreen({ usuario, segmento }) {
     } catch (e) {}
   }, []);
 
+  // Todo sale de copias locales (BD, reglas, inspectores) y se confirma por
+  // detrás; solo la primera vez en un equipo se espera a la red.
   async function cargar(forzarVisitas) {
     setCargando(true); setError('');
     try {
-      const [d, c, lista, bd] = await Promise.all([
-        gasPost({ accion: 'obtenerAgenda' }),
-        leerConfigAgenda(),
+      const [c, lista, bd] = await Promise.all([
+        leerConfigAgenda({ onActualizado: setCfg }),
         listarInspectoresActivos(),
         leerVisitas(forzarVisitas ? { forzar: true } : undefined),
       ]);
-      setData(d);
       setCfg(c);
       setActivos(lista || []);
       setFilasBD((bd && bd.datos) || []);
     } catch (e) { setError(e.message); }
     setCargando(false);
   }
+  // Lo que traiga la actualización de la BD por detrás re-pinta la agenda.
+  useEffectG(() => suscribirVisitas(() => {
+    leerVisitas().then(r => setFilasBD((r && r.datos) || [])).catch(() => {});
+  }), []);
 
   // ── Derivados ──
-  const meta = (cfg && cfg.visitasPorInspector) || (data && data.metaPorInspector) || 3;
+  const data = useMemoG(() => filasBD ? candidatasAgenda(filasBD, new Date()) : null, [filasBD]);
+  const meta = (cfg && cfg.visitasPorInspector) || 3;
   const inspectores = useMemoG(() => activos
     .map(i => i.nombre)
     .filter(n => esInspectorAgenda(n, cfg && cfg.inspectoresAgenda)), [activos, cfg]);
@@ -216,7 +232,7 @@ function AgendaVisitasScreen({ usuario, segmento }) {
   const diaKey = _ddmmaaaa(dia);
   const ya = useMemoG(() => {
     const r = {};
-    inspectores.forEach(n => { r[n] = visitasDelDia(filasBD, dia, n); });
+    inspectores.forEach(n => { r[n] = visitasDelDia(filasBD || [], dia, n); });
     return r;
   }, [filasBD, diaKey, inspectores]);
 
@@ -334,8 +350,9 @@ function AgendaVisitasScreen({ usuario, segmento }) {
     setAsignando(false);
   }
 
-  // La agenda puede tardar hasta 45 s (api.js): desde los 3 s se dice qué se
-  // espera y desde los 10 s que la señal está lenta.
+  // Solo la primera vez en un equipo (sin copia local de la BD) hay que
+  // esperar a la red: desde los 3 s se dice qué se espera y desde los 10 s
+  // que la señal está lenta.
   const escalon = useEscalera(cargando && !data);
 
   if (!esAdmin) {
@@ -396,16 +413,13 @@ function AgendaVisitasScreen({ usuario, segmento }) {
 
       {cargando && !data && (
         <div aria-busy="true">
-          <AvisoEspera escalon={escalon} que="la agenda" />
+          <AvisoEspera escalon={escalon} que="las visitas" />
           <Esqueleto tipo="bloque" n={3} />
         </div>
       )}
       {/* Sin el error crudo en pantalla (revisión 2026-10-28): queda en el
           title. Es el molde que ErrorCarga lleva a todas las pantallas. */}
       {error && <ErrorCarga titulo="No se pudo cargar la agenda." detalle={error} onReintentar={() => cargar(true)} />}
-      {data && !comunas && !error && (
-        <div className="card">Esta agenda necesita el servidor actualizado. Recarga en unos minutos.</div>
-      )}
 
       {comunas && (
         <>

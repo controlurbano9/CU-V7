@@ -237,6 +237,7 @@ pide hacer algo).
 | **Barra de actividad** | 3 px: papel en el borde de la cabecera negra (celular), tinta arriba de todo (escritorio). Abrir una visita y el ↻ | `BarraActividad` |
 | **El aviso flota** | Abajo, a la altura del «+»: dentro de la página empujaba el contenido al aparecer y al irse, y arriba tapaba los controles de la cabecera | `.aviso-espera` |
 | **Un molde de error** | El de Agenda para todas: frase clara, qué hacer, «Reintentar» en tinte; el error técnico en el `title` | `ErrorCarga` |
+| **Agenda sin esperar al servidor** | Las candidatas se calculan en el equipo sobre la copia local de BD VISITAS (`candidatasAgenda`, réplica de `obtenerAgendaDiaria` con prueba de paridad) y las reglas salen de su copia local: abre en milisegundos y sin señal. `obtenerAgenda` se pide por detrás solo para mantener la hoja PRIORIDAD; asignar lo sigue validando el servidor | `agenda.jsx`, `utils.js` |
 | **Lo que llega, se pinta** | Administración lee equipo, visitas y actividad por separado; cada pestaña espera solo lo suyo y un fallo no tumba las otras. Equipo dice «—» en la última actividad hasta que llega el log | `ADM_REQUIERE` (`admin.jsx`) |
 | **Progreso con cuenta** | La descarga del mapa y del POT sin señal y la cola pendiente van en placa con filete, barra en tinta y la cuenta en palabras; sin emoji, sin sombra, sin botón lleno en ámbar | `.aviso-progreso`, `.cola-offline` |
 
