@@ -1,5 +1,7 @@
 # Corre `npm test` en cada push y PR. Las pruebas del backend se saltan solas:
-# apps_script_unificado.js no está en este repo (tiene claves).
+# apps_script_unificado.js no está en este repo (público): trae IDs de la base
+# de datos. Las claves ya están en las propiedades del script. Para correrlas
+# aquí, ver docs/BACKEND_REPO_PRIVADO.md.
 name: Pruebas
 on: [push, pull_request]
 jobs:

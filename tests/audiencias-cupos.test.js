@@ -42,7 +42,9 @@ function cargarBackend() {
     '_estadoCupoAgenda',
     // «Cupos como lista» (2026-11-03): id del Office Script, plan de agregar,
     // decisión de eliminar.
-    '_idCupoAS', '_claveCupoAS', '_planAgregarCupos', '_decisionEliminarCupo'
+    '_idCupoAS', '_idCupoUnico', '_claveCupoAS', '_planAgregarCupos', '_decisionEliminarCupo',
+    // 2026-11-04: liberar y reprogramar.
+    '_decisionLiberarCupo', '_decisionReprogramarCupo'
   ];
   let codigo = '';
   const mEstado = /var ESTADO_CUPO_RESERVADO = 'RESERVADO';/.exec(src);

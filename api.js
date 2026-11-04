@@ -945,11 +945,6 @@ async function agendaAudiencias(opts) {
   return gasPost(p);
 }
 
-async function listarNovedadesAudiencias() {
-  const d = await gasPost({ accion: 'listarNovedades' });
-  return d.novedades || [];
-}
-
 async function guardarNovedadAudiencias(novedad) {
   return gasPost(Object.assign({ accion: 'guardarNovedad' }, novedad));
 }
@@ -958,14 +953,20 @@ async function desactivarNovedadAudiencias(id) {
   return gasPost({ accion: 'desactivarNovedad', id });
 }
 
-async function listaDiariaExcelAudiencias(desde) {
-  const p = { accion: 'listaDiariaExcel' };
-  if (desde) p.desde = desde;
-  return gasPost(p);
-}
-
 async function liberarCupoAudiencias(idCupo, motivo) {
   return gasPost({ accion: 'liberarCupo', idCupo, motivo: motivo || '' });
+}
+
+// Reprogramar (2026-11-04, solo admin): la cita `idCupo` pasa al cupo
+// `idCupoNuevo` en un solo paso del servidor, bajo un solo lock.
+async function reprogramarCupoAudiencias(idCupo, idCupoNuevo, motivo) {
+  return gasPost({ accion: 'reprogramarCupo', idCupo, idCupoNuevo, motivo: motivo || '' });
+}
+
+// Citaciones pegadas en el Excel del despacho (2026-11-04, solo admin).
+// `ids` = idCupo o 'visita-…'; pegada:false las desmarca.
+async function marcarPegadasExcelAudiencias(ids, pegada) {
+  return gasPost({ accion: 'marcarPegadasExcel', ids: ids || [], pegada: pegada !== false });
 }
 
 // ── «Cupos» como lista (2026-11-03): escrituras del admin sobre la hoja
@@ -997,9 +998,37 @@ async function listarCuposAudiencias(caso) {
 // Cupos apartados para reservar sin señal: se piden al abrir la pestaña con
 // señal y se guardan en el equipo para usarlos en campo.
 const _CLAVE_APARTADOS = 'cu_cupos_apartados_v1';
-async function apartarCuposAudiencias() {
+// Día ('DD/MM/YYYY') en que este equipo apartó por última vez.
+const _CLAVE_APARTADOS_DIA = 'cu_apartados_dia_v1';
+const _APARTADOS_MAX = 3;   // APARTADOS_MAX del backend
+
+// ¿Hay que pedir apartados al servidor? (2026-11-04) Sí si hoy todavía no se
+// pidieron en este equipo o si quedan menos de los 3. apartarCupos toma el lock
+// de todo el script: antes cada inspector lo pedía en cada arranque de la app,
+// aunque ya tuviera los suyos. Pura (tests/audiencias-correcciones.test.js).
+function _hayQueApartarCupos(ultimoDia, hoyTxt, nGuardados) {
+  return ultimoDia !== hoyTxt || nGuardados < _APARTADOS_MAX;
+}
+
+function _hoyTxtApartados() {
+  const d = new Date();
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+// `forzar`: pedirlos aunque ya se hayan pedido hoy.
+async function apartarCuposAudiencias(opciones) {
+  const hoy = _hoyTxtApartados();
+  let ultimo = '';
+  try { ultimo = localStorage.getItem(_CLAVE_APARTADOS_DIA) || ''; } catch (e) {}
+  const guardados = cuposApartadosGuardados();
+  if (!(opciones && opciones.forzar) && !_hayQueApartarCupos(ultimo, hoy, guardados.length)) {
+    return { ok: true, apartados: guardados, sinPedir: true };
+  }
   const r = await gasPost({ accion: 'apartarCupos' });
-  try { localStorage.setItem(_CLAVE_APARTADOS, JSON.stringify(r.apartados || [])); } catch (e) {}
+  try {
+    localStorage.setItem(_CLAVE_APARTADOS, JSON.stringify(r.apartados || []));
+    localStorage.setItem(_CLAVE_APARTADOS_DIA, hoy);
+  } catch (e) {}
   return r;
 }
 function cuposApartadosGuardados() {
@@ -1087,7 +1116,7 @@ async function decretarInspeccionAudiencias(fila) {
 // El prefijo de la copia es _AU_CLAVE_COPIA de audiencias.jsx.
 function _olvidarAudienciasLocales() {
   try {
-    const aBorrar = [_CLAVE_APARTADOS, _CLAVE_CITAS_PENDIENTES];
+    const aBorrar = [_CLAVE_APARTADOS, _CLAVE_APARTADOS_DIA, _CLAVE_CITAS_PENDIENTES];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.indexOf('cu_audiencias_v1_') === 0) aBorrar.push(k);
@@ -2367,8 +2396,9 @@ Object.assign(window, {
   generarPinTemporal, cambiarMiPin, cambiarRol, leerPendientesAdmin, marcarHallazgoRevisado,
   registrarExportacion, cargarXLSX,
   leerConfigAgenda, guardarConfigAgenda,
-  agendaAudiencias, listarNovedadesAudiencias, guardarNovedadAudiencias,
-  desactivarNovedadAudiencias, listaDiariaExcelAudiencias, liberarCupoAudiencias,
+  agendaAudiencias, guardarNovedadAudiencias,
+  desactivarNovedadAudiencias, liberarCupoAudiencias,
+  reprogramarCupoAudiencias, marcarPegadasExcelAudiencias,
   listarCuposAudiencias, apartarCuposAudiencias, cuposApartadosGuardados, reservarCupoAudiencias,
   citasPendientes,
   generarSolicitudVigilancia, generarPdfActaDesdeSheet,

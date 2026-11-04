@@ -10,8 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normNombreAudiencias, horaAudienciasMin, horaBonitaAudiencias,
-  agruparAudienciasPorDia, agruparAudienciasPorSustanciador,
-  proximoDiaAudiencias, filtrarListaAudiencias,
+  filtrarListaAudiencias,
   normOrdenAudiencias, mismoCasoAudiencias, opcionesPedirCita, casosAgendaHoyAudiencias,
   sugerirCasosAudiencias, citaVigenteDelCaso, pedidasHoyAudiencias,
 } = require('../utils.js');
@@ -44,33 +43,6 @@ test('horaAudienciasMin y horaBonitaAudiencias: AM/PM y 24h', () => {
   assert.equal(horaBonitaAudiencias('9:00AM'), '9:00 a. m.');
   assert.equal(horaBonitaAudiencias('2:00PM'), '2:00 p. m.');
   assert.equal(horaBonitaAudiencias('12:00PM'), '12:00 p. m.');
-});
-
-test('agruparAudienciasPorDia: ordena por fecha y hora, agrupa sustanciadores', () => {
-  const dias = agruparAudienciasPorDia([
-    cita({ fecha: '06/04/2027', hora: '2:00PM', sustanciador: 'JUANSE PEREZ' }),
-    cita({ fecha: '05/04/2027', hora: '2:00PM', sustanciador: 'VICTOR QUIROZ' }),
-    cita({ fecha: '05/04/2027', hora: '9:00AM' }),
-    { idCupo: 'x', fecha: '', estado: 'LIBRE' }, // sin fecha, fuera
-  ]);
-  assert.deepEqual(dias.map(d => d.fecha), ['05/04/2027', '06/04/2027']);
-  assert.deepEqual(dias[0].cupos.map(c => c.hora), ['9:00AM', '2:00PM']);
-  const grupos = agruparAudienciasPorSustanciador(dias[0].cupos);
-  assert.deepEqual(grupos.map(g => g.sustanciador), ['PATRICIA LÓPEZ', 'VICTOR QUIROZ']);
-  assert.equal(grupos[0].cupos.length, 1);
-});
-
-test('proximoDiaAudiencias: hoy si tiene cupos; si no, el próximo', () => {
-  const dias = agruparAudienciasPorDia([
-    cita({ fecha: '05/04/2027' }),
-    cita({ fecha: '12/04/2027' }),
-  ]);
-  // Hoy lunes 05/04: ese mismo día.
-  assert.equal(proximoDiaAudiencias(dias, new Date(2027, 3, 5)).fecha, '05/04/2027');
-  // Jueves 08/04 (sin audiencias jue/vie): el próximo día con cupos es el lunes 12.
-  assert.equal(proximoDiaAudiencias(dias, new Date(2027, 3, 8)).fecha, '12/04/2027');
-  // Después del último día: null.
-  assert.equal(proximoDiaAudiencias(dias, new Date(2027, 4, 1)), null);
 });
 
 test('filtrarListaAudiencias: solo citas, de hoy en adelante, búsqueda y estado', () => {
