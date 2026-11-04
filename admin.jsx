@@ -62,10 +62,10 @@ const ADM_FUENTES = {
   vis: { que: 'las visitas',   error: 'No se pudieron cargar las visitas.' },
   log: { que: 'la actividad',  error: 'No se pudo cargar la actividad.' },
 };
-const ADM_REQUIERE = { equipo: ['us', 'vis'], bandeja: ['vis', 'log'], actividad: ['log'] };
+const ADM_REQUIERE = { equipo: ['us', 'vis'], bandeja: ['vis', 'log'], evidencias: ['vis'], actividad: ['log'] };
 
 function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
-  const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
+  const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | evidencias | actividad
   const [usuarios, setUsuarios] = useStateA([]);
   const [visitas, setVisitas]   = useStateA([]);
   const [log, setLog]           = useStateA([]);
@@ -160,6 +160,7 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
           {[
             { k: 'bandeja',   l: <span>Bandeja{nBandeja > 0 && <span className="adm-tab-n">{nBandeja}</span>}</span> },
             { k: 'equipo',    l: 'Equipo' },
+            { k: 'evidencias', l: 'Evidencias' },
             { k: 'actividad', l: 'Actividad' },
           ].map(t => (
             <button key={t.k} role="tab" aria-selected={tab === t.k}
@@ -183,6 +184,8 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
           onQuitarHallazgo={(fh) => setPend(p => p && Object.assign({}, p, {
             hallazgos: p.hallazgos.filter(h => h._filaHoja !== fh) }))} /> :
         tab === 'actividad'  ? <TabActividad log={log} total={logTotal} /> :
+        // Reporte mensual de evidencias (reporte-evidencias.jsx, 2026-11-04).
+        tab === 'evidencias' ? <TabEvidencias visitas={visitas} /> :
         <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} logListo={fuentes.log === 'ok'} conPanel={conPanel}
           yo={usuario.usuario} onAbrirReglas={onAbrirReglasAgenda} onNavegar={onNavegar}
           recargarUsuarios={recargarUsuarios} />
