@@ -4328,6 +4328,12 @@ button.sv-col-head {
 .au-lest.excel { background: var(--green-bg); color: var(--green-ink); }
 .au-lest.pend { background: var(--amber-bg); color: var(--amber); }
 .au-sindoc { color: var(--ink-3); opacity: .75; }
+/* Lista con teclado (2026-11-04): la fila de celular clicable es un botón y en
+   la tabla se abre desde el botón de la fecha. Se ven igual que antes. */
+button.au-lrow { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.au-lrow .l2, .au-lrow .l3 { display: block; }
+.au-tabla-abrir { padding: 0; border: 0; background: none; font: inherit; color: inherit;
+  text-align: left; cursor: pointer; white-space: nowrap; }
 
 /* Días sin audiencias + Pasar al Excel */
 .au-bajo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; align-items: start; max-width: 780px; }

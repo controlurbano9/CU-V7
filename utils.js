@@ -4736,14 +4736,79 @@ function filtrarCuposLista(cupos, opts) {
 // Resumen de una línea: conteos por estado y la última fecha del grupo.
 function resumenCuposLista(cupos) {
   var r = { libres: 0, citados: 0, bloqueados: 0, porApartar: 0, hasta: '' };
+  var hastaD = null;
   (cupos || []).forEach(function (c) {
     if (c.estado === 'RESERVADO') r.citados++;
     else if (c.estado === 'BLOQUEADO') r.bloqueados++;
     else if (c.estado === 'POR_APARTAR') r.porApartar++;
     else r.libres++;
-    if (String(c.fecha) > r.hasta) r.hasta = String(c.fecha);
+    // Por fecha, no por texto: '30/04/2027' > '12/06/2027' como texto.
+    var d = parsearFecha(c.fecha);
+    if (d && (!hastaD || d > hastaD)) { hastaD = d; r.hasta = String(c.fecha); }
   });
   return r;
+}
+
+// Conteo de un día de la lista de cupos, con todos los estados que tenga, en el
+// orden de la lista de estados: '3 libres · 2 bloqueados'. Antes solo contaba
+// libres y citados y un día mixto escondía los bloqueados y los por apartar.
+function resumenDiaCupos(dia) {
+  var n = { LIBRE: 0, POR_APARTAR: 0, RESERVADO: 0, BLOQUEADO: 0 };
+  (dia || []).forEach(function (c) { if (n[c.estado] != null) n[c.estado]++; });
+  var partes = [];
+  if (n.LIBRE) partes.push(n.LIBRE + (n.LIBRE === 1 ? ' libre' : ' libres'));
+  if (n.POR_APARTAR) partes.push(n.POR_APARTAR + ' por apartar');
+  if (n.RESERVADO) partes.push(n.RESERVADO + (n.RESERVADO === 1 ? ' citado' : ' citados'));
+  if (n.BLOQUEADO) partes.push(n.BLOQUEADO + (n.BLOQUEADO === 1 ? ' bloqueado' : ' bloqueados'));
+  return partes.join(' · ');
+}
+
+// ¿Tiene sentido «Bloquear el día»? Solo si queda algún cupo que se pueda pedir
+// (libre o por apartar): un día ya bloqueado o lleno de citados no gana nada.
+function puedeBloquearDiaCupos(dia) {
+  return (dia || []).some(function (c) { return c.estado === 'LIBRE' || c.estado === 'POR_APARTAR'; });
+}
+
+// Lo seleccionado que se ve con los filtros de ahora, en el orden de la lista.
+// Las acciones en lote solo tocan esto: un cupo elegido y luego escondido por
+// un filtro ya no se bloquea ni se elimina sin verlo.
+function seleccionCuposVisible(sel, visibles) {
+  return (visibles || []).filter(function (c) { return !!(sel && sel[c.idCupo]); });
+}
+
+// Horas de «Agregar cupos»: las marcadas ('9:00AM') y, con «Otra hora», la del
+// input time ('14:30' → '2:30PM'). Una «Otra hora» ilegible no suma nada.
+function horasAgregarCupos(marcadas, otra, otraHora) {
+  var out = (marcadas || []).slice();
+  if (otra) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(otraHora || '').trim());
+    if (m && +m[1] < 24 && +m[2] < 60) {
+      var h24 = +m[1];
+      var h = (h24 % 12 || 12) + ':' + m[2] + (h24 < 12 ? 'AM' : 'PM');
+      if (out.indexOf(h) === -1) out.push(h);
+    }
+  }
+  return out;
+}
+
+// Rango máximo de «Agregar cupos» en una sola vez. La vista previa se calcula en
+// cada pulsación: sin tope, tres años eran 4.380 cupos por tecla.
+var MAX_DIAS_AGREGAR_CUPOS = 366;
+
+// Qué le falta a la selección de «Agregar cupos» ('' = está completa). Mismo
+// formato de previsualizarCupos.
+function problemaSeleccionCupos(sel) {
+  sel = sel || {};
+  var d1 = parsearFecha(sel.desde), d2 = parsearFecha(sel.hasta);
+  if (!d1 || !d2) return 'Elige las fechas «Desde» y «Hasta».';
+  if (d2 < d1) return '«Hasta» es anterior a «Desde».';
+  if (Math.round((d2 - d1) / 86400000) + 1 > MAX_DIAS_AGREGAR_CUPOS) {
+    return 'El rango pasa de un año: agrégalos por partes.';
+  }
+  if (!(sel.dias || []).length) return 'Elige al menos un día de la semana.';
+  if (!(sel.horas || []).length) return 'Elige al menos una hora.';
+  if (!(sel.sustanciadores || []).length) return 'Elige al menos un sustanciador.';
+  return '';
 }
 
 // ── «Pedir cita» (TASK 3b, 2026-10-21) ──
@@ -4826,6 +4891,23 @@ function citaVigenteDelCaso(cupos, caso, hoyTxt) {
     return c.estado === 'RESERVADO' && f && (!h || f >= h) && mismoCasoAudiencias(c, caso);
   }).sort(function (a, b) { return parsearFecha(a.fecha) - parsearFecha(b.fecha); });
   return vig[0] || null;
+}
+
+// La visita de BD VISITAS de una cita: primero por ID_VISITA y, si no, el mismo
+// caso por radicado o por N° de orden (mismoCasoAudiencias); entre varias del
+// caso, la última fila. Antes «Ver visita» y «Decretar inspección» solo
+// buscaban por radicado y una cita pedida por N° de orden no encontraba nada.
+function visitaDeCitaAudiencias(filas, cita) {
+  if (!cita) return null;
+  var idv = String(cita.idVisita || '').trim();
+  if (idv) {
+    var porId = (filas || []).filter(function (f) { return String(f['ID_VISITA'] || '').trim() === idv; });
+    if (porId.length) return porId[0];
+  }
+  var caso = { radicado: cita.radicado, ordenPolicia: cita.ordenPolicia };
+  var delCaso = (filas || []).filter(function (f) { return mismoCasoAudiencias(casoDeVisitaAudiencias(f), caso); });
+  if (!delCaso.length) return null;
+  return delCaso.slice().sort(function (a, b) { return (b._idx || 0) - (a._idx || 0); })[0];
 }
 
 // «Pedidas hoy»: lo que reservaron hoy todos los inspectores (RESERVADO_EN
@@ -5573,6 +5655,13 @@ var _cuUtilsExports = {
   previsualizarCupos: previsualizarCupos,
   filtrarCuposLista: filtrarCuposLista,
   resumenCuposLista: resumenCuposLista,
+  resumenDiaCupos: resumenDiaCupos,
+  puedeBloquearDiaCupos: puedeBloquearDiaCupos,
+  seleccionCuposVisible: seleccionCuposVisible,
+  horasAgregarCupos: horasAgregarCupos,
+  MAX_DIAS_AGREGAR_CUPOS: MAX_DIAS_AGREGAR_CUPOS,
+  problemaSeleccionCupos: problemaSeleccionCupos,
+  visitaDeCitaAudiencias: visitaDeCitaAudiencias,
   // Pedir cita (TASK 3b)
   normOrdenAudiencias: normOrdenAudiencias,
   mismoCasoAudiencias: mismoCasoAudiencias,

@@ -1039,6 +1039,31 @@ async function reservarCupoAudiencias(caso, cupo) {
   }
 }
 
+// «Decretar inspección al lugar» desde la cita (2026-11-03): marca la visita
+// para la bandeja «Por programar» de la Agenda › Inspecciones.
+async function decretarInspeccionAudiencias(fila) {
+  const r = await gasPost({ accion: 'decretarInspeccion', fila: fila._idx, radicadoConocido: fila['RADICADO'] });
+  invalidarCache('visitas');
+  return r;
+}
+
+// Lo que Audiencias deja en el equipo: la copia de la agenda por rol (trae
+// nombre y cédula de cada citado), los cupos apartados del inspector y sus
+// citas en cola. Mismo criterio que los borradores y la copia de la BD: no
+// sobrevive al cierre de sesión. Sin esto, en un equipo compartido quedaban
+// las cédulas y otro inspector veía como suyos los apartados del anterior.
+// El prefijo de la copia es _AU_CLAVE_COPIA de audiencias.jsx.
+function _olvidarAudienciasLocales() {
+  try {
+    const aBorrar = [_CLAVE_APARTADOS, _CLAVE_CITAS_PENDIENTES];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('cu_audiencias_v1_') === 0) aBorrar.push(k);
+    }
+    aBorrar.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+  } catch (e) { /* localStorage no disponible */ }
+}
+
 async function registrarLog(usuario, texto) {
   const fecha = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });
   try {
@@ -1957,6 +1982,7 @@ const SESSION = {
     // los borradores, no sobrevive al logout explícito (sí al vencimiento de
     // la sesión, que no pasa por aquí).
     _olvidarVisitasLocales();
+    _olvidarAudienciasLocales();
   },
 };
 

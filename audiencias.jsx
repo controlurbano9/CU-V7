@@ -17,7 +17,13 @@
 const { useState: useStateAU, useEffect: useEffectAU, useMemo: useMemoAU, useRef: useRefAU } = React;
 
 // Hojas de Audiencias con teclado: el foco entra a la hoja al abrir, Escape
-// la cierra y al cerrar vuelve a donde estaba (mismo patrón que la Semana).
+// la cierra, Tab no sale de ella y al cerrar vuelve a donde estaba (mismo
+// patrón que la Semana y que appConfirm).
+// Solo responde la hoja que tiene el foco: con un appConfirm encima (p. ej.
+// «¿Liberar la cita?») el foco está en el diálogo y Escape cierra solo el
+// diálogo. Antes cerraba también la hoja de atrás.
+var _AU_ENFOCABLES = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 function useHojaTecladoAU(onCerrar) {
   const ref = useRefAU(null);
   const cerrarRef = useRefAU(onCerrar);
@@ -26,7 +32,20 @@ function useHojaTecladoAU(onCerrar) {
     const previo = document.activeElement;
     const x = ref.current && ref.current.querySelector('.au-x');
     if (x) x.focus();
-    const onKey = function (e) { if (e.key === 'Escape') cerrarRef.current(); };
+    const onKey = function (e) {
+      const hoja = ref.current;
+      if (!hoja) return;
+      const act = document.activeElement;
+      // El foco en otro diálogo (o en otra hoja): esta no es la de arriba.
+      if (act && act !== document.body && !hoja.contains(act)) return;
+      if (e.key === 'Escape') { cerrarRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const foco = hoja.querySelectorAll(_AU_ENFOCABLES);
+      if (!foco.length) return;
+      const primero = foco[0], ultimo = foco[foco.length - 1];
+      if (e.shiftKey && (act === primero || !hoja.contains(act))) { e.preventDefault(); ultimo.focus(); }
+      else if (!e.shiftKey && (act === ultimo || !hoja.contains(act))) { e.preventDefault(); primero.focus(); }
+    };
     window.addEventListener('keydown', onKey);
     return function () {
       window.removeEventListener('keydown', onKey);
@@ -88,12 +107,6 @@ function _auDocTxt(c) {
   const d = String((c && c.documentoCitado) || '').trim();
   if (d && !/^NO\s*APORT/i.test(d)) return 'C.C. ' + _auDocPuntos(d);
   return <span className="au-sindoc">Sin documento</span>;
-}
-
-function _auMismoRad(a, b) {
-  const da = String(a || '').replace(/\D/g, '');
-  const db = String(b || '').replace(/\D/g, '');
-  return !!(da && db && da === db);
 }
 
 function _auMayus(t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
@@ -306,6 +319,13 @@ function CitaHoja({ cita, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, on
   const [decreto, setDecreto] = useStateAU('');   // '' | 'enviando' | 'ok' | mensaje de error
   const c = cita;
   async function decretar() {
+    // Es una escritura con consecuencias (el caso entra a «Por programar»):
+    // se confirma, como «Liberar cita».
+    const ok = await appConfirm('¿Decretar inspección al lugar para ' +
+      (c.radicado ? 'el radicado ' + c.radicado : 'la orden ' + (c.ordenPolicia || '?')) + '?\n\n' +
+      'El caso queda en «Por programar» de la Agenda › Inspecciones.',
+      { titulo: 'Decretar inspección', btnOk: 'Sí, decretar', btnCancel: 'Cancelar' });
+    if (!ok) return;
     setDecreto('enviando');
     try { await onDecretar(c); setDecreto('ok'); } catch (e) { setDecreto(e.message || 'No se pudo.'); }
   }
@@ -402,27 +422,22 @@ function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }
     ? sustanciadores.map(function (s) { return s.nombre; })
     : Object.keys(susts);
 
-  function seleccion() {
-    const horasSel = Object.keys(horas);
-    if (otra) {
-      const m = /^(\d{1,2}):(\d{2})/.exec(otraHora || '');
-      if (m) {
-        const h24 = +m[1];
-        horasSel.push((h24 % 12 || 12) + ':' + m[2] + (h24 < 12 ? 'AM' : 'PM'));
-      }
-    }
-    return {
-      desde: _auIsoADdmmaaaa(desde),
-      hasta: _auIsoADdmmaaaa(hasta),
-      dias: Object.keys(dias).map(Number),
-      horas: horasSel,
-      sustanciadores: sustElegidos
-    };
-  }
-
-  const prev = previsualizarCupos(existentes, seleccion(), hoy);
-  const incompleto = !desde || !hasta || !Object.keys(dias).length ||
-    !Object.keys(horas).length || !sustElegidos.length;
+  // «Otra hora» cuenta como hora: antes se exigía 9:00 o 2:00 marcada y no se
+  // podía crear un cupo solo a otra hora (horasAgregarCupos, utils.js).
+  const sel = {
+    desde: _auIsoADdmmaaaa(desde),
+    hasta: _auIsoADdmmaaaa(hasta),
+    dias: Object.keys(dias).map(Number),
+    horas: horasAgregarCupos(Object.keys(horas), otra, otraHora),
+    sustanciadores: sustElegidos
+  };
+  const problema = problemaSeleccionCupos(sel);
+  const incompleto = !!problema;
+  // Sin selección válida no se calcula: un rango de años recorría miles de
+  // cupos en cada pulsación.
+  const prev = useMemoAU(function () {
+    return incompleto ? { crear: [], omitidos: [] } : previsualizarCupos(existentes, sel, hoy);
+  }, [existentes, incompleto, sel.desde, sel.hasta, sel.dias.join(), sel.horas.join(), sel.sustanciadores.join()]);
   const porMotivo = {};
   prev.omitidos.forEach(function (o) { porMotivo[o.motivo] = (porMotivo[o.motivo] || 0) + 1; });
 
@@ -508,7 +523,7 @@ function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }
         </div>
         <div className="au-cl-pre">
           {incompleto ? (
-            <p className="au-cl-err">Elige un rango válido, al menos un día, una hora y un sustanciador.</p>
+            <p className="au-cl-err">{problema}</p>
           ) : (
             <p>
               {'Se crean '}<b>{prev.crear.length}</b>{' ' + _auPluralCupo(prev.crear.length)}
@@ -719,6 +734,81 @@ function EliminarCuposHoja({ cupos, onCerrar, onListo }) {
   );
 }
 
+// ── Hoja «Días sin audiencias» (admin y supervisor) ──────────────
+// Componente propio para tener el teclado de las demás hojas (foco, Escape,
+// Tab dentro): como función de render no tenía nada de eso.
+function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, novForm, afectadas,
+  onCerrar, onQuitar, onAbrirForm, onCancelarForm, onGuardar }) {
+  const hojaRef = useHojaTecladoAU(onCerrar);
+  return (
+    <div ref={hojaRef} className="au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Días sin audiencias"
+      onClick={function (e) { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div className="au-hoj au-hoj-nov">
+        <div className="au-hoj-cab">
+          <div className="t"><b>Días sin audiencias</b></div>
+          <button type="button" className="au-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+        </div>
+        {!mias.length && <p className="au-vacio-hoy">Sin novedades.</p>}
+        {mias.map(function (n) {
+          return (
+            <div className="au-nov" key={n.id}>
+              <div className="au-nov-t">
+                <b>{n.sustanciador === 'TODOS' ? 'Todos' : titleCaseNombre(n.sustanciador)}</b> · {n.desde}{n.hasta !== n.desde ? ' – ' + n.hasta : ''} · {n.franja === 'DIA' ? 'Todo el día' : n.franja}
+                <small>{n.motivo}</small>
+              </div>
+              <button type="button" className="au-x" aria-label={'Quitar novedad de ' + n.sustanciador}
+                disabled={ocupado} onClick={function () { onQuitar(n); }}>×</button>
+            </div>
+          );
+        })}
+        {!novForm && <button type="button" className="au-mas" onClick={onAbrirForm}>+ Agregar</button>}
+        {novForm && (
+          <form className="au-form on" onSubmit={onGuardar}>
+            <div className="fila">
+              <div>
+                <label htmlFor="au-nv-sus">Sustanciador</label>
+                {esAdmin ? (
+                  <select id="au-nv-sus" defaultValue="TODOS">
+                    <option value="TODOS">Todos</option>
+                    {sustanciadores.map(function (s) { return <option key={s.norm} value={s.nombre}>{titleCaseNombre(s.nombre)}</option>; })}
+                  </select>
+                ) : <input type="text" defaultValue={usuario.usuario} disabled />}
+              </div>
+              <div>
+                <label htmlFor="au-nv-franja">Franja</label>
+                <select id="au-nv-franja" defaultValue="DIA">
+                  <option value="DIA">Todo el día</option>
+                  <option value="AM">Mañana</option>
+                  <option value="PM">Tarde</option>
+                </select>
+              </div>
+            </div>
+            <div className="fila">
+              <div><label htmlFor="au-nv-desde">Desde</label><input id="au-nv-desde" type="date" required /></div>
+              <div><label htmlFor="au-nv-hasta">Hasta</label><input id="au-nv-hasta" type="date" required /></div>
+            </div>
+            <div><label htmlFor="au-nv-motivo">Motivo</label><input id="au-nv-motivo" type="text" placeholder="Vacaciones, jornada…" /></div>
+            <div className="botones">
+              <button type="button" className="btn-neutro btn-chico" onClick={onCancelarForm}>Cancelar</button>
+              <button type="submit" className="btn-accion btn-chico" disabled={ocupado}>Guardar novedad</button>
+            </div>
+          </form>
+        )}
+        {afectadas && !!afectadas.length && (
+          <div className="au-aviso">
+            <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón cae' : 'ones caen'} en esos días</b>
+            <ul>
+              {afectadas.slice(0, 10).map(function (c) {
+                return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)} · {_auCaso(c)} · {c.citado}</li>;
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Pantalla ────────────────────────────────────────────────────
 function AudienciasScreen({ usuario }) {
   const [datos, setDatos] = useStateAU(null); // {cupos, novedadesActivas, ultimaFechaConCupo}
@@ -828,6 +918,24 @@ function AudienciasScreen({ usuario }) {
     return out.sort(function (a, b) { return a.d - b.d; });
   }, [datos]);
   const hoyTxt = formatearFecha(_auHoy());
+
+  // Lo que muestra la vista Cupos con los filtros de ahora. Solo de hoy en
+  // adelante: la agenda trae también las pasadas para la Lista, y un cupo
+  // pasado ya no se agrega, bloquea ni elimina. La barra de selección actúa
+  // solo sobre lo que está aquí (seleccionCuposVisible).
+  const cuposVisibles = useMemoAU(function () {
+    if (!datos) return [];
+    const hoyCupos = parsearFecha(hoyTxt);
+    return filtrarCuposLista((datos.cupos || []).filter(function (c) {
+      const d = parsearFecha(c.fecha);
+      return !d || !hoyCupos || d >= hoyCupos;
+    }), {
+      mes: fMes === 'todos' ? '' : fMes,
+      estado: fEstado === 'todos' ? '' : fEstado,
+      sustanciador: filtroSus
+    });
+  }, [datos, hoyTxt, fMes, fEstado, filtroSus]);
+
   const sustanciadores = useMemoAU(() => {
     const vistos = {}; const out = [];
     ((datos && datos.cupos) || []).forEach(function (c) {
@@ -840,12 +948,16 @@ function AudienciasScreen({ usuario }) {
     return out;
   }, [datos]);
 
-  // El supervisor entra filtrado por su nombre como sustanciador.
+  // El supervisor entra filtrado por su nombre como sustanciador, una sola
+  // vez: antes el efecto corría con cada recarga (sustanciadores se recalcula)
+  // y si había elegido «Todos» lo devolvía a su nombre.
+  const filtroSupAplicado = useRefAU(false);
   useEffectAU(() => {
-    if (esSup && !filtroSus) {
-      const mio = sustanciadores.find(function (s) { return s.norm === yo; });
-      if (mio) setFiltroSus(mio.norm);
-    }
+    if (!esSup || filtroSupAplicado.current) return;
+    const mio = sustanciadores.find(function (s) { return s.norm === yo; });
+    if (!mio) return;
+    filtroSupAplicado.current = true;
+    if (!filtroSus) setFiltroSus(mio.norm);
   }, [sustanciadores]);
 
   // ── Escrituras ──
@@ -870,25 +982,25 @@ function AudienciasScreen({ usuario }) {
 
   // «Decretar inspección al lugar» (hoja de la cita): marca el caso para la
   // bandeja «Por programar» de la Agenda. La fila es la última visita del caso.
+  // La visita de la cita: por ID_VISITA y, si no, por radicado o N° de orden
+  // (visitaDeCitaAudiencias, utils.js). Antes solo por radicado.
+  function _casoTxtAU(c) {
+    return c.radicado ? 'del radicado ' + c.radicado : (c.ordenPolicia ? 'de la orden ' + c.ordenPolicia : 'de esta cita');
+  }
+
   async function decretarInspeccionDe(c) {
     const filas = (await leerVisitas()).datos || [];
-    const delCaso = filas.filter(function (x) { return _auMismoRad(x['RADICADO'], c.radicado); });
-    const f = delCaso.sort(function (a, b) { return (b._idx || 0) - (a._idx || 0); })[0];
-    if (!f) throw new Error('No se encontró la visita del radicado ' + (c.radicado || '?') + '.');
-    const r = await gasPost({ accion: 'decretarInspeccion', fila: f._idx, radicadoConocido: f['RADICADO'] });
-    if (r && r.ok === false) throw new Error(r.error || 'No se pudo.');
-    invalidarCache('visitas');
+    const f = visitaDeCitaAudiencias(filas, c);
+    if (!f) throw new Error('No se encontró la visita ' + _casoTxtAU(c) + '.');
+    await decretarInspeccionAudiencias(f);
   }
 
   async function abrirCita(c) {
     try {
       const filas = (await leerVisitas()).datos || [];
-      const idv = String(c.idVisita || '').trim();
-      const f = filas.find(function (x) {
-          return idv && String(x['ID_VISITA'] || '').trim() === idv; }) ||
-        filas.find(function (x) { return _auMismoRad(x['RADICADO'], c.radicado); });
+      const f = visitaDeCitaAudiencias(filas, c);
       if (f && window.abrirVisitaDetail) window.abrirVisitaDetail(f);
-      else await appAlert('No se encontró la visita del radicado ' + (c.radicado || '?') +
+      else await appAlert('No se encontró la visita ' + _casoTxtAU(c) +
         '. Puede haberse cerrado como NO COMPETENCIA.');
     } catch (e) {
       await appAlert('No se pudo abrir la visita: ' + (e.message || e), { tono: 'error' });
@@ -1139,11 +1251,6 @@ function AudienciasScreen({ usuario }) {
   }
 
   // ── Vista Cupos (2026-11-03): la lista de la maqueta propuesta-cupos.html ──
-  function estadoCupoTxt(c) {
-    const E = _AU_ESTADOS_CUPOS[c.estado];
-    return E ? E.texto : String(c.estado || '');
-  }
-
   function accionesCupo(c) {
     const btn = function (act, txt) {
       return (
@@ -1199,17 +1306,7 @@ function AudienciasScreen({ usuario }) {
   }
 
   function renderCupos() {
-    // Solo de hoy en adelante: la agenda trae también las pasadas para la Lista,
-    // y un cupo pasado ya no se agrega, bloquea ni elimina.
-    const hoyCupos = parsearFecha(formatearFecha(_auHoy()));
-    const filtrados = filtrarCuposLista((datos.cupos || []).filter(function (c) {
-      const d = parsearFecha(c.fecha);
-      return !d || !hoyCupos || d >= hoyCupos;
-    }), {
-      mes: fMes === 'todos' ? '' : fMes,
-      estado: fEstado === 'todos' ? '' : fEstado,
-      sustanciador: filtroSus
-    });
+    const filtrados = cuposVisibles;
     const res = resumenCuposLista(filtrados);
     const porDia = [];
     const porFecha = {};
@@ -1271,21 +1368,17 @@ function AudienciasScreen({ usuario }) {
         {!filtrados.length && <p className="au-vacio-hoy">No hay cupos con esos filtros.</p>}
         {porDia.map(function (fecha) {
           const dia = porFecha[fecha];
-          const nl = dia.filter(function (c) { return c.estado === 'LIBRE'; }).length;
-          const nc = dia.filter(function (c) { return c.estado === 'RESERVADO'; }).length;
-          const partes = [];
-          if (nl) partes.push(nl + (nl === 1 ? ' libre' : ' libres'));
-          if (nc) partes.push(nc + (nc === 1 ? ' citado' : ' citados'));
-          if (!partes.length) {
-            const t = estadoCupoTxt(dia[0]).toLowerCase();
-            partes.push(dia.length + ' ' + (t === 'por apartar' ? t : t + 's'));
-          }
+          // El conteo dice todos los estados de lo que se ve (antes un día mixto
+          // escondía bloqueados y por apartar). «Bloquear el día» bloquea a todos
+          // los sustanciadores: mira el día entero y no sale si ya no queda
+          // ningún cupo que pedir (resumenDiaCupos, puedeBloquearDiaCupos).
+          const diaEntero = (datos.cupos || []).filter(function (c) { return c.fecha === fecha; });
           return (
             <div className="au-cl-dia" key={fecha}>
               <div className="au-cl-dia-cab">
                 <h2>{_auMayus(_auFechaLarga(fecha))}</h2>
-                <span className="au-cl-dia-n">{partes.join(' · ')}</span>
-                {esAdmin && (
+                <span className="au-cl-dia-n">{resumenDiaCupos(dia)}</span>
+                {esAdmin && puedeBloquearDiaCupos(diaEntero) && (
                   <button type="button" className="au-cl-texto" onClick={function () { setHojaCupo({ t: 'dia', fecha: fecha }); }}>
                     Bloquear el día
                   </button>
@@ -1318,10 +1411,18 @@ function AudienciasScreen({ usuario }) {
                 <th>Citado</th><th>Documento</th><th>Inspector</th></tr></thead>
               <tbody>
                 {listaRows.map(function (c) {
+                  // Con teclado se abre desde el botón de la fecha (la fila
+                  // sigue siendo clicable con el puntero): un <tr> con onClick
+                  // no recibe foco y la cita no se podía abrir sin mouse.
+                  const clic = clicableCita(c);
                   return (
-                    <tr key={c.idCupo} className={clicableCita(c) ? 'clic' : ''}
-                      onClick={clicableCita(c) ? function () { setCitaAbierta(c); } : undefined}>
-                      <td>{c.fecha}</td>
+                    <tr key={c.idCupo} className={clic ? 'clic' : ''}
+                      onClick={clic ? function () { setCitaAbierta(c); } : undefined}>
+                      <td>{clic
+                        ? <button type="button" className="au-tabla-abrir"
+                            aria-label={'Abrir la cita del ' + c.fecha + ', ' + horaBonitaAudiencias(c.hora) + (c.citado ? ', ' + c.citado : '')}
+                            onClick={function (e) { e.stopPropagation(); setCitaAbierta(c); }}>{c.fecha}</button>
+                        : c.fecha}</td>
                       <td>{horaBonitaAudiencias(c.hora)}</td>
                       <td>{titleCaseNombre(c.sustanciador)}</td>
                       <td>{_auCaso(c)}</td>
@@ -1336,14 +1437,18 @@ function AudienciasScreen({ usuario }) {
           </div>
           <div className="au-lrows">
             {listaRows.map(function (c) {
+              // Clicable = botón (foco y Enter/Espacio); si no, un div.
+              const clic = clicableCita(c);
+              const Fila = clic ? 'button' : 'div';
               return (
-                <div className={'au-lrow' + (clicableCita(c) ? ' clic' : '')} key={c.idCupo}
-                  onClick={clicableCita(c) ? function () { setCitaAbierta(c); } : undefined}>
-                  <div className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></div>
-                  <div className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</div>
-                  <div className="l3">{_auCaso(c)} · {titleCaseNombre(c.sustanciador)} · {titleCaseNombre(c.reservadoPor || '')}
-                    {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</div>
-                </div>
+                <Fila className={'au-lrow' + (clic ? ' clic' : '')} key={c.idCupo}
+                  type={clic ? 'button' : undefined}
+                  onClick={clic ? function () { setCitaAbierta(c); } : undefined}>
+                  <span className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></span>
+                  <span className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</span>
+                  <span className="l3">{_auCaso(c)} · {titleCaseNombre(c.sustanciador)} · {titleCaseNombre(c.reservadoPor || '')}
+                    {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</span>
+                </Fila>
               );
             })}
           </div>
@@ -1362,71 +1467,13 @@ function AudienciasScreen({ usuario }) {
       return !esSup || normNombreAudiencias(n.sustanciador) === yo;
     }).sort(function (a, b) { return (parsearFecha(a.desde) || 0) - (parsearFecha(b.desde) || 0); });
     return (
-      <div className="au-ovl au-hoj-ovl on" role="dialog" aria-modal="true" aria-label="Días sin audiencias"
-        onClick={function (e) { if (e.target === e.currentTarget) setNovAbierta(false); }}>
-        <div className="au-hoj au-hoj-nov">
-          <div className="au-hoj-cab">
-            <div className="t"><b>Días sin audiencias</b></div>
-            <button type="button" className="au-x" aria-label="Cerrar" onClick={function () { setNovAbierta(false); }}>×</button>
-          </div>
-          {!mias.length && <p className="au-vacio-hoy">Sin novedades.</p>}
-          {mias.map(function (n) {
-            return (
-              <div className="au-nov" key={n.id}>
-                <div className="au-nov-t">
-                  <b>{n.sustanciador === 'TODOS' ? 'Todos' : titleCaseNombre(n.sustanciador)}</b> · {n.desde}{n.hasta !== n.desde ? ' – ' + n.hasta : ''} · {n.franja === 'DIA' ? 'Todo el día' : n.franja}
-                  <small>{n.motivo}</small>
-                </div>
-                <button type="button" className="au-x" aria-label={'Quitar novedad de ' + n.sustanciador}
-                  disabled={ocupado} onClick={function () { quitarNovedad(n); }}>×</button>
-              </div>
-            );
-          })}
-          {!novForm && <button type="button" className="au-mas" onClick={function () { setNovForm(true); setAfectadas(null); }}>+ Agregar</button>}
-          {novForm && (
-            <form className="au-form on" onSubmit={guardarNovedad}>
-              <div className="fila">
-                <div>
-                  <label htmlFor="au-nv-sus">Sustanciador</label>
-                  {esAdmin ? (
-                    <select id="au-nv-sus" defaultValue="TODOS">
-                      <option value="TODOS">Todos</option>
-                      {sustanciadores.map(function (s) { return <option key={s.norm} value={s.nombre}>{titleCaseNombre(s.nombre)}</option>; })}
-                    </select>
-                  ) : <input type="text" defaultValue={usuario.usuario} disabled />}
-                </div>
-                <div>
-                  <label htmlFor="au-nv-franja">Franja</label>
-                  <select id="au-nv-franja" defaultValue="DIA">
-                    <option value="DIA">Todo el día</option>
-                    <option value="AM">Mañana</option>
-                    <option value="PM">Tarde</option>
-                  </select>
-                </div>
-              </div>
-              <div className="fila">
-                <div><label htmlFor="au-nv-desde">Desde</label><input id="au-nv-desde" type="date" required /></div>
-                <div><label htmlFor="au-nv-hasta">Hasta</label><input id="au-nv-hasta" type="date" required /></div>
-              </div>
-              <div><label htmlFor="au-nv-motivo">Motivo</label><input id="au-nv-motivo" type="text" placeholder="Vacaciones, jornada…" /></div>
-              <div className="botones">
-                <button type="button" className="btn-neutro btn-chico" onClick={function () { setNovForm(false); }}>Cancelar</button>
-                <button type="submit" className="btn-accion btn-chico" disabled={ocupado}>Guardar novedad</button>
-              </div>
-            </form>
-          )}
-          {afectadas && !!afectadas.length && (
-            <div className="au-aviso">
-              <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón cae' : 'ones caen'} en esos días</b>
-              <ul>
-                {afectadas.slice(0, 10).map(function (c) {
-                  return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)} · {_auCaso(c)} · {c.citado}</li>;
-                })}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
+      <NovedadesHoja mias={mias} esAdmin={esAdmin} usuario={usuario} sustanciadores={sustanciadores}
+        ocupado={ocupado} novForm={novForm} afectadas={afectadas}
+        onCerrar={function () { setNovAbierta(false); }}
+        onQuitar={quitarNovedad}
+        onAbrirForm={function () { setNovForm(true); setAfectadas(null); }}
+        onCancelarForm={function () { setNovForm(false); }}
+        onGuardar={guardarNovedad} />
     );
   }
 
@@ -1495,10 +1542,9 @@ function AudienciasScreen({ usuario }) {
 
   // ── Pantalla ──
   const franjaNovTxt = esAdmin || esSup ? (datos.novedadesActivas ? ' · ' + datos.novedadesActivas : '') : '';
-  const selCuposIds = Object.keys(selCupos);
-  const selCuposLista = selCuposIds
-    .map(function (id) { return (datos.cupos || []).find(function (c) { return c.idCupo === id; }); })
-    .filter(Boolean);
+  // Solo lo elegido que se ve: un filtro puede esconder cupos ya marcados.
+  const selCuposLista = vista === 'sem' ? seleccionCuposVisible(selCupos, cuposVisibles) : [];
+  const selCuposIds = selCuposLista.map(function (c) { return c.idCupo; });
   const selCitados = selCuposLista.filter(function (c) { return c.estado === 'RESERVADO'; });
   const hojaCuposLista = hojaCupo && hojaCupo.ids
     ? hojaCupo.ids.map(function (id) { return (datos.cupos || []).find(function (c) { return c.idCupo === id; }); }).filter(Boolean)
