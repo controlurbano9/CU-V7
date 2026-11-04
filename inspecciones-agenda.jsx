@@ -42,6 +42,12 @@ function _iaColor(nombre, inspectores) {
   return k < 0 ? 'var(--ink-4)' : 'var(--it-i' + (k % 4 + 1) + ')';
 }
 function _iaPrimer(n) { return String(n || '').trim().split(/\s+/)[0].toUpperCase(); }
+// 'C 4' / 'Rural' / '' — la comuna dice por qué la tarjeta está (o no) en su día.
+function _iaComuna(f) {
+  if (diaGrupoInspeccion(f) === 5) return 'Rural';
+  const c = claveComunaAgenda(f && f['COMUNA']);
+  return c && c !== 'RURAL' ? 'C ' + c : '';
+}
 
 function InspeccionesAgenda({ usuario, segmento }) {
   // Hooks antes de cualquier early return (React #310).
@@ -57,6 +63,10 @@ function InspeccionesAgenda({ usuario, segmento }) {
   const [error, setError] = useStateIA('');
   const [resaltada, setResaltada] = useStateIA(ir.current ? ir.current.fila : null);
   const [diaM, setDiaM] = useStateIA(0);
+  // «Registrar radicado» (el mismo formulario de Buscar) cuando el caso no está en la base.
+  const [registrando, setRegistrando] = useStateIA(false);
+  const [idxBarrios, setIdxBarrios] = useStateIA(null);
+  const [porElegir, setPorElegir] = useStateIA(''); // radicado recién registrado: se elige al llegar
   const arrastre = useRefIA(null);
 
   async function cargar(forzar) {
@@ -82,6 +92,30 @@ function InspeccionesAgenda({ usuario, segmento }) {
     if (!datos || q.trim().length < 3) return [];
     return (buscarCasos(datos, q).casos || []).filter(c => !c.sinRadicado).slice(0, 6);
   }, [datos, q]);
+
+  const qRad = claveRadicado(q);
+  const noEsta = !!datos && q.trim().length >= 3 && !resultados.length;
+  const puedeRegistrar = noEsta && puedeRegistrarRadicado(q, datos, usuario.rol);
+
+  function abrirRegistro() {
+    setRegistrando(true);
+    if (!idxBarrios && typeof _cargarIdxBarriosBQ === 'function') {
+      _cargarIdxBarriosBQ().then(setIdxBarrios).catch(() => {});
+    }
+  }
+  async function alRegistrar(rad) {
+    setRegistrando(false); setQ('');
+    invalidarCache('visitas');
+    setPorElegir(rad);
+    await cargar(true);
+  }
+
+  // El radicado recién registrado queda elegido para programarle la hora.
+  useEffectIA(() => {
+    if (!porElegir || !datos) return;
+    const f = datos.find(x => claveRadicado(x['RADICADO']) === porElegir);
+    if (f) { setPorElegir(''); elegir(f); }
+  }, [datos, porElegir]);
 
   // El día de hoy en el celular; con caso elegido, su día.
   useEffectIA(() => {
@@ -156,18 +190,37 @@ function InspeccionesAgenda({ usuario, segmento }) {
       fecha: semana.dias[k].fecha, hora: h, nota: '', expediente: '' });
   }
 
+  // Tarjeta: dirección → radicado y expediente completos (rotulados) →
+  // inspector · comuna · aviso de zona. Antes decía «Mauricio · 09-304»
+  // (los 6 últimos del radicado), que no se entendía.
   const tarjeta = (it) => {
     const completa = /^COMPLETAD/.test(it.estado);
     const mover = !completa && !/^INICIAD/.test(it.estado);
+    const rad = String(it.f['RADICADO'] || '').trim();
+    const exp = expedienteDe(it.f);
+    const com = _iaComuna(it.f);
+    const ins = titleCaseNombre(it.inspector).split(' ')[0] || 'Sin inspector';
+    const abrir = () => window.abrirVisitaDetail && window.abrirVisitaDetail(it.f);
     return (
       <div key={it.f._idx} className={'it-tarj' + (it.fueraZona ? ' fuera' : '') + (completa ? ' hecha' : '') +
           (resaltada === it.f._idx ? ' nueva' : '')}
         style={{ '--c': _iaColor(it.inspector, inspectores) }}
+        role="button" tabIndex={0}
+        aria-label={_iaDir(it.f) + ', radicado ' + (rad || 'sin radicado') + ', ' + (exp ? 'expediente ' + exp : 'sin expediente') +
+          ', ' + ins + (com ? ', ' + com : '') + (it.fueraZona ? ', fuera de la zona del día' : '') + (completa ? ', completada' : '')}
         draggable={mover} onDragStart={() => { arrastre.current = { item: it }; }}
-        title={(it.f['RADICADO'] || '') + (it.fueraZona ? ' · fuera de la zona del día' : '')}
-        onClick={() => window.abrirVisitaDetail && window.abrirVisitaDetail(it.f)}>
-        <b>{_iaDir(it.f)}</b>
-        <span><span className="it-q">{titleCaseNombre(it.inspector).split(' ')[0] || 'Sin inspector'}</span> · {String(it.f['RADICADO'] || '').slice(-6)}</span>
+        onClick={abrir} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}>
+        <b className="it-t-dir">{_iaDir(it.f)}</b>
+        <dl className="it-t-ids">
+          <dt>Rad.</dt><dd>{rad || '—'}</dd>
+          <dt>Exp.</dt><dd className={exp ? '' : 'vacio'}>{exp || 'sin expediente'}</dd>
+        </dl>
+        <span className="it-t-pie">
+          <span className="it-q">{ins}</span>
+          {com ? ' · ' + com : ''}
+          {completa ? ' · hecha' : ''}
+        </span>
+        {it.fueraZona && <span className="it-t-fz">Fuera de la zona del día</span>}
       </div>
     );
   };
@@ -220,15 +273,33 @@ function InspeccionesAgenda({ usuario, segmento }) {
             {resultados.map(c => (
               <button key={c.clave} type="button" onClick={() => elegir(c.ultima)}>
                 <b>{_iaDir(c.ultima)}</b>
-                <small>{c.radicado} · {c.ultima['BARRIO/VEREDA'] || ''}{c.ultima['COMUNA'] ? ' · C' + c.ultima['COMUNA'] : ''}</small>
+                <small>Rad. {c.radicado}{expedienteDe(c.ultima) ? ' · Exp. ' + expedienteDe(c.ultima) : ''} · {c.ultima['BARRIO/VEREDA'] || ''}{c.ultima['COMUNA'] ? ' · C' + c.ultima['COMUNA'] : ''}</small>
               </button>
             ))}
           </div>
         )}
-        {q.trim().length >= 3 && !resultados.length && (
-          <p className="it-nota">No está en la app: regístralo en Buscar y vuelve aquí.</p>
+        {noEsta && !registrando && (
+          puedeRegistrar ? (
+            <div className="it-noesta">
+              <p><b>{qRad} no está en la base.</b> Revisa que esté bien escrito; si es una PQR nueva, regístrala aquí y luego elige su hora.</p>
+              <button type="button" className="it-btn" onClick={abrirRegistro}>Registrar {qRad}</button>
+            </div>
+          ) : (
+            <p className="it-nota">
+              {formaRadicadoValida(qRad)
+                ? 'Ningún caso coincide. Si es una PQR nueva, pídele al administrador que la registre.'
+                : 'Ningún caso coincide. Para registrar uno nuevo, escribe su radicado completo (11 dígitos o AAAA-NNNNNN).'}
+            </p>
+          )
         )}
       </div>
+      {registrando && typeof RegistrarRadicadoBQ === 'function' && (
+        <div className="it-registrar">
+          <RegistrarRadicadoBQ radicado={qRad} idxBarrios={idxBarrios}
+            onCancelar={() => setRegistrando(false)} onRegistrado={alRegistrar}
+            onRecargar={() => { setRegistrando(false); invalidarCache('visitas'); cargar(true); }} />
+        </div>
+      )}
 
       {sel && plan && (
         <div className="it-caso">
@@ -255,7 +326,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
               draggable onDragStart={() => { elegir(b.f); arrastre.current = { bandeja: true }; }}>
               <button type="button" className="it-pend-b" onClick={() => elegir(b.f)}>
                 <b>{_iaDir(b.f)}</b>
-                <small>{b.f['RADICADO']}{b.f['COMUNA'] ? ' · C' + b.f['COMUNA'] : ''}</small>
+                <small>Rad. {b.f['RADICADO']}{expedienteDe(b.f) ? ' · Exp. ' + expedienteDe(b.f) : ''}{_iaComuna(b.f) ? ' · ' + _iaComuna(b.f) : ''}</small>
                 <small className="it-hace">Decretada el {b.fecha}{b.quien ? ' · ' + titleCaseNombre(b.quien).split(' ')[0] : ''}</small>
               </button>
               <button type="button" className="it-pend-x" aria-label={'Quitar ' + b.f['RADICADO'] + ' de Por programar'}

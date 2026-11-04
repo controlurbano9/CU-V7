@@ -5820,6 +5820,10 @@ button.tb-det-n { cursor: pointer; }
 .it-res b { display: block; font-weight: 600; }
 .it-res small, .it-nota { font-size: var(--fs-1); color: var(--ink-3); }
 .it-nota { margin: 6px 0 0; }
+.it-noesta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; max-width: 560px; margin-top: 8px; padding: 10px 12px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--line-2); font-size: var(--fs-1); color: var(--ink-3); }
+.it-noesta p { margin: 0; flex: 1 1 260px; }
+.it-noesta b { color: var(--ink); font-weight: 600; }
+.it-registrar { margin-bottom: 14px; max-width: 900px; }
 .it-caso { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--r-card); background: var(--valla-bg); border: 1px solid var(--valla); margin-bottom: 14px; }
 .it-caso b { font-weight: 600; }
 .it-caso small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
@@ -5856,8 +5860,15 @@ button.tb-det-n { cursor: pointer; }
 .it-tarj { position: relative; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--paper); padding: 6px 8px 6px 10px; font-size: var(--fs-1); line-height: 1.3; cursor: pointer; margin-bottom: 4px; }
 .it-tarj[draggable="true"] { cursor: grab; }
 .it-tarj::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--c); }
-.it-tarj b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.it-tarj:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.it-tarj .it-t-dir { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+.it-t-ids { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 6px; margin: 0; }
+.it-t-ids dt { color: var(--ink-3); }
+.it-t-ids dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; color: var(--ink); }
+.it-t-ids dd.vacio { color: var(--ink-4); font-style: italic; }
+.it-t-pie { display: block; margin-top: 3px; color: var(--ink-3); }
 .it-tarj .it-q { color: var(--c); font-weight: 600; }
+.it-t-fz { display: block; margin-top: 2px; color: var(--amber); font-weight: 600; }
 .it-tarj.fuera { border-style: dashed; border-color: var(--ink-4); }
 .it-tarj.hecha { opacity: .62; }
 .it-tarj.nueva { animation: it-llega .5s ease-out; }
