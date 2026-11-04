@@ -218,3 +218,48 @@ test('inspeccionesDecretadas: radicados con la marca, por clave', () => {
   assert.deepEqual(Object.keys(m), ['20261102233']);
   assert.equal(m['20261102233'], '03/11/2026 · JUAN');
 });
+
+// ── Revisión 2026-11-04 ──
+const { claveCasoInspeccion, claveCasoInspeccionCita, inspectorConfirmacionInspeccion } = require('../utils.js');
+
+test('inspeccionesDecretadas: un radicado V2 de texto no marca los demás casos con el mismo texto', () => {
+  const m = inspeccionesDecretadas([
+    { _idx: 5, RADICADO: 'QUEJA VERBAL', INSPECCION_DECRETADA: '03/11/2026 · JUAN' },
+    { _idx: 9, RADICADO: 'QUEJA VERBAL', INSPECCION_DECRETADA: '' },
+  ]);
+  assert.equal(m[claveCasoInspeccion({ _idx: 9, RADICADO: 'QUEJA VERBAL' })], undefined);
+  assert.equal(m[claveCasoInspeccion({ _idx: 5, RADICADO: 'QUEJA VERBAL' })], '03/11/2026 · JUAN');
+});
+
+test('bandejaInspecciones: dos casos V2 distintos y un caso sin radicado (solo orden) salen todos', () => {
+  const b = bandejaInspecciones([
+    { _idx: 5, RADICADO: 'OPERATIVO', INSPECCION_DECRETADA: '03/11/2026 · JUAN' },
+    { _idx: 9, RADICADO: 'OPERATIVO', INSPECCION_DECRETADA: '04/11/2026 · VICTOR' },
+    { _idx: 7, RADICADO: '', 'N° ORDEN DE POLICIA': '2026-09-015', INSPECCION_DECRETADA: '02/11/2026 · JUAN' },
+  ]);
+  assert.deepEqual(b.map(x => x.f._idx), [7, 5, 9]);
+});
+
+test('claveCasoInspeccionCita: la cita pedida por N° de orden (sin radicado) toma la clave de su visita', () => {
+  const filas = [{ _idx: 40, RADICADO: '20261102233', 'N° ORDEN DE POLICIA': '2026-09-031',
+    INSPECCION_DECRETADA: '03/11/2026 · JUAN' }];
+  const cita = { idCupo: 'C1', radicado: '', ordenPolicia: '2026-9-31' };
+  const k = claveCasoInspeccionCita(filas, cita);
+  assert.equal(k, '20261102233');
+  assert.equal(inspeccionesDecretadas(filas)[k], '03/11/2026 · JUAN');
+  // Con radicado de caso, el suyo.
+  assert.equal(claveCasoInspeccionCita([], { radicado: '2026 1102233' }), '20261102233');
+});
+
+test('inspectorConfirmacionInspeccion: el elegido de antes no se cuela si está ocupado a esa hora', () => {
+  const nueva = { modo: 'nueva', fijo: false, inspector: '' };
+  // VICTOR quedó elegido de la confirmación anterior y ya tiene esa hora.
+  assert.equal(inspectorConfirmacionInspeccion(nueva, 'VICTOR', ['MAURICIO']), '');
+  assert.equal(inspectorConfirmacionInspeccion(nueva, 'MAURICIO', ['MAURICIO']), 'MAURICIO');
+  // Propuesto y libre: va el propuesto.
+  assert.equal(inspectorConfirmacionInspeccion({ modo: 'montar', fijo: false, inspector: 'ANA' }, '', ['ANA']), 'ANA');
+  // Fijo o reprogramación con inspector: el que se ve es el que va.
+  assert.equal(inspectorConfirmacionInspeccion({ modo: 'nueva', fijo: true, inspector: 'ANA' }, 'VICTOR', []), 'ANA');
+  assert.equal(inspectorConfirmacionInspeccion({ modo: 'reprogramar', fijo: false, inspector: 'ANA' }, 'VICTOR', ['VICTOR']), 'ANA');
+  assert.equal(inspectorConfirmacionInspeccion(null, 'VICTOR', ['VICTOR']), '');
+});

@@ -45,7 +45,9 @@ function _iaPrimer(n) { return String(n || '').trim().split(/\s+/)[0].toUpperCas
 
 function InspeccionesAgenda({ usuario, segmento }) {
   // Hooks antes de cualquier early return (React #310).
-  const ir = useRefIA(_iaIrPendiente());
+  // La marca se lee una vez (antes se leía, y se borraba, en cada render).
+  const ir = useRefIA(undefined);
+  if (ir.current === undefined) ir.current = _iaIrPendiente();
   const [datos, setDatos] = useStateIA(null);
   const [activos, setActivos] = useStateIA([]);
   const [lunes, setLunes] = useStateIA(() => lunesInspecciones(ir.current && ir.current.fecha ? parsearFecha(ir.current.fecha) : new Date()));
@@ -111,6 +113,19 @@ function InspeccionesAgenda({ usuario, segmento }) {
     if (f) { setPorElegir(''); elegir(f); }
   }, [datos, porElegir]);
 
+  // «Ver en la Agenda» con la Agenda ya abierta: la app no vuelve a montar la
+  // pantalla, así que la marca se toma aquí (app.jsx avisa con este evento).
+  useEffectIA(() => {
+    const alIr = () => {
+      const v = _iaIrPendiente();
+      if (!v) return;
+      if (v.fecha && parsearFecha(v.fecha)) setLunes(lunesInspecciones(parsearFecha(v.fecha)));
+      if (v.fila != null) setResaltada(v.fila);
+    };
+    window.addEventListener('cu-agenda-inspeccion-marca', alIr);
+    return () => window.removeEventListener('cu-agenda-inspeccion-marca', alIr);
+  }, []);
+
   // El día de hoy en el celular; con caso elegido, su día.
   useEffectIA(() => {
     const hoy = new Date().getDay();
@@ -126,7 +141,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
       plan.modo === 'reprogramar' ? (caso || []).find(x => x._idx === plan.fila) : null);
 
   function elegir(f) {
-    setSel(f); setQ(''); setCelda(null); setError('');
+    setSel(f); setQ(''); setCelda(null); setError(''); setElegido('');
     if (!f) return;
     // Si ya tiene inspección viva, el tablero va a su semana.
     const p = inspeccionDelCaso(visitasDelCaso(datos, f), usuario.rol);
@@ -152,7 +167,8 @@ function InspeccionesAgenda({ usuario, segmento }) {
   }
 
   function programar() {
-    const ins = plan.fijo ? plan.inspector : (elegido || plan.inspector);
+    if (ocupado) return;
+    const ins = insConf;
     if (!ins && plan.modo !== 'reprogramar') return;
     enviar({ modo: plan.modo, fila: plan.fila, radicadoConocido: plan.radicado, inspector: ins || '',
       fecha: semana.dias[celda.dia].fecha, hora: celda.hora, nota: '', expediente: '' });
@@ -175,8 +191,9 @@ function InspeccionesAgenda({ usuario, segmento }) {
   // Arrastrar: una tarjeta del tablero (reprograma) o un caso de la bandeja (abre la confirmación).
   function soltar(k, h) {
     const a = arrastre.current; arrastre.current = null;
-    if (!a || pasado(k)) return;
-    if (a.bandeja) { if (libre(k, h)) setCelda({ dia: k, hora: h }); return; }
+    // Ni en un día pasado o festivo, ni con otra programación en curso.
+    if (!a || ocupado || pasado(k) || !esDiaHabil(semana.dias[k].date)) return;
+    if (a.bandeja) { if (libre(k, h)) { setCelda({ dia: k, hora: h }); setElegido(''); } return; }
     const it = a.item;
     if (!horaLibreInspeccion(semana.items, k, h, it.inspector, it.f)) return;
     if (it.dia === k && it.hora === h) return;
@@ -232,6 +249,8 @@ function InspeccionesAgenda({ usuario, segmento }) {
   const d = celda ? semana.dias[celda.dia] : null;
   const libresConf = celda && plan && !plan.fijo
     ? inspectores.filter(n => horaLibreInspeccion(semana.items, celda.dia, celda.hora, n)) : [];
+  // El inspector que se envía es el que se ve (inspectorConfirmacionInspeccion).
+  const insConf = inspectorConfirmacionInspeccion(plan, elegido, libresConf);
 
   return (
     <div className="it">
@@ -380,15 +399,14 @@ function InspeccionesAgenda({ usuario, segmento }) {
           {plan.fijo || (plan.modo === 'reprogramar' && plan.inspector) ? (
             <span>{titleCaseNombre(plan.inspector)}</span>
           ) : (
-            <select aria-label="Inspector" value={elegido || (libresConf.indexOf(plan.inspector) >= 0 ? plan.inspector : '')}
+            <select aria-label="Inspector" value={insConf}
               onChange={e => setElegido(e.target.value)}>
               <option value="">Elegir inspector</option>
               {libresConf.map(n => <option key={n} value={n}>{titleCaseNombre(n)}</option>)}
             </select>
           )}
           {zona && zona !== d.date.getDay() && <span className="it-conf-fz">Fuera de la zona del día</span>}
-          <button type="button" className="it-btn" disabled={ocupado ||
-              (!plan.fijo && plan.modo !== 'reprogramar' && !(elegido || (libresConf.indexOf(plan.inspector) >= 0 && plan.inspector)))}
+          <button type="button" className="it-btn" disabled={ocupado || (!insConf && plan.modo !== 'reprogramar')}
             onClick={programar}>{ocupado ? 'Programando…' : plan.modo === 'reprogramar' ? 'Cambiar' : 'Programar'}</button>
           <button type="button" className="it-btn-txt" onClick={() => setCelda(null)}>Cancelar</button>
         </div>
