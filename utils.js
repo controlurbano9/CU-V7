@@ -4991,6 +4991,17 @@ function audienciasDelDia(filas, cupos, fechaTxt, opts) {
       // Una visita que también tiene cupo ese día sale una sola vez: la del bloque.
       !delBloque.some(function (c) { return _mismaCitaBloqueVisita(c, v.fila); });
   });
+  // Dos filas del mismo caso con la misma cita (p. ej. la visita 1 y la 2 con
+  // la misma FECHA CITACION) son una sola audiencia: queda la fila más nueva
+  // (_idx mayor; sin _idx, la última). Antes salía repetida en la Agenda.
+  viejas = viejas.filter(function (v, i) {
+    var m = horaAudienciasMin(v.hora);
+    return !viejas.some(function (w, j) {
+      if (j === i || horaAudienciasMin(w.hora) !== m || !mismoCasoAudiencias(w.caso, v.caso)) return false;
+      var a = v.fila._idx, b = w.fila._idx;
+      return (a != null && b != null && a !== b) ? b > a : j > i;
+    });
+  });
   return delBloque.map(function (c) {
     return {
       hora: String(c.hora || ''), minutos: horaAudienciasMin(c.hora), citado: c.citado,

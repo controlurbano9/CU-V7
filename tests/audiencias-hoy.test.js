@@ -165,3 +165,16 @@ test('citacionesCompletadasExcel no repite el caso del backend ni suma pasadas o
   ];
   assert.equal(citacionesCompletadasExcel(back, filas, '03/11/2026').length, 1);
 });
+
+test('audienciasDelDia: el mismo caso con la misma cita en dos filas sale una vez (la más nueva)', () => {
+  const filas = [
+    visita({ _idx: 10, CITADO: 'José Correa' }),
+    visita({ _idx: 25, CITADO: 'José Alejandro Correa Montoya' }),
+    // Otro caso a la misma hora sí sale.
+    visita({ _idx: 30, RADICADO: '20272041300', CITADO: 'Otra persona' }),
+    // El mismo caso a otra hora también sale.
+    visita({ _idx: 31, 'FECHA CITACION': '05/04/2027 · 2:00 p. m.', CITADO: 'José tarde' }),
+  ];
+  const r = audienciasDelDia(filas, [], '05/04/2027');
+  assert.deepEqual(r.map(x => x.citado), ['José Alejandro Correa Montoya', 'Otra persona', 'José tarde']);
+});
