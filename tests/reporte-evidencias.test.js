@@ -340,6 +340,24 @@ test('backend: generar de nuevo el mes lo reemplaza (carpeta e historial)', opts
   assert.deepEqual(h.map(x => x[4]), ['R3']);
 });
 
+test('backend: si falla a mitad, lo nuevo va a la papelera y el reporte anterior queda igual', opts, () => {
+  const m = mundo();
+  assert.equal(m.post({ accion: 'generarReporteEvidencias', mes: '2026-10', visitas: m.pedir('R1', 'R2'), ...m.admin }).ok, true);
+  // El registro fotográfico de R3 apunta a un archivo que ya no existe.
+  const bd = m.hojas['BD VISITAS']._v;
+  bd.find(x => x[0] === 'R3')[ENC_BD.indexOf('LINK_REGISTRO_FOTOS')] =
+    'https://docs.google.com/document/d/noexiste1234567890/edit';
+  const r = m.post({ accion: 'generarReporteEvidencias', mes: '2026-10', visitas: m.pedir('R1', 'R3'), ...m.admin });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Registro fotográfico del radicado R3/);
+  assert.match(r.error, /el anterior del mes sigue igual/);
+  const mes = m.carpetaMes('Evidencias Octubre 2026');
+  assert.deepEqual(mes.hijos().map(x => x.nombre), ['CL 50 # 40-10', 'CR 60 - 30-20']);
+  assert.deepEqual(m.hojas.REPORTES_EVIDENCIAS._v.slice(1).map(x => x[4]), ['R1', 'R2']);
+  // La marca de «en curso» se quitó: se puede volver a generar.
+  assert.equal(m.post({ accion: 'generarReporteEvidencias', mes: '2026-10', visitas: m.pedir('R1'), ...m.admin }).ok, true);
+});
+
 test('backend: rechaza visitas no completadas, de otro mes o que no existen', opts, () => {
   const m = mundo();
   let r = m.post({ accion: 'generarReporteEvidencias', mes: '2026-10', visitas: m.pedir('R1', 'INICIADA'), ...m.admin });
