@@ -111,13 +111,26 @@ function InspeccionesAgenda({ usuario, segmento }) {
     if (f) { setPorElegir(''); elegir(f); }
   }, [datos, porElegir]);
 
+  const escalon = useEscalera(!datos && !error);
+
   // El día de hoy en el celular; con caso elegido, su día.
   useEffectIA(() => {
     const hoy = new Date().getDay();
     setDiaM(zona ? zona - 1 : (hoy >= 1 && hoy <= 5 ? hoy - 1 : 0));
   }, [zona, lunes]);
 
-  if (!datos) return <div className="it">{segmento}<p className="it-vacio">{error || 'Cargando…'}</p></div>;
+  // Sin datos todavía: la forma de la lista o el error con «Reintentar»
+  // (propuesta de esperas, 2026-11-04).
+  if (!datos) {
+    return (
+      <div className="it" aria-busy={!error || undefined}>
+        {segmento}
+        {error
+          ? <ErrorCarga titulo="No se pudieron cargar las inspecciones." detalle={error} onReintentar={() => { setError(''); cargar(true); }} />
+          : <><AvisoEspera escalon={escalon} que="las visitas" /><Esqueleto tipo="renglon" n={5} /></>}
+      </div>
+    );
+  }
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const pasado = (k) => semana.dias[k].date < hoy;

@@ -888,14 +888,46 @@ async function marcarHallazgoRevisado(filaHoja, radicado, estado) {
 
 // ── ADMIN: reglas de agenda (hoja CONFIG_AGENDA) ────────────────
 // Solo el backend con rol ADMIN responde; el resto recibe "Acceso restringido".
-async function leerConfigAgenda() {
+// Reglas de la agenda (meta por inspector e inspectores que reciben visitas).
+// Cambian solo desde ⚙ Reglas, así que la última copia se sirve al instante y
+// se confirma por detrás (como listarInspectoresActivos): Agenda ya no espera
+// un viaje al servidor para leer dos valores. `onActualizado(cfg)` avisa si
+// la del servidor era otra. { forzar: true } espera a la red.
+const _LS_CONFIG_AGENDA = 'cu_config_agenda_v1';
+async function _descargarConfigAgenda() {
   const d = await gasPost({ accion: 'leerConfigAgenda' });
-  return d.config || null;
+  const cfg = d.config || null;
+  if (cfg) { try { localStorage.setItem(_LS_CONFIG_AGENDA, JSON.stringify(cfg)); } catch (e) {} }
+  return cfg;
+}
+async function leerConfigAgenda(opts) {
+  if (!(opts && opts.forzar)) {
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(_LS_CONFIG_AGENDA) || 'null'); } catch (e) {}
+    if (local && typeof local === 'object') {
+      const cb = opts && opts.onActualizado;
+      _descargarConfigAgenda().then(cfg => {
+        if (cb && cfg && JSON.stringify(cfg) !== JSON.stringify(local)) cb(cfg);
+      }).catch(() => {});
+      return local;
+    }
+  }
+  return _descargarConfigAgenda();
 }
 
 async function guardarConfigAgenda(config) {
   const r = await gasPost(Object.assign({ accion: 'guardarConfigAgenda' }, config));
   invalidarCache('inspectores'); // el filtro de agenda.jsx depende de esta config
+  // La copia local queda con lo que se acaba de guardar, normalizado como lo
+  // guarda el backend (guardarConfigAgendaBackend: número y nombres en
+  // mayúsculas).
+  if (r && r.ok !== false) {
+    try {
+      localStorage.setItem(_LS_CONFIG_AGENDA, JSON.stringify({
+        visitasPorInspector: parseInt(config.visitasPorInspector, 10),
+        inspectoresAgenda: (config.inspectoresAgenda || []).map(x => String(x || '').trim().toUpperCase()).filter(Boolean) }));
+    } catch (e) {}
+  }
   return r;
 }
 

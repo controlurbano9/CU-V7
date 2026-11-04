@@ -1583,6 +1583,104 @@ function linksRutaMaps(paradas) {
   return tramos;
 }
 
+// ── Candidatas de la agenda, calculadas en el equipo (2026-11-04) ──
+// Réplica de obtenerAgendaDiaria (Apps Script, [SEC:Agenda]) sobre la copia
+// local de BD VISITAS: Agenda abre en milisegundos y sin señal, en vez de
+// esperar a que el servidor lea la base entera y reescriba la hoja PRIORIDAD.
+// Misma regla, mismo orden y misma forma de respuesta:
+//   { fecha, totalPendientes, comunas: [{ comuna, total, visitas: [candidata] }] }
+// Si la regla cambia en el backend, cambia aquí (tests/agenda-cliente.test.js
+// fija los casos). Asignar sigue siendo seguro: confirmarAgendaVisitas revisa
+// en el servidor que cada visita siga pendiente y que su radicado calce.
+var AGENDA_ESTADOS = ['PENDIENTE', 'PQR PENDIENTE', 'PENDIENTES'];
+var AGENDA_COMUNAS_PRIORITARIAS = [2, 3, 4, 5, 8];
+var AGENDA_ANIO_MIN = 2025;
+
+// «8 - Alto» → 8 (extraerBcNum del backend); null si no trae número.
+function _agendaBcNum(raw) {
+  var m = String(raw == null ? '' : raw).trim().match(/^(\d+)\s*[-–]/);
+  if (!m) return null;
+  var n = parseInt(m[1], 10);
+  return n > 0 ? n : null;
+}
+
+// FECHA RADICADO como Date local (parsearFechaVisita + _fechaRadicadoComoDate
+// del backend): DD/MM/YYYY o DD-MM-YYYY, YYYY-MM-DD o YYYY/M/D y el ISO con
+// hora en que llega una celda Date. null si no es una fecha real.
+function _agendaFechaRad(valor) {
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : valor;
+  var s = String(valor == null ? '' : valor).trim();
+  var dia, mes, anio, m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) { dia = +m[1]; mes = +m[2]; anio = +m[3]; }
+  else {
+    m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (!m) return null;
+    dia = +m[3]; mes = +m[2]; anio = +m[1];
+  }
+  var d = new Date(anio, mes - 1, dia);
+  return (d.getMonth() === mes - 1 && d.getDate() === dia) ? d : null;
+}
+
+function _agendaDosDecimales(n) { return Math.round(n * 100) / 100; }
+
+function candidatasAgenda(filas, hoy) {
+  var ahora = hoy instanceof Date ? hoy : new Date();
+  var registros = [];
+  (filas || []).forEach(function (f) {
+    if (!f) return;
+    var estado = String(f['ESTADO VISITA'] || '').trim().toUpperCase();
+    if (estado === 'PENDIENTES') estado = 'PENDIENTE';
+    if (AGENDA_ESTADOS.indexOf(estado) === -1) return;
+    // NO COMPETENCIA fuera de la agenda, sin excepciones (como el backend).
+    if (/NO\s+COMPETENCIA/.test(String(f['ATENCION PQR'] || '').toUpperCase())) return;
+    var comunaRaw = String(f['COMUNA'] || '').trim().toUpperCase();
+    var comuna;
+    if (comunaRaw === 'RURAL') comuna = 'RURAL';
+    else {
+      var n = parseFloat(comunaRaw);
+      if (isNaN(n)) return; // sin comuna no se sugiere
+      comuna = Math.round(n);
+    }
+    var bc = _agendaBcNum(f['PRIORIDAD']);
+    var fecha = _agendaFechaRad(f['FECHA RADICADO']);
+    var dias = fecha ? Math.floor((ahora - fecha) / 86400000) : null;
+    var antScore = fecha ? Math.max(0, Math.min(10, dias / 730 * 10)) : 0;
+    var comunaScore = comuna === 'RURAL' ? 3 : (AGENDA_COMUNAS_PRIORITARIAS.indexOf(comuna) !== -1 ? 10 : 6);
+    var score = _agendaDosDecimales(bc !== null
+      ? 0.50 * bc + 0.30 * antScore + 0.20 * comunaScore
+      : 0.70 * antScore + 0.30 * comunaScore);
+    registros.push({
+      fila: f._idx,
+      radicado: String(f['RADICADO'] || '').replace(/\.0$/, ''),
+      fechaRad: fecha ? _padFecha(fecha.getDate(), fecha.getMonth() + 1, fecha.getFullYear()) : '',
+      anio: fecha ? fecha.getFullYear() : null,
+      direccion: String(f['DIRECCION INFRACCION'] || ''),
+      barrio: String(f['BARRIO/VEREDA'] || ''),
+      comuna: comuna,
+      score: score,
+      prioridad: bc,
+      dias: dias,
+    });
+  });
+  // Orden estable, como el sort de V8 en Apps Script: empates en orden de fila.
+  registros.sort(function (a, b) { return b.score - a.score; });
+  var comunas = [], porComuna = {};
+  registros.forEach(function (r) {
+    if (r.anio === null || r.anio < AGENDA_ANIO_MIN) return;
+    var g = porComuna[r.comuna];
+    if (!g) { g = porComuna[r.comuna] = { comuna: r.comuna, total: 0, visitas: [] }; comunas.push(g); }
+    g.total++;
+    g.visitas.push({ fila: r.fila, radicado: r.radicado, fechaRad: r.fechaRad, direccion: r.direccion,
+      barrio: r.barrio, comuna: r.comuna, score: r.score, prioridad: r.prioridad, dias: r.dias });
+  });
+  var total = comunas.reduce(function (t, g) { return t + g.total; }, 0);
+  return {
+    fecha: _padFecha(ahora.getDate(), ahora.getMonth() + 1, ahora.getFullYear()),
+    totalPendientes: total,
+    comunas: comunas,
+  };
+}
+
 // Comuna como clave comparable: 'RURAL', '5' (de 5, '5', '05', '5.0') o ''.
 // Mismo criterio que obtenerAgendaDiaria del backend.
 function claveComunaAgenda(c) {
@@ -5640,7 +5738,25 @@ function fotosParaVisor(fotos) {
   }).filter(function (f) { return f.id; });
 }
 
+// ── Escalera de espera (propuesta de esperas, 2026-11-04) ──────
+// Los mismos peldaños para toda la app. Antes de 0,4 s no se pinta nada (una
+// respuesta rápida no hace parpadear ningún indicador); desde 0,4 s se ve la
+// forma (esqueleto o spinner); desde 3 s se dice qué se espera; desde 10 s,
+// que la señal está lenta. El tope lo pone api.js (20 o 45 s): ahí manda el
+// error de cada pantalla.
+var ESPERA_PELDANOS = { forma: 400, dice: 3000, lenta: 10000 };
+function escalonEspera(ms) {
+  var t = Number(ms) || 0;
+  if (t >= ESPERA_PELDANOS.lenta) return 'lenta';
+  if (t >= ESPERA_PELDANOS.dice) return 'dice';
+  if (t >= ESPERA_PELDANOS.forma) return 'forma';
+  return 'nada';
+}
+
 var _cuUtilsExports = {
+  candidatasAgenda: candidatasAgenda,
+  ESPERA_PELDANOS: ESPERA_PELDANOS,
+  escalonEspera: escalonEspera,
   idFotoDrive: idFotoDrive,
   fotosParaVisor: fotosParaVisor,
   tieneVisitasPropias: tieneVisitasPropias,

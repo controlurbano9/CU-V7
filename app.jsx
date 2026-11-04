@@ -173,6 +173,19 @@ function _precacheMapTiles(onProgress, onDone, cancelRef) {
   });
 }
 
+// Aviso mientras se abre una visita (irContinuar): desde los 3 s dice qué
+// espera y desde los 10 s ofrece volver a la lista. Marca el body para que las
+// demás tarjetas se apaguen (styles.css, «VALLA DE OBRA · ESPERA»).
+function AvisoAbriendo({ onCancelar }) {
+  const abriendo = useAbriendoVisita();
+  const escalon = useEscalera(abriendo != null);
+  useEffectApp(() => {
+    document.body.classList.toggle('abriendo-visita', abriendo != null);
+    return () => document.body.classList.remove('abriendo-visita');
+  }, [abriendo]);
+  return <AvisoEspera escalon={escalon} que="la última versión de la visita" onCancelar={onCancelar} />;
+}
+
 // Componente flotante discreto que muestra progreso de precarga
 function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaDone, posicion }) {
   if (!progreso && !completado) return null;
@@ -181,32 +194,19 @@ function MapPrecacheIndicator({ progreso, total, completado, etiqueta, etiquetaD
   var right = (posicion && posicion.right != null) ? posicion.right : 16;
   // Arriba, bajo la cabecera, y sin atrapar toques (revisión 2026-10-28): abajo
   // tapaba la acción de la 3.ª tarjeta en el celular y el «Iniciar» de Atención.
-  return React.createElement('div', { role: 'status', style: {
-    position: 'fixed', top: 'calc(var(--header-h, 0px) + ' + top + 'px)', right: right, zIndex: 250,
-    pointerEvents: 'none',
-    background: completado ? 'var(--verde-bg)' : 'var(--superficie)',
-    border: '1px solid ' + (completado ? 'rgba(107,122,58,0.30)' : 'var(--borde-med)'),
-    borderRadius: 10, padding: '8px 14px', fontSize: 13,
-    boxShadow: 'var(--sombra-sm)', maxWidth: 240,
-    transition: 'opacity 0.5s', opacity: 1,
-    display: 'flex', flexDirection: 'column', gap: 4,
-  }},
-    React.createElement('div', { style: { fontWeight: 600, color: completado ? 'var(--verde-dark)' : 'var(--texto)' } },
-      completado
-        ? (etiquetaDone || '✓ Mapa offline listo')
-        : (etiqueta || '📥 Descargando mapa offline…')
-    ),
-    !completado && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-      React.createElement('div', { style: {
-        flex: 1, height: 3, borderRadius: 2, background: 'var(--slate-200)', overflow: 'hidden'
-      }},
-        React.createElement('div', { style: {
-          width: pct + '%', height: '100%', background: 'var(--brand-accent)', borderRadius: 2,
-          transition: 'width 0.3s',
-        }})
-      ),
-      React.createElement('span', { style: { color: 'var(--texto-suave)', whiteSpace: 'nowrap' } }, pct + '%')
-    )
+  // «Progreso con cuenta» de la propuesta de esperas (2026-11-04): placa con
+  // filete, barra en tinta y el porcentaje en palabras; sin emoji ni sombra.
+  return (
+    <div className={'aviso-progreso' + (completado ? ' listo' : '')} role="status"
+      style={{ top: 'calc(var(--header-h, 0px) + ' + top + 'px)', right: right }}>
+      <b>{completado ? (etiquetaDone || 'Mapa listo para usar sin señal') : (etiqueta || 'Descargando el mapa para usar sin señal')}</b>
+      {!completado && (
+        <div className="aviso-progreso-fila">
+          <div className="aviso-progreso-pista"><span style={{ width: pct + '%' }} /></div>
+          <span>{pct} %</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -293,97 +293,57 @@ function OfflineColaBadge() {
 
   if (!count) return null;
 
-  // Items con intentos < MAX se ven amarillos; los atascados, rojos.
-  const colorPrincipal = atascados > 0 ? 'var(--rojo)' : 'var(--cafe)';
-  const bgPrincipal    = atascados > 0 ? 'var(--rojo-bg)' : 'var(--amarillo-bg)';
-  const bordePrincipal = atascados > 0 ? 'var(--rojo)' : 'var(--amarillo)';
-
+  // Placa del sistema (propuesta de esperas, 2026-11-04): filete y tinta; el
+  // rojo solo cuando hay atascados, que es un error que pide hacer algo. Antes:
+  // estilos en línea con alias viejos, sombra y un botón lleno en ámbar.
   return (
-    <div style={{
-      position: 'fixed', top: 60, right: 12, zIndex: 8500,
-      background: bgPrincipal, border: '1px solid ' + bordePrincipal,
-      borderRadius: 10, padding: '8px 12px', fontSize: 13,
-      boxShadow: 'var(--sombra-sm)',
-      maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 6,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+    <div className={'cola-offline' + (atascados > 0 ? ' atascada' : '')}>
+      <button type="button" className="cola-offline-cab" aria-expanded={detalleAbierto}
         onClick={() => setDetalleAbierto(!detalleAbierto)}>
-        <span style={{ display: 'inline-flex', color: colorPrincipal }}>
-          {sincronizando
-            ? <Icon.Refresh size={14} />
-            : <Icon.ArrowUp size={14} />}
+        <span className={'cola-offline-ico' + (sincronizando ? ' icono-girando' : '')} aria-hidden="true">
+          {sincronizando ? <Icon.Refresh size={14} /> : <Icon.ArrowUp size={14} />}
         </span>
-        <span style={{ fontWeight: 600, color: colorPrincipal }}>
+        <span className="cola-offline-tit">
           {count} pendiente{count > 1 ? 's' : ''}
           {atascados > 0 && ' · ' + atascados + ' atascado' + (atascados > 1 ? 's' : '')}
         </span>
-        <span style={{ marginLeft: 'auto', color: colorPrincipal, display: 'inline-flex' }}>
-          {detalleAbierto ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
-        </span>
-      </div>
+        {detalleAbierto ? <Icon.ChevronUp size={14} /> : <Icon.Chevron size={14} />}
+      </button>
       {detalleAbierto && (
         <>
-          <div style={{
-            maxHeight: 220, overflowY: 'auto', fontSize: 13,
-            background: 'var(--superficie)', borderRadius: 6,
-            border: '1px solid rgba(184,135,58,0.30)',
-            padding: 6,
-          }}>
+          <div className="cola-offline-lista">
             {items.map(it => {
               const stuck = (it.intentos || 0) >= OFFLINE_MAX_INTENTOS;
               return (
-                <div key={it.id} style={{
-                  padding: '4px 6px', borderBottom: '1px dashed rgba(184,135,58,0.30)',
-                  display: 'flex', flexDirection: 'column', gap: 2,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                    <span style={{
-                      flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 3,
-                      overflow: 'hidden', color: stuck ? 'var(--rojo)' : 'inherit', fontWeight: stuck ? 600 : 400,
-                    }}>
-                      {stuck && <span style={{ flexShrink: 0, display: 'inline-flex' }}><Icon.Alert size={12} /></span>}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {it.descripcion || it.tipo}
-                      </span>
+                <div key={it.id} className={'cola-offline-item' + (stuck ? ' atascado' : '')}>
+                  <div className="cola-offline-fila">
+                    <span className="cola-offline-desc">
+                      {stuck && <Icon.Alert size={12} />}
+                      <span>{it.descripcion || it.tipo}</span>
                     </span>
                     {it.intentos > 0 && (
-                      <span style={{ color: stuck ? 'var(--rojo)' : 'var(--cafe)', fontSize: 13 }}>
-                        ×{it.intentos}{stuck ? '/' + OFFLINE_MAX_INTENTOS : ''}
-                      </span>
+                      <span className="cola-offline-n">×{it.intentos}{stuck ? '/' + OFFLINE_MAX_INTENTOS : ''}</span>
                     )}
                   </div>
                   {stuck && it.ultimoError && (
-                    <div style={{ fontSize: 13, color: 'var(--rojo)', fontStyle: 'italic',
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                         title={it.ultimoError}>
-                      {it.ultimoError}
-                    </div>
+                    <div className="cola-offline-err" title={it.ultimoError}>{it.ultimoError}</div>
                   )}
                 </div>
               );
             })}
             {items.length === 0 && (
-              <div style={{ color: 'var(--cafe)', textAlign: 'center', padding: 8 }}>
-                Cargando lista...
-              </div>
+              <div aria-busy="true"><span className="esq esq-linea" style={{ width: '80%' }} /><span className="esq esq-linea" style={{ width: '60%' }} /></div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={sincronizarAhora} disabled={sincronizando || !navigator.onLine} style={{
-              flex: 1,
-              background: navigator.onLine ? 'var(--amarillo)' : 'rgba(184,135,58,0.30)',
-              color: 'var(--superficie)', border: 'none', borderRadius: 6,
-              padding: '6px 10px', fontSize: 13, fontWeight: 600,
-              cursor: sincronizando || !navigator.onLine ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit',
-            }}>
-              {sincronizando ? 'Sincronizando…' : (navigator.onLine ? 'Sincronizar ahora' : 'Sin conexión')}
+          <div className="cola-offline-acc">
+            <button type="button" className="btn-neutro" onClick={sincronizarAhora}
+              disabled={sincronizando || !navigator.onLine} aria-busy={sincronizando || undefined}>
+              {sincronizando ? <><span className="spinner-btn" aria-hidden="true" />Sincronizando…</>
+                : (navigator.onLine ? 'Sincronizar ahora' : 'Sin conexión')}
             </button>
             {atascados > 0 && (
-              <button onClick={eliminarAtascados} style={{
-                background: 'var(--rojo)', color: 'var(--superficie)', border: 'none', borderRadius: 6,
-                padding: '6px 10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              }} title="Elimina los items que llevan 5 intentos fallidos (error persistente del servidor)">
+              <button type="button" className="btn-neutro cola-offline-borrar" onClick={eliminarAtascados}
+                title="Elimina los items que llevan 5 intentos fallidos (error persistente del servidor)">
                 Eliminar atascados
               </button>
             )}
@@ -656,6 +616,9 @@ function AppV6() {
   const precacheCancelRef = useRefApp(false);
   const precacheRunningRef = useRefApp(false); // evita doble ejecución
   const abriendoVisitaRef = useRefApp(false);  // evita doble apertura mientras se confirma la fila
+  // La apertura en curso (un objeto por toque): «Cancelar» la suelta y lo que
+  // responda después la red ya no navega.
+  const aperturaRef = useRefApp(null);
   useEffectApp(() => {
     if (!usuario) return;
     // No repetir si ya se completó antes en este navegador
@@ -791,14 +754,35 @@ function AppV6() {
   // Las listas pueden venir de la copia local (IndexedDB) mientras la red
   // confirma: obtenerFilaVigente() entrega la fila de BD al día para que el
   // formulario no abra con datos viejos.
+  // Mientras tanto la tarjeta tocada dice «Abriendo» y corre la barra de
+  // actividad (antes: hasta 12 s sin ninguna respuesta; propuesta de esperas
+  // 2026-11-04). A los 3 s AvisoAbriendo dice qué espera y a los 10 s deja
+  // cancelar.
   async function irContinuar(fila, datos) {
     if (abriendoVisitaRef.current) return;
     abriendoVisitaRef.current = true;
+    const apertura = {};
+    aperturaRef.current = apertura;
+    marcarAbriendoVisita(fila);
+    const terminar = iniciarActividad();
     try {
       const vigente = (typeof obtenerFilaVigente === 'function') ? await obtenerFilaVigente(fila, datos) : datos;
+      if (aperturaRef.current !== apertura) return; // la cancelaron
       setContextoNueva({ fila, datos: vigente });
       navegar('nueva-visita');
-    } finally { abriendoVisitaRef.current = false; }
+    } finally {
+      terminar();
+      if (aperturaRef.current === apertura) {
+        aperturaRef.current = null;
+        abriendoVisitaRef.current = false;
+        marcarAbriendoVisita(null);
+      }
+    }
+  }
+  function cancelarApertura() {
+    aperturaRef.current = null;
+    abriendoVisitaRef.current = false;
+    marcarAbriendoVisita(null);
   }
 
   // "+ Nueva visita" desde la cabecera de un radicado en Buscar: abre el
@@ -850,6 +834,8 @@ function AppV6() {
     <div id="app-principal" style={{ display: 'block' }}>
       <OfflineBanner />
       <OfflineColaBadge />
+      <BarraActividad />
+      <AvisoAbriendo onCancelar={cancelarApertura} />
       <div id="app-wrapper">
         {/* ── HEADER (solo <900; en escritorio todo esto vive en la barra
             lateral) ── Un renglón (decisión 6 de la revisión de arquitectura):
@@ -1039,8 +1025,8 @@ function AppV6() {
         progreso={dataPrecache === 'done' ? 0 : dataPrecache.progreso}
         total={dataPrecache === 'done' ? 0 : dataPrecache.total}
         completado={dataPrecache === 'done'}
-        etiqueta="📥 Descargando POT + catastro…"
-        etiquetaDone="✓ Datos offline listos"
+        etiqueta="Descargando POT y catastro para usar sin señal"
+        etiquetaDone="POT y catastro listos para usar sin señal"
         posicion={{ top: 60, right: 16 }} />}
     </div>
   );
@@ -1067,7 +1053,9 @@ function ActualizarDatos({ ancho, soloIcono }) {
   async function actualizar() {
     if (girando) return;
     setGirando(true);
+    const terminar = iniciarActividad();
     try { await leerVisitas({ forzar: true }); } catch (e) { /* el fallo lo registra api.js y se pinta abajo */ }
+    terminar();
     setGirando(false);
   }
   const ts = ultimaDescargaVisitas();

@@ -157,6 +157,8 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
   const mesActualTxt = mesNombre(hoyR);
   const mesAnteriorTxt = mesNombre(new Date(hoyR.getFullYear(), hoyR.getMonth() - 1, 1));
   const num = n => (cargando ? '—' : n);
+  // Primera carga sin copia local: desde los 3 s se dice qué se espera.
+  const escalon = useEscalera(cargando);
   const porCompletar = stats.asignadas + stats.iniciadas;
 
   return (
@@ -193,11 +195,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
         </div>
       </div>
 
-      {error && (
-        <div className="card" style={{ color: 'var(--rojo)', fontSize: 13, marginBottom: 12 }}>
-          {error} · <button onClick={() => cargar(true)} style={{ background: 'none', border: 'none', color: 'var(--brand-accent)', cursor: 'pointer', textDecoration: 'underline' }}>Reintentar</button>
-        </div>
-      )}
+      {error && <ErrorCarga titulo="No se pudieron cargar las visitas." detalle={error} onReintentar={() => cargar(true)} />}
 
       {/* ── Barra del área de trabajo: semana visible a la izquierda y filtro
           de inspector a la derecha. Va encima de la Semana y de Atención
@@ -231,23 +229,22 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           registrar no es visitar, el inspector puede registrar al día
           siguiente, y reubicarla en hoy sería reagendarla. ── */}
       <div className="home-sem">
-        {cargando && <div className="cargando"><div className="spinner"></div>Cargando...</div>}
-        {!cargando && (
-          <SemanaVisitas
-            datos={datos}
-            esAdmin={veTodo}
-            miNombre={miNombre}
-            inspectores={inspectores}
-            onAbrir={onContinuar}
-            onReasignar={usuario.rol === 'ADMIN' ? reasignarDesdeSemana : undefined}
-            inspector={inspector}
-            onInspector={setInspector}
-            offset={offsetSemana}
-            onOffset={setOffsetSemana}
-            onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
-            enAtencion={enAtencion}
-          />
-        )}
+        <AvisoEspera escalon={escalon} que="las visitas" />
+        <SemanaVisitas
+          cargando={cargando}
+          datos={datos}
+          esAdmin={veTodo}
+          miNombre={miNombre}
+          inspectores={inspectores}
+          onAbrir={onContinuar}
+          onReasignar={usuario.rol === 'ADMIN' ? reasignarDesdeSemana : undefined}
+          inspector={inspector}
+          onInspector={setInspector}
+          offset={offsetSemana}
+          onOffset={setOffsetSemana}
+          onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
+          enAtencion={enAtencion}
+        />
       </div>
 
       {/* ── Atención (decisión 2 de la revisión de arquitectura): una sola

@@ -221,11 +221,35 @@ medidas en los bancos a 375/390, 1366/1440 y 1920:
 | **Riel del admin** | ≥1200 a la derecha; más angosto, **arriba** y solo en Agenda (copiar al Excel es su tarea del día) | `.au-riel` |
 | **Cita pasada** | Dice «Audiencia pasada» en neutro, no «✓ Cita confirmada» en verde | `.au-pconf.pasada` |
 
+## 8d. Esperas (2026-11-04)
+
+Propuesta de estados de carga aprobada por el usuario (barrido animado; peldaños y cascarón decididos
+por Claude). Las piezas viven en `espera.jsx` y en el bloque «VALLA DE OBRA · ESPERA» al final de
+`styles.css`. Ninguna usa amarillo (esperar no es lo activo ni lo elegido) ni rojo (es del error que
+pide hacer algo).
+
+| Regla | Qué quiere decir | Dónde |
+|---|---|---|
+| **Nunca en blanco** | `index.html` trae un cascarón estático dentro de `#root`: cabecera negra, la forma de la primera pantalla del rol guardado (Mis visitas o Inicio) y las pestañas; sin sesión, el fondo de tinta del Login. React lo reemplaza al montar | `#cu-cascaron`, `.casc-*` |
+| **La forma antes que el dato** | Esqueletos que calcan la tarjeta `.tv`, la placa (en blanco con filete: el amarillo llega con la visita), el renglón de la Semana y los bloques de Administración y Agenda. Cabecera, chips y filtros se pintan desde el principio; los conteos esperan con «—». Barrido de 1,6 s; quieto con movimiento reducido | `Esqueleto`, `.esq` |
+| **Escalera** | 0–0,4 s nada (la copia local responde en milisegundos); desde 0,4 s el esqueleto; desde 3 s el aviso dice qué espera; desde 10 s, «La señal está lenta». El tope es el de `api.js` (20 o 45 s) y ahí manda el error | `escalonEspera` (`utils.js`), `useEscalera` |
+| **Cada toque responde** | Abrir una visita: la tarjeta lleva filete interior de tinta y «Abriendo» en su botón, las demás se apagan, corre la barra de actividad; a los 10 s, «Cancelar» vuelve a la lista | `irContinuar` (`app.jsx`), `.tv.abriendo` |
+| **Barra de actividad** | 3 px: papel en el borde de la cabecera negra (celular), tinta arriba de todo (escritorio). Abrir una visita y el ↻ | `BarraActividad` |
+| **El aviso flota** | Abajo, a la altura del «+»: dentro de la página empujaba el contenido al aparecer y al irse, y arriba tapaba los controles de la cabecera | `.aviso-espera` |
+| **Un molde de error** | El de Agenda para todas: frase clara, qué hacer, «Reintentar» en tinte; el error técnico en el `title` | `ErrorCarga` |
+| **Agenda sin esperar al servidor** | Las candidatas se calculan en el equipo sobre la copia local de BD VISITAS (`candidatasAgenda`, réplica de `obtenerAgendaDiaria` con prueba de paridad) y las reglas salen de su copia local: abre en milisegundos y sin señal. `obtenerAgenda` se pide por detrás solo para mantener la hoja PRIORIDAD; asignar lo sigue validando el servidor | `agenda.jsx`, `utils.js` |
+| **Lo que llega, se pinta** | Administración lee equipo, visitas y actividad por separado; cada pestaña espera solo lo suyo y un fallo no tumba las otras. Equipo dice «—» en la última actividad hasta que llega el log | `ADM_REQUIERE` (`admin.jsx`) |
+| **Progreso con cuenta** | La descarga del mapa y del POT sin señal y la cola pendiente van en placa con filete, barra en tinta y la cuenta en palabras; sin emoji, sin sombra, sin botón lleno en ámbar | `.aviso-progreso`, `.cola-offline` |
+
+Se fueron `.cargando` + `.spinner` (26 px al centro), `.ag-estado`, `.au-cargando`, `.it-vacio` y
+`.rr-girando` (con su `@keyframes` duplicado). Queda `.spinner-btn` para los botones ocupados.
+
 ## 9. Movimiento
 
 Las transiciones existentes son **cortas (0,08–0,35 s)** y solo donde comunican estado: menús,
 hoja del informe, sello (`INFORME-valla-revision-final.md:99-104`). Sin animaciones nuevas en el
-rediseño. El bloque global `@media (prefers-reduced-motion: reduce)` en `styles.css:2231-2237`
+rediseño. Las esperas (§8d) suman dos que dicen «sigo trabajando»: el barrido del esqueleto (1,6 s;
+se detiene con movimiento reducido) y la barra de actividad (queda quieta y llena). El bloque global `@media (prefers-reduced-motion: reduce)` en `styles.css:2231-2237`
 (anotado en `:2228-2230`) reduce animaciones y transiciones a 0,01 ms — las anula sin romper
 las que comunican estado. Requisito de `PRODUCT.md:69`.
 
