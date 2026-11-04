@@ -158,7 +158,7 @@ const _ACCIONES_SOLO_LECTURA = {
   leerHoja: true, listarInspectoresActivos: true, login: true,
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
-  linksPdfReiterados: true, leerPendientesAdmin: true,
+  linksPdfReiterados: true, leerPendientesAdmin: true, leerReportesEvidencias: true,
   // Audiencias (TASK 3a): agenda completa y novedades se pueden repetir.
   agendaAudiencias: true, listarNovedades: true, listarCupos: true,
 };
@@ -884,6 +884,25 @@ async function cargarXLSX() {
 
 async function marcarHallazgoRevisado(filaHoja, radicado, estado) {
   return gasPost({ accion: 'marcarHallazgoRevisado', filaHoja, radicado, estado });
+}
+
+// ── ADMIN: reporte mensual de evidencias ([SEC:ReporteEvidencias]) ──
+// Historial: filas de la hoja REPORTES_EVIDENCIAS (una por visita reportada).
+async function leerReportesEvidencias() {
+  const d = await gasPost({ accion: 'leerReportesEvidencias' });
+  return d.filas || [];
+}
+
+// Crea (o reemplaza) la carpeta del mes en Drive con una subcarpeta por
+// visita —nombre = dirección— con el acta y el registro fotográfico en PDF.
+// `visitas` en el orden del reporte: [{ idVisita, fila, radicado }].
+// Escritura con requestId (gasPost): un reintento por el 404 de /macros/echo
+// devuelve el mismo resultado en vez de generar dos veces.
+async function generarReporteEvidencias(mes, visitas) {
+  const r = await gasPost({ accion: 'generarReporteEvidencias', mes, visitas });
+  // Si un acta no tenía PDF, el backend lo genera y llena LINK_PDF_ACTA.
+  invalidarCache('visitas');
+  return r;
 }
 
 // ── ADMIN: reglas de agenda (hoja CONFIG_AGENDA) ────────────────
@@ -2333,6 +2352,7 @@ Object.assign(window, {
   login, listarInspectoresActivos, listarUsuariosAdmin,
   toggleActivo, registrarLog, leerLogAuditoria,
   generarPinTemporal, cambiarMiPin, cambiarRol, leerPendientesAdmin, marcarHallazgoRevisado,
+  leerReportesEvidencias, generarReporteEvidencias,
   registrarExportacion, cargarXLSX,
   leerConfigAgenda, guardarConfigAgenda,
   agendaAudiencias, listarNovedadesAudiencias, guardarNovedadAudiencias,

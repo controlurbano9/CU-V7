@@ -57,7 +57,7 @@ function useAnchoPanelAdm() {
 // onAbrirReglasAgenda (app.jsx): lleva a la Agenda con ⚙ Reglas abierto.
 // onNavegar (app.jsx): para abrir Buscar con el filtro de una persona.
 function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
-  const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | actividad
+  const [tab, setTab]         = useStateA('equipo');   // equipo | bandeja | evidencias | actividad
   const [usuarios, setUsuarios] = useStateA([]);
   const [visitas, setVisitas]   = useStateA([]);
   const [log, setLog]           = useStateA([]);
@@ -149,6 +149,7 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
           {[
             { k: 'bandeja',   l: <span>Bandeja{nBandeja > 0 && <span className="adm-tab-n">{nBandeja}</span>}</span> },
             { k: 'equipo',    l: 'Equipo' },
+            { k: 'evidencias', l: 'Evidencias' },
             { k: 'actividad', l: 'Actividad' },
           ].map(t => (
             <button key={t.k} role="tab" aria-selected={tab === t.k}
@@ -176,6 +177,8 @@ function AdminScreen({ usuario, onAbrirReglasAgenda, onNavegar }) {
           onQuitarHallazgo={(fh) => setPend(p => p && Object.assign({}, p, {
             hallazgos: p.hallazgos.filter(h => h._filaHoja !== fh) }))} /> :
         tab === 'actividad'  ? <TabActividad log={log} total={logTotal} /> :
+        // Reporte mensual de evidencias (reporte-evidencias.jsx, 2026-11-04).
+        tab === 'evidencias' ? <TabEvidencias visitas={visitas} /> :
         <TabEquipo usuarios={usuarios} datos={visitas} logDesc={logDesc} conPanel={conPanel}
           yo={usuario.usuario} onAbrirReglas={onAbrirReglasAgenda} onNavegar={onNavegar}
           recargarUsuarios={recargarUsuarios} />

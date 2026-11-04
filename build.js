@@ -55,6 +55,8 @@ const ARCHIVOS = [
   'escaner-orden.jsx',
   'nueva-visita.jsx',
   'consulta-norma.jsx',
+  // reporte-evidencias.jsx antes de admin.jsx (la pestaña Evidencias)
+  'reporte-evidencias.jsx',
   'admin.jsx',
   'app.jsx',
 ];

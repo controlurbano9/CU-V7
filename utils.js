@@ -5616,7 +5616,192 @@ function fotosParaVisor(fotos) {
   }).filter(function (f) { return f.id; });
 }
 
+// ── Reporte mensual de evidencias (Admin › Evidencias, 2026-11-04) ──
+// Cada mes se entregan carpetas de visitas COMPLETADAS con acta y registro
+// fotográfico, normalmente 4 y de las más representativas: con orden de
+// suspensión. Decisiones del usuario (2026-11-04): el mes es el de FECHA DE
+// VISITA; si no hay 4 con suspensión se completa con otras; solo ADMIN.
+// Aquí se decide qué visita puede ir y en qué orden se sugieren; el backend
+// (generarReporteEvidencias) vuelve a validar y copia los PDF a Drive.
+var EVIDENCIAS_POR_MES = 4;
+var EVIDENCIAS_MAX = 8;   // mismo tope que MAX_VISITAS_REPORTE_EVIDENCIAS del backend
+
+// 'YYYY-MM' de una fecha.
+function claveMesEvidencias(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// 'YYYY-MM' → 'Octubre 2026'.
+function nombreMesEvidencias(clave) {
+  var m = /^(\d{4})-(\d{2})$/.exec(String(clave || ''));
+  if (!m) return String(clave || '');
+  var nom = _MESES_ES[parseInt(m[2], 10) - 1] || '';
+  return nom.charAt(0).toUpperCase() + nom.slice(1) + ' ' + m[1];
+}
+
+// Los últimos `n` meses (el actual primero), como claves 'YYYY-MM'.
+function mesesRecientesEvidencias(hoy, n) {
+  var ref = hoy instanceof Date ? hoy : new Date();
+  var out = [];
+  for (var i = 0; i < (n || 12); i++) {
+    out.push(claveMesEvidencias(new Date(ref.getFullYear(), ref.getMonth() - i, 1)));
+  }
+  return out;
+}
+
+// Mes del reporte por defecto: el anterior (el reporte se pasa a mes cerrado).
+function mesPorDefectoEvidencias(hoy) {
+  var ref = hoy instanceof Date ? hoy : new Date();
+  return claveMesEvidencias(new Date(ref.getFullYear(), ref.getMonth() - 1, 1));
+}
+
+// Dirección para comparar (misma dirección escrita distinto = una sola).
+function _dirEvid(f) {
+  return String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim();
+}
+function _claveDirEvid(dir) {
+  return normalizarDireccion(dir).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+}
+
+// Nivel de la visita para el reporte (lo que más pesa): 3 suspensión con
+// orden de policía, 2 suspensión sin orden, 1 orden sin suspensión, 0 nada.
+function _nivelEvid(susp, orden) {
+  return susp && orden ? 3 : susp ? 2 : orden ? 1 : 0;
+}
+
+// Una visita evaluada para el mes `mes` ('YYYY-MM'); null si no es de ese
+// mes o no está completada. `dirsReportadas` = { claveDir: 'YYYY-MM' } de
+// reportes de OTROS meses.
+function evaluarEvidencia(f, mes, dirsReportadas) {
+  if (!f || estadoBuscarDe(f) !== 'COMPLETADO') return null;
+  var fv = parsearFecha(f['FECHA DE VISITA'] || '');
+  if (!fv || claveMesEvidencias(fv) !== mes) return null;
+  var dir = _dirEvid(f);
+  var susp = String(f['SUSPENSION DE LA OBRA'] || '').trim().toUpperCase() === 'SI';
+  var orden = ordenPoliciaDe(f);
+  var infr = _infraccionSoloCatalogo(f['TIPO DE INFRACCION']).split(' | ').filter(Boolean);
+  var faltas = [];
+  if (!(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'])) faltas.push('Acta');
+  if (!f['LINK_REGISTRO_FOTOS']) faltas.push('Registro fotográfico');
+  var claveDir = _claveDirEvid(dir);
+  var yaEn = (claveDir && dirsReportadas && dirsReportadas[claveDir]) || '';
+  // Puntos de desempate dentro del mismo nivel.
+  var extra = 0, motivos = [];
+  if (susp && orden) motivos.push('Suspensión · orden ' + orden);
+  else if (susp) motivos.push('Suspensión sin N° de orden');
+  else if (orden) motivos.push('Orden ' + orden + ' sin suspensión');
+  if (orden && f['LINK_ORDEN_POLICIA']) { extra += 10; motivos.push('Orden escaneada'); }
+  if (infr.length) { extra += 10; motivos.push(infr[0].replace(/:.*/, '') + (infr.length > 1 ? ' +' + (infr.length - 1) : '')); }
+  if (yaEn) { extra -= 15; motivos.push('Dirección ya reportada en ' + nombreMesEvidencias(yaEn)); }
+  return {
+    clave: String(f['ID_VISITA'] || '').trim() || ('fila-' + f._idx),
+    f: f,
+    rad: String(f['RADICADO'] || '').trim(),
+    dir: dir, claveDir: claveDir,
+    fv: fv,
+    ins: primerVisitador(visitadoresBD(f)).toUpperCase(),
+    com: claveComunaAgenda(f['COMUNA']),
+    susp: susp, orden: orden,
+    nivel: _nivelEvid(susp, orden),
+    extra: extra,
+    motivos: motivos,
+    faltas: faltas,
+    elegible: faltas.length === 0,
+  };
+}
+
+function _ordenEvid(a, b) {
+  return (b.nivel - a.nivel) || (b.extra - a.extra) ||
+    ((b.fv ? b.fv.getTime() : 0) - (a.fv ? a.fv.getTime() : 0)) ||
+    a.rad.localeCompare(b.rad);
+}
+
+// Sugerencia de `n` visitas: el nivel manda siempre (una con suspensión le
+// gana a cualquiera sin ella); dentro del nivel se prefiere variedad —otro
+// inspector (−20 por cada una ya elegida suya), otra comuna (−10)— y nunca
+// la misma dirección dos veces mientras haya otra opción.
+function sugerirEvidencias(elegibles, n) {
+  var quedan = elegibles.slice(), elegidas = [];
+  var porIns = {}, porCom = {}, dirs = {};
+  while (elegidas.length < (n || EVIDENCIAS_POR_MES) && quedan.length) {
+    var hayDirNueva = quedan.some(function (c) { return !c.claveDir || !dirs[c.claveDir]; });
+    var mejor = null, mejorVal = 0;
+    quedan.forEach(function (c) {
+      if (hayDirNueva && c.claveDir && dirs[c.claveDir]) return;
+      var val = c.extra - 20 * (porIns[c.ins] || 0) - 10 * (porCom[c.com] || 0);
+      if (!mejor || c.nivel > mejor.nivel ||
+          (c.nivel === mejor.nivel && (val > mejorVal || (val === mejorVal && _ordenEvid(c, mejor) < 0)))) {
+        mejor = c; mejorVal = val;
+      }
+    });
+    elegidas.push(mejor);
+    quedan.splice(quedan.indexOf(mejor), 1);
+    if (mejor.ins) porIns[mejor.ins] = (porIns[mejor.ins] || 0) + 1;
+    if (mejor.com) porCom[mejor.com] = (porCom[mejor.com] || 0) + 1;
+    if (mejor.claveDir) dirs[mejor.claveDir] = true;
+  }
+  return elegidas;
+}
+
+// Candidatas del mes:
+//   { elegibles: [...] (ordenadas), noElegibles: [...] (les falta acta o RF),
+//     sugeridas: [clave, ...], conSuspension: n }
+// `historial` = filas de REPORTES_EVIDENCIAS (leerReportesEvidencias).
+function candidatasEvidencias(visitas, mes, historial, n) {
+  var dirsReportadas = {};
+  (historial || []).forEach(function (h) {
+    var m = String(h.MES || '').trim();
+    if (!m || m === mes) return;
+    var k = _claveDirEvid(h.DIRECCION);
+    if (k && (!dirsReportadas[k] || dirsReportadas[k] < m)) dirsReportadas[k] = m;
+  });
+  var todas = [];
+  (visitas || []).forEach(function (f) {
+    var e = evaluarEvidencia(f, mes, dirsReportadas);
+    if (e) todas.push(e);
+  });
+  todas.sort(_ordenEvid);
+  var elegibles = todas.filter(function (e) { return e.elegible; });
+  return {
+    elegibles: elegibles,
+    noElegibles: todas.filter(function (e) { return !e.elegible; }),
+    sugeridas: sugerirEvidencias(elegibles, n).map(function (e) { return e.clave; }),
+    conSuspension: elegibles.filter(function (e) { return e.susp; }).length,
+  };
+}
+
+// Historial (filas de REPORTES_EVIDENCIAS) agrupado por mes, el más
+// reciente primero: [{ mes, nombre, fecha, por, linkCarpeta, visitas: [fila] }].
+function historialEvidenciasPorMes(filas) {
+  var porMes = {};
+  (filas || []).forEach(function (h) {
+    var m = String(h.MES || '').trim();
+    if (!m) return;
+    var g = porMes[m] || (porMes[m] = {
+      mes: m, nombre: nombreMesEvidencias(m), fecha: h.FECHA_GENERACION || '',
+      por: h.GENERADO_POR || '', linkCarpeta: h.LINK_CARPETA_MES || '', visitas: [],
+    });
+    g.visitas.push(h);
+  });
+  return Object.keys(porMes).sort().reverse().map(function (m) {
+    var g = porMes[m];
+    g.visitas.sort(function (a, b) { return (parseInt(a.ORDEN, 10) || 0) - (parseInt(b.ORDEN, 10) || 0); });
+    return g;
+  });
+}
+
 var _cuUtilsExports = {
+  // Reporte mensual de evidencias (Admin › Evidencias)
+  EVIDENCIAS_POR_MES: EVIDENCIAS_POR_MES,
+  EVIDENCIAS_MAX: EVIDENCIAS_MAX,
+  claveMesEvidencias: claveMesEvidencias,
+  nombreMesEvidencias: nombreMesEvidencias,
+  mesesRecientesEvidencias: mesesRecientesEvidencias,
+  mesPorDefectoEvidencias: mesPorDefectoEvidencias,
+  evaluarEvidencia: evaluarEvidencia,
+  sugerirEvidencias: sugerirEvidencias,
+  candidatasEvidencias: candidatasEvidencias,
+  historialEvidenciasPorMes: historialEvidenciasPorMes,
   idFotoDrive: idFotoDrive,
   fotosParaVisor: fotosParaVisor,
   tieneVisitasPropias: tieneVisitasPropias,
