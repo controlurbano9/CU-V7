@@ -4582,52 +4582,6 @@ function horaBonitaAudiencias(hora) {
   return h12 + ':' + m[2] + ' ' + ap;
 }
 
-// Cupos agrupados por día (orden fecha + hora) y, dentro del día, por
-// sustanciador. `cupos` viene tal cual de agendaAudiencias.
-function agruparAudienciasPorDia(cupos) {
-  var porFecha = {};
-  var orden = [];
-  (cupos || []).forEach(function (c) {
-    var f = String(c.fecha || '').trim();
-    if (!f) return;
-    if (!porFecha[f]) { porFecha[f] = []; orden.push(f); }
-    porFecha[f].push(c);
-  });
-  orden.sort(function (a, b) {
-    var da = parsearFecha(a), db = parsearFecha(b);
-    return (da && db ? da - db : a.localeCompare(b));
-  });
-  return orden.map(function (f) {
-    var delDia = porFecha[f].slice().sort(function (a, b) {
-      return horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora);
-    });
-    return { fecha: f, cupos: delDia };
-  });
-}
-
-function agruparAudienciasPorSustanciador(cuposDia) {
-  var grupos = {};
-  var orden = [];
-  (cuposDia || []).forEach(function (c) {
-    var s = String(c.sustanciador || '').trim() || 'SIN SUSTANCIADOR';
-    if (!grupos[s]) { grupos[s] = []; orden.push(s); }
-    grupos[s].push(c);
-  });
-  return orden.map(function (s) { return { sustanciador: s, cupos: grupos[s] }; });
-}
-
-// El próximo día con cupos desde `hoy` (Date). «Hoy» muestra este día cuando
-// hoy no tiene: jueves y viernes no hay audiencias del bloque de Control
-// Urbano, y nada se reubica en «hoy» (misma regla que la Semana de visitas).
-function proximoDiaAudiencias(dias, hoy) {
-  var h = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  for (var i = 0; i < (dias || []).length; i++) {
-    var d = parsearFecha(dias[i].fecha);
-    if (d && d >= h) return dias[i];
-  }
-  return null;
-}
-
 // Filtro de «Lista»: solo citas (RESERVADO), de hoy en adelante salvo
 // incluirPasadas, con búsqueda por nombre/radicado/orden/expediente/documento
 // y, para el inspector, solo las suyas (deQuien normalizado).
@@ -4794,6 +4748,46 @@ function horasAgregarCupos(marcadas, otra, otraHora) {
 // Rango máximo de «Agregar cupos» en una sola vez. La vista previa se calcula en
 // cada pulsación: sin tope, tres años eran 4.380 cupos por tecla.
 var MAX_DIAS_AGREGAR_CUPOS = 366;
+
+// El servidor acepta hasta 400 cupos por pedido (AUD_MAX_CUPOS_POR_PEDIDO del
+// backend). Con el tope de un año la vista previa podía pasar de ahí y el
+// servidor rechazaba todo el pedido.
+var MAX_CUPOS_POR_PEDIDO = 400;
+function problemaCantidadCupos(n) {
+  if (n > MAX_CUPOS_POR_PEDIDO) {
+    return 'Son ' + n + ' cupos y se pueden crear hasta ' + MAX_CUPOS_POR_PEDIDO +
+      ' por vez: acorta el rango o agrégalos por partes.';
+  }
+  return '';
+}
+
+// El motivo de un cupo que el servidor no bloqueó o no eliminó, en palabras
+// (bloquearCupos / eliminarCupos devuelven `rechazados`). Antes la pantalla los
+// ignoraba y el admin creía que se habían bloqueado.
+function textoRechazoCupo(motivo) {
+  var m = String(motivo || '').trim();
+  if (/^Estado APARTADO$/i.test(m) || /apartado por un inspector/i.test(m)) {
+    return 'apartado por un inspector para pedir citas sin señal (se libera solo)';
+  }
+  if (/^Estado POR_APARTAR$/i.test(m)) return 'por apartar: confírmalo en el Excel o elimínalo';
+  if (/^Estado RESERVADO$/i.test(m) || /tiene una cita/i.test(m)) return 'tiene una cita: libérala primero';
+  if (/^No existe$/i.test(m)) return 'ya no existe';
+  return m.replace(/^Estado /, 'estado ').toLowerCase() || 'no se pudo';
+}
+
+// «Citaciones visitas completadas» (A2, 2026-11-04): las que faltan por pegar
+// en el Excel y las ya pegadas, cada una con su marca {en, por}. `pegadas` =
+// { id: {en, por} } de agendaAudiencias. Conserva el orden de `lista`.
+function separarPegadasExcel(lista, pegadas) {
+  var marcas = pegadas || {};
+  var out = { pendientes: [], pegadas: [] };
+  (lista || []).forEach(function (r) {
+    var m = marcas[r.idCupo];
+    if (m) out.pegadas.push(Object.assign({}, r, { pegada: m }));
+    else out.pendientes.push(r);
+  });
+  return out;
+}
 
 // Qué le falta a la selección de «Agregar cupos» ('' = está completa). Mismo
 // formato de previsualizarCupos.
@@ -5647,9 +5641,6 @@ var _cuUtilsExports = {
   normNombreAudiencias: normNombreAudiencias,
   horaAudienciasMin: horaAudienciasMin,
   horaBonitaAudiencias: horaBonitaAudiencias,
-  agruparAudienciasPorDia: agruparAudienciasPorDia,
-  agruparAudienciasPorSustanciador: agruparAudienciasPorSustanciador,
-  proximoDiaAudiencias: proximoDiaAudiencias,
   filtrarListaAudiencias: filtrarListaAudiencias,
   // Cupos como lista (2026-11-03)
   previsualizarCupos: previsualizarCupos,
@@ -5661,6 +5652,10 @@ var _cuUtilsExports = {
   horasAgregarCupos: horasAgregarCupos,
   MAX_DIAS_AGREGAR_CUPOS: MAX_DIAS_AGREGAR_CUPOS,
   problemaSeleccionCupos: problemaSeleccionCupos,
+  MAX_CUPOS_POR_PEDIDO: MAX_CUPOS_POR_PEDIDO,
+  problemaCantidadCupos: problemaCantidadCupos,
+  textoRechazoCupo: textoRechazoCupo,
+  separarPegadasExcel: separarPegadasExcel,
   visitaDeCitaAudiencias: visitaDeCitaAudiencias,
   // Pedir cita (TASK 3b)
   normOrdenAudiencias: normOrdenAudiencias,

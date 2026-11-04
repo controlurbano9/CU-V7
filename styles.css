@@ -5921,3 +5921,17 @@ button.tb-det-n { cursor: pointer; }
 /* Cita de un día pasado: sin el verde de «confirmada». */
 .au-pconf.pasada { background: var(--surface-2); }
 .au-pconf.pasada .est { color: var(--ink-3); }
+
+/* ── Audiencias 2026-11-04 · lógica y arquitectura ──
+   «Citaciones visitas completadas»: copiar todas, marca de pegada y las ya
+   pegadas aparte (atenuadas como lo completado: se ven, pero ya está hecho). */
+.au-copiar-todas { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.au-copiar-todas svg { flex: none; }
+.au-peg-btn { display: inline-block; margin-top: 2px; padding-left: 0; }
+.au-ver-pegadas { display: block; margin-top: 8px; padding-left: 0; }
+.au-caja .au-row.au-pegada { opacity: .62; }
+.au-caja .au-row.au-pegada:hover, .au-caja .au-row.au-pegada:focus-within { opacity: 1; }
+/* «Reprogramar» de una citación que cae en una novedad: ya movida. */
+.au-afect-ok { color: var(--green-ink); font-weight: 600; }
+.au-aviso li .au-cl-texto { padding: 0 2px; }
+@media (max-width: 899px), (pointer: coarse) { .au-pantalla .au-copiar-todas { min-height: var(--tap); } }

@@ -44,6 +44,10 @@ function useHojaTecladoAU(onCerrar) {
       const act = document.activeElement;
       // El foco en otro diálogo (o en otra hoja): esta no es la de arriba.
       if (act && act !== document.body && !hoja.contains(act)) return;
+      // Una hoja abierta dentro de esta («Reprogramar» dentro de «Cita»): el
+      // foco está en la de adentro y es ella la que responde.
+      const otra = act && act.closest ? act.closest('.au-hoj-ovl') : null;
+      if (otra && otra !== hoja) return;
       if (e.key === 'Escape') { cerrarRef.current(); return; }
       if (e.key !== 'Tab') return;
       const foco = hoja.querySelectorAll(_AU_ENFOCABLES);
@@ -313,26 +317,87 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar,
   );
 }
 
-// «Pedir cita» fuera de la pantalla de Audiencias: desde el «+» (y, en las
-// piezas siguientes, desde la ficha y el formulario). El inspector ya no tiene
-// esa pestaña (arquitectura 2026-10-27, decisión 4). La agenda, que la hoja usa
-// para avisar «Ya tiene cita», sale de la copia local de Audiencias y se
-// refresca por detrás; sin señal, la hoja ofrece los cupos apartados.
+// «Pedir cita» fuera de la pantalla de Audiencias: desde el «+», la ficha y el
+// formulario. El inspector ya no tiene esa pestaña (arquitectura 2026-10-27,
+// decisión 4). El aviso «Ya tiene cita» sale de la copia local de Audiencias si
+// la hay; si no, lo da el servidor al reservar, con la fecha de la cita
+// (2026-11-04: antes esta hoja leía la agenda entera cada vez que se abría).
+// Sin señal, la hoja ofrece los cupos apartados.
 function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
-  const [agenda, setAgenda] = useStateAU(function () {
+  const agenda = useMemoAU(function () {
     const c = _auLeerCopia(usuario.rol);
     return (c && c.cupos) || [];
-  });
-  useEffectAU(function () {
-    if (!navigator.onLine) return;
-    let vivo = true;
-    agendaAudiencias({}).then(function (r) {
-      if (vivo && r && !r.sinCambios) setAgenda(r.cupos || []);
-    }).catch(function () {});
-    return function () { vivo = false; };
   }, []);
   return <PedirCitaHoja usuario={usuario} agenda={agenda} casoInicial={casoInicial}
     onCerrar={onCerrar} onReservada={function () {}} />;
+}
+
+// ── Hoja «Reprogramar» (2026-11-04, solo admin) ──────────────────
+// Los próximos cupos libres (las mismas reglas de «Pedir cita»: 3 días hábiles
+// de anticipación, sin novedades) y un motivo opcional. El servidor mueve la
+// cita en un solo paso (reprogramarCupo): no queda un momento sin fecha en que
+// otro pueda tomar el cupo.
+function ReprogramarHoja({ cita, onCerrar, onListo }) {
+  const [cupos, setCupos] = useStateAU(null);   // null = cargando
+  const [elegido, setElegido] = useStateAU(null);
+  const [motivo, setMotivo] = useStateAU('');
+  const [enviando, setEnviando] = useStateAU(false);
+  const [error, setError] = useStateAU('');
+  async function cargarCupos() {
+    setCupos(null);
+    try {
+      const r = await listarCuposAudiencias();
+      setCupos((r.cupos || []).filter(function (c) { return c.idCupo !== cita.idCupo; }).slice(0, 8));
+    } catch (e) {
+      setCupos([]);
+      setError(e.message || 'No se pudieron leer los cupos libres.');
+    }
+  }
+  useEffectAU(function () { cargarCupos(); }, []);
+  async function confirmar() {
+    if (!elegido || enviando) return;
+    setEnviando(true); setError('');
+    try {
+      const r = await reprogramarCupoAudiencias(cita.idCupo, elegido.idCupo, motivo.trim());
+      setEnviando(false);
+      onListo(r);
+    } catch (e) {
+      setEnviando(false);
+      setError(e.message || 'No se pudo reprogramar.');
+      setElegido(null);
+      cargarCupos();
+    }
+  }
+  return (
+    <HojaAU titulo="Reprogramar" clase="au-pedir" onCerrar={onCerrar}>
+      <p className="au-cl-info">{_auCaso(cita)}{cita.citado ? ' · ' + cita.citado : ''}<br />
+        <span className="au-sindoc">Ahora: {_auDiaCorto(cita.fecha)} · {horaBonitaAudiencias(cita.hora)} · {titleCaseNombre(cita.sustanciador)}</span></p>
+      <div className="au-pgrupo">
+        <b className="au-pleg">Nueva fecha</b>
+        {cupos === null ? <p className="au-vacio-hoy">Cargando…</p>
+          : !cupos.length ? <p className="au-vacio-hoy">Sin cupos libres</p>
+          : cupos.map(function (c) {
+            const on = elegido && elegido.idCupo === c.idCupo;
+            return (
+              <label className={'au-pcupo' + (on ? ' on' : '')} key={c.idCupo}>
+                <input type="radio" name="au-repro" checked={!!on} onChange={function () { setElegido(c); }} />
+                <span className="t">{_auDiaCorto(c.fecha)}/{String(c.fecha).slice(-4)} · {horaBonitaAudiencias(c.hora)}
+                  <span className="sus"> · {titleCaseNombre(c.sustanciador)}</span></span>
+              </label>
+            );
+          })}
+      </div>
+      <div className="au-cl-campo">
+        <label htmlFor="au-repro-motivo">Motivo (opcional)</label>
+        <input id="au-repro-motivo" type="text" value={motivo} placeholder="Vacaciones del sustanciador, solicitud del citado…"
+          onChange={function (e) { setMotivo(e.target.value); }} />
+      </div>
+      {error && <p className="au-perror">{error}</p>}
+      <button type="button" className="btn-principal au-preservar" disabled={!elegido || enviando} onClick={confirmar}>
+        {enviando ? 'Reprogramando…' : 'Reprogramar'}
+      </button>
+    </HojaAU>
+  );
 }
 
 // ── Detalle de una cita ────────────────────────────────────────
@@ -340,10 +405,13 @@ function PedirCitaGlobal({ usuario, casoInicial, onCerrar }) {
 // admin libera una cita (antes estaba a un toque en cada fila). El
 // sustanciador abre de aquí el acta y el informe para preparar la audiencia.
 // Una cita de un día ya pasado no dice «Cita confirmada»: dice que ya pasó.
-function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar }) {
+// Una audiencia pasada no se libera ni se reprograma (2026-11-04): liberar
+// borraba la fecha de citación real de la visita; el servidor también lo rechaza.
+function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar, onReprogramada }) {
   // Inspección al lugar decretada en la audiencia (2026-11-03): el caso queda
   // en «Por programar» de la Agenda › Inspecciones, sin fecha todavía.
   const [decreto, setDecreto] = useStateAU('');   // '' | 'enviando' | 'ok' | mensaje de error
+  const [reprogramando, setReprogramando] = useStateAU(false);
   const c = cita;
   const dC = parsearFecha(c.fecha), dH = parsearFecha(hoyTxt);
   const pasada = !!(dC && dH && dC < dH);
@@ -371,6 +439,7 @@ function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLib
         {c.citado && <><dt>Citado</dt><dd>{c.citado}{c.documentoCitado ? <> · {_auDocTxt(c)}</> : null}</dd></>}
         {c.direccion && <><dt>Dirección</dt><dd>{c.direccion}</dd></>}
         <dt>Pedida por</dt><dd>{titleCaseNombre(c.reservadoPor || '')}{c.reservadoEn ? ' · ' + String(c.reservadoEn).slice(0, 10) : ''}</dd>
+        {c.nota && <><dt>Nota</dt><dd>{c.nota}</dd></>}
       </dl>
       <div className="au-cita-acc">
         {c.linkActa && <a className="btn-neutro" href={c.linkActa} target="_blank" rel="noopener">Acta</a>}
@@ -387,8 +456,14 @@ function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLib
               {decreto && decreto !== 'enviando' && <p className="au-decreto error" role="alert">{decreto}</p>}
             </>
       )}
-      {esAdmin && (
+      {esAdmin && !pasada && (<>
+        <button type="button" className="btn-neutro au-decreto-btn" disabled={ocupado}
+          onClick={function () { setReprogramando(true); }}>Reprogramar</button>
         <button type="button" className="au-cita-liberar" disabled={ocupado} onClick={onLiberar}>Liberar cita</button>
+      </>)}
+      {reprogramando && (
+        <ReprogramarHoja cita={c} onCerrar={function () { setReprogramando(false); }}
+          onListo={function (r) { setReprogramando(false); onReprogramada(r); }} />
       )}
     </HojaAU>
   );
@@ -465,9 +540,11 @@ function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }
   }, [existentes, incompleto, sel.desde, sel.hasta, sel.dias.join(), sel.horas.join(), sel.sustanciadores.join()]);
   const porMotivo = {};
   prev.omitidos.forEach(function (o) { porMotivo[o.motivo] = (porMotivo[o.motivo] || 0) + 1; });
+  // El servidor acepta hasta 400 por pedido (problemaCantidadCupos, utils.js).
+  const exceso = incompleto ? '' : problemaCantidadCupos(prev.crear.length);
 
   async function confirmar() {
-    if (incompleto || !prev.crear.length || enviando) return;
+    if (incompleto || exceso || !prev.crear.length || enviando) return;
     setEnviando(true); setError('');
     try {
       const r = await agregarCuposAudiencias(prev.crear);
@@ -535,8 +612,8 @@ function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }
         </div>
       </div>
       <div className="au-cl-pre">
-        {incompleto ? (
-          <p className="au-cl-err">{problema}</p>
+        {incompleto || exceso ? (
+          <p className="au-cl-err">{problema || exceso}</p>
         ) : (
           <p>
             {'Se crean '}<b>{prev.crear.length}</b>{' ' + _auPluralCupo(prev.crear.length)}
@@ -552,7 +629,7 @@ function AgregarCuposHoja({ existentes, sustanciadores, hoy, onCerrar, onListo }
       {error && <p className="au-cl-err">{error}</p>}
       <div className="au-cl-acc">
         <button type="button" className="btn-principal btn-chico"
-          disabled={incompleto || !prev.crear.length || enviando} onClick={confirmar}>
+          disabled={incompleto || !!exceso || !prev.crear.length || enviando} onClick={confirmar}>
           {enviando ? 'Creando…' : (incompleto ? 'Crear cupos' : 'Crear ' + prev.crear.length + ' ' + _auPluralCupo(prev.crear.length))}
         </button>
         <button type="button" className="au-cl-texto" onClick={onCerrar}>Volver</button>
@@ -567,7 +644,9 @@ var _AU_MOTIVOS_BLOQUEO = ['Vacaciones', 'Comisión', 'Capacitación', 'Festivo 
 // (bloquearCuposAudiencias) o, con `fecha`, el día entero para todos los
 // sustanciadores (novedad TODOS/DIA). Motivo obligatorio y aviso de las
 // citaciones que caen ahí: no se cancelan.
-function BloquearHoja({ cupos, fecha, citados, onCerrar, onListo }) {
+// `sinBloquear`: los marcados que no se pueden bloquear (por apartar): se dice
+// cuántos en vez de mandarlos y que el servidor los rechace en silencio.
+function BloquearHoja({ cupos, fecha, citados, sinBloquear, onCerrar, onListo }) {
   const [motivo, setMotivo] = useStateAU('');
   const [enviando, setEnviando] = useStateAU(false);
   const [error, setError] = useStateAU('');
@@ -577,13 +656,14 @@ function BloquearHoja({ cupos, fecha, citados, onCerrar, onListo }) {
     if (!motivo.trim() || enviando) return;
     setEnviando(true); setError('');
     try {
+      let r = null;
       if (deDia) {
-        await guardarNovedadAudiencias({ desde: fecha, hasta: fecha, sustanciador: 'TODOS', franja: 'DIA', motivo: motivo.trim() });
+        r = await guardarNovedadAudiencias({ desde: fecha, hasta: fecha, sustanciador: 'TODOS', franja: 'DIA', motivo: motivo.trim() });
       } else {
-        await bloquearCuposAudiencias(cupos.map(function (c) { return c.idCupo; }), motivo.trim());
+        r = await bloquearCuposAudiencias(cupos.map(function (c) { return c.idCupo; }), motivo.trim());
       }
       setEnviando(false);
-      onListo();
+      onListo(r);
     } catch (e) {
       setError(e.message || (deDia ? 'No se pudo bloquear el día.' : 'No se pudieron bloquear los cupos.'));
       setEnviando(false);
@@ -591,7 +671,7 @@ function BloquearHoja({ cupos, fecha, citados, onCerrar, onListo }) {
   }
   return (
     <HojaAU titulo={deDia ? 'Bloquear el día' : 'Bloquear'} onCerrar={onCerrar}>
-      {nada ? <p className="au-cl-info">No hay cupos por bloquear en esa selección.</p> : (<>
+      {nada ? <p className="au-cl-info">No hay cupos por bloquear en esa selección{sinBloquear ? ' (los por apartar no se bloquean)' : ''}.</p> : (<>
         {deDia ? <p className="au-cl-info"><b>{_auMayus(_auFechaLarga(fecha))}</b></p> : (<>
           <p className="au-cl-info">Se bloquean <b>{cupos.length}</b> {_auPluralCupo(cupos.length)}:</p>
           <div className="au-cl-lineas">
@@ -602,6 +682,9 @@ function BloquearHoja({ cupos, fecha, citados, onCerrar, onListo }) {
         </>)}
         {citados.length > 0 && (
           <p className="au-cl-err"><b>{citados.length} citaci{citados.length === 1 ? 'ón cae' : 'ones caen'} en {deDia ? 'ese día' : 'esos días'}.</b> No se cancelan.</p>
+        )}
+        {sinBloquear > 0 && (
+          <p className="au-cl-info">{sinBloquear} por apartar no se {sinBloquear === 1 ? 'bloquea' : 'bloquean'}: confírmalos en el Excel o elimínalos.</p>
         )}
         <div className="au-cl-campo">
           <span>Motivo (obligatorio)</span>
@@ -641,9 +724,9 @@ function EliminarCuposHoja({ cupos, onCerrar, onListo }) {
     if (enviando) return;
     setEnviando(true); setError('');
     try {
-      await eliminarCuposAudiencias(cupos.map(function (c) { return c.idCupo; }));
+      const r = await eliminarCuposAudiencias(cupos.map(function (c) { return c.idCupo; }));
       setEnviando(false);
-      onListo();
+      onListo(r);
     } catch (e) {
       setError(e.message || 'No se pudieron eliminar los cupos.'); setEnviando(false);
     }
@@ -681,9 +764,13 @@ function EliminarCuposHoja({ cupos, onCerrar, onListo }) {
 // Las novedades por rango, sustanciador y franja. El admin la abre desde la
 // vista Cupos, junto a los demás bloqueos; el supervisor, desde la cabecera.
 // `onGuardar(payload)` devuelve las citaciones afectadas, o null si falló.
-function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerrar, onQuitar, onGuardar }) {
+// El admin reprograma desde aquí cada citación que cae en la novedad (antes
+// solo se listaban «para reprogramar a mano»).
+function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerrar, onQuitar, onGuardar, onReprogramada }) {
   const [abierto, setAbierto] = useStateAU(false);
   const [afectadas, setAfectadas] = useStateAU(null);
+  const [reprogramar, setReprogramar] = useStateAU(null);  // la afectada que se reprograma
+  const [hechas, setHechas] = useStateAU({});              // idCupo → cupo nuevo
 
   async function guardar(ev) {
     ev.preventDefault();
@@ -755,10 +842,26 @@ function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerr
           <b>{afectadas.length} citaci{afectadas.length === 1 ? 'ón cae' : 'ones caen'} en esos días</b>
           <ul>
             {afectadas.slice(0, 10).map(function (c) {
-              return <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)} · {_auCaso(c)} · {c.citado}</li>;
+              const nueva = hechas[c.idCupo];
+              return (
+                <li key={c.idCupo}>{c.fecha} · {horaBonitaAudiencias(c.hora)} · {titleCaseNombre(c.sustanciador)} · {_auCaso(c)}{c.citado ? ' · ' + c.citado : ''}
+                  {nueva
+                    ? <b className="au-afect-ok"> → {nueva.fecha} · {horaBonitaAudiencias(nueva.hora)}</b>
+                    : esAdmin && <> <button type="button" className="au-cl-texto" onClick={function () { setReprogramar(c); }}>Reprogramar</button></>}
+                </li>
+              );
             })}
           </ul>
         </div>
+      )}
+      {reprogramar && (
+        <ReprogramarHoja cita={reprogramar} onCerrar={function () { setReprogramar(null); }}
+          onListo={function (r) {
+            const id = reprogramar.idCupo;
+            setHechas(function (h) { const n = Object.assign({}, h); n[id] = (r && r.cupo) || {}; return n; });
+            setReprogramar(null);
+            onReprogramada(r);
+          }} />
       )}
     </HojaAU>
   );
@@ -873,7 +976,23 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
   };
   const hojaCupos = hoja && hoja.ids ? porId(hoja.ids) : [];
 
-  function alListo() { setHoja(null); setSel({}); onCambio(); }
+  // Lo que el servidor no bloqueó o no eliminó, con el motivo en palabras
+  // (textoRechazoCupo). Antes se ignoraba y el admin creía que había quedado.
+  function avisarRechazados(r, accion) {
+    const rech = (r && r.rechazados) || [];
+    if (!rech.length) return;
+    const lista = rech.slice(0, 10).map(function (x) {
+      const c = cupos.find(function (k) { return k.idCupo === x.idCupo; });
+      return (c ? c.fecha + ' · ' + horaBonitaAudiencias(c.hora) + ' · ' + titleCaseNombre(c.sustanciador) : x.idCupo) +
+        ': ' + textoRechazoCupo(x.motivo);
+    }).join('\n');
+    appAlert(lista + (rech.length > 10 ? '\n…' : ''),
+      { titulo: rech.length + ' ' + _auPluralCupo(rech.length) + ' sin ' + accion, tono: 'error' });
+  }
+
+  function alListo(accion) {
+    return function (r) { setHoja(null); setSel({}); avisarRechazados(r, accion); onCambio(); };
+  }
 
   // Desbloquear = quitar la novedad que bloquea esos cupos (puede abarcar
   // muchos); el texto dice cuál se quita y cuántos cupos libera.
@@ -1081,19 +1200,21 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
           onListo={function (r) { setHoja(null); avisarOmitidos(r); onCambio(); }} />
       )}
       {hoja && hoja.t === 'bloquear' && (
+        // Solo los libres: el servidor rechaza los por apartar (bloquearCupos).
         <BloquearHoja
-          cupos={hojaCupos.filter(function (c) { return c.estado !== 'RESERVADO' && c.estado !== 'BLOQUEADO'; })}
+          cupos={hojaCupos.filter(function (c) { return c.estado === 'LIBRE'; })}
+          sinBloquear={hojaCupos.filter(function (c) { return c.estado === 'POR_APARTAR'; }).length}
           citados={hojaCupos.filter(function (c) { return c.estado === 'RESERVADO'; })}
-          onCerrar={function () { setHoja(null); }} onListo={alListo} />
+          onCerrar={function () { setHoja(null); }} onListo={alListo('bloquear')} />
       )}
       {hoja && hoja.t === 'dia' && (
-        <BloquearHoja cupos={[]} fecha={hoja.fecha}
+        <BloquearHoja cupos={[]} fecha={hoja.fecha} sinBloquear={0}
           citados={cupos.filter(function (c) { return c.fecha === hoja.fecha && c.estado === 'RESERVADO'; })}
-          onCerrar={function () { setHoja(null); }} onListo={alListo} />
+          onCerrar={function () { setHoja(null); }} onListo={alListo('bloquear')} />
       )}
       {hoja && hoja.t === 'eliminar' && (
         <EliminarCuposHoja cupos={hojaCupos.filter(function (c) { return c.estado !== 'RESERVADO'; })}
-          onCerrar={function () { setHoja(null); }} onListo={alListo} />
+          onCerrar={function () { setHoja(null); }} onListo={alListo('eliminar')} />
       )}
     </div>
   );
@@ -1165,26 +1286,51 @@ function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita }) {
 }
 
 // ── Citaciones visitas completadas (solo admin): copiar y pegar en el Excel ──
-function CompletadasCaja({ lista, copiado, onCopiar }) {
+// (A2, 2026-11-04) «Copiar las N» copia de una vez las que faltan y pregunta si
+// ya se pegaron; cada una se puede marcar o desmarcar como pegada. Las pegadas
+// quedan aparte, plegadas, con quién y cuándo (hoja EXCEL_PEGADAS).
+function CompletadasCaja({ lista, pegadas, copiado, ocupado, onCopiar, onCopiarTodas, onMarcar }) {
+  const [verPegadas, setVerPegadas] = useStateAU(false);
+  const sep = separarPegadasExcel(lista, pegadas);
+  const fila = function (r) {
+    const m = r.pegada;
+    return (
+      <div className={'au-row' + (m ? ' au-pegada' : '')} key={r.idCupo}>
+        <span className="t">
+          <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
+          {r.fechaCompletada && <small>Completada {formatearFecha(r.fechaCompletada)}</small>}
+          <small>{_auSust(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
+          {m && <small>Pegada el {m.en}{m.por ? ' · ' + titleCaseNombre(m.por) : ''}</small>}
+          <button type="button" className="au-cl-texto au-peg-btn" disabled={ocupado}
+            onClick={function () { onMarcar([r.idCupo], !m); }}>{m ? 'Desmarcar' : 'Marcar pegada'}</button>
+        </span>
+        <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
+          aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
+          onClick={function () { onCopiar(r); }}>
+          {copiado === r.idCupo ? '✓' : _AU_SVG_COPIAR}
+        </button>
+      </div>
+    );
+  };
   return (
     <section className="au-caja" aria-labelledby="au-t-exc">
       <h2 id="au-t-exc">Citaciones visitas completadas</h2>
-      {!lista.length ? <p className="au-vacio-hoy">Sin citaciones</p> : lista.map(function (r) {
-        return (
-          <div className="au-row" key={r.idCupo}>
-            <span className="t">
-              <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
-              {r.fechaCompletada && <small>Completada {formatearFecha(r.fechaCompletada)}</small>}
-              <small>{_auSust(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
-            </span>
-            <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
-              aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
-              onClick={function () { onCopiar(r); }}>
-              {copiado === r.idCupo ? '✓' : _AU_SVG_COPIAR}
-            </button>
-          </div>
-        );
-      })}
+      {sep.pendientes.length > 1 && (
+        <button type="button" className="btn-neutro btn-chico au-copiar-todas" disabled={ocupado}
+          onClick={function () { onCopiarTodas(sep.pendientes); }}>
+          {_AU_SVG_COPIAR}<span>Copiar las {sep.pendientes.length} para el Excel</span>
+        </button>
+      )}
+      {!sep.pendientes.length
+        ? <p className="au-vacio-hoy">{sep.pegadas.length ? 'Todas están pegadas en el Excel' : 'Sin citaciones'}</p>
+        : sep.pendientes.map(fila)}
+      {sep.pegadas.length > 0 && (
+        <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={verPegadas ? 'true' : 'false'}
+          onClick={function () { setVerPegadas(!verPegadas); }}>
+          {verPegadas ? 'Ocultar las ya pegadas' : 'Ver las ' + sep.pegadas.length + ' ya pegadas'}
+        </button>
+      )}
+      {verPegadas && sep.pegadas.map(fila)}
     </section>
   );
 }
@@ -1225,15 +1371,16 @@ function PedidasHoyCaja({ cupos, pendientes, hoyTxt, usuario, yo, clicableCita, 
 }
 
 // ── Pantalla ────────────────────────────────────────────────────
-// Refresco por detrás mientras la pestaña está a la vista (y al volver a ella):
-// con la firma, una lectura sin cambios son ~100 bytes. Antes solo se leía al
-// entrar y tras escribir, y «Pedidas hoy» del admin se quedaba vieja.
-var _AU_REFRESCO_MS = 5 * 60 * 1000;
+// Refresco por detrás: al volver a la pestaña, al volver la señal y cada 15
+// minutos con la pestaña a la vista. Antes solo se leía al entrar y tras
+// escribir, y «Pedidas hoy» del admin se quedaba vieja. 15 y no 5 (2026-11-04):
+// cada lectura le cuesta al servidor, aunque ahora la sirva de su caché.
+var _AU_REFRESCO_MS = 15 * 60 * 1000;
 
 function AudienciasScreen({ usuario }) {
   const [datos, setDatos] = useStateAU(null); // {cupos, novedadesActivas, ultimaFechaConCupo}
   const [novedades, setNovedades] = useStateAU([]);
-  const [excel, setExcel] = useStateAU(null); // solo admin: {lista}
+  const [excel, setExcel] = useStateAU(null); // solo admin: {lista, pegadas}
   const [cargando, setCargando] = useStateAU(true);
   const [error, setError] = useStateAU('');
   const [sinConexion, setSinConexion] = useStateAU(false);
@@ -1262,15 +1409,18 @@ function AudienciasScreen({ usuario }) {
       ultimaFechaConCupo: r.ultimaFechaConCupo || ''
     });
     setNovedades(r.novedades || []);
-    if (esAdmin) setExcel({ lista: r.completadas || [] });
+    if (esAdmin) setExcel({ lista: r.completadas || [], pegadas: r.pegadas || {} });
   }
 
   // Abre con la copia local y la actualiza por detrás. Trae todas las citas,
   // también las pasadas: la Lista las muestra todas en orden (decisión del usuario).
   // gasPost ya lanza el error cuando el backend responde ok: false.
-  async function cargar() {
+  // `fresca` (tras una escritura): no pinta primero la copia guardada, que ya
+  // es vieja; antes se veía un instante el estado anterior a lo que se hizo.
+  async function cargar(op) {
+    const fresca = !!(op && op.fresca);
     const copia = _auLeerCopia(usuario.rol);
-    if (copia) { aplicar(copia); setCargando(false); }
+    if (copia && !fresca) { aplicar(copia); setCargando(false); }
     else if (!datos) setCargando(true);
     if (!navigator.onLine) {
       setSinConexion(true);
@@ -1303,6 +1453,7 @@ function AudienciasScreen({ usuario }) {
     cargar();
     precargarCupos();
     // Cupos apartados para pedir citas sin señal en campo (se repiten sin daño).
+    // Una vez al día por equipo, o si faltan (apartarCuposAudiencias, api.js).
     if (esInsp && navigator.onLine) apartarCuposAudiencias().catch(function () {});
   }, []);
 
@@ -1401,7 +1552,7 @@ function AudienciasScreen({ usuario }) {
       ok = false;
       await appAlert(msgError + ': ' + (e.message || e), { tono: 'error' });
     }
-    await cargar();
+    await cargar({ fresca: true });
     setOcupado(false);
     return ok;
   }
@@ -1464,12 +1615,28 @@ function AudienciasScreen({ usuario }) {
     }
   }
 
-  // La app no sabe cuándo se pegó en el Excel: solo copia (✓ un momento).
+  // Una fila al portapapeles (✓ un momento). Marcarla pegada es aparte.
   async function copiarFilaExcel(r) {
     const ok = await _auCopiarConRespaldo(r.filaTSV, 'Copiar fila');
     if (!ok) return;
     setCopiado(r.idCupo);
     setTimeout(function () { setCopiado(''); }, 1500);
+  }
+
+  // «Copiar las N»: todas las que faltan, una por renglón, y luego la pregunta
+  // de si ya se pegaron (el diálogo queda abierto mientras se pega en el Excel).
+  async function copiarTodasExcel(lista) {
+    if (!lista.length) return;
+    await _auCopiarConRespaldo(lista.map(function (r) { return r.filaTSV; }).join('\n'), 'Citaciones para el Excel');
+    const ya = await appConfirm('Se copiaron ' + lista.length + ' citaciones. Pégalas en el Excel del despacho.\n\n' +
+      '¿Ya las pegaste? Se marcan como pegadas y pasan a «ya pegadas».',
+      { titulo: 'Copiar al Excel', btnOk: 'Sí, ya las pegué', btnCancel: 'Todavía no' });
+    if (ya) await marcarPegadas(lista.map(function (r) { return r.idCupo; }), true);
+  }
+
+  function marcarPegadas(ids, pegada) {
+    return escribir(function () { return marcarPegadasExcelAudiencias(ids, pegada); },
+      pegada ? 'No se pudieron marcar como pegadas' : 'No se pudieron desmarcar');
   }
 
   function clicableCita(c) {
@@ -1580,7 +1747,7 @@ function AudienciasScreen({ usuario }) {
           {vista === 'cupos' && (
             <VistaCupos datos={datos} novedades={novedades} esAdmin={esAdmin} hoyTxt={hoyTxt}
               filtroSus={filtroSus} sustanciadores={sustanciadores} ocupado={ocupado}
-              escribir={escribir} onCambio={cargar} onAbrirCita={abrirCita}
+              escribir={escribir} onCambio={function () { cargar({ fresca: true }); }} onAbrirCita={abrirCita}
               onAbrirNovedades={function () { setHoja({ t: 'novedades' }); }} />
           )}
           {vista === 'lista' && (
@@ -1593,7 +1760,8 @@ function AudienciasScreen({ usuario }) {
             Agenda (es la tarea diaria del admin) y fuera de Cupos y Lista. */}
         {esAdmin && (
           <aside className="au-riel">
-            <CompletadasCaja lista={completadas} copiado={copiado} onCopiar={copiarFilaExcel} />
+            <CompletadasCaja lista={completadas} pegadas={(excel && excel.pegadas) || {}} copiado={copiado}
+              ocupado={ocupado} onCopiar={copiarFilaExcel} onCopiarTodas={copiarTodasExcel} onMarcar={marcarPegadas} />
             {pedidas}
           </aside>
         )}
@@ -1602,19 +1770,21 @@ function AudienciasScreen({ usuario }) {
       {hoja && hoja.t === 'novedades' && (
         <NovedadesHoja mias={novedadesVigentes} esAdmin={esAdmin} usuario={usuario} sustanciadores={sustanciadores}
           ocupado={ocupado} onCerrar={function () { setHoja(null); }}
-          onQuitar={quitarNovedad} onGuardar={guardarNovedad} />
+          onQuitar={quitarNovedad} onGuardar={guardarNovedad}
+          onReprogramada={function () { cargar({ fresca: true }); }} />
       )}
       {hoja && hoja.t === 'pedir' && (
         <PedirCitaHoja usuario={usuario} agenda={datos.cupos} cuposIniciales={cuposPedir}
           onCerrar={function () { setHoja(null); }}
-          onReservada={function () { cargar(); precargarCupos(); }} />
+          onReservada={function () { cargar({ fresca: true }); precargarCupos(); }} />
       )}
       {hoja && hoja.t === 'cita' && (
         <CitaHoja cita={hoja.cita} hoyTxt={hoyTxt} esAdmin={esAdmin} ocupado={ocupado}
           onCerrar={function () { setHoja(null); }}
           onVerVisita={function () { const c = hoja.cita; setHoja(null); abrirVisita(c); }}
           onLiberar={function () { liberarCupoDe(hoja.cita); }}
-          onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null} />
+          onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null}
+          onReprogramada={function () { setHoja(null); cargar({ fresca: true }); }} />
       )}
     </div>
   );

@@ -43,6 +43,7 @@ function cargarOlvido() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'api.js'), 'utf8');
   const piezas = [
     /const _CLAVE_APARTADOS = '[^']+';/,
+    /const _CLAVE_APARTADOS_DIA = '[^']+';/,
     /const _CLAVE_CITAS_PENDIENTES = '[^']+';/,
     /function _olvidarAudienciasLocales\(\) \{[\s\S]*?\n\}/,
   ].map(re => { const m = re.exec(src); assert.ok(m, 'no se encontró en api.js: ' + re); return m[0]; });
@@ -65,6 +66,7 @@ test('cierre de sesión: borra la copia de la agenda, los apartados y las citas 
   datos.set('cu_audiencias_v1_ADMIN', '{}');
   datos.set('cu_cupos_apartados_v1', '[{"idCupo":"x"}]');
   datos.set('cu_citas_pendientes_v1', '[{"requestId":"r"}]');
+  datos.set('cu_apartados_dia_v1', '05/04/2027');
   datos.set('cu_tema', 'claro');   // lo ajeno a Audiencias no se toca
   olvidar();
   assert.deepEqual(Array.from(datos.keys()), ['cu_tema']);
