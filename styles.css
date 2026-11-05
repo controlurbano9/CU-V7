@@ -4306,11 +4306,6 @@ button.au-lrow { display: block; width: 100%; text-align: left; font: inherit; c
 .au-form input:disabled { background: var(--surface-2); color: var(--ink-3); }
 .au-form .fila { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .au-form .botones { display: flex; gap: 8px; justify-content: flex-end; }
-.au-copy { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border: 1px solid var(--line-2);
-  border-radius: var(--r-ctl); background: var(--surface); color: var(--ink-2); cursor: pointer; }
-.au-copy:hover { background: var(--surface-2); }
-.au-copy svg { display: block; }
-.au-copy.ok { border-color: transparent; background: var(--green-bg); color: var(--green-ink); font-size: var(--fs-3); }
 .au-vacio { padding: 24px 14px; text-align: center; font-size: var(--fs-1); color: var(--ink-3);
   display: grid; gap: 8px; justify-items: center; }
 .au-vacio b { display: block; font: 600 var(--fs-2) var(--font-serif); color: var(--ink-2); }
@@ -4372,7 +4367,6 @@ button.au-lrow { display: block; width: 100%; text-align: left; font: inherit; c
   .au-row { min-height: var(--tap); }
   .au-x { width: var(--tap); height: var(--tap); }
   .au-mas { min-height: var(--tap); }
-  .au-copy { width: var(--tap); height: var(--tap); }
   .au-form input, .au-form select { min-height: var(--tap); }
   .au-lis-buscar { min-height: var(--tap); }
   .au-tabla { display: none; }
@@ -6098,19 +6092,46 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .cola-offline-acc .btn-neutro { flex: 1; min-height: 40px; padding: 0 10px; font-size: var(--fs-1); }
 .cola-offline-acc .cola-offline-borrar { flex: none; color: var(--red); }
 @media (max-width: 899px) { .cola-offline-acc .btn-neutro, .cola-offline-cab { min-height: 44px; } }
-/* ── Audiencias 2026-11-04 · lógica y arquitectura ──
-   «Citaciones visitas completadas»: copiar todas, marca de pegada y las ya
-   pegadas aparte (atenuadas como lo completado: se ven, pero ya está hecho). */
-.au-copiar-todas { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
-.au-copiar-todas svg { flex: none; }
-.au-peg-btn { display: inline-block; margin-top: 2px; padding-left: 0; }
+/* ── Audiencias · «Citaciones visitas completadas» (2026-11-05) ──
+   Se copia de a una: «Copiar» deja la citación marcada como copiada (marca
+   local al instante + marcarPegadasExcel por detrás). Renglón: fecha arriba
+   con «Copiar» a su derecha (36 px en escritorio, 44 en táctil, en tinte:
+   el único lleno de la pantalla es «Pedir cita»), datos rotulados en un dl
+   (rótulo gris de 96 px; en <360 va encima del valor) y pie gris. Las ya
+   copiadas van abajo, plegadas y atenuadas como lo completado. */
+.au-exc-ayuda { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.au-exc-cuenta { margin: 6px 0 2px; font-size: var(--fs-1); color: var(--ink-3); }
+.au-exc { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 2px 12px; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+.au-exc:last-child { border-bottom: 0; }
+.au-exc-fecha { grid-column: 1; grid-row: 1; margin: 0;
+  font: 700 var(--fs-2) var(--font-cond); overflow-wrap: anywhere; }
+.au-exc-btn { grid-column: 2; grid-row: 1; min-height: var(--tap-min); padding: 6px 12px; }
+.au-exc-btn svg { flex: none; }
+.au-exc-btn.ok { background: var(--green-bg); color: var(--green-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .au-exc-btn.ok:not(:disabled):hover { background: var(--green-bg); }
+}
+.au-exc-dl { grid-column: 1 / -1; display: grid; grid-template-columns: 96px minmax(0, 1fr);
+  gap: 1px 10px; margin: 4px 0 0; }
+.au-exc-dl dt { font-size: var(--fs-1); color: var(--ink-3); }
+.au-exc-dl dd { margin: 0; font-size: var(--fs-1); color: var(--ink); overflow-wrap: anywhere; }
+/* Citas escritas a mano en la visita (no del bloque): el sustanciador lo
+   llena el admin al pegar. Ámbar, como lo «por hacer». */
+.au-exc-sin { color: var(--amber); font-weight: 600; }
+.au-exc-pie, .au-exc-marca { grid-column: 1 / -1; margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.au-exc-marca { color: var(--green-ink); }
 .au-ver-pegadas { display: block; margin-top: 8px; padding-left: 0; }
-.au-caja .au-row.au-pegada { opacity: .62; }
-.au-caja .au-row.au-pegada:hover, .au-caja .au-row.au-pegada:focus-within { opacity: 1; }
+.au-caja .au-exc.au-pegada { opacity: .62; }
+.au-caja .au-exc.au-pegada:hover, .au-caja .au-exc.au-pegada:focus-within { opacity: 1; }
+@media (max-width: 359px) {
+  .au-exc-dl { grid-template-columns: minmax(0, 1fr); }
+  .au-exc-dl dt { margin-top: 3px; }
+}
+@media (max-width: 899px), (pointer: coarse) { .au-exc-btn { min-height: var(--tap); } }
 /* «Reprogramar» de una citación que cae en una novedad: ya movida. */
 .au-afect-ok { color: var(--green-ink); font-weight: 600; }
 .au-aviso li .au-cl-texto { padding: 0 2px; }
-@media (max-width: 899px), (pointer: coarse) { .au-pantalla .au-copiar-todas { min-height: var(--tap); } }
 /* ── Administración › Evidencias (2026-11-04): reporte mensual ── */
 .ev-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .ev-mes { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }

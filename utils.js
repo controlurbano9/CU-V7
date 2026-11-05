@@ -4894,6 +4894,19 @@ function separarPegadasExcel(lista, pegadas) {
   return out;
 }
 
+// El citado de una fila del Excel llega como «Nombre - C.C. 1020412418» (o
+// solo el nombre, o vacío): parte nombre y documento, con el documento solo
+// en dígitos ('' si no trae). Se parte por el ÚLTIMO « - C.C. » porque el
+// nombre puede traer guiones (María Pérez-Gómez); «NO APORTA» no lleva
+// dígitos y queda como sin documento. Pruebas: tests/completadas-copiar.test.js.
+function partirCitadoExcel(texto) {
+  var t = String(texto || '').trim();
+  if (!t) return { nombre: '', documento: '' };
+  var m = t.match(/^(.*\S)\s*-\s*C\.?C\.?\s*(.+)$/i);
+  if (m) return { nombre: m[1].trim(), documento: m[2].replace(/\D/g, '') };
+  return { nombre: t, documento: '' };
+}
+
 // Qué le falta a la selección de «Agregar cupos» ('' = está completa). Mismo
 // formato de previsualizarCupos.
 function problemaSeleccionCupos(sel) {
@@ -6050,6 +6063,7 @@ var _cuUtilsExports = {
   problemaCantidadCupos: problemaCantidadCupos,
   textoRechazoCupo: textoRechazoCupo,
   separarPegadasExcel: separarPegadasExcel,
+  partirCitadoExcel: partirCitadoExcel,
   visitaDeCitaAudiencias: visitaDeCitaAudiencias,
   // Pedir cita (TASK 3b)
   normOrdenAudiencias: normOrdenAudiencias,

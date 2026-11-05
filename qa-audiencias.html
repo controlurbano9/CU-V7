@@ -139,6 +139,10 @@ function cargarDatosQA() {
   poner(CITA('20/04/2027-1400-JUANSE', '20/04/2027', '2:00PM', 'JUANSE PEREZ', {
     radicado: '20272159320', expediente: '2360', citado: 'Sandra Villegas',
     documentoCitado: '1029384', reservadoPor: 'ALEJANDRO HERNANDEZ', direccion: 'DIAG 30A # 55-19' }));
+  // Completada sin documento (solo el nombre) y sin expediente (solo radicado).
+  poner(CITA('19/04/2027-1400-JUANSE', '19/04/2027', '2:00PM', 'JUANSE PEREZ', {
+    radicado: '20272150866', citado: 'Rosa Angarita',
+    reservadoPor: 'ALEJANDRO HERNANDEZ', direccion: 'CL 48 # 50-33' }));
   // Citaciones pasadas (ya en el Excel, marzo) para «Lista · Incluir pasadas».
   [
     ['10/03/2027-1400-JUANSE', '10/03/2027', '2:00PM', 'JUANSE PEREZ', 'Tulio Zuluaga', '19456723', 'ALEJANDRO HERNANDEZ', '2141'],
@@ -173,6 +177,8 @@ function cargarDatosQA() {
   });
   DATA_QA.novedadesActivas = 4;
   DATA_QA.ultimaFechaConCupo = AVISO_QA === 'cerca' ? _cerca() : '30/12/2027';
+  // Una ya copiada al abrir: el grupo «ya copiadas» se ve sin tocar nada.
+  PEGADAS_QA = { '12/04/2027-0900-PATRICIA': { en: '05/04/2027 10:20', por: 'DANIEL PEDRAZA' } };
 }
 function _cerca() {
   const d = new Date(Date.now() + 5 * 86400000);
@@ -187,7 +193,7 @@ window.agendaAudiencias = function () {
   const admin = ROLES[ROL_QA].rol === 'ADMIN';
   return Promise.resolve({ ok: true, cupos: DATA_QA.cupos, novedades: NOVEDADES_QA,
     novedadesActivas: DATA_QA.novedadesActivas, ultimaFechaConCupo: DATA_QA.ultimaFechaConCupo,
-    completadas: admin ? _completadasQA() : null, pegadas: admin ? PEGADAS_QA : null });
+    completadas: admin ? _completadasQA() : null, pegadas: admin ? Object.assign({}, PEGADAS_QA) : null });
 };
 window.marcarPegadasExcelAudiencias = function (ids, pegada) {
   (ids || []).forEach(function (id) {
@@ -301,8 +307,12 @@ function _completadasQA() {
   return DATA_QA.cupos.filter(function (c) {
     return c.estado === 'RESERVADO' && c.visitaCompletada && parsearFecha(c.fecha) >= parsearFecha('05/04/2027');
   }).map(function (c, i) {
-    return Object.assign({}, c, { filaTSV: _tsv(c), filaExcel: 3400 + i, expediente: c.expediente || 'NUEVO',
-      fechaCompletada: '02/04/2027' });
+    // El backend arma «Nombre - C.C. 123» (_filaExcelCitacion): igual aquí,
+    // para que el renglón ejercite partirCitadoExcel.
+    const citado = c.citado + (c.documentoCitado && c.documentoCitado !== 'NO APORTA'
+      ? ' - C.C. ' + c.documentoCitado : '');
+    return Object.assign({}, c, { citado: citado, filaTSV: _tsv(c), filaExcel: 3400 + i,
+      expediente: c.expediente || 'NUEVO', fechaCompletada: '02/04/2027' });
   });
 }
 // Pedir cita: cupos libres de hoy en adelante y 3 apartados guardados.
@@ -346,6 +356,13 @@ window.leerVisitas = function () {
       'FECHA ASIGNACION VISITA': '05/04/2027', 'DIRECCION INFRACCION': 'CL 48 # 33-15', 'BARRIO/VEREDA': 'Santa Ana' },
     { RADICADO: 'OFICIO-2027-09-012', 'ESTADO VISITA': 'INICIADO', 'VISITADOR(ES)': 'ALEJANDRO HERNANDEZ',
       'FECHA DE VISITA': '05/04/2027', 'N° ORDEN DE POLICIA': '2027-09-012', 'DIRECCION INFRACCION': 'CR 65 # 66-39', 'BARRIO/VEREDA': 'París' },
+    // Citación escrita a mano en la visita (no del bloque): llega a
+    // «Citaciones visitas completadas» sin sustanciador, con la fecha de la
+    // visita y el citado de «Persona que atiende».
+    { RADICADO: '20272157799', 'ESTADO VISITA': 'COMPLETADO', 'VISITADOR(ES)': 'MAURICIO HERRERA',
+      'FECHA CITACION': '21/04/2027 · 9:00 a. m.', 'FECHA DE VISITA': '15/04/2027',
+      'NOMBRE PERSONA ATIENDE': 'Hernán Gil', 'ID PERSONA ATIENDE': '9876543',
+      DIRECCION: 'CL 46 # 52-30', 'BARRIO/VEREDA': 'Los Alpes', EXPEDIENTE: '2352' },
   ];
   return Promise.resolve({ datos: agenda.concat(deCitas) });
 };

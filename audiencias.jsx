@@ -1302,52 +1302,84 @@ function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita, decreto
   );
 }
 
-// ── Citaciones visitas completadas (solo admin): copiar y pegar en el Excel ──
-// (A2, 2026-11-04) «Copiar las N» copia de una vez las que faltan y pregunta si
-// ya se pegaron; cada una se puede marcar o desmarcar como pegada. Las pegadas
-// quedan aparte, plegadas, con quién y cuándo (hoja EXCEL_PEGADAS).
-function CompletadasCaja({ lista, pegadas, copiado, ocupado, onCopiar, onCopiarTodas, onMarcar }) {
-  const [verPegadas, setVerPegadas] = useStateAU(false);
+// ── Citaciones visitas completadas (solo admin): copiar de a una ──
+// (2026-11-05) Cada renglón rotula sus datos (citado, caso, sustanciador):
+// antes decía «sin sustanciador · 20261126691 · Nombre» todo seguido y no se
+// sabía qué era cada cosa. «Copiar» deja la citación marcada como copiada
+// (marca local al instante + marcarPegadasExcel por detrás, hoja
+// EXCEL_PEGADAS): se copia de a una, nunca todas juntas, y la palabra es
+// «copiada» — la app no sabe si ya se pegó. El renglón recién copiado no se
+// mueve ni se atenúa (no saltar bajo el dedo); en la siguiente carga pasa al
+// grupo de abajo, plegado y atenuado.
+// «Caso»: el radicado (o «Orden …») y, con expediente, la etiqueta «Exp. N»
+// al lado — antes el radicado se escondía cuando traía expediente. El
+// «radicado» de una fila sin radicado real es la orden.
+function _auCasoExcel(r) {
+  const rad = String(r.radicado || '').trim();
+  const ord = r.ordenPolicia || (normOrdenAudiencias(rad) ? rad : '');
+  const caso = rad && rad !== ord ? rad : (ord ? 'Orden ' + ord : '');
+  const exp = r.expediente && r.expediente !== 'NUEVO'
+    ? <span className="exp-tag">Exp. {r.expediente}</span> : null;
+  if (exp) return <>{exp} {caso}</>;
+  return caso || '';
+}
+
+function CompletadasCaja({ lista, pegadas, copiadasLocal, aviso, onCopiar }) {
+  const [verCopiadas, setVerCopiadas] = useStateAU(false);
   const sep = separarPegadasExcel(lista, pegadas);
+  // «N por copiar» descuenta las recién copiadas (marca local): el renglón se
+  // queda en su sitio hasta recargar, pero el conteo dice lo que falta.
+  const porCopiar = sep.pendientes.filter(function (r) { return !copiadasLocal[r.idCupo]; }).length;
   const fila = function (r) {
-    const m = r.pegada;
+    // La marca del servidor (r.pegada) manda; la local solo pinta el botón y
+    // el renglón mientras no se recarga la pantalla.
+    const m = r.pegada || copiadasLocal[r.idCupo] || null;
+    const cit = partirCitadoExcel(r.citado);
     return (
-      <div className={'au-row' + (m ? ' au-pegada' : '')} key={r.idCupo}>
-        <span className="t">
-          <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
-          {r.fechaCompletada && <small>Completada {formatearFecha(r.fechaCompletada)}</small>}
-          <small>{_auSust(r.sustanciador)} · {r.expediente === 'NUEVO' ? r.radicado : <span className="exp-tag">Exp. {r.expediente}</span>}{r.citado ? ' · ' + r.citado : ''}</small>
-          {m && <small>Pegada el {m.en}{m.por ? ' · ' + titleCaseNombre(m.por) : ''}</small>}
-          <button type="button" className="au-cl-texto au-peg-btn" disabled={ocupado}
-            onClick={function () { onMarcar([r.idCupo], !m); }}>{m ? 'Desmarcar' : 'Marcar pegada'}</button>
-        </span>
-        <button type="button" className={'au-copy' + (copiado === r.idCupo ? ' ok' : '')}
-          aria-label="Copiar fila para el Excel" title="Copiar fila para el Excel"
+      <div className={'au-exc' + (r.pegada ? ' au-pegada' : '')} key={r.idCupo}>
+        <p className="au-exc-fecha">
+          {_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}
+        </p>
+        <button type="button" className={'btn-accion au-exc-btn' + (m ? ' ok' : '')}
+          aria-label={m ? 'Copiar otra vez la citación del ' + r.fecha : 'Copiar fila para el Excel'}
+          title={m ? 'Copiar otra vez la fila para el Excel' : 'Copiar fila para el Excel'}
           onClick={function () { onCopiar(r); }}>
-          {copiado === r.idCupo ? '✓' : _AU_SVG_COPIAR}
+          {m ? '✓ Copiada' : <>{_AU_SVG_COPIAR}Copiar</>}
         </button>
+        <dl className="au-exc-dl">
+          <dt>Citado</dt>
+          <dd>
+            {cit.nombre
+              ? <>{cit.nombre}{cit.documento ? ' · C.C. ' + _auDocPuntos(cit.documento) : ''}</>
+              : <span className="au-sindoc">Sin nombre</span>}
+          </dd>
+          <dt>Caso</dt>
+          <dd>{_auCasoExcel(r)}</dd>
+          <dt>Sustanciador</dt>
+          <dd>{r.sustanciador ? titleCaseNombre(r.sustanciador)
+            : <span className="au-exc-sin">Por asignar en el Excel</span>}</dd>
+        </dl>
+        {r.fechaCompletada && <p className="au-exc-pie">Visita completada {formatearFecha(r.fechaCompletada)}</p>}
+        {m && <p className="au-exc-marca">Copiada el {m.en}{m.por ? ' · ' + titleCaseNombre(m.por) : ''}</p>}
       </div>
     );
   };
   return (
     <section className="au-caja" aria-labelledby="au-t-exc">
       <h2 id="au-t-exc">Citaciones visitas completadas</h2>
-      {sep.pendientes.length > 1 && (
-        <button type="button" className="btn-neutro btn-chico au-copiar-todas" disabled={ocupado}
-          onClick={function () { onCopiarTodas(sep.pendientes); }}>
-          {_AU_SVG_COPIAR}<span>Copiar las {sep.pendientes.length} para el Excel</span>
-        </button>
-      )}
+      <p className="au-exc-ayuda">Cópialas de a una y pégalas en el Excel del despacho.</p>
       {!sep.pendientes.length
-        ? <p className="au-vacio-hoy">{sep.pegadas.length ? 'Todas están pegadas en el Excel' : 'Sin citaciones'}</p>
-        : sep.pendientes.map(fila)}
+        ? <p className="au-vacio-hoy">{sep.pegadas.length ? 'Todas están copiadas' : 'Sin citaciones'}</p>
+        : <p className="au-exc-cuenta">{porCopiar} por copiar</p>}
+      <p className="sr-only" role="status" aria-live="polite">{aviso}</p>
+      {sep.pendientes.map(fila)}
       {sep.pegadas.length > 0 && (
-        <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={verPegadas ? 'true' : 'false'}
-          onClick={function () { setVerPegadas(!verPegadas); }}>
-          {verPegadas ? 'Ocultar las ya pegadas' : 'Ver las ' + sep.pegadas.length + ' ya pegadas'}
+        <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={verCopiadas ? 'true' : 'false'}
+          onClick={function () { setVerCopiadas(!verCopiadas); }}>
+          {verCopiadas ? 'Ocultar las ya copiadas' : 'Ver las ' + sep.pegadas.length + ' ya copiadas'}
         </button>
       )}
-      {verPegadas && sep.pegadas.map(fila)}
+      {verCopiadas && sep.pegadas.map(fila)}
     </section>
   );
 }
@@ -1405,7 +1437,10 @@ function AudienciasScreen({ usuario }) {
   const [filtroSus, setFiltroSus] = useStateAU(''); // '' = todos; norm(nombre)
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
   const [q, setQ] = useStateAU('');                 // búsqueda de la Lista
-  const [copiado, setCopiado] = useStateAU('');
+  // «Citaciones visitas completadas»: marcas de copiado optimistas (la del
+  // servidor viaja en excel.pegadas) y el aviso para el lector de pantalla.
+  const [copiadasLocal, setCopiadasLocal] = useStateAU({});
+  const [avisoCopia, setAvisoCopia] = useStateAU('');
   const [ocupado, setOcupado] = useStateAU(false); // escritura en curso
   const [cuposPedir, setCuposPedir] = useStateAU(null);    // precargados para «Pedir cita»
   const [pendientes, setPendientes] = useStateAU([]);      // citas pedidas sin señal
@@ -1430,7 +1465,10 @@ function AudienciasScreen({ usuario }) {
       ultimaFechaConCupo: r.ultimaFechaConCupo || ''
     });
     setNovedades(r.novedades || []);
-    if (esAdmin) setExcel({ lista: r.completadas || [], pegadas: r.pegadas || {} });
+    if (esAdmin) {
+      setExcel({ lista: r.completadas || [], pegadas: r.pegadas || {} });
+      setCopiadasLocal({}); // tras recargar, la marca del servidor es la que manda
+    }
   }
 
   // Abre con la copia local y la actualiza por detrás. Trae todas las citas,
@@ -1689,28 +1727,34 @@ function AudienciasScreen({ usuario }) {
     }
   }
 
-  // Una fila al portapapeles (✓ un momento). Marcarla pegada es aparte.
+  // Una citación al portapapeles y queda marcada como copiada. La marca es
+  // optimista: al instante en el estado local (sin pasar por escribir(), que
+  // bloquea la pantalla con «ocupado» y recarga la agenda) y el servidor la
+  // guarda por detrás con marcarPegadasExcel (hoja EXCEL_PEGADAS, con quién y
+  // cuándo). Si el portapapeles abre la ventana de respaldo, ya se avisó allí;
+  // si falla la marca, se quita la local y se avisa — el texto ya está copiado.
   async function copiarFilaExcel(r) {
     const ok = await _auCopiarConRespaldo(r.filaTSV, 'Copiar fila');
     if (!ok) return;
-    setCopiado(r.idCupo);
-    setTimeout(function () { setCopiado(''); }, 1500);
-  }
-
-  // «Copiar las N»: todas las que faltan, una por renglón, y luego la pregunta
-  // de si ya se pegaron (el diálogo queda abierto mientras se pega en el Excel).
-  async function copiarTodasExcel(lista) {
-    if (!lista.length) return;
-    await _auCopiarConRespaldo(lista.map(function (r) { return r.filaTSV; }).join('\n'), 'Citaciones para el Excel');
-    const ya = await appConfirm('Se copiaron ' + lista.length + ' citaciones. Pégalas en el Excel del despacho.\n\n' +
-      '¿Ya las pegaste? Se marcan como pegadas y pasan a «ya pegadas».',
-      { titulo: 'Copiar al Excel', btnOk: 'Sí, ya las pegué', btnCancel: 'Todavía no' });
-    if (ya) await marcarPegadas(lista.map(function (r) { return r.idCupo; }), true);
-  }
-
-  function marcarPegadas(ids, pegada) {
-    return escribir(function () { return marcarPegadasExcelAudiencias(ids, pegada); },
-      pegada ? 'No se pudieron marcar como pegadas' : 'No se pudieron desmarcar');
+    setAvisoCopia('Citación copiada');
+    // Copiar otra vez una ya copiada (marca local o del servidor) solo copia.
+    if (copiadasLocal[r.idCupo] || ((excel && excel.pegadas) || {})[r.idCupo]) return;
+    const ahora = new Date();
+    const en = formatearFecha(ahora) + ' ' +
+      String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0');
+    setCopiadasLocal(function (p) {
+      const n = Object.assign({}, p);
+      n[r.idCupo] = { en: en, por: usuario.usuario };
+      return n;
+    });
+    marcarPegadasExcelAudiencias([r.idCupo], true).catch(async function (e) {
+      setCopiadasLocal(function (p) {
+        if (!p[r.idCupo]) return p;
+        const n = Object.assign({}, p); delete n[r.idCupo]; return n;
+      });
+      await appAlert('Se copió, pero no se pudo guardar que ya está copiada: ' +
+        (e && e.message ? e.message : e), { tono: 'error' });
+    });
   }
 
   function clicableCita(c) {
@@ -1845,8 +1889,8 @@ function AudienciasScreen({ usuario }) {
             Agenda (es la tarea diaria del admin) y fuera de Cupos y Lista. */}
         {esAdmin && (
           <aside className="au-riel">
-            <CompletadasCaja lista={completadas} pegadas={(excel && excel.pegadas) || {}} copiado={copiado}
-              ocupado={ocupado} onCopiar={copiarFilaExcel} onCopiarTodas={copiarTodasExcel} onMarcar={marcarPegadas} />
+            <CompletadasCaja lista={completadas} pegadas={(excel && excel.pegadas) || {}}
+              copiadasLocal={copiadasLocal} aviso={avisoCopia} onCopiar={copiarFilaExcel} />
             {pedidas}
           </aside>
         )}
