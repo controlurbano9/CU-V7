@@ -1628,7 +1628,7 @@ function AudienciasScreen({ usuario }) {
     if (r && r.ok === false) throw new Error(r.error || 'No se pudo decretar.');
     setRecien(function (prev) {
       const o = Object.assign({}, prev);
-      const k = claveRadicado(f['RADICADO']);
+      const k = claveCasoInspeccion(f);
       if (k) o[k] = true;
       if (c && c.idCupo) o[c.idCupo] = true;
       return o;
@@ -1647,12 +1647,14 @@ function AudienciasScreen({ usuario }) {
     if (!cita && !fila) return null;
     const d = parsearFecha(fechaTxt || (cita && cita.fecha)), h = parsearFecha(hoyTxt);
     if (!d || !h || d > h) return null;
-    const rad = claveRadicado(fila ? fila['RADICADO'] : cita.radicado);
+    // Por caso (claveCasoInspeccion): una cita pedida por N° de orden no trae
+    // radicado y antes nunca decía «decretada» tras releer la BD.
+    const rad = fila ? claveCasoInspeccion(fila) : claveCasoInspeccionCita(filas, cita);
     const k = cita ? cita.idCupo : 'fila-' + fila._idx;
     if ((rad && (decretadas[rad] || recien[rad])) || recien[k]) {
       return <span className="au-dec-ok">Inspección decretada</span>;
     }
-    const caso = cita ? _casoTxtAU(cita) : 'del radicado ' + fila['RADICADO'];
+    const caso = cita ? _casoTxtAU(cita) : _casoTxtAU(casoDeVisitaAudiencias(fila));
     async function decretar(e) {
       e.stopPropagation();
       const ok = await appConfirm('¿Decretar inspección al lugar ' + caso + '?\n\n' +
@@ -1864,7 +1866,7 @@ function AudienciasScreen({ usuario }) {
           onVerVisita={function () { const c = hoja.cita; setHoja(null); abrirVisita(c); }}
           onLiberar={function () { liberarCupoDe(hoja.cita); }}
           onDecretar={(esAdmin || esSup) ? decretarInspeccionDe : null}
-          yaDecretada={!!(recien[hoja.cita.idCupo] || decretadas[claveRadicado(hoja.cita.radicado)])}
+          yaDecretada={!!(recien[hoja.cita.idCupo] || decretadas[claveCasoInspeccionCita(filas, hoja.cita)])}
           onReprogramada={function () { setHoja(null); cargar({ fresca: true }); }} />
       )}
     </div>

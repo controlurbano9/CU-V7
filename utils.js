@@ -5071,6 +5071,18 @@ function _citasVisitaViejas(filas, opts) {
   });
 }
 
+// Como mismoCasoAudiencias, pero el radicado cuenta solo si identifica un caso
+// (esRadicadoDeCaso): dos filas V2 con «QUEJA VERBAL» a la misma hora son dos
+// audiencias distintas, no la misma anotada dos veces.
+function _mismoCasoRealAudiencias(a, b) {
+  if (!a || !b) return false;
+  var ra = esRadicadoDeCaso(a.radicado) ? claveRadicado(a.radicado) : '';
+  var rb = esRadicadoDeCaso(b.radicado) ? claveRadicado(b.radicado) : '';
+  if (ra && rb && ra === rb) return true;
+  var oa = normOrdenAudiencias(a.ordenPolicia), ob = normOrdenAudiencias(b.ordenPolicia);
+  return !!(oa && ob && oa === ob);
+}
+
 // Audiencias citadas de `fechaTxt` ('DD/MM/YYYY'), ordenadas por hora (sin
 // hora al final). Del bloque traen sustanciador; de la visita, no. Pruebas:
 // tests/audiencias-hoy.test.js.
@@ -5089,7 +5101,7 @@ function audienciasDelDia(filas, cupos, fechaTxt, opts) {
   viejas = viejas.filter(function (v, i) {
     var m = horaAudienciasMin(v.hora);
     return !viejas.some(function (w, j) {
-      if (j === i || horaAudienciasMin(w.hora) !== m || !mismoCasoAudiencias(w.caso, v.caso)) return false;
+      if (j === i || horaAudienciasMin(w.hora) !== m || !_mismoCasoRealAudiencias(w.caso, v.caso)) return false;
       var a = v.fila._idx, b = w.fila._idx;
       return (a != null && b != null && a !== b) ? b > a : j > i;
     });
@@ -5469,14 +5481,41 @@ function horaLibreInspeccion(items, dia, hora, inspector, excepto) {
   return ahi.length < 2; // dos a la misma hora, una por inspector (maqueta)
 }
 
-// Radicados (claveRadicado) con la inspección al lugar ya decretada: la fila
+// Clave del caso de una fila para las inspecciones decretadas: el radicado si
+// identifica un caso (esRadicadoDeCaso, como visitasDelCaso); si no, el N° de
+// orden ('ORDEN 2026-9-15'); si no, la fila sola ('FILA 12'). Antes era
+// claveRadicado a secas: las filas V2 con «QUEJA VERBAL» u «OPERATIVO»
+// compartían clave (decretar una marcaba todas y la bandeja mostraba una sola)
+// y un caso sin radicado no salía en la bandeja.
+function claveCasoInspeccion(f) {
+  if (!f) return '';
+  var k = claveRadicado(f['RADICADO']);
+  if (k && esRadicadoDeCaso(k)) return k;
+  var o = normOrdenAudiencias(ordenPoliciaDe(f));
+  if (o) return 'ORDEN ' + o;
+  return f._idx != null ? 'FILA ' + f._idx : '';
+}
+
+// La misma clave para una cita del bloque de Audiencias: su radicado si
+// identifica un caso; si no (cita pedida por N° de orden), la de su visita.
+function claveCasoInspeccionCita(filas, cita) {
+  if (!cita) return '';
+  var k = claveRadicado(cita.radicado);
+  if (k && esRadicadoDeCaso(k)) return k;
+  var f = visitaDeCitaAudiencias(filas, cita);
+  if (f) return claveCasoInspeccion(f);
+  var o = normOrdenAudiencias(cita.ordenPolicia);
+  return o ? 'ORDEN ' + o : '';
+}
+
+// Casos (claveCasoInspeccion) con la inspección al lugar ya decretada: la fila
 // de la cita en Audiencias dice «Inspección decretada» en lugar del botón.
 //   → { '20261102233': '03/11/2026 · JUAN SEBASTIAN PINZON', … }
 function inspeccionesDecretadas(datos) {
   var out = {};
   (datos || []).forEach(function (f) {
     var marca = String((f && f['INSPECCION_DECRETADA']) || '').trim();
-    var k = marca ? claveRadicado(f['RADICADO']) : '';
+    var k = marca ? claveCasoInspeccion(f) : '';
     if (k && !out[k]) out[k] = marca;
   });
   return out;
@@ -5484,13 +5523,13 @@ function inspeccionesDecretadas(datos) {
 
 // Bandeja «Por programar»: casos con la inspección decretada en Audiencias
 // (INSPECCION_DECRETADA = 'DD/MM/YYYY · Nombre') que aún no tienen hora. Un
-// renglón por caso, de lo más viejo a lo más nuevo.
+// renglón por caso (claveCasoInspeccion), de lo más viejo a lo más nuevo.
 function bandejaInspecciones(datos) {
   var vistos = {}, out = [];
   (datos || []).forEach(function (f) {
     var marca = String((f && f['INSPECCION_DECRETADA']) || '').trim();
     if (!marca) return;
-    var k = claveRadicado(f['RADICADO']);
+    var k = claveCasoInspeccion(f);
     if (!k || vistos[k]) return;
     vistos[k] = 1;
     var p = marca.split(' · ');
@@ -5498,6 +5537,20 @@ function bandejaInspecciones(datos) {
   });
   out.sort(function (a, b) { return (parsearFecha(a.fecha) || 0) - (parsearFecha(b.fecha) || 0); });
   return out;
+}
+
+// Inspector que lleva la confirmación del tablero ('' = falta elegirlo). Con
+// inspector fijo (o una reprogramación que ya lo tiene) va ese; si no, el
+// elegido o el propuesto, pero solo si está libre a esa hora (`libres`).
+// Antes el elegido de una confirmación anterior seguía vivo: al soltar un caso
+// de la bandeja en otra hora se programaba con él aunque ya estuviera ocupado.
+function inspectorConfirmacionInspeccion(plan, elegido, libres) {
+  if (!plan) return '';
+  if (plan.fijo || (plan.modo === 'reprogramar' && plan.inspector)) return plan.inspector || '';
+  libres = libres || [];
+  if (elegido && libres.indexOf(elegido) >= 0) return elegido;
+  if (plan.inspector && libres.indexOf(plan.inspector) >= 0) return plan.inspector;
+  return '';
 }
 
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
@@ -5956,6 +6009,9 @@ var _cuUtilsExports = {
   horaLibreInspeccion: horaLibreInspeccion,
   bandejaInspecciones: bandejaInspecciones,
   inspeccionesDecretadas: inspeccionesDecretadas,
+  claveCasoInspeccion: claveCasoInspeccion,
+  claveCasoInspeccionCita: claveCasoInspeccionCita,
+  inspectorConfirmacionInspeccion: inspectorConfirmacionInspeccion,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,

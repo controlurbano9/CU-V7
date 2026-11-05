@@ -146,6 +146,13 @@ function AgendaScreen({ usuario }) {
     try { ir = !!sessionStorage.getItem(IA_IR_KEY); } catch (e) {}
     return !esAdmin || ir ? 'insp' : 'visitas';
   });
+  // «Ver en la Agenda» con la Agenda ya abierta en Visitas: pasa a Inspecciones,
+  // que toma la marca al montar.
+  useEffectG(() => {
+    const alIr = () => setVista('insp');
+    window.addEventListener('cu-agenda-inspeccion-marca', alIr);
+    return () => window.removeEventListener('cu-agenda-inspeccion-marca', alIr);
+  }, []);
   const segmento = esAdmin ? (
     <div className="ag-seg" role="group" aria-label="Vista de la agenda">
       <button type="button" aria-pressed={vista === 'visitas'} onClick={() => setVista('visitas')}>Visitas</button>

@@ -510,6 +510,9 @@ function AppV6() {
       try { sessionStorage.setItem('cu_agenda_inspeccion', JSON.stringify(e.detail || {})); } catch (err) {}
       if (window.cerrarVisitaDetail) window.cerrarVisitaDetail();
       navegarRefApp.current('agenda');
+      // Con la Agenda ya abierta navegar no hace nada: la Agenda toma la marca
+      // con este aviso (si no está montada, la lee al montar).
+      window.dispatchEvent(new Event('cu-agenda-inspeccion-marca'));
     };
     window.addEventListener('cu-ir-agenda-inspeccion', ir);
     return () => window.removeEventListener('cu-ir-agenda-inspeccion', ir);

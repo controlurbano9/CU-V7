@@ -178,3 +178,12 @@ test('audienciasDelDia: el mismo caso con la misma cita en dos filas sale una ve
   const r = audienciasDelDia(filas, [], '05/04/2027');
   assert.deepEqual(r.map(x => x.citado), ['José Alejandro Correa Montoya', 'Otra persona', 'José tarde']);
 });
+
+test('audienciasDelDia: dos casos V2 distintos («QUEJA VERBAL») a la misma hora salen los dos', () => {
+  const filas = [
+    visita({ _idx: 10, RADICADO: 'QUEJA VERBAL', 'DIRECCION INFRACCION': 'CL 1', CITADO: 'Ana' }),
+    visita({ _idx: 11, RADICADO: 'QUEJA VERBAL', 'DIRECCION INFRACCION': 'CR 80', CITADO: 'Beto' }),
+  ];
+  const r = audienciasDelDia(filas, [], '05/04/2027');
+  assert.deepEqual(r.map(x => x.citado).sort(), ['Ana', 'Beto']);
+});
