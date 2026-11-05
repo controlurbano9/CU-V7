@@ -162,4 +162,13 @@ test('R13: uso comercial o industrial sin C11/C12', () => {
   }), []);
 });
 
+// 2026-11-05 (decisión del usuario): R13 es aviso. La app no sabe si el uso
+// está permitido en el polígono: no pide justificación ni bloquea la revisión.
+test('R13 es aviso, no coherencia', () => {
+  const s = revisarTextoLocal({ actuacion: 'Local en el primer piso.', usos: 'Comercial', poligono: 'ZCS-2-C8' });
+  assert.equal(s.length, 1);
+  assert.equal(s[0].tipo, 'aviso');
+  assert.ok(!/justificaci/i.test(s[0].mensaje));
+});
+
 

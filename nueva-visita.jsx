@@ -805,10 +805,10 @@ function _senalesTextoD(dObj) {
     destinaciones: dObj.destinaciones, usos: dObj.usos,
   });
 }
-// Solo las de coherencia (las de forma avisan, no vencen). Si cambian los
+// Solo las de coherencia (las de forma y los avisos no vencen). Si cambian los
 // datos y esto queda vacío, la revisión sigue vigente (regla 2026-10-17).
 function _senalesCoherenciaD(dObj) {
-  return _senalesTextoD(dObj).filter(s => s.tipo !== 'forma');
+  return _senalesTextoD(dObj).filter(s => s.tipo === 'coherencia');
 }
 // Claves de las señales de coherencia, para recordar cuáles ya justificó el
 // inspector al sellar.
@@ -4342,9 +4342,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     return _senalesTextoD(Object.assign({}, d, { actuacion: p.desc, obsConclusion: p.conc }));
   }
 
-  // Solo las señales de coherencia piden justificación; las de forma avisan.
+  // Solo las señales de coherencia piden justificación; las de forma y los
+  // avisos (R13) solo se muestran.
   function _senalesCoherencia(senales) {
-    return senales.filter(s => s.tipo !== 'forma');
+    return senales.filter(s => s.tipo === 'coherencia');
   }
 
   function cerrarRevision() {
@@ -4460,6 +4461,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!p) return null;
     const senales = _senalesPanel(p);
     const coherencia = _senalesCoherencia(senales);
+    // Avisos de datos (R13): se ven, no piden justificación ni bloquean.
+    const avisosDatos = senales.filter(s => s.tipo === 'aviso');
     // Las de forma hablan del texto propio: solo con «Usar mi texto» elegido
     // (antes de elegir repetían lo que el resumen de la propuesta ya explica).
     const forma = senales.filter(s => s.tipo === 'forma' &&
@@ -4679,6 +4682,28 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                 <p>No va en el acta: queda en el registro de la visita. Mínimo 20 caracteres.</p>
               </div>
             )}
+          </div>
+        )}
+        {avisosDatos.length > 0 && (
+          <div className="rv-bloque" id="rv-b-avi">
+            <div className="rv-btit">
+              <h3>Para tener en cuenta</h3>
+              <span>No impide aplicar la revisión</span>
+            </div>
+            <ul className="rv-datos">
+              {avisosDatos.map(s => (
+                <li key={s.id + s.donde}>
+                  <p>{s.mensaje}</p>
+                  {(SECCIONES_SENAL[s.id] || []).length > 0 && (
+                    <div className="rv-ir-fila">
+                      {SECCIONES_SENAL[s.id].map(sec => (
+                        <button key={sec} type="button" className="rv-ir" onClick={() => _irASeccion(sec)}>Ir a {sec}</button>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         <footer className="rv-pie">

@@ -4260,6 +4260,11 @@ function _comportamientosCitados(texto, poligono) {
 // de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
 var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b', 'aplaza'];
+// Avisos de datos que la app no puede decidir (2026-11-05, decisión del
+// usuario): se muestran en la revisión con su «Ir a…», pero no piden
+// justificación, no bloquean «Aplicar» ni vencen la revisión. R13: la app no
+// sabe si el uso comercial está permitido en el polígono.
+var SENALES_AVISO = ['R13'];
 // Cifra de un área como se escribe en Colombia: decimales con coma
 // («58.75» → «58,75»). Un punto con 3 cifras detrás es de miles y se deja.
 function numeroAreaCO(n) {
@@ -4271,7 +4276,8 @@ function revisarTextoLocal(e) {
   e = e || {};
   var senales = [];
   function add(id, donde, mensaje) {
-    senales.push({ id: id, tipo: SENALES_DE_FORMA.indexOf(id) >= 0 ? 'forma' : 'coherencia',
+    senales.push({ id: id, tipo: SENALES_DE_FORMA.indexOf(id) >= 0 ? 'forma'
+                             : SENALES_AVISO.indexOf(id) >= 0 ? 'aviso' : 'coherencia',
                    donde: donde, mensaje: mensaje });
   }
   var lista = comportamientosParaIA(e.infraccion);
@@ -4477,11 +4483,12 @@ function revisarTextoLocal(e) {
   }
 
   // R13: uso no residencial sin C11/C12. La app no sabe si el uso está
-  // permitido en el polígono: lo decide el inspector.
+  // permitido en el polígono: lo decide el inspector. Es aviso: no pide
+  // justificación ni bloquea (SENALES_AVISO).
   var usosNo = (String(e.usos || '').match(/comercial|industrial|servicios/gi) || []);
   if (usosNo.length && !tiene('C11') && !tiene('C12')) {
     add('R13', 'area', 'Usos actuales: ' + usosNo.join(', ').toLowerCase() + '. Si el uso no está permitido en el polígono' +
-      (e.poligono ? ' ' + e.poligono : '') + ', marca C11; si lo está, dilo en la justificación.');
+      (e.poligono ? ' ' + e.poligono : '') + ', marca C11.');
   }
 
   // R14 / R15 (2026-10-15): «¿Las obras requieren licencia?» contra A4.
@@ -6092,6 +6099,7 @@ var _cuUtilsExports = {
   revisionVigente: revisionVigente,
   revisarTextoLocal: revisarTextoLocal,
   SENALES_DE_FORMA: SENALES_DE_FORMA,
+  SENALES_AVISO: SENALES_AVISO,
   ACTA_CAPACIDAD: ACTA_CAPACIDAD,
   renglonesActa: renglonesActa,
   capacidadActa: capacidadActa,
