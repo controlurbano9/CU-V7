@@ -488,11 +488,11 @@ function _procesarVisitas(filas, nums) {
   // Una inspección al lugar no es caducidad: el despacho tiene el proceso
   // abierto (2026-11-03). Sin esto, la de un radicado de hace más de 3 años
   // quedaba escondida al visitador que tiene que ir.
-  // Tampoco una visita ya INICIADA (2026-11-05): la columna A solo mira la
-  // fecha de radicado, y la visita a medio diligenciar desaparecía de Mis visitas.
+  // Tampoco una visita ASIGNADA o INICIADA (2026-11-05): la columna A solo mira
+  // la fecha de radicado, y la visita por hacer desaparecía de Mis visitas.
   const esNC = o => jAt >= 0 && _esNoCompetencia(o[jAt]) &&
     !/INSPECCI[OÓ]N AL LUGAR/i.test(String(o['DILIGENCIA'] || '')) &&
-    !/^INICIAD[OA]$/.test(String(jEst >= 0 ? o[jEst] : '').trim().toUpperCase());
+    !/^(INICIAD|ASIGNAD)[OA]$/.test(String(jEst >= 0 ? o[jEst] : '').trim().toUpperCase());
   return { headers, datos: todas.filter(o => !esNC(o)), noCompetencia: todas.filter(esNC) };
 }
 

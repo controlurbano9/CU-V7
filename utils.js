@@ -2194,15 +2194,15 @@ var BUSCAR_ESTADOS_VIVOS = ['PENDIENTE', 'ASIGNADO', 'INICIADO'];
 var _PENDIENTE_BUSCAR = { 'PENDIENTE': 1, 'PENDIENTES': 1, 'PROGRAMADA': 1, 'PQR PENDIENTE': 1, 'PENDIENTE PQR': 1 };
 function esNoCompetenciaFila(f) {
   // La inspección al lugar de un radicado viejo es un proceso abierto, no caducidad.
-  // Una visita ya INICIADA tampoco (2026-11-05): la columna A solo mira la fecha
-  // de radicado y la marcaba «NO COMPETENCIA» con la visita a medio diligenciar,
-  // y nadie podía terminarla.
+  // Una visita ASIGNADA o INICIADA tampoco (2026-11-05, decisión del usuario):
+  // la columna A solo mira la fecha de radicado y la marcaba «NO COMPETENCIA»
+  // con la visita asignada o a medio diligenciar, y nadie podía hacerla.
   return /NO\s+COMPETENCIA/.test(String((f && f['ATENCION PQR']) || '').toUpperCase()) &&
-    !esInspeccionLugar(f) && !_visitaIniciadaFila(f);
+    !esInspeccionLugar(f) && !_visitaEnCursoFila(f);
 }
-function _visitaIniciadaFila(f) {
+function _visitaEnCursoFila(f) {
   var e = _normEstadoVisitaBD((f && (f['ESTADO VISITA'] || f[13])) || '');
-  return e === 'INICIADO' || e === 'INICIADA';
+  return e === 'INICIADO' || e === 'INICIADA' || e === 'ASIGNADO' || e === 'ASIGNADA';
 }
 function estadoBuscarDe(f) {
   var e = _normEstadoVisitaBD((f && (f['ESTADO VISITA'] || f[13])) || '');

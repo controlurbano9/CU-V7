@@ -18,3 +18,6 @@ graphify-out/
 # QA visual: capturas y perfil temporal del MCP de Playwright
 cc-*.png
 .playwright-mcp/
+
+# Banco de pruebas: se queda en local, no en Pages (decisión 2026-11-05)
+qa-centro-control.html

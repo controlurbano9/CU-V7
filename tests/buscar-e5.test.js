@@ -56,10 +56,10 @@ test('estadoBuscarDe: estados de V2 y NO COMPETENCIA no se pierden', () => {
   // La columna A manda sobre un estado vivo de hace más de 3 años; nunca sobre una completada.
   assert.equal(e('PENDIENTE', 'NO COMPETENCIA'), 'CERRADO');
   assert.equal(e('COMPLETADO', 'NO COMPETENCIA'), 'COMPLETADO');
-  // Una visita ya iniciada no caduca: hay que poder terminarla (2026-11-05).
+  // Una visita asignada o iniciada no caduca: hay que poder hacerla (2026-11-05).
   assert.equal(e('INICIADO', 'NO COMPETENCIA'), 'INICIADO');
+  assert.equal(e('ASIGNADO', 'NO COMPETENCIA'), 'ASIGNADO');
   assert.equal(U.esNoCompetenciaFila({ 'ESTADO VISITA': 'INICIADO', 'ATENCION PQR': 'NO COMPETENCIA' }), false);
-  assert.equal(e('ASIGNADO', 'NO COMPETENCIA'), 'CERRADO');
   assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': 'PENDIENTE', 'ATENCION PQR': 'NO COMPETENCIA' }), 'No competencia');
   assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': 'DESCARGADA GESTION' }), 'Descargada gestion');
   assert.equal(U.motivoCierreBuscar({ 'ESTADO VISITA': '' }), 'Sin estado');
