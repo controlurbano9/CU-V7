@@ -186,6 +186,14 @@ test('reprogramar sin nota conserva NOTA_DILIGENCIA y cambia la hora', opts, () 
   assert.equal(m.val(3, 'FECHA ASIGNACION VISITA'), '08/04/2027');
 });
 
+test('la hora conocida con espacio («10:00 AM») no da conflicto falso', opts, () => {
+  const m = mundo();
+  const r = m.programar({ modo: 'reprogramar', fila: 3, radicadoConocido: '20271110011',
+    fecha: '08/04/2027', hora: '3:00PM', programadaConocida: '07/04/2027 10:00 AM' });
+  assert.equal(r.resultados[0].ok, true, r.resultados[0].error);
+  assert.equal(m.val(3, 'HORA_PROGRAMADA'), '3:00PM');
+});
+
 // ── P2-2: conflicto entre dos personas ──
 test('programadaConocida distinta → conflicto y no escribe; sin ella (cliente viejo), escribe', opts, () => {
   const m = mundo();
