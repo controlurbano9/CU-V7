@@ -2692,7 +2692,7 @@ function ModalInicioVisita({ onResult, onCancelar, busquedaInicial }) {
                       </span>
                     </div>
                     {dir && <div style={{ color: 'var(--texto-suave)' }} title={dir}>{direccionVisible(dir)}</div>}
-                    {fecha && <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>Fecha: {fecha}</div>}
+                    {fecha && <div style={{ color: 'var(--texto-suave)', marginTop: 2 }}>Fecha: {_normalizarFechaCelda(fecha)}</div>}
                   </div>
 
                   {/* Acciones según estado */}

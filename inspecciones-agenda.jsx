@@ -368,7 +368,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
             <small>
               {plan.radicado} · {zona ? 'su día es ' + IA_DIAS[zona].toLowerCase() + ' (' + IA_ZONA[zona] + ')' : 'sin comuna: cualquier día'}
               {plan.puede && plan.fijo ? ' · va ' + titleCaseNombre(plan.inspector) + ', que hizo la visita anterior' : ''}
-              {plan.puede && plan.modo === 'reprogramar' ? ' · ya está el ' + plan.actual.fecha + ': elige la nueva hora' : ''}
+              {plan.puede && plan.modo === 'reprogramar' ? ' · ya está el ' + (fechaActualInsp || plan.actual.fecha) + ': elige la nueva hora' : ''}
             </small>
             {!plan.puede && <small className="it-motivo">{plan.motivo}</small>}
           </div>

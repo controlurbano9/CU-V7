@@ -1539,6 +1539,9 @@ function ResumenBQ({ casos, veTodo }) {
 // exportación en LOG_AUDITORIA; si eso falla, no se descarga nada.
 const _fmtFechaBQ = d => d instanceof Date && !isNaN(d) ? String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() : '';
 const _colF = (c, ...nombres) => { for (const n of nombres) { const v = c.f && c.f[n]; if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; };
+// FECHA CITACION es texto «DD/MM/YYYY · 9:00 AM»; si la celda quedó como fecha
+// real llega en ISO y así salía en el Excel (2026-11-05).
+const _fmtCitaBQ = v => /^\d{4}-\d{2}-\d{2}T/.test(v) ? formatearFecha(v) : v;
 const BQ_EXP_COLS = [
   ['Caso', 'rad', 'Radicado', c => c.rad],
   ['Caso', 'frad', 'Fecha de radicado', c => _fmtFechaBQ(c.fRad)],
@@ -1557,7 +1560,7 @@ const BQ_EXP_COLS = [
   ['Visita', 'fasig', 'Fecha de asignación', c => _fmtFechaBQ(c.fAsig)],
   ['Visita', 'fvis', 'Fecha de visita', c => _fmtFechaBQ(c.fVis)],
   ['Visita', 'fcierre', 'Fecha de cierre', c => _fmtFechaBQ(c.fCierre)],
-  ['Visita', 'fcit', 'Fecha de citación', c => _colF(c, 'FECHA CITACION')],
+  ['Visita', 'fcit', 'Fecha de citación', c => _fmtCitaBQ(_colF(c, 'FECHA CITACION'))],
   ['Hallazgos', 'infr', 'Tipo de infracción', c => (c.infr || []).join(' | ')],
   ['Hallazgos', 'obra', 'Estado de la obra', c => c.obra],
   ['Hallazgos', 'susp', 'Suspensión de obra', c => _colF(c, 'SUSPENSION DE LA OBRA')],
