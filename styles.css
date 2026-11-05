@@ -3595,7 +3595,11 @@ button.sv-col-head {
   .ag-quitar { width: 44px; }
 }
 @media (max-width: 899px) {
-  .ag-dia .page-title { font-size: var(--fs-5); }
+  /* El día largo («Miércoles 30 de septiembre») no cabe en una línea en el
+     celular: con nowrap empujaba las flechas fuera de la pantalla y la página
+     quedaba más ancha que el teléfono (revisión móvil 2026-11-04). */
+  .ag-dia .page-title { font-size: var(--fs-5); white-space: normal; min-width: 0; }
+  .ag-flechas { flex-shrink: 0; }
   .ag-cab-der { margin-left: 0; flex-wrap: wrap; }
   .ag-s { flex-wrap: wrap; }
   .ag-s-acc { width: 100%; }
@@ -4789,7 +4793,10 @@ body.sv-arrastrando { -webkit-user-select: none; user-select: none; }
 .bottom-tab {
   position: relative; min-height: 72px; justify-content: center;
   color: var(--ink-3); letter-spacing: 0;
+  padding-left: 2px; padding-right: 2px;
 }
+/* «Mis visitas» se partía en dos renglones a 360 px con cinco pestañas (admin). */
+.bottom-tab span { white-space: nowrap; }
 .bottom-tab.activo { color: var(--ink); font-weight: 600; }
 .bottom-tab.activo::before {
   content: ''; position: absolute; top: -1px; left: 18%; right: 18%; height: 3px;
@@ -5874,13 +5881,19 @@ button.tb-det-n { cursor: pointer; }
 .it-tira button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .it-tira button.on { background: var(--valla-bg); }
 .it-horas-m { background: var(--surface); border-radius: var(--r-panel); }
-.it-hm { display: grid; grid-template-columns: 48px 1fr; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.it-hm { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .it-hm-h { font-weight: 600; padding-top: 12px; }
 .it-hm .it-libre { min-height: 44px; }
 @media (max-width: 1199px) { .it-cuerpo { grid-template-columns: 1fr; } .it-bandeja { position: static; } }
 @media (min-width: 900px) and (max-width: 1199px) { .it-bandeja > .it-pend { display: inline-flex; width: calc(50% - 6px); margin-right: 6px; vertical-align: top; } }
 @media (max-width: 899px) {
-  .it-cuerpo { grid-template-columns: 1fr; }
+  /* minmax(0, 1fr): con 1fr la columna crecía al ancho mínimo de la tira de
+     días y a 360 px la bandeja «Por programar» se salía 16 px de la pantalla
+     (revisión móvil 2026-11-04). */
+  .it-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .it-tira { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .it-tira button small { overflow-wrap: anywhere; }
+  .it-flecha { width: var(--tap); height: var(--tap); }
   .it-bandeja { position: static; }
   .it-tablero, .it-pie { display: none; }
   .it-movil { display: block; }
