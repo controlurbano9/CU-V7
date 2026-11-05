@@ -5223,7 +5223,9 @@ function citacionesCompletadasExcel(listaBackend, filas, hoyTxt) {
     var exp = /^\d+$/.test(caso.expediente || '') ? caso.expediente : 'NUEVO';
     var fecha = formatearFecha(d);
     var fila = [
-      caso.radicado || caso.ordenPolicia, f['FECHA RADICADO'],
+      // La celda puede ser una fecha de verdad y llegar como ISO
+      // («2025-09-10T05:00:00.000Z»); el Excel la quiere DD/MM/YYYY (2026-11-05).
+      caso.radicado || caso.ordenPolicia, formatearFecha(f['FECHA RADICADO']),
       f['DENUNCIANTE/REMITENTE'] || f['DENUNCIANTE'], citadoTxt, dirTxt,
       fecha, hora, '', exp, ''
     ].map(limpio);

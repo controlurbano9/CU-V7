@@ -37,3 +37,13 @@ test('la cita a mano ya pasada no sale en «Citaciones visitas completadas»', (
   const corregida = Object.assign({}, fila, { 'FECHA CITACION': '02/03/2027 · 9:00 AM' });
   assert.equal(citacionesCompletadasExcel([], [corregida], '05/11/2026').length, 1);
 });
+
+test('fila del Excel: FECHA RADICADO en DD/MM/YYYY aunque la celda llegue como ISO', () => {
+  const fila = {
+    'ESTADO VISITA': 'COMPLETADO', 'RADICADO': 'OFICIO-10-09-2025',
+    'FECHA RADICADO': '2025-09-10T05:00:00.000Z',
+    'FECHA CITACION': '02/03/2027 · 9:00 AM', 'FECHA DE VISITA': '21/10/2026',
+  };
+  const [r] = citacionesCompletadasExcel([], [fila], '05/11/2026');
+  assert.equal(r.filaTSV.split('\t')[1], '10/09/2025');
+});
