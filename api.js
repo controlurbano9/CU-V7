@@ -40,6 +40,10 @@ const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.
 const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
 // SheetJS (~900 KB): solo al exportar desde Buscar (E5d), nunca en la precarga.
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+// pdf.js (~320 KB + worker ~1 MB): solo al abrir la PQR en el visor (visor-pqr.jsx).
+// 3.x es la última con UMD (window.pdfjsLib); la 4 solo trae módulos ES.
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // Promesa por URL: varias llamadas concurrentes comparten una sola descarga
 // y una sola etiqueta <script>. Un fallo se olvida para permitir reintento.
@@ -159,6 +163,8 @@ const _ACCIONES_SOLO_LECTURA = {
   listarUsuariosAdmin: true, leerConfigAgenda: true, leerLogAuditoria: true,
   obtenerIdFotos: true, geocode: true, obtenerPdfsSolicitud: true,
   linksPdfReiterados: true, leerPendientesAdmin: true, leerReportesEvidencias: true,
+  // El PDF de la PQR: el reintento solo repite la línea del log de auditoría.
+  obtenerPdfPqr: true,
   // Audiencias (TASK 3a): agenda completa y novedades se pueden repetir.
   agendaAudiencias: true, listarNovedades: true, listarCupos: true,
 };
@@ -166,7 +172,7 @@ const _ACCIONES_SOLO_LECTURA = {
 // no la cancela en el servidor. leerHoja trae la BD completa y en campo, con
 // señal débil, tarda más en bajar.
 const _TIMEOUT_LECTURA_MS = 20000;
-const _TIMEOUT_POR_ACCION_MS = { login: 15000, leerHoja: 45000, agendaAudiencias: 45000 };
+const _TIMEOUT_POR_ACCION_MS = { login: 15000, leerHoja: 45000, agendaAudiencias: 45000, obtenerPdfPqr: 60000 };
 
 function _politicaReintento(body) {
   const accion = body && body.accion;
@@ -325,6 +331,7 @@ async function _llamarWebhook(hacerFetch, body) {
         // Una respuesta del script es definitiva (credenciales, conflicto,
         // validación...), salvo el aviso de "sigue en curso" del dedup.
         err.definitivo = !d.enCurso;
+        err.respuesta = d; // quien llama puede leer los demás campos (p. ej. sinPdf)
         throw err;
       }
       return d;
@@ -1208,6 +1215,44 @@ async function quitarReiterado(radicadoPrincipal, reiterado) {
 // Devuelve { ok, links: { <radicado>: <url> } } (sin entrada = aún sin PDF).
 async function linksPdfReiterados(radicados) {
   return gasPost({ accion: 'linksPdfReiterados', radicados: radicados || [] });
+}
+
+// PDF de la PQR para el visor de la app (2026-11-05). Los PDF ya no se abren
+// con el enlace de Drive (traen los datos del denunciante): el webhook los lee
+// con la cuenta del script. Devuelve { ok, bytes } o { ok:false, error, sinPdf }.
+// Las últimas PQR abiertas quedan en memoria: volver a abrirla no la baja otra vez.
+const _pdfPqrMemoria = new Map();
+const _PDF_PQR_EN_MEMORIA = 4;
+async function obtenerPdfPqr(radicado) {
+  const r = String(radicado || '').replace(/\s+/g, '').toUpperCase();
+  if (_pdfPqrMemoria.has(r)) return { ok: true, bytes: _pdfPqrMemoria.get(r) };
+  let res;
+  try {
+    res = await gasPost({ accion: 'obtenerPdfPqr', radicado: r });
+  } catch (e) {
+    // La respuesta del script (sin PDF, demasiado grande…) no es un fallo de
+    // red: se devuelve tal cual para que el visor no ofrezca «Reintentar».
+    if (e && e.definitivo && e.respuesta) return e.respuesta;
+    throw e;
+  }
+  if (!res || !res.ok) return res || { ok: false, error: 'Sin respuesta del servidor.' };
+  const bytes = _b64ABytes(res.base64);
+  _pdfPqrMemoria.set(r, bytes);
+  while (_pdfPqrMemoria.size > _PDF_PQR_EN_MEMORIA) {
+    _pdfPqrMemoria.delete(_pdfPqrMemoria.keys().next().value);
+  }
+  return { ok: true, bytes };
+}
+
+// pdf.js bajo demanda. El worker se pide desde cdnjs: pdf.js lo envuelve en un
+// blob (importScripts), por eso el CSP de index.html lleva worker-src blob:.
+async function cargarPdfJs() {
+  if (!(window.pdfjsLib && window.pdfjsLib.getDocument)) {
+    await cargarScript(PDFJS_URL);
+    if (!(window.pdfjsLib && window.pdfjsLib.getDocument)) throw new Error('pdf.js no quedó disponible');
+  }
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+  return window.pdfjsLib;
 }
 
 // pdf-lib — solo para unir la solicitud con la orden. A diferencia de jsPDF
@@ -2430,7 +2475,7 @@ Object.assign(window, {
   subirFotoConDescripcion,
   subirOrdenPolicia, cargarJsPDF,
   obtenerPdfsSolicitud, subirSolicitudUnificada, armarSolicitudUnificada,
-  agregarReiterado, quitarReiterado, linksPdfReiterados,
+  agregarReiterado, quitarReiterado, linksPdfReiterados, obtenerPdfPqr, cargarPdfJs,
   listarFotosActa, describirFotoDesdeId,
   describirFotos, preDescribirFotosCarpeta, descripcionesEnCurso,
   consultarPOT,

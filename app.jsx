@@ -837,6 +837,7 @@ function AppV6() {
     <div id="app-principal" style={{ display: 'block' }}>
       <OfflineBanner />
       <OfflineColaBadge />
+      <VisorPqrHost />
       <BarraActividad />
       <AvisoAbriendo onCancelar={cancelarApertura} />
       <div id="app-wrapper">

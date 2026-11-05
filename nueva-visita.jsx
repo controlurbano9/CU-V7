@@ -6224,22 +6224,22 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
                   value={d.radicado || ''}
                   onChange={e => setCampo('radicado', e.target.value)}
                   placeholder="20251143210" />
-                {/* PDF de la PQR original, en pestaña nueva. Solo aparece si BD
-                    trae el link: no existe para oficios ni para los radicados
-                    que el scraper no alcanzó a descargar del gestor. */}
+                {/* PDF de la PQR original, en el visor de la app (visor-pqr.jsx).
+                    Solo aparece si BD trae el link: no existe para oficios ni
+                    para los radicados que el scraper no alcanzó a descargar. */}
                 {d.linkPdfRadicado && (
-                  <a href={d.linkPdfRadicado} target="_blank" rel="noopener noreferrer"
-                    title="Abrir el PDF de la PQR radicada (pestaña nueva)"
+                  <button type="button" onClick={() => abrirPqr(d.radicado)}
+                    title="Abrir el PDF de la PQR radicada"
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       minHeight: 'var(--tap)', padding: '10px 12px', borderRadius: 8,
                       background: 'var(--brand-bg)', color: 'var(--brand-ink)',
                       border: '1px solid var(--brand-accent)',
                       fontSize: 13, fontWeight: 600, textDecoration: 'none',
-                      whiteSpace: 'nowrap',
+                      whiteSpace: 'nowrap', fontFamily: 'inherit', cursor: 'pointer',
                     }}>
                     <Icon.File size={14} /> Ver PQR
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

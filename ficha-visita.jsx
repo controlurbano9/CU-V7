@@ -272,10 +272,11 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
                 </button>
               // Regla del diligenciador: al co-asignado se le dice quién la lleva.
               : <span className="vc-dilig">La lleva {quienes[0]}</span>)}
-            {/* La PQR se abre en pestaña nueva, como en las tarjetas. */}
+            {/* La PQR se abre en el visor de la app (visor-pqr.jsx): el PDF ya
+                no es público. LINK_PDF_RADICADO solo dice que existe. */}
             {linkPqr && (
-              <a className="vc-btn" href={linkPqr} target="_blank" rel="noopener noreferrer"
-                title="Abrir el PDF de la PQR radicada (pestaña nueva)">Ver PQR</a>
+              <button type="button" className="vc-btn" onClick={() => abrirPqr(f['RADICADO'])}
+                title="Abrir el PDF de la PQR radicada">Ver PQR</button>
             )}
             <BotonMapaVisita f={f} variante="vc" sinIcono />
             {puedePedirCita && (
@@ -373,8 +374,8 @@ function BandaCasoFV({ f, verPrioridad }) {
     celdas.push(<div key="rei"><div className="l">Reiterados</div>
       <div className="v fv-reits">{reits.map(r => (
         <span key={r}>{r}{links[r] && (
-          <a href={links[r]} target="_blank" rel="noopener noreferrer"
-            title="Abrir el PDF de la PQR reiterada (pestaña nueva)">Ver</a>
+          <button type="button" onClick={() => abrirPqr(r)}
+            title="Abrir el PDF de la PQR reiterada">Ver</button>
         )}</span>
       ))}</div></div>);
   }

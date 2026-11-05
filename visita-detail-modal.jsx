@@ -216,6 +216,7 @@ function ReiteradosVD({ f }) {
     display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 8,
     background: 'var(--brand-bg)', color: 'var(--brand-ink)', border: '1px solid var(--brand-accent)',
     fontSize: 13, fontWeight: 700, textDecoration: 'none', lineHeight: 1.6, whiteSpace: 'nowrap',
+    fontFamily: 'inherit', cursor: 'pointer',
   };
 
   return (
@@ -229,8 +230,8 @@ function ReiteradosVD({ f }) {
           <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 32 }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r}</span>
             {links[r]
-              ? <a href={links[r]} target="_blank" rel="noopener noreferrer" style={estiloChipPdf}
-                  title="Abrir el PDF de la PQR reiterada (pestaña nueva)"><Icon.File size={11} /> PQR</a>
+              ? <button type="button" onClick={() => abrirPqr(r)} style={estiloChipPdf}
+                  title="Abrir el PDF de la PQR reiterada"><Icon.File size={11} /> PQR</button>
               : <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>
                   {buscandoPdf ? 'Buscando PDF…' : 'PDF aún sin descargar'}
                 </span>}

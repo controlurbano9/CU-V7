@@ -3019,6 +3019,8 @@ button.sv-col-head {
 .fv-reits { display: flex; flex-wrap: wrap; gap: 2px 14px; }
 .fv-reits a { margin-left: 6px; color: var(--brand-ink); font-size: var(--fs-1); font-weight: 600; text-decoration: none; }
 .fv-reits a:hover { text-decoration: underline; }
+.fv-reits button { margin-left: 6px; padding: 0; border: 0; background: none; font-family: inherit; color: var(--brand-ink); font-size: var(--fs-1); font-weight: 600; cursor: pointer; }
+.fv-reits button:hover { text-decoration: underline; }
 .fv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; padding: 18px 20px 28px; align-items: start; }
 /* Mapa de la ficha: alto fijo (el 16:9 del panel se estiraba de más aquí). */
 .fv .mv-mapa { height: 220px; aspect-ratio: auto; border-radius: 12px; }
@@ -6151,3 +6153,19 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 @media (max-width: 1199px), (pointer: coarse) {
   .ev-acc .vc-btn { min-height: var(--tap); flex: 1 1 auto; justify-content: center; }
 }
+
+/* ── Visor de la PQR (visor-pqr.jsx, 2026-11-05) ───────────────────────
+   Armazón .rfm (cabecera + cuerpo). Por encima de «Ver datos» y de la
+   ficha: se abre desde ellas. Las páginas son lienzos de pdf.js. */
+.vp { z-index: 10001; grid-template-rows: auto 1fr; }
+.vp-tit { flex: 1; min-width: 0; }
+.vp-tit .rfm-titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-ayuda { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.vp-cuerpo { position: relative; min-height: 0; background: var(--carril); }
+.vp-hoja { position: absolute; inset: 0; overflow: auto; padding: 12px; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
+.vp-lienzo { width: max-content; min-width: 100%; }
+.vp-pag { display: block; margin: 0 auto 12px; background: #fff; box-shadow: 0 1px 3px rgba(21,20,15,.18); }
+.vp-error { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.vp-reintentar { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); font-family: inherit; font-size: var(--fs-2); font-weight: 600; cursor: pointer; }
+.vp .rfm-zoom button:disabled { opacity: .35; cursor: default; }
+@media (pointer: coarse) { .vp .rfm-zoom button { width: 44px; height: 44px; } }

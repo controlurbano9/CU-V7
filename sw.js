@@ -6,7 +6,7 @@
 
 // v95: purga las respuestas de servicios de Maps que el patrón anterior había
 // dejado cacheadas (Authenticate, gen_204, GetMapImage firmada).
-const CACHE_NAME = 'cu-v6-cache-v350';
+const CACHE_NAME = 'cu-v6-cache-v351';
 
 // Cachés de datos con nombre fijo: NO se borran al bumpar CACHE_NAME. Hasta
 // v119 todo vivía en CACHE_NAME y cada despliegue (casi diario) tiraba
@@ -72,6 +72,8 @@ const CDN_PATTERNS = [
   // jsPDF — arma el PDF de la orden de policía escaneada. Sin esto en caché,
   // el escaneo en campo sin señal no puede generar el documento.
   'cdnjs.cloudflare.com/ajax/libs/jspdf',
+  // pdf.js — visor de la PQR (visor-pqr.jsx). Solo se baja al abrir la primera.
+  'cdnjs.cloudflare.com/ajax/libs/pdf.js',
   'unpkg.com/leaflet@',
   'fonts.googleapis.com',
   'fonts.gstatic.com',

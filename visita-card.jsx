@@ -135,7 +135,7 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BotonPdfRadicado — abre el PDF de la PQR original en pestaña nueva.
+// BotonPdfRadicado — abre el PDF de la PQR original en el visor de la app.
 //
 // Va pegado al radicado (no en la fila de botones de abajo): es una
 // propiedad del radicado, no un entregable de la visita, y ahí lo
@@ -146,18 +146,23 @@ function TarjetaVisita({ f, densidad, opts, accion, onAccion, onAbrir, tiempo, u
 // stopPropagation porque la tarjeta puede vivir dentro de contenedores
 // clickeables (acordeones, filas de resultado).
 // ═══════════════════════════════════════════════════════════════
-// `onAbrir(e)` (opcional): quien lo aloja puede tomar el clic (la ficha
-// muestra la PQR a su lado con e.preventDefault()); si no, abre la pestaña.
+// `onAbrir(e)` (opcional): quien lo aloja puede tomar el clic con
+// e.preventDefault(); si no, abre el visor (visor-pqr.jsx). El PDF ya no es
+// público (2026-11-05): LINK_PDF_RADICADO solo dice que existe.
 function BotonPdfRadicado({ f, titulo, onAbrir }) {
   const link = linkPdfRadicado(f);
   if (!link) return null;
   return (
-    <a href={link} target="_blank" rel="noopener noreferrer"
-      onClick={(e) => { e.stopPropagation(); if (onAbrir) onAbrir(e); }}
-      title={titulo || 'Abrir el PDF de la PQR radicada (pestaña nueva)'}
+    <button type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onAbrir) onAbrir(e);
+        if (!e.defaultPrevented) abrirPqr(f['RADICADO']);
+      }}
+      title={titulo || 'Abrir el PDF de la PQR radicada'}
       className="pqr-chip">
       <Icon.File size={11} /> PQR
-    </a>
+    </button>
   );
 }
 

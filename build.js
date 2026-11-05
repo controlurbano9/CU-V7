@@ -61,6 +61,8 @@ const ARCHIVOS = [
   // reporte-evidencias.jsx antes de admin.jsx (la pestaña Evidencias)
   'reporte-evidencias.jsx',
   'admin.jsx',
+  // visor-pqr.jsx: el PDF de la PQR; lo abre cualquiera con abrirPqr() y lo monta app.jsx
+  'visor-pqr.jsx',
   'app.jsx',
 ];
 
