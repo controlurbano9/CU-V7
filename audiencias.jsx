@@ -1622,7 +1622,10 @@ function AudienciasScreen({ usuario }) {
   // También la usa el botón de la fila (`fila`: la visita ya conocida, citas
   // viejas de la Agenda). Al salir bien, la fila y la hoja dicen «decretada».
   async function decretarInspeccionDe(c, fila) {
-    const f = fila || visitaDeCitaAudiencias((await leerVisitas()).datos || [], c);
+    // También en noCompetencia: los radicados viejos (más de 3 años) viven
+    // ahí y sus citas sí existen — justo los que esta función rescata (P2-3).
+    const bd = await leerVisitas();
+    const f = fila || visitaDeCitaAudiencias(((bd && bd.datos) || []).concat((bd && bd.noCompetencia) || []), c);
     if (!f) throw new Error('No se encontró la visita ' + _casoTxtAU(c) + '.');
     const r = await decretarInspeccionAudiencias(f);
     if (r && r.ok === false) throw new Error(r.error || 'No se pudo decretar.');

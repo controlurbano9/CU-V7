@@ -195,6 +195,14 @@ test('semanaInspecciones: ubica cada inspección en su día y marca la que va fu
   assert.equal(horaLibreInspeccion(s.items, 2, '9:00AM', ''), true);   // queda un inspector libre
 });
 
+test('horaLibreInspeccion sin inspector: libre mientras alguno de los tres asignables esté libre', () => {
+  const it = (ins, k) => ({ f: { _idx: k }, dia: 2, hora: '9:00AM', inspector: ins });
+  const dos = [it('ALEJANDRO HERNANDEZ', 1), it('MAURICIO HERRERA', 2)];
+  assert.equal(horaLibreInspeccion(dos, 2, '9:00AM', ''), true);    // Daniel libre
+  assert.equal(horaLibreInspeccion(dos.concat([it('DANIEL PEDRAZA', 3)]), 2, '9:00AM', ''), false);
+  assert.equal(horaLibreInspeccion(dos, 3, '9:00AM', ''), true);    // otro día
+});
+
 test('bandejaInspecciones: un renglón por caso, lo más viejo primero', () => {
   const b = bandejaInspecciones([
     { RADICADO: '20261102233', INSPECCION_DECRETADA: '03/11/2026 · JUAN SEBASTIAN PINZON' },

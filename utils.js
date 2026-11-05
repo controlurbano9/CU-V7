@@ -5468,7 +5468,10 @@ function semanaInspecciones(datos, lunes) {
 }
 
 // ¿Esa hora de ese día está libre? Con inspector, que él no tenga otra
-// inspección a esa hora; sin inspector, que quede alguno libre.
+// inspección a esa hora; sin inspector, que alguno de los asignables
+// (INSPECTORES_ASIGNABLES) esté libre: una celda se llena solo cuando los
+// tres tienen inspección a esa hora (antes `ahi.length < 2` fijo, que con
+// tres inspectores escondía el «+» aunque quedara uno libre).
 function horaLibreInspeccion(items, dia, hora, inspector, excepto) {
   var m = horaAudienciasMin(hora);
   var ahi = (items || []).filter(function (x) {
@@ -5478,7 +5481,9 @@ function horaLibreInspeccion(items, dia, hora, inspector, excepto) {
     var yo = _primerNombreInsp(inspector);
     return !ahi.some(function (x) { return _primerNombreInsp(x.inspector) === yo; });
   }
-  return ahi.length < 2; // dos a la misma hora, una por inspector (maqueta)
+  var ocupados = {};
+  ahi.forEach(function (x) { ocupados[_primerNombreInsp(x.inspector)] = 1; });
+  return INSPECTORES_ASIGNABLES.some(function (n) { return !ocupados[normNombreAudiencias(n)]; });
 }
 
 // Clave del caso de una fila para las inspecciones decretadas: el radicado si

@@ -42,6 +42,16 @@ function _iaColor(nombre, inspectores) {
   return k < 0 ? 'var(--ink-4)' : 'var(--it-i' + (k % 4 + 1) + ')';
 }
 function _iaPrimer(n) { return String(n || '').trim().split(/\s+/)[0].toUpperCase(); }
+// Lo que el tablero ve de esa fila: la inspección que ya tiene
+// ('DD/MM/YYYY HH:MMAM') o '' si no tenía. Viaja al backend para que rechace
+// con `conflicto` si otra persona la cambió mientras tanto (P2-2).
+function _iaProgramadaConocida(f) {
+  if (!f || !esInspeccionLugar(f)) return '';
+  const d = parsearFecha(f['FECHA ASIGNACION VISITA'] || '');
+  const fecha = d ? formatearFecha(d) : String(f['FECHA ASIGNACION VISITA'] || '').trim();
+  const hora = horaProgramadaDe(f);
+  return hora ? fecha + ' ' + hora : fecha;
+}
 
 function InspeccionesAgenda({ usuario, segmento }) {
   // Hooks antes de cualquier early return (React #310).
@@ -64,6 +74,22 @@ function InspeccionesAgenda({ usuario, segmento }) {
   const [idxBarrios, setIdxBarrios] = useStateIA(null);
   const [porElegir, setPorElegir] = useStateIA(''); // radicado recién registrado: se elige al llegar
   const arrastre = useRefIA(null);
+  // Accesibilidad de la confirmación (P3-9): foco al primer control al
+  // abrir, Escape cierra y el foco vuelve al control que la abrió.
+  const confRef = useRefIA(null);
+  const confOpener = useRefIA(null);
+  useEffectIA(() => {
+    if (celda) {
+      confOpener.current = document.activeElement;
+      const el = confRef.current;
+      const primero = el && el.querySelector('select, button');
+      if (primero) primero.focus();
+    } else if (confOpener.current) {
+      const op = confOpener.current;
+      confOpener.current = null;
+      try { if (op && typeof op.focus === 'function') op.focus(); } catch (e) { /* desmontado */ }
+    }
+  }, [celda]);
 
   async function cargar(forzar) {
     try {
@@ -148,9 +174,18 @@ function InspeccionesAgenda({ usuario, segmento }) {
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const pasado = (k) => semana.dias[k].date < hoy;
-  const libre = (k, h) => !!plan && plan.puede && !pasado(k) && esDiaHabil(semana.dias[k].date) &&
-    horaLibreInspeccion(semana.items, k, h, plan.inspector || '',
+  // La propia celda de la inspección que se reprograma no ofrece «+»:
+  // la misma fecha y hora no es un cambio (P3-8; el arrastre ya lo bloquea).
+  const fechaActualInsp = plan && plan.actual && parsearFecha(plan.actual.fecha)
+    ? formatearFecha(parsearFecha(plan.actual.fecha)) : '';
+  const libre = (k, h) => {
+    if (!plan || !plan.puede || pasado(k) || !esDiaHabil(semana.dias[k].date)) return false;
+    if (plan.modo === 'reprogramar' && fechaActualInsp &&
+        semana.dias[k].fecha === fechaActualInsp &&
+        horaAudienciasMin(h) === horaAudienciasMin(plan.actual.hora)) return false;
+    return horaLibreInspeccion(semana.items, k, h, plan.inspector || '',
       plan.modo === 'reprogramar' ? (caso || []).find(x => x._idx === plan.fila) : null);
+  };
 
   function elegir(f) {
     setSel(f); setQ(''); setCelda(null); setError(''); setElegido('');
@@ -170,7 +205,12 @@ function InspeccionesAgenda({ usuario, segmento }) {
     try {
       const r = await gasPost({ accion: 'programarInspecciones', items: [item] });
       const it = r && r.resultados && r.resultados[0];
-      if (!(r && r.ok && it && it.ok)) throw new Error((it && it.error) || (r && r.error) || 'No se pudo programar.');
+      if (!(r && r.ok && it && it.ok)) {
+        // El conflicto (otra persona programó entretanto) refresca el
+        // tablero: lo que se ve ya no es lo que hay (P2-2).
+        if (it && it.conflicto) cargar(true);
+        throw new Error((it && it.error) || (r && r.error) || 'No se pudo programar.');
+      }
       invalidarCache('visitas');
       setResaltada(it.fila); setSel(null); setCelda(null);
       await cargar(true);
@@ -182,8 +222,12 @@ function InspeccionesAgenda({ usuario, segmento }) {
     if (ocupado) return;
     const ins = insConf;
     if (!ins && plan.modo !== 'reprogramar') return;
+    // Sin `nota`: el backend no toca NOTA_DILIGENCIA si no viene (P1). El
+    // conflicto se detecta con lo que el tablero veía de la fila.
+    const fDest = (datos || []).find(x => x._idx === plan.fila) || null;
     enviar({ modo: plan.modo, fila: plan.fila, radicadoConocido: plan.radicado, inspector: ins || '',
-      fecha: semana.dias[celda.dia].fecha, hora: celda.hora, nota: '', expediente: '' });
+      fecha: semana.dias[celda.dia].fecha, hora: celda.hora, expediente: '',
+      programadaConocida: _iaProgramadaConocida(fDest) });
   }
 
   async function quitarDeBandeja(b) {
@@ -210,7 +254,8 @@ function InspeccionesAgenda({ usuario, segmento }) {
     if (!horaLibreInspeccion(semana.items, k, h, it.inspector, it.f)) return;
     if (it.dia === k && it.hora === h) return;
     enviar({ modo: 'reprogramar', fila: it.f._idx, radicadoConocido: it.f['RADICADO'], inspector: '',
-      fecha: semana.dias[k].fecha, hora: h, nota: '', expediente: '' });
+      fecha: semana.dias[k].fecha, hora: h, expediente: '',
+      programadaConocida: _iaProgramadaConocida(it.f) });
   }
 
   // Tarjeta: dirección e «Inspector · Exp. 2201». Sin expediente, el
@@ -336,6 +381,7 @@ function InspeccionesAgenda({ usuario, segmento }) {
         <aside className="it-bandeja" aria-labelledby="it-b-t">
           <h2 id="it-b-t">Por programar <span>{bandeja.length}</span></h2>
           <p className="it-nota">Decretadas en Audiencias, aún sin hora. Tócala o arrástrala a una hora.</p>
+          {bandeja.length === 0 && <p className="it-nota">No hay inspecciones decretadas por programar.</p>}
           {bandeja.map(b => (
             <div key={b.f._idx} className={'it-pend' + (sel && claveRadicado(sel['RADICADO']) === claveRadicado(b.f['RADICADO']) ? ' sel' : '')}
               draggable onDragStart={() => { elegir(b.f); arrastre.current = { bandeja: true }; }}>
@@ -406,7 +452,8 @@ function InspeccionesAgenda({ usuario, segmento }) {
       </div>
 
       {celda && plan && (
-        <div className="it-conf" role="dialog" aria-label="Confirmar inspección">
+        <div className="it-conf" role="dialog" aria-modal="true" aria-label="Confirmar inspección"
+          ref={confRef} onKeyDown={e => { if (e.key === 'Escape') setCelda(null); }}>
           <b>{IA_DIAS[d.date.getDay()]} {d.date.getDate()} · {horaCortaInspeccion(celda.hora)}</b>
           {plan.fijo || (plan.modo === 'reprogramar' && plan.inspector) ? (
             <span>{titleCaseNombre(plan.inspector)}</span>
