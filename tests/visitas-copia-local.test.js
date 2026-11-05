@@ -237,6 +237,19 @@ test('NO COMPETENCIA queda fuera de `datos` y aparte en `noCompetencia` (solo pa
   assert.deepEqual(res2.noCompetencia.map(o => o['RADICADO']), ['R-2']);
 });
 
+test('una visita INICIADA con NO COMPETENCIA en la columna A sigue en la app (2026-11-05)', async () => {
+  const m = montar();
+  const p0 = m.leerVisitas();
+  await tic();
+  const bd = BD.map(f => f.slice());
+  bd[2][0] = 'NO COMPETENCIA';
+  bd[2][2] = 'INICIADO';
+  m.pedidos[0].resolve(bd);
+  const res = await p0;
+  assert.deepEqual(res.datos.map(o => o['RADICADO']), ['R-1', 'R-2']);
+  assert.deepEqual(res.noCompetencia, []);
+});
+
 test('un refresco fallido queda registrado y el siguiente que sale bien lo borra', async () => {
   const m = await conCopiaDeRed();
   const fallo = m.fallo;
