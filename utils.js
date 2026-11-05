@@ -5181,6 +5181,19 @@ function agendaAudienciasDias(filas, cupos, desdeTxt, opts) {
 // el Excel), sin repetir un caso que ya trae el backend, con la misma fila de
 // 10 columnas de _filaExcelCitacion y sin sustanciador (no se deduce).
 // Orden: completada más reciente primero, como el backend.
+// La citación no puede ser anterior a la visita (2026-11-05, decisión del
+// usuario). Caso real: una visita del 21/10/2026 quedó con citación del
+// 02/03/2026 (error de tipeo) y por eso no salió en «Citaciones visitas
+// completadas», que deja fuera las citas a mano ya pasadas. El mismo día sí
+// vale. Fechas en ISO (AAAA-MM-DD), como las guarda el formulario; si falta
+// alguna, no hay nada que comparar.
+function citacionAntesDeVisita(citacionIso, visitaIso) {
+  var iso = /^\d{4}-\d{2}-\d{2}$/;
+  var c = String(citacionIso || '').trim().slice(0, 10);
+  var v = String(visitaIso || '').trim().slice(0, 10);
+  return iso.test(c) && iso.test(v) && c < v;
+}
+
 function citacionesCompletadasExcel(listaBackend, filas, hoyTxt) {
   var lista = (listaBackend || []).slice();
   var hoy = parsearFecha(hoyTxt);
@@ -6269,6 +6282,7 @@ var _cuUtilsExports = {
   calidadTablero: calidadTablero,
   fichaAreaTablero: fichaAreaTablero,
   citacionesCompletadasExcel: citacionesCompletadasExcel,
+  citacionAntesDeVisita: citacionAntesDeVisita,
   CONTRAVENCION_GRUPOS: CONTRAVENCION_GRUPOS,
   CONTRAVENCION_ESPECIAL: CONTRAVENCION_ESPECIAL,
   CONTRAVENCION_INDETERMINADA: CONTRAVENCION_INDETERMINADA,

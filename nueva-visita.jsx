@@ -5119,6 +5119,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         errs.push('Fecha de visita anterior al radicado (radicado: ' + _isoAFecha(d.fechaRadicado) + ')');
       }
     }
+    if (!d.noCitacion && citacionAntesDeVisita(d.citacionFecha, d.fechaVisita)) {
+      errs.push('Fecha de citación anterior a la fecha de visita (visita: ' + _isoAFecha(d.fechaVisita) + ')');
+    }
     return errs;
   }
 
@@ -5456,6 +5459,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!d.noCitacion) {
       req(d.citacionFecha, 'Fecha de citación (o marca "no se deja citación")');
       req(d.citacionHora,  'Hora de citación');
+      if (citacionAntesDeVisita(d.citacionFecha, d.fechaVisita)) {
+        req(false, 'Fecha de citación anterior a la visita (' + _isoAFecha(d.fechaVisita) + ')');
+      }
     }
 
     sec = 'Funcionarios que realizan la inspección';
@@ -6914,6 +6920,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         <_Campo label="Fecha de citación">
           <_Input type="date" value={d.citacionFecha}
             onChange={v => setCampo('citacionFecha', v)}
+            min={d.fechaVisita || undefined}
             disabled={d.noCitacion} />
         </_Campo>
         <_Campo label="Hora de citación">
