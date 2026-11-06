@@ -272,115 +272,206 @@ function _datosVisitaParaRevision(d) {
   });
 }
 
-function _informeParaMensaje(informe) {
-  informe = informe || {};
+// ── Puras: unidades de revisión (2026-11-05) ──────────────────────────
+// La revisión ya no trabaja por sección: la unidad es Antecedentes entero,
+// cada párrafo de Observaciones y cada punto de Conclusiones y
+// Recomendaciones. Lo que la revisión ya vio no vuelve a la IA; un retoque
+// tampoco (decisión del usuario: una sola revisión, al generar el Word).
+
+function parrafosObservaciones(texto) {
+  return String(texto || '').split(/\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
+}
+
+// Reemplaza párrafos de las observaciones (mapa número → texto nuevo, desde
+// 1) sin tocar los saltos de línea entre ellos ni los demás párrafos.
+function reemplazarParrafos(texto, mapa) {
+  var n = 0;
+  return String(texto || '').split(/(\n+)/).map(function (parte) {
+    if (/^\n+$/.test(parte) || !parte.trim()) return parte;
+    n++;
+    return Object.prototype.hasOwnProperty.call(mapa || {}, n) ? String(mapa[n]).trim() : parte;
+  }).join('');
+}
+
+function unidadesInforme(informe) {
+  var inf = informe || {};
+  var limpia = function (xs) { return (xs || []).map(function (t) { return String(t || '').trim(); }).filter(Boolean); };
+  var ant = String(inf.antecedentes || '').trim();
+  return {
+    antecedentes: ant ? [ant] : [],
+    observaciones: parrafosObservaciones(inf.observaciones),
+    conclusiones: limpia(inf.conclusiones_items),
+    recomendaciones: limpia(inf.recomendaciones_items)
+  };
+}
+
+// ¿Lo que cambió es un retoque de un texto ya revisado? Comparten al menos
+// la mitad de las palabras y no trae cifras nuevas (una cifra nueva es un
+// hecho nuevo: ese sí lo mira la revisión). Más suelto que
+// cambioMenorRevision de utils.js, que era el que obligaba a revisar otra vez.
+function retoqueRevisado(revisado, actual) {
+  var pal = function (t) {
+    var s = {};
+    _normTexto(t).split(' ').forEach(function (w) { if (w) s[w] = true; });
+    return s;
+  };
+  var A = pal(revisado), B = pal(actual);
+  var na = Object.keys(A).length, nb = Object.keys(B).length;
+  if (!na || !nb) return false;
+  var inter = 0;
+  for (var k in B) if (A[k]) inter++;
+  if (inter / (na + nb - inter) < 0.5) return false;
+  var cifras = function (t) { return String(t || '').match(/\d+([.,]\d+)?/g) || []; };
+  var previas = cifras(revisado);
+  return cifras(actual).every(function (n) { return previas.indexOf(n) >= 0; });
+}
+
+// Las unidades que la revisión ya vio, según el sello. Sello nuevo: trae
+// `unidades`. Sello de 2026-10-17 en adelante: trae `textos` (el informe tal
+// como se revisó). Sello por secciones (el de la visita y los viejos): cuenta
+// como revisada la sección cuya huella sigue igual.
+function unidadesSelladas(rev, informe) {
+  var vacio = { antecedentes: [], observaciones: [], conclusiones: [], recomendaciones: [] };
+  if (!rev) return vacio;
+  if (rev.unidades) return Object.assign({}, vacio, rev.unidades);
+  if (rev.textos) return unidadesInforme(rev.textos);
+  if (!rev.secciones) return vacio;
+  var actuales = huellasSecciones(informe), uni = unidadesInforme(informe);
+  SECCIONES_REVISION.forEach(function (s) { if (rev.secciones[s] === actuales[s]) vacio[s] = uni[s]; });
+  return vacio;
+}
+
+// Unidades que la IA todavía no vio (números desde 1). `aprobadas`: frases
+// que nacen revisadas aunque se agreguen después (las «De la visita» y las
+// del catálogo).
+function unidadesPendientes(rev, informe, aprobadas) {
+  var uni = unidadesInforme(informe), sell = unidadesSelladas(rev, informe);
+  var apr = (aprobadas || []).map(_normTexto).filter(Boolean);
+  var out = { total: 0, todas: true };
+  SECCIONES_REVISION.forEach(function (s) {
+    var vistas = sell[s] || [];
+    var vistasNorm = vistas.map(_normTexto);
+    out[s] = [];
+    uni[s].forEach(function (t, i) {
+      var n = _normTexto(t);
+      var revisada = vistasNorm.indexOf(n) >= 0 || apr.indexOf(n) >= 0 ||
+        vistas.some(function (v) { return retoqueRevisado(v, t); });
+      if (revisada) out.todas = false; else out[s].push(i + 1);
+    });
+    out.total += out[s].length;
+  });
+  if (!out.total) out.todas = false;
+  return out;
+}
+
+// ── Puras: el mensaje de la revisión (una sola llamada, 2026-11-05) ─────
+// Antes eran dos (crítica con «Está bien / Falta / No coincide / Forma» y
+// luego las correcciones): ahora la IA devuelve directamente los cambios,
+// cada uno con una línea de motivo.
+function _informeNumerado(informe) {
+  var u = unidadesInforme(informe);
   return JSON.stringify({
-    antecedentes: informe.antecedentes || '',
-    observaciones: informe.observaciones || '',
-    conclusiones: informe.conclusiones_items || [],
-    recomendaciones: informe.recomendaciones_items || []
+    antecedentes: u.antecedentes[0] || '',
+    observaciones_parrafos: u.observaciones,
+    conclusiones: u.conclusiones,
+    recomendaciones: u.recomendaciones
   });
 }
 
-// Bloques opcionales de los mensajes de revisión por secciones (2026-10-16):
-// con `secciones`, la IA solo crítica lo que cambió; con `respuestasPrevias`,
-// no vuelve a preguntar lo ya respondido.
-function _bloqueSecciones(opts) {
-  if (!opts || !opts.secciones || !opts.secciones.length) return '';
-  return 'Revisa SOLO estas secciones: ' + opts.secciones.map(function (s) { return NOMBRES_SECCION[s] || s; }).join(', ')
-    + '; las demás van como contexto, no las critiques ni propongas cambios en ellas.\n\n';
+function _bloquePendientes(p) {
+  if (!p || p.todas) return 'Revisa todo el informe.\n\n';
+  var partes = [];
+  if (p.antecedentes && p.antecedentes.length) partes.push('Antecedentes');
+  if (p.observaciones && p.observaciones.length) partes.push('Observaciones, párrafo(s) ' + p.observaciones.join(', '));
+  if (p.conclusiones && p.conclusiones.length) partes.push('Conclusiones, punto(s) ' + p.conclusiones.join(', '));
+  if (p.recomendaciones && p.recomendaciones.length) partes.push('Recomendaciones, punto(s) ' + p.recomendaciones.join(', '));
+  return 'REVISA SOLO: ' + partes.join('; ') + '. Lo demás ya fue revisado: va como contexto y no se propone '
+    + 'cambiarlo.\n\n';
 }
+
 function _bloqueRespuestasPrevias(opts) {
   if (!opts || !opts.respuestasPrevias || !opts.respuestasPrevias.length) return '';
   var resp = opts.respuestasPrevias.filter(function (r) { return r && (r.respuesta || '').toString().trim(); })
     .map(function (r) { return { pregunta: r.pregunta || '', respuesta: String(r.respuesta).trim() }; });
   if (!resp.length) return '';
-  return 'RESPUESTAS YA DADAS POR EL INSPECTOR (no vuelvas a preguntar esto):\n' + JSON.stringify(resp) + '\n\n';
+  return 'RESPUESTAS QUE YA DIO EL INSPECTOR (hechos suyos, misma validez que los DATOS):\n' + JSON.stringify(resp) + '\n\n';
 }
 
-// Mensaje 1: crítica + preguntas. Devuelve bien/falta/no_coincide/forma/preguntas.
-function armarMensajeCritica(informe, d, opts) {
+function armarMensajeRevision(informe, d, pendientes, opts) {
   return 'Eres el revisor técnico de la Inspección N.° 9 de Control Urbano de Bello. Revisa el borrador '
-    + 'del informe F-GGO-43 contra los datos de la visita y devuelve SOLO JSON válido, sin texto previo ni markdown.\n\n'
-    + 'DATOS DE LA VISITA (única fuente de hechos): ' + _datosVisitaParaRevision(d) + '\n\n'
-    + 'INFORME COMPLETO EN REVISIÓN:\n' + _informeParaMensaje(informe) + '\n\n'
-    + _bloqueSecciones(opts)
-    + _bloqueRespuestasPrevias(opts)
-    + 'JSON exacto requerido:\n'
-    + '{"bien":[],"falta":[],"no_coincide":[],"forma":[],"preguntas":[{"pregunta":"","opciones":["",""]}]}\n\n'
-    + 'REGLAS:\n'
-    + '1. Cada punto cita la sección a la que se refiere: Antecedentes, Observaciones de campo, Conclusiones o Recomendaciones.\n'
-    + '2. "bien": lo que está correcto y bien sustentado (frases cortas; puede ser una lista vacía).\n'
-    + '3. "falta": hechos de los DATOS que sostienen una conclusión del informe y no aparecen en él.\n'
-    + '4. "no_coincide": afirmaciones contrarias a los DATOS DE LA VISITA o contradictorias entre secciones del informe.\n'
-    + '5. "forma": problemas de redacción u orden, MÁXIMO 4. Va siempre aquí la frase que deja la verificación para '
-    + 'después ("deberá ser objeto de verificación", "deberán ser contrastadas con los documentos") o pone en duda lo que '
-    + 'se vio ("aparentemente", "posible diferencia", "aproximadamente" con un conteo): la visita es la verificación.\n'
-    + '6. "preguntas": SOLO cuando tengas una DUDA REAL que los DATOS DE LA VISITA y el informe no permiten resolver '
-    + 'y cuya respuesta cambiaría el texto del informe. MÁXIMO 2, con 2 a 4 opciones cortas cada una. PROHIBIDO preguntar '
-    + 'para confirmar un hecho que ya está en los DATOS o en el informe, preguntar sobre la forma, o volver a preguntar algo '
-    + 'ya respondido. Si el problema se corrige con los DATOS, va en "falta" o "no_coincide" sin pregunta. Sin dudas reales, '
-    + '"preguntas" va vacía.\n'
-    + '7. No juzgues ni corrijas la decisión jurídica del inspector.\n'
-    + '8. PROHIBIDO proponer plazos: los concede el Inspector de Policía.\n'
-    + '9. Si el informe está bien, devuelve las cuatro listas vacías y sin preguntas.\n';
-}
-
-// Mensaje 2: correcciones. Solo lo que cambia, con informe + respuestas + datos.
-function armarMensajeCorrecciones(informe, d, critica, respuestas, opts) {
-  var resp = (respuestas || []).filter(function (r) { return r && (r.respuesta || '').toString().trim(); })
-    .map(function (r) { return { pregunta: r.pregunta || '', respuesta: String(r.respuesta).trim() }; });
-  return 'Eres el corrector técnico de la Inspección N.° 9 de Control Urbano de Bello. Corrige el borrador '
-    + 'del informe F-GGO-43 con base en la revisión y las respuestas del inspector, y devuelve SOLO JSON válido.\n\n'
+    + 'del informe F-GGO-43 y devuelve SOLO JSON válido, sin texto previo ni markdown.\n\n'
     + 'DATOS DE LA VISITA: ' + _datosVisitaParaRevision(d) + '\n\n'
-    + 'INFORME COMPLETO (actual):\n' + _informeParaMensaje(informe) + '\n\n'
-    + _bloqueSecciones(opts)
+    + 'INFORME (observaciones por párrafo; conclusiones y recomendaciones por punto; la numeración empieza en 1):\n'
+    + _informeNumerado(informe) + '\n\n'
+    + _bloquePendientes(pendientes)
     + _bloqueRespuestasPrevias(opts)
-    + 'REVISIÓN (crítica previa):\n' + JSON.stringify(critica || {}) + '\n\n'
-    + (resp.length ? 'RESPUESTAS DEL INSPECTOR (hechos suyos, misma validez que los DATOS):\n' + JSON.stringify(resp) + '\n\n' : '')
     + 'JSON exacto requerido:\n'
-    + '{"cambios":[{"seccion":"antecedentes|observaciones|conclusion|recomendacion","numero":N,"texto":"texto corregido completo"}]}\n\n'
+    + '{"cambios":[{"seccion":"antecedentes|observaciones|conclusion|recomendacion","numero":1,"motivo":"","texto":""}]}\n\n'
     + 'REGLAS:\n'
-    + '1. Corrige SOLO lo que cambia: un cambio por punto o sección que se modifique. "numero" es el ordinal del punto '
-    + 'dentro de su sección (1 para Conclusiones/Recomendaciones); para Antecedentes y Observaciones entrega el texto '
-    + 'completo corregido con numero 1.\n'
-    + '2. Nada nuevo que no esté en el informe, las RESPUESTAS o los DATOS.\n'
-    + '3. Corrige la forma señalada sin quitar hechos, cifras ni salvedades.\n'
-    + '4. Conserva la cita literal del artículo 135 de la Ley 1801 de 2016 donde esté.\n'
-    + '5. PROHIBIDA la palabra «infractor» y proponer plazos.\n'
-    + '6. Recomendaciones en imperativo, dirigidas al propietario o responsable.\n';
+    + '1. Los hechos salen de los DATOS DE LA VISITA y de las OBSERVACIONES, que son el texto que el inspector escribió '
+    + 'en la visita. Un hecho de las observaciones (medidas, materiales, estado de la obra, lo que se informó) es válido '
+    + 'aunque no esté en los DATOS: nunca lo objetes ni lo quites por eso.\n'
+    + '2. Propón un cambio SOLO si corrige algo que importa: una afirmación contraria a los DATOS o contradictoria entre '
+    + 'secciones; una conclusión que no se sostiene; una frase que deja la verificación para después o duda de lo que se '
+    + 'vio ("deberá ser objeto de verificación", "aparentemente", "según la información suministrada" sobre lo que se '
+    + 'midió): la visita es la verificación; una conclusión que repite las observaciones en vez de determinar; dos '
+    + 'puntos que dicen lo mismo. Una MEDIDA aproximada ("columnas de aproximadamente 80 cm x 40 cm", "un área '
+    + 'aproximada de 60 m²") NO es duda: no la señales. Nada de cambios de estilo o de preferencia.\n'
+    + '3. MÁXIMO 5 cambios, primero los de fondo; de forma, máximo 2. Si no hay nada que valga la pena, "cambios": [].\n'
+    + '4. PROHIBIDO pedir o agregar datos que el Word ya imprime en sus bloques fijos: número, fecha, curaduría, titular, '
+    + 'área aprobada, pisos, destinación, cubierta y sistema estructural de la licencia; clasificación del suelo, '
+    + 'polígono de uso, tratamiento, franja y suelo de protección.\n'
+    + '5. "numero": en observaciones, el número del párrafo, y "texto" es ESE párrafo corregido completo, sin saltos de '
+    + 'línea; en conclusion y recomendacion, el número del punto y su texto completo; en antecedentes, 1 y el texto completo.\n'
+    + '6. Dos puntos que dicen lo mismo: el texto unido va en el primero y el segundo va con "texto": "" (se quita). '
+    + 'Solo así se usa el texto vacío.\n'
+    + '7. "motivo": qué corrige, en una frase de máximo 12 palabras ("Repite las observaciones; la conclusión debe '
+    + 'determinar."). Sin decir "mejor" ni "más claro".\n'
+    + '8. Corregir es quitar palabras, no hechos: cada medida, cifra, material ("teja termoacústica y teja de zinc"), '
+    + 'dato y atribución ("se informó que…") del original sigue en tu texto, con las mismas palabras técnicas. Si objetas '
+    + 'una palabra que acompaña a un dato, quita la palabra y deja el dato.\n'
+    + '9. Nada nuevo que no esté en el informe o en los DATOS.\n'
+    + '10. Observaciones: una recomendación o conclusión que esté ahí ("se recomienda…", "no se evidencia infracción…") '
+    + 'se quita SOLO si la misma idea ya está en Conclusiones o Recomendaciones; si no, se deja.\n'
+    + '11. Conserva la cita literal del artículo 135 de la Ley 1801 de 2016 donde esté. PROHIBIDA la palabra «infractor». '
+    + 'PROHIBIDO proponer plazos: los concede el Inspector de Policía. Recomendaciones en imperativo, dirigidas al '
+    + 'propietario o responsable. No juzgues ni corrijas la decisión jurídica del inspector.\n';
 }
 
-// Cambios de la revisión → lista con el original al que reemplazan. Fuera los
-// que no cambian nada y los que apuntan a un punto que no existe en la hoja.
-// Con `secciones` (revisión parcial), fuera también los de otra sección.
-function normalizarCambios(cambios, informe, secciones) {
-  informe = informe || {};
-  // La IA usa los nombres singulares del JSON; el sello, los plurales de A.
-  var mapaSeccion = { antecedentes: 'antecedentes', observaciones: 'observaciones',
+// Cambios de la revisión → lista con el original al que reemplazan: el
+// párrafo en observaciones, el punto en conclusiones y recomendaciones.
+// Fuera los que no cambian nada, los que apuntan a algo que no existe, los
+// repetidos y, con `pendientes`, los de lo ya revisado. Texto vacío = quitar
+// el punto (solo conclusiones y recomendaciones). Tope: 5.
+var MAX_CAMBIOS_REVISION = 5;
+function normalizarCambios(cambios, informe, pendientes) {
+  var u = unidadesInforme(informe);
+  var lista = { antecedentes: u.antecedentes, observaciones: u.observaciones,
+    conclusion: u.conclusiones, recomendacion: u.recomendaciones };
+  var clave = { antecedentes: 'antecedentes', observaciones: 'observaciones',
     conclusion: 'conclusiones', recomendacion: 'recomendaciones' };
-  var permitidas = secciones ? secciones.map(function (s) { return mapaSeccion[s] || s; }) : null;
+  var vistos = {};
   var out = [];
   (cambios || []).forEach(function (c) {
     if (!c) return;
     var sec = String(c.seccion || '').trim().toLowerCase();
-    var texto = String(c.texto || '').trim();
-    if (!texto) return;
-    if (permitidas && permitidas.indexOf(mapaSeccion[sec] || sec) < 0) return;
+    if (!lista[sec]) return;
     var numero = parseInt(c.numero, 10) || 1;
-    var original;
-    if (sec === 'antecedentes') original = String(informe.antecedentes || '');
-    else if (sec === 'observaciones') original = String(informe.observaciones || '');
-    else if (sec === 'conclusion') original = (informe.conclusiones_items || [])[numero - 1];
-    else if (sec === 'recomendacion') original = (informe.recomendaciones_items || [])[numero - 1];
-    else return;
-    if (original === undefined || original === null) return;
-    original = String(original);
-    if (!original.trim()) return; // el punto no existe: no se inventa
-    if (original.trim() === texto) return; // sin cambio real
-    out.push({ seccion: sec, numero: numero, original: original, texto: texto });
+    var original = lista[sec][numero - 1];
+    if (!original) return; // no existe: no se inventa
+    if (pendientes && (pendientes[clave[sec]] || []).indexOf(numero) < 0) return;
+    if (vistos[sec + '#' + numero]) return;
+    var texto = String(c.texto || '').trim();
+    if (sec === 'observaciones') texto = texto.replace(/\s*\n+\s*/g, ' ');
+    var quitar = !texto;
+    if (quitar && (sec === 'antecedentes' || sec === 'observaciones')) return;
+    if (!quitar && texto === original) return; // sin cambio real
+    vistos[sec + '#' + numero] = true;
+    var motivo = String(c.motivo || '').replace(/\s+/g, ' ').trim();
+    if (motivo.length > 140) motivo = motivo.slice(0, 137).replace(/\s+\S*$/, '') + '…';
+    out.push({ seccion: sec, numero: numero, original: original, texto: texto, quitar: quitar, motivo: motivo });
   });
-  return out;
+  return out.slice(0, MAX_CAMBIOS_REVISION);
 }
 
 // Cada cambio debe pasar el validador en el contexto de su sección (se
@@ -388,6 +479,7 @@ function normalizarCambios(cambios, informe, secciones) {
 function filtrarCambiosRevision(cambios, ctx, validar) {
   validar = validar || function () { return { ok: true, problemas: [] }; };
   return (cambios || []).filter(function (c) {
+    if (c.quitar) return true; // quitar un punto repetido no agrega texto
     var json;
     if (c.seccion === 'antecedentes') json = { antecedentes: c.texto, observaciones: '', conclusiones_items: [], recomendaciones_items: [] };
     else if (c.seccion === 'observaciones') json = { antecedentes: '', observaciones: c.texto, conclusiones_items: [], recomendaciones_items: [] };
@@ -430,20 +522,11 @@ function huellaInforme(informe, huellaFn) {
     (i.conclusiones_items || []).join('\n\n'), (i.recomendaciones_items || []).join('\n\n'));
 }
 
-function revisionInformeVigente(rev, informe, huellaFn) {
-  return seccionesCambiadas(rev, informe, huellaFn).length === 0;
-}
-
-// ── Puras: revisión por secciones (2026-10-16) ──────────────────────
-// La revisión ya no es una huella única de todo el informe: cada sección
-// guarda la huella de su texto la última vez que se revisó. Lo que no
-// cambió no se vuelve a revisar (decisión del usuario).
+// ── Puras: huellas por sección (2026-10-16) ─────────────────────────
+// Las sigue usando el sello inicial (hereda la revisión de la visita) y los
+// sellos viejos de los borradores (unidadesSelladas).
 
 var SECCIONES_REVISION = ['antecedentes', 'observaciones', 'conclusiones', 'recomendaciones'];
-var NOMBRES_SECCION = {
-  antecedentes: 'Antecedentes', observaciones: 'Observaciones',
-  conclusiones: 'Conclusiones', recomendaciones: 'Recomendaciones'
-};
 
 // FNV-1a propio (mismo algoritmo que huellaRevision de utils.js) para no
 // depender de utils.js en node. Una sección vacía tiene la huella de ''.
@@ -462,19 +545,6 @@ function huellasSecciones(informe) {
     conclusiones: _hashSeccion((inf.conclusiones_items || []).map(_normTexto).filter(Boolean).join('\n')),
     recomendaciones: _hashSeccion((inf.recomendaciones_items || []).map(_normTexto).filter(Boolean).join('\n'))
   };
-}
-
-// Secciones cuya huella en el sello falta o difiere. Sin sello: las 4.
-// Sello viejo (solo huella completa): la comparación de hoy — vigente → [],
-// vencido → las 4.
-function seccionesCambiadas(rev, informe, huellaFn) {
-  if (!rev) return SECCIONES_REVISION.slice();
-  if (!rev.secciones) {
-    return (rev.huella && rev.huella === huellaInforme(informe, huellaFn))
-      ? [] : SECCIONES_REVISION.slice();
-  }
-  var actuales = huellasSecciones(informe);
-  return SECCIONES_REVISION.filter(function (s) { return rev.secciones[s] !== actuales[s]; });
 }
 
 // Sello inicial (C): hereda la revisión de la visita. Devuelve el objeto
@@ -504,53 +574,12 @@ function selloInicialSecciones(informe, origen) {
   return out;
 }
 
-// Quita las preguntas que ya fueron respondidas en una revisión anterior
-// (Jaccard ≥ 0,5 con la pregunta de alguna respuesta guardada).
-// Dos preguntas son «la misma» si comparten las palabras con contenido (más de
-// 3 letras): con todas las palabras, «¿El muro está en el antejardín?» y «¿El
-// muro está en el retiro?» daban 0,71 y la segunda se perdía como repetida.
-function preguntaParecida(a, b) {
-  function palabras(s) {
-    var set = {};
-    _normTexto(s).split(' ').forEach(function (w) { if (w.length > 3) set[w] = true; });
-    return Object.keys(set);
-  }
-  var A = palabras(a), B = palabras(b);
-  if (!A.length || !B.length) return false;
-  var inter = A.filter(function (w) { return B.indexOf(w) >= 0; }).length;
-  return inter / (A.length + B.length - inter) >= 0.6;
-}
-function filtrarPreguntasRepetidas(preguntas, revResp) {
-  return (preguntas || []).filter(function (p) {
-    return !(revResp || []).some(function (r) {
-      return r && (r.respuesta || '').toString().trim() && preguntaParecida(p.pregunta, r.pregunta);
-    });
-  });
-}
-
-// Acumula respuestas entre revisiones: una nueva reemplaza a la guardada si
-// le preguntan lo mismo (Jaccard ≥ 0,5). Tope 20, las más recientes.
-function acumularRespuestas(revResp, nuevas) {
-  var out = (revResp || []).slice();
-  (nuevas || []).forEach(function (n) {
-    if (!n || !(n.respuesta || '').toString().trim()) return;
-    var idx = -1;
-    for (var i = 0; i < out.length; i++) {
-      if (preguntaParecida(n.pregunta, out[i].pregunta)) { idx = i; break; }
-    }
-    if (idx >= 0) out[idx] = n; else out.push(n);
-  });
-  return out.length > 20 ? out.slice(out.length - 20) : out;
-}
-
 // Condición de «Generar Word»: validador limpio + cierre grave cuando hay
-// comportamientos marcados + revisión vigente. `huboRevision` distingue
-// «falta revisar» de «revisión vencida». `tipo` dice cómo pintarlo:
-// 'problema' es algo del texto que hay que corregir (bloqueo en rojo, con
-// «Ver dónde»); 'revision' solo pide revisar.
-// Los problemas van ANTES que la revisión (2026-10-16): corregirlos cambia el
-// texto y vence la revisión, así que pedir revisar primero obligaba a revisar
-// dos veces. `avisos` (redacción) viajan tal cual: se pintan pero no bloquean.
+// comportamientos marcados + observaciones. La revisión ya no bloquea
+// (2026-11-05): corre al tocar «Generar Word», sobre lo que la IA no ha
+// visto (_generarConRevision). `tipo` 'problema' = algo del texto por
+// corregir (bloqueo en rojo, con «Ver dónde»). `avisos` (redacción) viajan
+// tal cual: se pintan pero no bloquean.
 function condicionGenerarWord(o) {
   var problemas = (o.problemas || []).slice();
   var avisos = (o.avisos || []).slice();
@@ -558,7 +587,6 @@ function condicionGenerarWord(o) {
   // Sin observaciones no hay informe: antes decía «Todo listo para generar» (revisión 2026-10-28).
   if (o.observacionesVacias) problemas.unshift('Faltan las observaciones de la visita.');
   if (problemas.length) return { ok: false, tipo: 'problema', motivo: problemas[0], problemas: problemas, avisos: avisos };
-  if (!o.vigente) return { ok: false, tipo: 'revision', motivo: o.huboRevision ? 'Revisión vencida: vuelve a revisar' : 'Falta la revisión final', avisos: avisos };
   return { ok: true, motivo: '', avisos: avisos };
 }
 
@@ -596,20 +624,21 @@ var _export = {
   jaccardPalabras: jaccardPalabras,
   quitarDuplicados: quitarDuplicados,
   sugerenciasDelCatalogo: sugerenciasDelCatalogo,
-  armarMensajeCritica: armarMensajeCritica,
-  armarMensajeCorrecciones: armarMensajeCorrecciones,
+  armarMensajeRevision: armarMensajeRevision,
+  parrafosObservaciones: parrafosObservaciones,
+  reemplazarParrafos: reemplazarParrafos,
+  unidadesInforme: unidadesInforme,
+  retoqueRevisado: retoqueRevisado,
+  unidadesSelladas: unidadesSelladas,
+  unidadesPendientes: unidadesPendientes,
   normalizarCambios: normalizarCambios,
   filtrarCambiosRevision: filtrarCambiosRevision,
   avisoCasillaVisita: avisoCasillaVisita,
   huellaInforme: huellaInforme,
-  revisionInformeVigente: revisionInformeVigente,
   condicionGenerarWord: condicionGenerarWord,
   SECCIONES_REVISION: SECCIONES_REVISION,
   huellasSecciones: huellasSecciones,
-  seccionesCambiadas: seccionesCambiadas,
-  selloInicialSecciones: selloInicialSecciones,
-  filtrarPreguntasRepetidas: filtrarPreguntasRepetidas,
-  acumularRespuestas: acumularRespuestas
+  selloInicialSecciones: selloInicialSecciones
 };
 if (typeof module !== 'undefined' && module.exports) { module.exports = _export; return; }
 if (typeof document === 'undefined' || typeof UI_MODE === 'undefined' || UI_MODE !== 'doc') return;
@@ -702,6 +731,29 @@ var _huellaVisitaActual = _hashTexto(['observaciones', 'conclusiones', 'infracci
     return k === 'infraccion' && typeof chipsConNombreSellado === 'function' ? chipsConNombreSellado(v) : v;
   }).join('\u0001'));
 var _baseVisita = (_borrador && _borrador.baseVisita) || _huellaVisitaActual;
+
+// ── Observaciones: un solo texto con la visita (2026-11-05, decisión del usuario) ──
+// Se editan en los dos lados y quedan iguales. `_obsVisita` = la descripción
+// que tiene la visita; `_baseObs` = la última en que informe y visita
+// coincidieron (null en borradores anteriores a esto: no se sabe). Al abrir:
+// si la visita cambió desde esa base, manda la visita; si no y el informe
+// tiene otra, se le manda a la visita (_sincronizarObs). Cada corrección en el
+// informe viaja a la visita al dejar de escribir (_enviarObsAVisita).
+var _obsVisita = _SESION_QS.get('observaciones') || '';
+var _baseObs = _borrador ? (typeof _borrador.baseObs === 'string' ? _borrador.baseObs : null) : _obsVisita;
+// Huella de lo demás que trae la visita (conclusiones, chips, área, licencia):
+// sin las observaciones, que ya no necesitan aviso.
+var _huellaSinObs = _hashTexto(['conclusiones', 'infraccion', 'areas', 'seAportoLicencia',
+  'requiereLicencia', 'requiereDetalle'].map(function (k) {
+    var v = _SESION_QS.get(k) || '';
+    return k === 'infraccion' && typeof chipsConNombreSellado === 'function' ? chipsConNombreSellado(v) : v;
+  }).join('\u0001'));
+var _baseVisita2 = _borrador ? (_borrador.baseVisita2 || null) : _huellaSinObs;
+// Comparación exacta salvo espacios: una coma o una tilde cambiada en la
+// visita también tiene que llegar al informe (_normTexto las ignora).
+function _mismoTexto(a, b) {
+  return String(a || '').replace(/\s+/g, ' ').trim() === String(b || '').replace(/\s+/g, ' ').trim();
+}
 function _hashTexto(s) {
   var h = 0x811c9dc5;
   for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
@@ -739,6 +791,7 @@ root.innerHTML =
   '<div class="ed-error" id="ed-error" hidden></div>' +
   '<div class="ed-aviso" id="ed-aviso" hidden></div>' +
   '<div class="ed-aviso" id="ed-aviso-visita" hidden></div>' +
+  '<div class="ed-aviso" id="ed-aviso-obs" hidden></div>' +
   '<main class="ed-shell">' +
     '<article class="ed-hoja" aria-label="Informe F-GGO-43">' +
       '<div class="ed-membrete">' +
@@ -807,7 +860,7 @@ root.innerHTML =
         '<h2>Estado del informe</h2>' +
         '<div class="ed-guardado" id="ed-guardado" aria-live="polite"></div>' +
         '<ul class="ed-est" id="ed-est"></ul>' +
-        '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar">Revisar informe</button>' +
+        // Sin «Revisar informe» (2026-11-05): «Generar Word» revisa antes lo que falte.
         '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-rail" disabled>Generar Word</button>' +
         '<div class="ed-nota" id="ed-gen-nota" aria-live="polite"></div>' +
         '<a class="ed-btn ed-btn-neutro ed-btn-abrir" id="ed-abrir" target="_blank" rel="noopener" hidden>Abrir el Word generado</a>' +
@@ -816,7 +869,6 @@ root.innerHTML =
   '</main>' +
   '<div class="ed-barra" id="ed-barra">' +
     '<div class="ed-barra-txt" id="ed-barra-txt"></div>' +
-    '<button type="button" class="ed-btn ed-btn-tinte" id="ed-revisar-movil">Revisar</button>' +
     // <1200 la cabecera oculta sus botones: sin este, en el celular no había cómo generar.
     '<button type="button" class="ed-btn ed-btn-lleno" id="ed-gen-movil" disabled>Generar Word</button>' +
     '<a class="ed-btn ed-btn-neutro ed-btn-abrir" id="ed-abrir-movil" target="_blank" rel="noopener" hidden>Abrir Word</a>' +
@@ -1464,6 +1516,9 @@ if (!_revSello) {
     modo: 'VISITA',
     fecha: new Date().toISOString().slice(0, 10)
   };
+  // Las unidades de lo que nace revisado: un retoque posterior no lo devuelve
+  // a la IA (con solo la huella de la sección, una coma la vencía entera).
+  _revSello.unidades = unidadesSelladas(_revSello, _informeActual());
 }
 
 // ── Sugerencias: «De la visita» + «Del catálogo» + «Propuesta» ───────
@@ -1624,8 +1679,6 @@ function _condicionWord() {
   var informe = _informeActual();
   var validacion = validarInformeIA(_tFinalDesdeDocumento(), recolectarDatosWizard(), { sinCantidades: true });
   return condicionGenerarWord({
-    vigente: revisionInformeVigente(_revSello, informe, huellaRevision),
-    huboRevision: !!_revSello,
     problemas: validacion.problemas,
     avisos: validacion.avisos,
     requiereCierre: _requiereCierreGrave(),
@@ -1642,8 +1695,8 @@ function _pintarEstado() {
   var nr = informe.recomendaciones_items.length;
   var total = _fotosAsistentes().length, conPie = _nFotosConPie();
   var obs = informe.observaciones;
-  var cambiadas = seccionesCambiadas(_revSello, informe, huellaRevision);
-  var vigente = cambiadas.length === 0;
+  var pend = _unidadesPorRevisar();
+  var vigente = pend.total === 0;
   var hubo = !!_revSello;
   var cond = _condicionWord();
   _pintarBloqueos(cond.tipo === 'problema' ? cond.problemas : []);
@@ -1651,14 +1704,15 @@ function _pintarEstado() {
   // La sección donde está lo que bloquea se marca en rojo en la lista.
   var secBloq = {};
   _bloqueos.forEach(function (b) { var s = b.loc && _seccionDeBloque(b.loc.el); if (s) secBloq[s] = true; });
+  // La revisión ya no es un paso aparte (2026-11-05): lo que falte se revisa
+  // al tocar «Generar Word». El renglón solo informa; nunca bloquea.
   var txtRevision;
   if (vigente) {
-    txtRevision = _revSello.modo === 'LOCAL' ? 'Revisado sin conexión'
-      : (_revSello.modo === 'VISITA' ? 'Revisado en la visita' : 'Vigente');
-  } else if (hubo) {
-    txtRevision = 'Cambió: ' + cambiadas.map(function (s) { return NOMBRES_SECCION[s] || s; }).join(', ');
+    txtRevision = !hubo ? 'Revisado'
+      : (_revSello.modo === 'LOCAL' ? 'Revisado sin conexión'
+        : (_revSello.modo === 'VISITA' ? 'Revisado en la visita' : 'Revisado'));
   } else {
-    txtRevision = 'Pendiente';
+    txtRevision = 'Se revisa al generar el Word';
   }
   var filas = [
     ['ok', 'Antecedentes', 'Armados con los datos de la visita'],
@@ -1666,19 +1720,12 @@ function _pintarEstado() {
     [total && conPie === total ? 'ok' : (total ? 'pend' : 'no'), 'Registro fotográfico', total ? (total + ' fotos · ' + conPie + ' con pie') : 'Sin fotos'],
     [nc ? 'ok' : 'pend', 'Conclusiones', nc ? (nc + ' en el informe') : 'Ninguna todavía'],
     [nr ? 'ok' : 'pend', 'Recomendaciones', nr ? (nr + ' en el informe') : 'Ninguna todavía'],
-    [vigente ? 'ok' : (hubo ? 'pend' : 'no'), 'Revisión final', txtRevision]
+    [vigente ? 'ok' : 'no', 'Revisión final', txtRevision]
   ].map(function (f) { return secBloq[f[1]] ? ['err', f[1], 'No deja generar el Word'] : f; });
   _el('ed-est').innerHTML = filas.map(function (f) {
     return '<li><span class="ed-dot ' + f[0] + '"></span><div>' + _esc(f[1]) + '<small>' + _esc(f[2]) + '</small></div></li>';
   }).join('');
   ['ed-gen', 'ed-gen-rail', 'ed-gen-movil'].forEach(function (id) { var b = _el(id); if (b) b.disabled = !cond.ok; });
-  // «Revisar lo que cambió» solo si hay sello y queda una parte por revisar;
-  // si no cambió nada, el botón sigue habilitado como hoy.
-  ['ed-revisar', 'ed-revisar-movil'].forEach(function (id) {
-    var b = _el(id);
-    if (b) b.textContent = (hubo && cambiadas.length && cambiadas.length < SECCIONES_REVISION.length)
-      ? 'Revisar lo que cambió' : 'Revisar informe';
-  });
   _pintarNotaGenerar(cond, hubo);
   var barra = cond.ok ? 'listo para generar'
     : (cond.tipo === 'revision' ? _esc(cond.motivo) : '');
@@ -1713,11 +1760,6 @@ function _pintarNotaGenerar(cond, huboRevision) {
   if (cond.ok) {
     cls = 'ed-nota ed-nota-ok';
     html = _esc(_linkWord ? 'Todo listo. Generarlo otra vez reemplaza el Word anterior.' : 'Todo listo para generar.');
-  } else if (cond.tipo === 'revision') {
-    cls = 'ed-nota';
-    html = _esc(huboRevision
-      ? 'Cambiaste el informe después de revisarlo: vuelve a usar «Revisar informe».'
-      : 'Falta la revisión final: usa «Revisar informe».');
   } else {
     cls = 'ed-nota ed-bloqueo';
     html = '<b>No se puede generar el Word</b><ul>' + _bloqueos.map(function (b, i) {
@@ -1945,6 +1987,8 @@ function _snapshotEditor() {
   return {
     _ts: Date.now(),
     baseVisita: _baseVisita,
+    baseVisita2: _baseVisita2,
+    baseObs: _baseObs,
     origen: _el('ed-origen').value,
     antecedentes: _el('ed-antecedentes').textContent,
     obs: _el('ed-obs').textContent,
@@ -2013,6 +2057,8 @@ function _aplicarSnapshot(s) {
   if (s.fotos) _aplicarFotos(s.fotos);
   if (s.qgisId) _restaurarQgis(s.qgisId);
   if (s.baseVisita) _baseVisita = s.baseVisita;
+  _baseVisita2 = s.baseVisita2 || null;
+  _baseObs = typeof s.baseObs === 'string' ? s.baseObs : null;
   _pintarCierreFijo();
   _pintarSugerencias();
   _pintarEstado();
@@ -2163,6 +2209,7 @@ function _cargarServidor() {
       _srv.pendiente = false;
       _srv.estado = 'ok';
       _srv.hora = _horaServidor(r.actualizado);
+      _sincronizarObs();
       _revisarCambioVisita();
     } else if (remoto && verLocal !== r.version) {
       // Cambios sin subir en este equipo Y alguien guardó en otro: decide el inspector.
@@ -2204,6 +2251,7 @@ function _resolverConflicto(opcion) {
     _srv.pendiente = false;
     if (remoto) _aplicarSnapshot(remoto);
     _guardarEditor({ desdeServidor: true });
+    _sincronizarObs();
     _srv.estado = 'ok';
     _srv.hora = _horaServidor(r.actualizado);
     _pintarGuardado();
@@ -2214,28 +2262,144 @@ function _resolverConflicto(opcion) {
 }
 
 // ── La visita cambió después de empezar el informe ─────────────────────
+// Las observaciones ya no pasan por aquí (_sincronizarObs las deja iguales a
+// la visita): el aviso queda solo para las conclusiones, que en el informe
+// suelen llevar puntos propios y no se pueden reemplazar sin preguntar. Sale
+// solo si la visita cambió Y trae conclusiones que el informe no tiene.
 function _revisarCambioVisita() {
   var caja = _el('ed-aviso-visita');
   if (!caja) return;
-  if (_baseVisita === _huellaVisitaActual) { caja.hidden = true; return; }
+  var cambio = _baseVisita2 ? _baseVisita2 !== _huellaSinObs : _baseVisita !== _huellaVisitaActual;
+  var enInforme = _textosLista('ed-concl').map(function (t) { return String(t).replace(/\s+/g, ' ').trim(); });
+  var faltan = dividirPuntos(V6_CTX.conclusionesInspector).filter(function (c) {
+    return enInforme.indexOf(String(c).replace(/\s+/g, ' ').trim()) < 0;
+  });
+  if (!cambio || !faltan.length) {
+    caja.hidden = true;
+    _baseVisita = _huellaVisitaActual;
+    _baseVisita2 = _huellaSinObs;
+    return;
+  }
   caja.hidden = false;
-  caja.innerHTML = '<span>La visita cambió desde que empezaste el informe (descripción, conclusiones o datos).</span>' +
-    '<button type="button" class="ed-btn ed-btn-tinte ed-btn-chico" data-ed-visita="traer">Traer observaciones y conclusiones de la visita</button>' +
-    '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-visita="mio">Conservar lo mío</button>';
+  caja.innerHTML = '<span>Las conclusiones de la visita cambiaron desde que empezaste el informe.</span>' +
+    '<button type="button" class="ed-btn ed-btn-tinte ed-btn-chico" data-ed-visita="traer">Traer las conclusiones de la visita</button>' +
+    '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-visita="mio">Conservar las del informe</button>';
 }
 
 function _resolverCambioVisita(opcion) {
   if (opcion === 'traer') {
-    _el('ed-obs').textContent = _SESION_QS.get('observaciones') || '';
     _refrescarLista('ed-concl', dividirPuntos(V6_CTX.conclusionesInspector));
     _pintarCierreFijo();
     _pintarSugerencias();
   }
   _baseVisita = _huellaVisitaActual;
+  _baseVisita2 = _huellaSinObs;
   _el('ed-aviso-visita').hidden = true;
   _guardarEditor();
   _pintarEstado();
 }
+
+// ── Observaciones ↔ descripción de la visita ─────────────────────────
+var _obsEnvio = { id: '', texto: '', t: null, espera: null };
+var _obsDeshacer = null;
+var _enIframe = window.parent && window.parent !== window;
+var _bcObs = null;
+try { if (!_enIframe && typeof BroadcastChannel === 'function') _bcObs = new BroadcastChannel('cu-informe-f43'); } catch (e) { _bcObs = null; }
+
+function _ponerObs(texto) {
+  _el('ed-obs').textContent = texto;
+  _pintarSugerencias();
+  _pintarEstado();
+}
+
+function _pintarAvisoObs(tipo) {
+  var caja = _el('ed-aviso-obs');
+  if (!caja) return;
+  if (tipo === 'actualizado') {
+    caja.hidden = false;
+    caja.innerHTML = '<span>Las observaciones se actualizaron con la descripción de la visita, que cambió después de tu última corrección aquí.</span>' +
+      '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-obs="deshacer">Volver al texto del informe</button>';
+  } else if (tipo === 'sinVisita') {
+    caja.hidden = false;
+    caja.innerHTML = '<span>La visita no está abierta: la corrección queda en el informe y pasa a la descripción de la visita la próxima vez que abras el informe desde ella.</span>';
+  } else {
+    caja.hidden = true;
+    caja.innerHTML = '';
+  }
+}
+
+// Al abrir (y al traer el borrador del servidor): dejar un solo texto.
+function _sincronizarObs() {
+  var el = _el('ed-obs');
+  if (!el) return;
+  var enInforme = el.textContent;
+  if (_mismoTexto(enInforme, _obsVisita)) { _baseObs = _obsVisita; return; }
+  // ¿Cambió la visita desde la última vez que coincidieron? Borradores
+  // anteriores a esto no saben la base: cuenta la huella vieja, que incluía
+  // las observaciones.
+  var visitaCambio = _baseObs !== null ? !_mismoTexto(_obsVisita, _baseObs) : _baseVisita !== _huellaVisitaActual;
+  if (visitaCambio) {
+    // El informe también tenía una corrección propia que no llegó a la
+    // visita: se reemplaza, pero se ofrece volver a ella.
+    var propia = _baseObs === null || !_mismoTexto(enInforme, _baseObs);
+    _obsDeshacer = propia ? enInforme : null;
+    _ponerObs(_obsVisita);
+    _baseObs = _obsVisita;
+    _pintarAvisoObs(propia ? 'actualizado' : '');
+    _guardarEditor();
+  } else {
+    // Corregido en el informe y la visita sigue igual: se le manda.
+    _enviarObsAVisita(enInforme);
+  }
+}
+
+function _programarEnvioObs() {
+  clearTimeout(_obsEnvio.t);
+  _obsEnvio.t = setTimeout(function () { _enviarObsAVisita(_el('ed-obs').textContent); }, 1500);
+}
+
+function _enviarObsAVisita(texto) {
+  if (_mismoTexto(texto, _obsVisita)) {
+    _baseObs = _obsVisita;
+    _obsEnvio.id = '';
+    _pintarAvisoObs('');
+    return;
+  }
+  // Ya va en camino el mismo texto (al abrir se sincroniza dos veces: con lo
+  // de este equipo y con lo que trae el servidor): no repetir.
+  if (_obsEnvio.id && _obsEnvio.texto === texto) return;
+  var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  _obsEnvio.id = id;
+  _obsEnvio.texto = texto;
+  var msg = { tipo: 'informe-obs', id: id, idVisita: V6_CTX.idVisita || '', fila: V6_CTX.fila,
+    radicado: V6_CTX.radicado, texto: texto };
+  // Iframe → la página que lo contiene; pestaña → BroadcastChannel (no las
+  // dos: en el iframe la visita recibiría el mismo cambio dos veces).
+  try {
+    if (_enIframe) window.parent.postMessage(msg, window.location.origin);
+    else if (_bcObs) _bcObs.postMessage(msg);
+  } catch (e) {}
+  clearTimeout(_obsEnvio.espera);
+  _obsEnvio.espera = setTimeout(function () {
+    if (_obsEnvio.id === id) _pintarAvisoObs('sinVisita');
+  }, 3000);
+}
+
+function _recibirAcuseObs(m) {
+  if (!m || m.tipo !== 'informe-obs-recibido' || !m.id || m.id !== _obsEnvio.id) return;
+  clearTimeout(_obsEnvio.espera);
+  _obsVisita = _obsEnvio.texto;
+  _baseObs = _obsEnvio.texto;
+  _obsEnvio.id = '';
+  _obsDeshacer = null;
+  _pintarAvisoObs('');
+  _programarGuardar(); // la base nueva viaja con el borrador
+}
+window.addEventListener('message', function (e) {
+  if (e.origin !== window.location.origin) return;
+  _recibirAcuseObs(e.data);
+});
+if (_bcObs) _bcObs.onmessage = function (e) { _recibirAcuseObs(e && e.data); };
 
 // ── Captura QGIS en Drive ─────────────────────────────────────────────
 function _ponerQgis() {
@@ -2288,11 +2452,30 @@ root.addEventListener('input', function (e) {
   if (e.target.classList && e.target.classList.contains('ed-ed')) {
     _pintarSugerencias(); // la deduplicación compara contra lo ya aplicado
     _programarGuardar();
-    if (e.target.id === 'ed-obs') _programarPropuesta();
+    if (e.target.id === 'ed-obs') { _programarPropuesta(); _programarEnvioObs(); }
   }
   // Campos de texto del asistente traídos al documento (observaciones de la
   // tabla del art. 135, POT escrita a mano, cargo): también se guardan.
   if (_esCampoDelDocumento(e.target) && !(e.target.classList && e.target.classList.contains('ed-ed'))) _programarGuardar();
+});
+// Saltos de línea como texto (2026-11-05). Con contenteditable, Enter mete un
+// <div> por párrafo y el texto se lee con textContent, que los pega sin
+// separador: «…de cada nivel.En el primer nivel…». Así el informe perdía los
+// párrafos y la revisión los devolvía en un solo bloque. Enter y pegar
+// escriben texto plano; `.ed-ed` lleva white-space: pre-wrap para pintarlo.
+function _edEditable(t) {
+  return t && t.classList && t.classList.contains('ed-ed') && t.isContentEditable;
+}
+root.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || e.isComposing || !_edEditable(e.target)) return;
+  e.preventDefault();
+  document.execCommand('insertText', false, '\n');
+});
+root.addEventListener('paste', function (e) {
+  if (!_edEditable(e.target) || !e.clipboardData) return;
+  e.preventDefault();
+  var t = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  document.execCommand('insertText', false, t);
 });
 // Selects, casillas y fechas (firma, vigencia, ejecutoria, tabla del art. 135, POT).
 root.addEventListener('change', function (e) {
@@ -2309,6 +2492,12 @@ root.addEventListener('click', function (e) {
   if (b.hasAttribute('data-ed-ir-aviso')) { _irAProblema(parseInt(b.getAttribute('data-ed-ir-aviso'), 10), _avisos); return; }
   if (b.hasAttribute('data-ed-conf')) { _resolverConflicto(b.getAttribute('data-ed-conf')); return; }
   if (b.hasAttribute('data-ed-visita')) { _resolverCambioVisita(b.getAttribute('data-ed-visita')); return; }
+  if (b.hasAttribute('data-ed-obs')) {
+    // «Volver al texto del informe»: vuelve la corrección propia y se le manda a la visita.
+    if (_obsDeshacer !== null) { _ponerObs(_obsDeshacer); _obsDeshacer = null; _guardarEditor(); _enviarObsAVisita(_el('ed-obs').textContent); }
+    else _pintarAvisoObs('');
+    return;
+  }
   if (b.hasAttribute('data-ed-agregar')) {
     var ol = _el(b.getAttribute('data-ed-agregar'));
     var li = _item('', true);
@@ -2350,14 +2539,14 @@ root.addEventListener('click', function (e) {
     liA.querySelector('.ed-ed').focus();
   } else if (b.hasAttribute('data-ed-repropuesta')) {
     _cargarPropuesta(true);
-  } else if (b.id === 'ed-gen' || b.id === 'ed-gen-rail' || b.id === 'ed-gen-movil' || b.hasAttribute('data-ed-gen-reintentar')) {
-    _generarWord();
-  } else if (b.id === 'ed-revisar' || b.id === 'ed-revisar-movil') {
-    _abrirRevision();
+  } else if (b.id === 'ed-gen' || b.id === 'ed-gen-rail' || b.id === 'ed-gen-movil') {
+    _generarConRevision(); // revisa antes lo que la IA no ha visto
+  } else if (b.hasAttribute('data-ed-gen-reintentar')) {
+    _generarWord(); // falló la generación: el informe ya estaba revisado
   } else if (b.hasAttribute('data-ed-rev-cerrar')) {
     _cerrarPanelRevision();
-  } else if (b.hasAttribute('data-ed-rev-continuar') || b.hasAttribute('data-ed-rev-reintentar2')) {
-    _continuarRevision();
+  } else if (b.hasAttribute('data-ed-rev-todas')) {
+    _usarTodasLasPropuestas();
   } else if (b.hasAttribute('data-ed-usar')) {
     _usarTextoRevision(parseInt(b.getAttribute('data-ed-usar'), 10), b.getAttribute('data-ed-cual'));
   } else if (b.hasAttribute('data-ed-rev-aplicar')) {
@@ -2392,19 +2581,25 @@ document.querySelectorAll('.comp-ac').forEach(function (cb) {
   });
 });
 
-// ── Revisión final: una sola, al final (3 pasos + sello por huella) ──
-var _revPanel = null; // { critica, respuestas, cambios, eleccion, textos, avisos }
+// ── Revisión: una sola, al tocar «Generar Word» (2026-11-05) ─────────
+// Decisión del usuario: sin botón «Revisar» ni pasos «1 de 2 / 2 de 2».
+// «Generar Word» manda a la IA solo lo que nunca vio (unidadesPendientes:
+// párrafos y puntos nuevos o reescritos; un retoque no cuenta). Sin
+// correcciones genera directo; con correcciones abre esta ventana con los dos
+// textos siempre a la vista, y «Aplicar y generar» termina el Word.
+var _revPanel = null; // { cambios, eleccion, textos, avisos }
 
-function _cabModal(titulo) {
-  return '<div class="ed-modal-cab"><b>' + titulo + '</b>' +
-    '<button type="button" class="ed-ico" data-ed-rev-cerrar aria-label="Cerrar revisión">✕</button></div>';
+function _cabModal(titulo, extra) {
+  return '<div class="ed-modal-cab"><b id="ed-modal-titulo">' + titulo + '</b>' +
+    (extra ? '<span class="ed-modal-n">' + _esc(extra) + '</span>' : '') +
+    '<button type="button" class="ed-ico" data-ed-rev-cerrar aria-label="Cerrar sin generar">✕</button></div>';
 }
 
 function _modalRevision(html, ancha) {
   var m = _el('ed-modal');
   m.hidden = false;
   m.innerHTML = '<div class="ed-modal-caja' + (ancha ? ' ed-modal-ancha' : '') +
-    '" role="dialog" aria-modal="true" aria-label="Revisión del informe">' + html + '</div>';
+    '" role="dialog" aria-modal="true" aria-labelledby="ed-modal-titulo">' + html + '</div>';
 }
 
 function _cerrarPanelRevision() {
@@ -2414,200 +2609,84 @@ function _cerrarPanelRevision() {
   m.innerHTML = '';
 }
 
-// La revisión queda vigente con la huella de cada sección; cualquier edición
-// posterior vence la de su sección (la comparación en _pintarEstado). La
-// huella completa se conserva por compatibilidad con los borradores viejos.
+// Escape cierra la ventana sin generar (como el ✕).
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && _revPanel && !_el('ed-modal').hidden) _cerrarPanelRevision();
+});
+
+// Sello: las unidades del informe tal como quedó revisado. `huella`,
+// `secciones` y `textos` siguen para los equipos con la versión anterior.
 function _sellarRevision(modo) {
+  var informe = _informeActual();
   _revSello = {
-    huella: huellaInforme(_informeActual(), huellaRevision),
-    secciones: huellasSecciones(_informeActual()),
-    // Los textos sellados viajan en el borrador: permiten detectar el retoque
-    // menor la próxima vez (2026-10-17). Los sellos viejos no lo traen y todo
-    // se comporta como antes.
-    textos: _informeActual(),
+    huella: huellaInforme(informe, huellaRevision),
+    secciones: huellasSecciones(informe),
+    textos: informe,
+    unidades: unidadesInforme(informe),
     modo: modo, fecha: new Date().toISOString().slice(0, 10)
   };
   _guardarEditor();
   _pintarEstado();
 }
 
-// El texto de una sección del informe: las listas van unidas por saltos.
-function _textoDeSeccion(informe, s) {
-  var inf = informe || {};
-  if (s === 'conclusiones') return (inf.conclusiones_items || []).join('\n');
-  if (s === 'recomendaciones') return (inf.recomendaciones_items || []).join('\n');
-  return inf[s] || '';
+// Frases que nacen revisadas aunque se agreguen después: las «De la visita»
+// (deterministas) y las del catálogo de hallazgos.
+function _frasesAprobadas() {
+  var d = recolectarDatosWizard().d;
+  var out = sugerenciasConclusionesDeLaVisita(d, _citaArt135).concat(sugerenciasRecomendacionesDeLaVisita(d));
+  if (_catalogoSugs) out = out.concat(_catalogoSugs.concl || [], _catalogoSugs.rec || []);
+  return out.map(function (s) { return s.texto; });
 }
 
-function _abrirRevision() {
+function _unidadesPorRevisar() {
+  return unidadesPendientes(_revSello, _informeActual(), _frasesAprobadas());
+}
+
+function _generarConRevision() {
   if (_revPanel) return;
-  _guardarEditor(); // #obs al día antes de mandar el informe
+  _guardarEditor(); // #obs al día antes de leer el informe
+  if (!_condicionWord().ok) return; // lo que bloquea ya está a la vista, con «Ver dónde»
+  var pend = _unidadesPorRevisar();
+  if (!pend.total) return _generarWord();
+  // Sin señal: el chequeo automático ya pasó; se genera como «Revisado sin conexión».
+  if (navigator.onLine === false) { _sellarRevision('LOCAL'); return _generarWord(); }
   _revPanel = {};
-  // Revisión por secciones (2026-10-16): con sello y cambios parciales, la
-  // IA solo crítica lo que cambió y no repite preguntas ya respondidas.
-  // Retoques menores (2026-10-17): una coma o una tilde no vuelven a pasar
-  // por la IA — la sección cuenta como revisada.
-  var opts = {};
-  if (_revSello) {
-    var cambiadas = seccionesCambiadas(_revSello, _informeActual(), huellaRevision);
-    if (_revSello.textos) cambiadas = cambiadas.filter(function (s) {
-      return !cambioMenorRevision(_textoDeSeccion(_revSello.textos, s), _textoDeSeccion(_informeActual(), s));
-    });
-    if (!cambiadas.length) {
-      // Nada cambió de verdad: solo el chequeo local. Limpio → se sella y se
-      // cierra sin mostrar nada (decisión del usuario 2026-10-17).
-      var problemas = validarInformeIA(_informeActual(), recolectarDatosWizard(), { sinCantidades: true }).problemas;
-      if (!problemas.length) {
-        _sellarRevision(_revSello.modo);
-        _cerrarPanelRevision();
-        return;
-      }
-      return _criticaLocal();
-    }
-    if (cambiadas.length && cambiadas.length < SECCIONES_REVISION.length) opts.secciones = cambiadas;
-    if (_revResp.length) opts.respuestasPrevias = _revResp;
-  }
-  _revPanel.opts = opts;
-  _modalRevision(_cabModal('Revisión del informe') +
+  _modalRevision(_cabModal('Antes de generar el Word') +
     '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Revisando el informe…</p></div>' +
     '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-cerrar>Cancelar</button></div>');
-  pedirJsonIA(armarMensajeCritica(_informeActual(), recolectarDatosWizard().d, opts)).then(function (ia) {
-    if (!_revPanel) return; // cerró mientras llegaba
-    if (!ia.ok) return _criticaLocal();
-    var c = ia.json || {};
-    function arr(x) {
-      return Array.isArray(x) ? x.map(function (s) { return String(s || '').trim(); }).filter(Boolean) : [];
-    }
-    var preguntas = (Array.isArray(c.preguntas) ? c.preguntas : []).slice(0, 2).map(function (p) {
-      return (p && typeof p === 'object') ? {
-        pregunta: String(p.pregunta || '').trim(),
-        opciones: arr(p.opciones).slice(0, 4)
-      } : null;
-    }).filter(function (p) { return p && p.pregunta; });
-    preguntas = filtrarPreguntasRepetidas(preguntas, opts.respuestasPrevias || _revResp);
-    _revPanel.critica = {
-      bien: arr(c.bien), falta: arr(c.falta), no_coincide: arr(c.no_coincide),
-      forma: arr(c.forma).slice(0, 4), preguntas: preguntas
-    };
-    _pintarPaso1();
-  });
-}
-
-// Sin servicio: chequeo local del validador, sin preguntas; sin problemas se
-// sella en modo local («Revisado sin conexión»).
-function _criticaLocal() {
-  var problemas = validarInformeIA(_informeActual(), recolectarDatosWizard(), { sinCantidades: true }).problemas;
-  if (!problemas.length) {
-    // Sin problemas: se sella y se cierra, sin modal de solo confirmación
-    // (decisión del usuario 2026-10-17).
-    _sellarRevision('LOCAL');
-    _cerrarPanelRevision();
-    return;
-  }
-  _modalRevision(_cabModal('Revisión del informe · sin conexión') +
-    '<div class="ed-modal-cuerpo"><div class="ed-crit"><h3>Corrige esto en el informe</h3><ul>' +
-    problemas.map(function (p) { return '<li>' + _esc(p) + '</li>'; }).join('') +
-    '</ul></div></div>' +
-    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-cerrar>Cerrar</button></div>');
-}
-
-function _respuestaPregunta(i) {
-  var sel = document.querySelector('input[name="ed-preg-' + i + '"]:checked');
-  if (!sel) return '';
-  if (sel.value === 'otra') {
-    var t = document.querySelector('[data-ed-preg-otra="' + i + '"]');
-    return t ? t.value.trim() : '';
-  }
-  var p = _revPanel.critica.preguntas[i];
-  return p ? (p.opciones[parseInt(sel.value, 10)] || '') : '';
-}
-
-// Las preguntas de la revisión son opcionales (2026-10-16): «Continuar»
-// siempre está habilitado.
-function _pintarPaso1() {
-  var cr = _revPanel.critica;
-  var grupos = [
-    ['Está bien', cr.bien],
-    ['Falta en el informe', cr.falta],
-    ['No coincide con los datos de la visita', cr.no_coincide],
-    ['Forma', cr.forma]
-  ].filter(function (g) { return g[1].length; });
-  var limpia = !cr.falta.length && !cr.no_coincide.length && !cr.forma.length;
-  if (limpia && !cr.preguntas.length) {
-    // Sin hallazgos ni preguntas: revisión limpia → sello directo y cierre,
-    // sin modal de solo confirmación (decisión del usuario 2026-10-17).
-    _sellarRevision('IA');
-    _cerrarPanelRevision();
-    return;
-  }
-  var html = _cabModal('Revisión del informe · 1 de 2') +
-    '<div class="ed-modal-cuerpo"><div class="ed-crit">' +
-    (grupos.length ? grupos.map(function (g) {
-      return '<h3>' + _esc(g[0]) + '</h3><ul>' + g[1].map(function (s) { return '<li>' + _esc(s) + '</li>'; }).join('') + '</ul>';
-    }).join('') : '<p class="ed-rev-ok">✓ La revisión no encontró problemas.</p>') +
-    '</div>';
-  if (cr.preguntas.length) {
-    html += '<div class="ed-pregs">' + cr.preguntas.map(function (p, i) {
-      return '<div class="ed-preg"><p>' + _esc(p.pregunta) + '</p>' +
-        p.opciones.map(function (o, j) {
-          return '<label><input type="radio" name="ed-preg-' + i + '" value="' + j + '"> ' + _esc(o) + '</label>';
-        }).join('') +
-        '<label><input type="radio" name="ed-preg-' + i + '" value="otra"> Otra respuesta</label>' +
-        '<input type="text" class="ed-preg-otra" data-ed-preg-otra="' + i + '" placeholder="Escribe tu respuesta">' +
-        '</div>';
-    }).join('') + '</div>';
-  }
-  html += '</div>' +
-    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-continuar>Continuar</button></div>';
-  _modalRevision(html);
-}
-
-// Paso 2: pide las correcciones con informe + respuestas + datos de la visita.
-function _continuarRevision() {
-  if (!_revPanel || !_revPanel.critica) return;
-  _revPanel.respuestas = _revPanel.critica.preguntas.map(function (p, i) {
-    return { pregunta: p.pregunta, respuesta: _respuestaPregunta(i) };
-  }).filter(function (r) { return r.respuesta; });
-  // Las respuestas se acumulan entre revisiones: no se vuelven a pedir.
-  _revResp = acumularRespuestas(_revResp, _revPanel.respuestas);
-  var opts = _revPanel.opts || {};
-  _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
-    '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Preparando correcciones…</p></div>' +
-    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-cerrar>Cancelar</button></div>');
-  pedirJsonIA(armarMensajeCorrecciones(_informeActual(), recolectarDatosWizard().d, _revPanel.critica, _revPanel.respuestas, opts)).then(function (ia) {
-    if (!_revPanel) return;
+  var informe = _informeActual();
+  var opts = _revResp.length ? { respuestasPrevias: _revResp } : {};
+  pedirJsonIA(armarMensajeRevision(informe, recolectarDatosWizard().d, pend, opts)).then(function (ia) {
+    if (!_revPanel) return; // cerró mientras llegaba: no se genera
     if (!ia.ok) {
-      _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
-        '<div class="ed-modal-cuerpo"><p class="ed-rev-err">No se pudieron traer las correcciones.</p></div>' +
-        '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-tinte" data-ed-rev-reintentar2>Reintentar</button>' +
-        '<button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-cerrar>Cerrar</button></div>');
-      return;
+      // Sin servicio: mismo trato que sin señal.
+      _cerrarPanelRevision();
+      _sellarRevision('LOCAL');
+      return _generarWord();
     }
     var cambios = filtrarCambiosRevision(
-      normalizarCambios((ia.json || {}).cambios, _informeActual(), opts.secciones),
+      normalizarCambios((ia.json || {}).cambios, informe, pend),
       recolectarDatosWizard(), validarInformeIA)
-      // Fuera los cambios que no aportan nada (2026-10-17): casi idénticos y
-      // sin pérdidas — no se hacen elegir al inspector.
-      .filter(function (c) { return propuestaAporta(c.original, c.texto); });
+      // Fuera los que no aportan (casi idénticos y sin pérdidas).
+      .filter(function (c) { return c.quitar || propuestaAporta(c.original, c.texto); });
     if (!cambios.length) {
-      _sellarRevision('IA');
       _cerrarPanelRevision();
-      return;
+      _sellarRevision('IA');
+      return _generarWord();
     }
-    _revPanel.cambios = cambios;
-    _pintarPaso2();
+    _pintarCambios(cambios);
   });
 }
 
-function _seccionNombre(sec) {
-  return { antecedentes: 'Antecedentes', observaciones: 'Observaciones de campo',
-    conclusion: 'Conclusiones', recomendacion: 'Recomendaciones' }[sec] || sec;
+function _nombreUnidad(c) {
+  var base = { antecedentes: 'Antecedentes', observaciones: 'Observaciones de campo',
+    conclusion: 'Conclusiones', recomendacion: 'Recomendaciones' }[c.seccion] || c.seccion;
+  if (c.seccion === 'observaciones') return base + ' · párrafo ' + c.numero;
+  if (c.seccion === 'conclusion' || c.seccion === 'recomendacion') return base + ' · punto ' + c.numero;
+  return base;
 }
 
-// Paso 2 con tarjetas elegibles (rediseño 2026-10-17, misma forma que el
-// panel de revisión de la visita): sin opción por defecto, la elegida se
-// vuelve el editor en su sitio y la otra queda al lado del mismo tamaño
-// para seguir comparando. Elegir otra vez descarta lo editado antes.
+// «Tu texto»: las expresiones típicas de IA salen tachadas (2026-10-17).
 function _tachadoIA(t) {
   t = String(t || '');
   if (typeof expresionesIA !== 'function') return { html: _esc(t), alguna: false };
@@ -2623,23 +2702,23 @@ function _tachadoIA(t) {
   return { html: html, alguna: true };
 }
 
-// Una tarjeta («Tu texto» o «Propuesta»). Elegida → textarea editable.
-function _tarjetaRevision(i, c, cual, elegida, otraElegida) {
+// Una de las dos tarjetas. Las dos están siempre a la vista (decisión del
+// usuario): la elegida pasa a editor en su sitio y la otra queda al lado,
+// atenuada, para seguir comparando. Elegir otra vez descarta lo editado.
+function _tarjetaRevision(i, c, cual) {
+  var el = _revPanel.eleccion[i];
+  var elegida = el === cual, descartada = !!el && el !== cual;
   var titulo = cual === 'ia' ? 'Propuesta' : 'Tu texto';
-  var usar = otraElegida ? 'Usar este' : (cual === 'ia' ? 'Usar la propuesta' : 'Usar mi texto');
-  var html = '<div class="ed-op' + (elegida ? ' elegida' : '') + '">' +
+  var html = '<div class="ed-op' + (elegida ? ' elegida' : '') + (descartada ? ' descartada' : '') + '">' +
     '<div class="ed-op-cab"><b>' + titulo + '</b>' +
     (elegida ? '<span class="ed-op-ok">✓ Queda este</span>'
       : '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-usar="' + i +
-        '" data-ed-cual="' + cual + '">' + usar + '</button>') +
+        '" data-ed-cual="' + cual + '" aria-label="Usar ' + (cual === 'ia' ? 'la propuesta' : 'tu texto') +
+        ' en ' + _esc(_nombreUnidad(c)) + '">Usar este</button>') +
     '</div>';
-  if (cual === 'ia') {
-    var qc = resumenCambios(c.original, c.texto);
-    html += '<ul class="ed-qc">' + (qc.length
-      ? qc.map(function (x) { return '<li>' + _esc(x.texto) + '</li>'; }).join('')
-      : '<li>Solo la redacción; el contenido queda igual.</li>') + '</ul>';
-  }
-  if (elegida) {
+  if (cual === 'ia' && c.quitar) {
+    html += '<div class="ed-op-txt ed-op-quita">Se quita este punto: dice lo mismo que otro.</div>';
+  } else if (elegida) {
     html += '<textarea class="ed-op-txt" data-ed-c-txt="' + i + '" aria-label="' + titulo +
       ': texto que queda">' + _esc(_revPanel.textos[i]) + '</textarea>';
   } else if (cual === 'propio') {
@@ -2653,15 +2732,11 @@ function _tarjetaRevision(i, c, cual, elegida, otraElegida) {
 }
 
 function _htmlCambioRevision(i, c) {
-  var el = _revPanel.eleccion[i];
   var aviso = _revPanel.avisos[i];
   return '<div class="ed-cambio" data-ed-c="' + i + '">' +
-    '<div class="ed-cambio-cab">' + _esc(_seccionNombre(c.seccion) +
-      ((c.seccion === 'conclusion' || c.seccion === 'recomendacion') ? ' · punto ' + c.numero : '')) + '</div>' +
-    '<div class="ed-ops">' +
-    _tarjetaRevision(i, c, 'propio', el === 'propio', el === 'ia') +
-    _tarjetaRevision(i, c, 'ia', el === 'ia', el === 'propio') +
-    '</div>' +
+    '<div class="ed-cambio-cab"><span class="ed-cambio-sec">' + _esc(_nombreUnidad(c)) + '</span>' +
+    (c.motivo ? '<span class="ed-cambio-motivo">' + _esc(c.motivo) + '</span>' : '') + '</div>' +
+    '<div class="ed-ops">' + _tarjetaRevision(i, c, 'propio') + _tarjetaRevision(i, c, 'ia') + '</div>' +
     (aviso ? '<div class="ed-aviso-casilla">' + _esc(aviso) + '</div>' : '') +
     '</div>';
 }
@@ -2669,24 +2744,34 @@ function _htmlCambioRevision(i, c) {
 function _piePaso2() {
   var n = _revPanel.eleccion.filter(Boolean).length;
   var m = _revPanel.cambios.length;
-  return '<span class="ed-rev-falta">' + (n < m ? 'Falta elegir ' + (m - n) + ' de ' + m + '.' : 'Todo listo.') + '</span>' +
-    '<button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-aplicar' + (n < m ? ' disabled' : '') + '>Aplicar</button>';
+  var faltan = m - n;
+  var todas = !faltan ? ''
+    : '<button type="button" class="ed-btn ed-btn-tinte" data-ed-rev-todas>' +
+      (n === 0 ? (m === 1 ? 'Usar la propuesta' : 'Usar las ' + m + ' propuestas')
+        : (faltan === 1 ? 'Usar la propuesta que falta' : 'Usar las ' + faltan + ' propuestas que faltan')) +
+      '</button>';
+  return '<span class="ed-rev-falta">' + (faltan ? 'Falta elegir ' + faltan + ' de ' + m + '.' : 'Listo.') + '</span>' +
+    todas +
+    '<button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-aplicar' + (faltan ? ' disabled' : '') + '>Aplicar y generar</button>';
 }
 
-function _pintarPaso2() {
+function _pintarCambios(cambios) {
   var d = recolectarDatosWizard().d;
-  _revPanel.eleccion = _revPanel.cambios.map(function () { return null; });
-  _revPanel.textos = _revPanel.cambios.map(function () { return ''; });
-  _revPanel.avisos = _revPanel.cambios.map(function (c) { return avisoCasillaVisita(c, d); });
-  _modalRevision(_cabModal('Revisión del informe · 2 de 2') +
-    '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">Elige en cada cambio: tu texto o la propuesta. Nada se cambia solo.</p>' +
-    _revPanel.cambios.map(function (c, i) { return _htmlCambioRevision(i, c); }).join('') +
+  _revPanel.cambios = cambios;
+  _revPanel.eleccion = cambios.map(function () { return null; });
+  _revPanel.textos = cambios.map(function () { return ''; });
+  _revPanel.avisos = cambios.map(function (c) { return c.quitar ? '' : avisoCasillaVisita(c, d); });
+  _modalRevision(_cabModal('Antes de generar el Word', cambios.length === 1 ? '1 corrección' : cambios.length + ' correcciones') +
+    '<div class="ed-modal-cuerpo">' +
+    cambios.map(function (c, i) { return _htmlCambioRevision(i, c); }).join('') +
     '</div><div class="ed-modal-pie">' + _piePaso2() + '</div>', true);
+  var primero = document.querySelector('#ed-modal [data-ed-usar]');
+  if (primero) primero.focus();
 }
 
-// Elegir «Usar mi texto» / «Usar la propuesta»: repinta SOLO ese bloque y el
-// pie (repintar el modal entero devuelve el scroll del cuerpo a cero).
-function _usarTextoRevision(i, cual) {
+// Elegir: repinta SOLO ese bloque y el pie (repintar el modal entero
+// devuelve el scroll del cuerpo a cero).
+function _usarTextoRevision(i, cual, sinFoco) {
   if (!_revPanel || !_revPanel.cambios) return;
   var c = _revPanel.cambios[i];
   if (!c || (cual !== 'propio' && cual !== 'ia')) return;
@@ -2696,6 +2781,7 @@ function _usarTextoRevision(i, cual) {
   if (bloque) bloque.outerHTML = _htmlCambioRevision(i, c);
   var pie = document.querySelector('#ed-modal .ed-modal-pie');
   if (pie) pie.innerHTML = _piePaso2();
+  if (sinFoco) return;
   var t = document.querySelector('[data-ed-c-txt="' + i + '"]');
   if (t) {
     t.focus();
@@ -2703,33 +2789,55 @@ function _usarTextoRevision(i, cual) {
   }
 }
 
+function _usarTodasLasPropuestas() {
+  if (!_revPanel || !_revPanel.cambios) return;
+  _revPanel.cambios.forEach(function (c, i) { if (!_revPanel.eleccion[i]) _usarTextoRevision(i, 'ia', true); });
+  var aplicar = document.querySelector('#ed-modal [data-ed-rev-aplicar]');
+  if (aplicar) aplicar.focus();
+}
+
 function _aplicarCambiosRevision() {
   if (!_revPanel || !_revPanel.cambios) return;
   var usoIA = false;
+  var parrafos = null;
+  var quitar = { 'ed-concl': [], 'ed-rec': [] };
+  var tocadas = {};
   _revPanel.cambios.forEach(function (c, i) {
     var cual = _revPanel.eleccion[i];
     if (!cual) return;
     if (cual === 'ia') usoIA = true;
-    var texto = _revPanel.textos[i];
+    var idLista = c.seccion === 'conclusion' ? 'ed-concl' : (c.seccion === 'recomendacion' ? 'ed-rec' : null);
+    if (cual === 'ia' && c.quitar) { quitar[idLista].push(c.numero); return; }
+    var texto = String(_revPanel.textos[i]);
     // Comparación exacta (2026-10-17): la normalizada ignoraba una corrección
     // de solo puntuación o tildes y no la aplicaba.
-    if (String(texto).trim() === String(c.original).trim()) return; // no cambió nada
+    if (texto.trim() === String(c.original).trim()) return;
     if (c.seccion === 'antecedentes') _el('ed-antecedentes').textContent = texto;
-    else if (c.seccion === 'observaciones') _el('ed-obs').textContent = texto;
+    else if (c.seccion === 'observaciones') (parrafos = parrafos || {})[c.numero] = texto;
     else {
-      var id = c.seccion === 'conclusion' ? 'ed-concl' : 'ed-rec';
-      var ol = _el(id);
-      var items = document.querySelectorAll('#' + id + ' > .ed-item:not(.ed-item-fijo)');
-      var li = items[c.numero - 1];
+      var li = document.querySelectorAll('#' + idLista + ' > .ed-item:not(.ed-item-fijo)')[c.numero - 1];
       if (li) li.querySelector('.ed-ed').textContent = texto;
-      else ol.insertBefore(_item(texto, true), ol.querySelector('.ed-item-fijo') || null);
-      _pintarVacio(id);
+      tocadas[idLista] = true;
     }
   });
-  _sellarRevision(usoIA ? 'IA' : 'PROPIO'); // huella del informe ya corregido
+  if (parrafos) {
+    _el('ed-obs').textContent = reemplazarParrafos(_el('ed-obs').textContent, parrafos);
+    _programarEnvioObs();
+  }
+  // Los puntos se quitan al final y de atrás hacia adelante: los números son
+  // los del informe que vio la revisión.
+  Object.keys(quitar).forEach(function (idLista) {
+    if (!quitar[idLista].length) return;
+    var items = document.querySelectorAll('#' + idLista + ' > .ed-item:not(.ed-item-fijo)');
+    quitar[idLista].sort(function (a, b) { return b - a; }).forEach(function (n) { if (items[n - 1]) items[n - 1].remove(); });
+    tocadas[idLista] = true;
+  });
+  Object.keys(tocadas).forEach(_pintarVacio);
+  _cerrarPanelRevision();
+  _sellarRevision(usoIA ? 'IA' : 'PROPIO'); // lo que quedó cuenta como revisado
   _pintarSugerencias();
   _programarGuardar();
-  _cerrarPanelRevision();
+  _generarWord();
 }
 
 // ── Generar Word ─────────────────────────────────────────────────────
@@ -2771,6 +2879,7 @@ async function _generarWord() {
 // 1) lo de este equipo (al instante, también sin señal); 2) aviso si la
 // visita cambió; 3) el servidor decide si hay algo más nuevo de otro equipo.
 if (_borrador) _aplicarSnapshot(_borrador);
+_sincronizarObs();
 _revisarCambioVisita();
 _cargarServidor();
 

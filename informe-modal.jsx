@@ -154,9 +154,35 @@ function _toQuery(obj) {
 // API global. Estrategia:
 //   - Si hay ModalHost montado y el viewport es desktop → modal.
 //   - Si no → window.open en pestaña nueva (móvil o sin host).
-window.abrirInformeF43 = function(params) {
+// ¿El generador va a ir en pestaña nueva (no en el marco)? La visita lo pregunta
+// ANTES de cualquier await: la pestaña tiene que abrirse dentro del toque o el
+// navegador la bloquea sin avisar (2026-11-05: «Regenerar informe» no hacía nada
+// en el celular porque la pestaña se abría después de consultar el POT).
+window.informeF43EnPestana = function() {
+  return !(_pushInforme && window.innerWidth >= MIN_DESKTOP);
+};
+
+// Abre una pestaña en blanco dentro del toque, para llenarla después del await.
+// Sin `noopener` (con él window.open devuelve null y no se puede llenar); se
+// corta el opener a mano. Devuelve null si el navegador la bloqueó.
+window.preabrirPestanaInforme = function() {
+  try {
+    const w = window.open('', '_blank');
+    if (w) { try { w.opener = null; } catch (e) {} }
+    return w || null;
+  } catch (e) { return null; }
+};
+
+// opts.ventana: pestaña ya abierta por preabrirPestanaInforme (o null si se bloqueó).
+window.abrirInformeF43 = function(params, opts) {
+  const ventana = opts && opts.ventana;
   if (!params || !params.fila || !params.radicado) {
     console.error('[abrirInformeF43] faltan params obligatorios (fila/radicado):', params);
+    if (ventana) { try { ventana.close(); } catch (e) {} }
+    if (typeof appAlert === 'function') {
+      appAlert('No se pudo abrir el informe: a la visita le falta el radicado o no está guardada.',
+        { tono: 'error', titulo: 'Informe de inspección' });
+    }
     return;
   }
   // AP1 (auditoría 2026-07): informe/index.html corre fuera de api.js
@@ -172,11 +198,28 @@ window.abrirInformeF43 = function(params) {
 
   const esDesktop = window.innerWidth >= MIN_DESKTOP;
   if (_pushInforme && esDesktop) {
+    if (ventana) { try { ventana.close(); } catch (e) {} }
     _pushInforme(paramsConSesion);
     return;
   }
   const url = INFORME_PATH + '?' + _toQuery(paramsConSesion);
-  window.open(url, '_blank', 'noopener');
+  if (ventana && !ventana.closed) {
+    ventana.location.href = url;
+    return;
+  }
+  // Sin pestaña preabierta (o el navegador la bloqueó): intentar ahora y, si
+  // tampoco sale, pedir un toque nuevo — ese sí cuenta como gesto del usuario.
+  const w = window.open(url, '_blank');
+  if (w) { try { w.opener = null; } catch (e) {} return; }
+  if (typeof appConfirm === 'function') {
+    appConfirm('El navegador bloqueó la pestaña del informe.',
+      { tono: 'aviso', titulo: 'Informe de inspección', btnOk: 'Abrir el informe' })
+      .then(function(ok) {
+        if (!ok) return;
+        const w2 = window.open(url, '_blank');
+        if (w2) { try { w2.opener = null; } catch (e) {} }
+      });
+  }
 };
 
 window.InformeModalHost = InformeModalHost;

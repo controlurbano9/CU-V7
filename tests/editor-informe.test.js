@@ -170,64 +170,8 @@ const INFORME_R2 = {
 };
 const huellaFake = (...args) => args.join('§');
 
-test('mensaje de crítica: informe completo, datos de la visita y reglas del plan', () => {
-  const msg = ed.armarMensajeCritica(INFORME_R2, BASE);
-  // El informe viaja completo, sección por sección…
-  ['El 22 de abril de 2026 se realizó diligencia', 'Se observó una ampliación',
-   'Conclusión primera.', 'Conclusión segunda.', 'Recomendación en imperativo.'
-  ].forEach(s => assert.ok(msg.includes(s), 'falta en el mensaje: ' + s));
-  // …y los datos de la visita que sostienen la revisión.
-  ['CR 54 # 33-32', '20251084835', '2026-04-22'].forEach(s => assert.ok(msg.includes(s), 'falta el dato: ' + s));
-  // Reglas del plan: sin plazos, sin juzgar la decisión jurídica, topes.
-  assert.match(msg, /PROHIBIDO proponer plazos/);
-  assert.match(msg, /No juzgues ni corrijas la decisión jurídica/);
-  assert.match(msg, /MÁXIMO 4/);
-  // Preguntas solo ante dudas reales, nunca para confirmar hechos (2026-10-17).
-  assert.match(msg, /SOLO cuando tengas una DUDA REAL/);
-  assert.match(msg, /PROHIBIDO preguntar para confirmar un hecho/);
-  assert.match(msg, /MÁXIMO 2/);
-  assert.ok(!msg.includes('obligatoria'));
-});
 
-test('mensaje de correcciones: informe, respuestas no vacías y reglas', () => {
-  const critica = { bien: [], falta: ['Falta el área en contravención'], no_coincide: [], forma: [], preguntas: [] };
-  const respuestas = [
-    { pregunta: '¿Cuál es el área?', respuesta: '75 m2' },
-    { pregunta: 'Sin responder', respuesta: '   ' },
-    { pregunta: '¿De cuándo es la licencia?', respuesta: '' }
-  ];
-  const msg = ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, respuestas);
-  // Solo las respuestas con contenido viajan como hechos del inspector.
-  assert.ok(msg.includes('75 m2'));
-  assert.ok(!msg.includes('Sin responder'));
-  assert.ok(!msg.includes('De cuándo es la licencia'));
-  // La crítica previa también viaja.
-  assert.ok(msg.includes('Falta el área en contravención'));
-  assert.ok(msg.includes('Conclusión segunda.'));
-  // Reglas del plan.
-  assert.match(msg, /Corrige SOLO lo que cambia/);
-  assert.match(msg, /Conserva la cita literal del artículo 135/);
-  assert.match(msg, /PROHIBIDA la palabra «infractor» y proponer plazos/);
-  assert.match(msg, /Recomendaciones en imperativo/);
-});
 
-// ── Ronda 2: filtro de cambios de la revisión ─────────────────
-test('normalizarCambios: original al que reemplaza; fuera los que no aplican', () => {
-  const cambios = ed.normalizarCambios([
-    { seccion: 'antecedentes', numero: 1, texto: INFORME_R2.antecedentes + ' (corregido)' },
-    { seccion: 'conclusion', numero: 2, texto: 'Conclusión segunda corregida.' },
-    { seccion: 'conclusion', numero: 2, texto: 'Conclusión segunda.' },   // sin cambio real
-    { seccion: 'conclusion', numero: 9, texto: 'No existe.' },            // punto que no existe
-    { seccion: 'resumen', numero: 1, texto: 'Sección desconocida.' },     // fuera del informe
-    { seccion: 'recomendacion', numero: 1, texto: '' }                    // vacío
-  ], INFORME_R2);
-  assert.equal(cambios.length, 2);
-  assert.equal(cambios[0].seccion, 'antecedentes');
-  assert.equal(cambios[0].original, INFORME_R2.antecedentes);
-  assert.equal(cambios[1].seccion, 'conclusion');
-  assert.equal(cambios[1].numero, 2);
-  assert.equal(cambios[1].original, 'Conclusión segunda.');
-});
 
 test('filtrarCambiosRevision: cada cambio se valida suelto, en su sección y sin mínimos ni cobertura', () => {
   const vistos = [];
@@ -250,41 +194,16 @@ test('filtrarCambiosRevision: cada cambio se valida suelto, en su sección y sin
   assert.deepEqual(vistos[2].json.recomendaciones_items, ['Recomendación buena.']);
 });
 
-// ── Ronda 2: vigencia de la revisión por huella ───────────────
-test('huella de la revisión: se vence con cualquier edición', () => {
-  const h1 = ed.huellaInforme(INFORME_R2, huellaFake);
-  assert.equal(h1, huellaFake(INFORME_R2.antecedentes, INFORME_R2.observaciones,
-    INFORME_R2.conclusiones_items.join('\n\n'), INFORME_R2.recomendaciones_items.join('\n\n')));
-  // Misma huella → vigente; sin revisión previa → no.
-  assert.ok(ed.revisionInformeVigente({ huella: h1 }, INFORME_R2, huellaFake));
-  assert.ok(!ed.revisionInformeVigente(null, INFORME_R2, huellaFake));
-  // Cualquier edición (aunque sea de un solo punto) vence la revisión.
-  const editado = Object.assign({}, INFORME_R2,
-    { conclusiones_items: ['Conclusión primera editada.', 'Conclusión segunda.'] });
-  assert.ok(!ed.revisionInformeVigente({ huella: h1 }, editado, huellaFake));
-});
 
 // ── Ronda 2: condición de «Generar Word» ──────────────────────
-test('Generar Word: revisión, validador limpio y cierre grave con comportamientos', () => {
-  const limpio = { vigente: true, huboRevision: true, problemas: [], requiereCierre: false, tieneCierre: false };
+test('Generar Word: validador limpio y cierre grave con comportamientos; la revisión no bloquea', () => {
+  const limpio = { problemas: [], requiereCierre: false, tieneCierre: false };
   assert.deepEqual(ed.condicionGenerarWord(limpio), { ok: true, motivo: '', avisos: [] });
-  // Nunca revisado.
-  const nunca = ed.condicionGenerarWord({ vigente: false, huboRevision: false, problemas: [], requiereCierre: false, tieneCierre: false });
-  assert.equal(nunca.ok, false);
-  assert.match(nunca.motivo, /Falta la revisión final/);
-  assert.equal(nunca.tipo, 'revision');
-  // Revisión vencida por una edición posterior.
-  const vencida = ed.condicionGenerarWord(Object.assign({}, limpio, { vigente: false }));
-  assert.match(vencida.motivo, /Revisión vencida: vuelve a revisar/);
-  // Vigente pero el validador encontró problemas → bloquea con todos.
+  // El validador encontró problemas → bloquea con todos.
   const conProblemas = ed.condicionGenerarWord(Object.assign({}, limpio, { problemas: ['p1', 'p2'] }));
   assert.equal(conProblemas.motivo, 'p1');
   assert.equal(conProblemas.tipo, 'problema');
   assert.deepEqual(conProblemas.problemas, ['p1', 'p2']);
-  // Problemas y revisión vencida: primero los problemas (corregirlos vence
-  // la revisión; pedir revisar antes obligaba a revisar dos veces).
-  const ambos = ed.condicionGenerarWord(Object.assign({}, limpio, { vigente: false, problemas: ['p1'] }));
-  assert.equal(ambos.tipo, 'problema');
   // Observaciones vacías: bloquea, no «Todo listo».
   const sinObs = ed.condicionGenerarWord(Object.assign({}, limpio, { observacionesVacias: true }));
   assert.equal(sinObs.ok, false);
@@ -375,27 +294,6 @@ test('huellasSecciones: tilde o coma no cambia la huella, una palabra sí', () =
   assert.deepEqual(ed.huellasSecciones({}), vacia);
 });
 
-test('seccionesCambiadas: sello nuevo solo la tocada; viejo vigente/vencido; sin sello', () => {
-  const h = ed.huellasSecciones(INFORME_SECC);
-  // Sello nuevo: solo cambia la sección editada.
-  const sello = { secciones: h, modo: 'IA', fecha: '2026-10-16' };
-  const editado = Object.assign({}, INFORME_SECC, { conclusiones_items: ['Editada.'] });
-  assert.deepEqual(ed.seccionesCambiadas(sello, editado), ['conclusiones']);
-  assert.deepEqual(ed.seccionesCambiadas(sello, INFORME_SECC), []);
-  // Falta una sección en el sello (nació sin revisar): siempre cuenta como cambiada.
-  const parcial = { secciones: { antecedentes: h.antecedentes }, modo: 'VISITA' };
-  assert.deepEqual(ed.seccionesCambiadas(parcial, INFORME_SECC),
-    ['observaciones', 'conclusiones', 'recomendaciones']);
-  // Sello viejo (sin secciones): la comparación de hoy por huella completa.
-  const huellaVieja = ed.huellaInforme(INFORME_SECC, huellaFake);
-  assert.deepEqual(ed.seccionesCambiadas({ huella: huellaVieja }, INFORME_SECC, huellaFake), []);
-  assert.deepEqual(ed.seccionesCambiadas({ huella: huellaVieja }, editado, huellaFake), ed.SECCIONES_REVISION);
-  // Sin sello: las 4.
-  assert.deepEqual(ed.seccionesCambiadas(null, INFORME_SECC), ed.SECCIONES_REVISION);
-  // revisionInformeVigente es «sin secciones cambiadas».
-  assert.ok(ed.revisionInformeVigente(sello, INFORME_SECC));
-  assert.ok(!ed.revisionInformeVigente(sello, editado));
-});
 
 test('selloInicialSecciones: hereda lo revisado en la visita', () => {
   const rec = ed.sugerenciasRecomendacionesDeLaVisita(BASE); // la preventiva (REC_*)
@@ -410,7 +308,7 @@ test('selloInicialSecciones: hereda lo revisado en la visita', () => {
   const deLaVisita = Object.assign({}, INFORME_SECC, { conclusiones_items: origen.conclusiones, recomendaciones_items: [rec[0].texto] });
   let sello = ed.selloInicialSecciones(deLaVisita, origen);
   assert.deepEqual(Object.keys(sello).sort(), ['antecedentes', 'conclusiones', 'observaciones', 'recomendaciones']);
-  assert.deepEqual(ed.seccionesCambiadas({ secciones: sello }, deLaVisita), []);
+  assert.equal(ed.unidadesPendientes({ secciones: sello }, deLaVisita).total, 0);
   // Conclusión aprobada (sugerencia «De la visita») también nace revisada.
   sello = ed.selloInicialSecciones(Object.assign({}, INFORME_SECC, { conclusiones_items: [conclVisita[0].texto] }), origen);
   assert.ok(sello.conclusiones);
@@ -428,87 +326,10 @@ test('selloInicialSecciones: hereda lo revisado en la visita', () => {
   assert.deepEqual(Object.keys(sello).sort(), ['antecedentes', 'conclusiones', 'observaciones', 'recomendaciones']);
 });
 
-test('filtrarPreguntasRepetidas: fuera las ya respondidas (palabras con contenido ≥ 0,6)', () => {
-  const previas = [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '75 m2' }];
-  const preguntas = [
-    { pregunta: '¿Cual es el área en contravención de la visita?' },   // misma pregunta, sin tildes
-    { pregunta: '¿Quién es el propietario del inmueble?' }
-  ];
-  const out = ed.filtrarPreguntasRepetidas(preguntas, previas);
-  assert.equal(out.length, 1);
-  assert.match(out[0].pregunta, /propietario/);
-  // Respuesta vacía guardada no cuenta.
-  assert.equal(ed.filtrarPreguntasRepetidas(preguntas, [{ pregunta: '¿Cuál es el área en contravención?', respuesta: '' }]).length, 2);
-  assert.equal(ed.filtrarPreguntasRepetidas(preguntas, []).length, 2);
-  // Comparten «el», «está», «en»: no son la misma pregunta.
-  assert.equal(ed.filtrarPreguntasRepetidas([{ pregunta: '¿El muro está en el retiro?' }],
-    [{ pregunta: '¿El muro está en el antejardín?', respuesta: 'Sí' }]).length, 1);
-});
 
-test('acumularRespuestas: reemplaza la parecida y recorta a 20', () => {
-  let out = ed.acumularRespuestas([], [{ pregunta: '¿Cuál es el área?', respuesta: '75 m2' }]);
-  assert.equal(out.length, 1);
-  // La misma pregunta respondida de nuevo reemplaza; una nueva se suma.
-  out = ed.acumularRespuestas(out, [
-    { pregunta: '¿Cual es el área?', respuesta: '80 m2' },
-    { pregunta: '¿El propietario?', respuesta: 'Juan' },
-    { pregunta: '¿Vacía?', respuesta: '   ' }
-  ]);
-  assert.equal(out.length, 2);
-  assert.equal(out[0].respuesta, '80 m2');
-  assert.equal(out[1].respuesta, 'Juan');
-  // Tope 20: se quedan las más recientes. (Preguntas bien distintas entre sí:
-  // «pregunta 5» y «pregunta 6» dan Jaccard 1/3, bajo el umbral.)
-  const muchas = [];
-  for (let i = 0; i < 25; i++) muchas.push({ pregunta: '¿Q' + i + '?', respuesta: 'r' + i });
-  out = ed.acumularRespuestas(out, muchas);
-  assert.equal(out.length, 20);
-  assert.equal(out[0].pregunta, '¿Q5?');
-  assert.equal(out[19].pregunta, '¿Q24?');
-});
 
-test('armarMensajeCritica con opts: secciones y respuestas previas; sin opts idéntico a hoy', () => {
-  const sinOpts = ed.armarMensajeCritica(INFORME_R2, BASE);
-  assert.equal(ed.armarMensajeCritica(INFORME_R2, BASE, undefined), sinOpts);
-  assert.equal(ed.armarMensajeCritica(INFORME_R2, BASE, {}), sinOpts);
-  const opts = {
-    secciones: ['observaciones', 'conclusiones'],
-    respuestasPrevias: [{ pregunta: '¿El área?', respuesta: '75 m2' }]
-  };
-  const msg = ed.armarMensajeCritica(INFORME_R2, BASE, opts);
-  assert.match(msg, /Revisa SOLO estas secciones: Observaciones, Conclusiones; las demás van como contexto, no las critiques ni propongas cambios en ellas/);
-  assert.match(msg, /RESPUESTAS YA DADAS POR EL INSPECTOR \(no vuelvas a preguntar esto\)/);
-  assert.ok(msg.includes('75 m2'));
-});
 
-test('armarMensajeCorrecciones con opts: mismos bloques; sin opts idéntico a hoy', () => {
-  const critica = { bien: [], falta: [], no_coincide: [], forma: [], preguntas: [] };
-  const sinOpts = ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, []);
-  assert.equal(ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], undefined), sinOpts);
-  assert.equal(ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], {}), sinOpts);
-  const msg = ed.armarMensajeCorrecciones(INFORME_R2, BASE, critica, [], {
-    secciones: ['conclusiones'],
-    respuestasPrevias: [{ pregunta: '¿El área?', respuesta: '75 m2' }]
-  });
-  assert.match(msg, /Revisa SOLO estas secciones: Conclusiones/);
-  assert.match(msg, /RESPUESTAS YA DADAS POR EL INSPECTOR/);
-});
 
-test('normalizarCambios con secciones: fuera los cambios de secciones no revisadas', () => {
-  const cambios = [
-    { seccion: 'observaciones', numero: 1, texto: 'Observaciones corregidas.' },
-    { seccion: 'conclusion', numero: 1, texto: 'Conclusión corregida.' },
-    { seccion: 'antecedentes', numero: 1, texto: 'Antecedentes corregidos.' }
-  ];
-  // Nombres del sello (plurales) y de la IA (singular): ambos mapean.
-  let out = ed.normalizarCambios(cambios, INFORME_R2, ['conclusiones']);
-  assert.equal(out.length, 1);
-  assert.equal(out[0].seccion, 'conclusion');
-  out = ed.normalizarCambios(cambios, INFORME_R2, ['observaciones', 'antecedentes']);
-  assert.equal(out.length, 2);
-  // Sin secciones: como hoy.
-  assert.equal(ed.normalizarCambios(cambios, INFORME_R2).length, 3);
-});
 
 test('avisoCasillaVisita: los 4 mensajes nombran la casilla de la visita', () => {
   const t = s => ({ texto: s });
@@ -551,4 +372,143 @@ test('avisoCasillaVisita: la negación en voz pasiva («no se requiere») tambi�
     'Corrige también la visita: en Verificación documental, «¿Las obras requieren licencia?» = SI.');
   // requiere NO y el texto niega en pasiva → consistente, sin aviso.
   assert.equal(ed.avisoCasillaVisita(t('No se requiere licencia urbanística.'), { requiere_licencia: 'NO' }), '');
+});
+
+// ── Revisión única al generar el Word (2026-11-05) ─────────────────────
+// Un solo mensaje que devuelve los cambios con su motivo, por párrafo de
+// observaciones y por punto; lo ya revisado (o un retoque) no vuelve a la IA.
+const INFORME_P = {
+  antecedentes: 'El 22 de abril de 2026 se realizó diligencia de inspección ocular…',
+  observaciones: 'Se observó una edificación de tres niveles en obra negra.\n\nLa estructura es aporticada, con columnas de 80 cm x 40 cm según la información suministrada.\n\nLa cubierta es en teja termoacústica.',
+  conclusiones_items: ['Conclusión primera.', 'Conclusión segunda.'],
+  recomendaciones_items: ['Ajuste la obra a los niveles aprobados.', 'Absténgase de construir niveles adicionales.']
+};
+
+test('mensaje de revisión: informe por párrafos y puntos, datos y reglas', () => {
+  const msg = ed.armarMensajeRevision(INFORME_P, BASE);
+  // Observaciones por párrafo, numeradas por posición.
+  assert.ok(msg.includes('"observaciones_parrafos":["Se observó una edificación'));
+  ['Conclusión segunda.', 'Absténgase de construir', 'CR 54 # 33-32', '20251084835'].forEach(s =>
+    assert.ok(msg.includes(s), 'falta en el mensaje: ' + s));
+  assert.match(msg, /Revisa todo el informe/);
+  // Un solo JSON de cambios con motivo; sin «bien», «falta» ni preguntas.
+  assert.match(msg, /"cambios":\[\{"seccion":"antecedentes\|observaciones\|conclusion\|recomendacion","numero":1,"motivo":"","texto":""\}\]/);
+  assert.ok(!/"bien"|"preguntas"|"no_coincide"/.test(msg));
+  // Las observaciones son fuente de hechos; lo que el Word ya imprime no se pide.
+  assert.match(msg, /OBSERVACIONES, que son el texto que el inspector escribió/);
+  assert.match(msg, /PROHIBIDO pedir o agregar datos que el Word ya imprime/);
+  assert.match(msg, /MÁXIMO 5 cambios/);
+  assert.match(msg, /Una MEDIDA aproximada .* NO es duda/);
+  assert.match(msg, /quita la palabra y deja el dato/);
+  assert.match(msg, /se quita SOLO si la misma idea ya está en Conclusiones o Recomendaciones/);
+  assert.match(msg, /PROHIBIDA la palabra «infractor»/);
+  assert.match(msg, /PROHIBIDO proponer plazos/);
+});
+
+test('mensaje de revisión: solo lo pendiente y las respuestas ya dadas', () => {
+  const pend = { antecedentes: [], observaciones: [2], conclusiones: [], recomendaciones: [1, 2], total: 3, todas: false };
+  const msg = ed.armarMensajeRevision(INFORME_P, BASE, pend, { respuestasPrevias: [{ pregunta: '¿El área?', respuesta: '75 m2' }] });
+  assert.match(msg, /REVISA SOLO: Observaciones, párrafo\(s\) 2; Recomendaciones, punto\(s\) 1, 2\. Lo demás ya fue revisado/);
+  assert.ok(msg.includes('75 m2'));
+});
+
+test('parrafosObservaciones y reemplazarParrafos: por posición, sin tocar los saltos', () => {
+  assert.deepEqual(ed.parrafosObservaciones('A.\n\n  B.  \n \nC.'), ['A.', 'B.', 'C.']);
+  assert.equal(ed.reemplazarParrafos('A.\n\nB.\nC.', { 2: 'B corregido.' }), 'A.\n\nB corregido.\nC.');
+  assert.equal(ed.reemplazarParrafos('A.\n \nB.', { 2: 'X.' }), 'A.\n \nX.');
+  assert.equal(ed.reemplazarParrafos('A.', {}), 'A.');
+});
+
+test('normalizarCambios: párrafo o punto con su original, motivo, quitar y tope de 5', () => {
+  const out = ed.normalizarCambios([
+    { seccion: 'observaciones', numero: 2, motivo: 'Pone en duda lo medido.', texto: 'La estructura es aporticada,\ncon columnas de 80 cm x 40 cm.' },
+    { seccion: 'observaciones', numero: 2, texto: 'Repetido.' },                 // mismo párrafo: fuera
+    { seccion: 'conclusion', numero: 2, texto: 'Conclusión segunda.' },          // sin cambio real
+    { seccion: 'conclusion', numero: 9, texto: 'No existe.' },                   // punto que no existe
+    { seccion: 'resumen', numero: 1, texto: 'Sección desconocida.' },
+    { seccion: 'observaciones', numero: 1, texto: '' },                          // vacío en observaciones: fuera
+    { seccion: 'recomendacion', numero: 2, motivo: 'Dice lo mismo que el 1.', texto: '' }  // quitar el punto
+  ], INFORME_P);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out[0], { seccion: 'observaciones', numero: 2,
+    original: 'La estructura es aporticada, con columnas de 80 cm x 40 cm según la información suministrada.',
+    texto: 'La estructura es aporticada, con columnas de 80 cm x 40 cm.', quitar: false, motivo: 'Pone en duda lo medido.' });
+  assert.equal(out[1].seccion, 'recomendacion');
+  assert.equal(out[1].quitar, true);
+  assert.equal(out[1].original, 'Absténgase de construir niveles adicionales.');
+  // Tope de 5.
+  const muchos = [1, 2, 3].map(n => ({ seccion: 'observaciones', numero: n, texto: 'Otro ' + n + '.' }))
+    .concat([1, 2].map(n => ({ seccion: 'conclusion', numero: n, texto: 'Otra ' + n + '.' })))
+    .concat([{ seccion: 'recomendacion', numero: 1, texto: 'Otra rec.' }]);
+  assert.equal(ed.normalizarCambios(muchos, INFORME_P).length, 5);
+});
+
+test('normalizarCambios con pendientes: fuera lo que ya estaba revisado', () => {
+  const pend = { antecedentes: [], observaciones: [2], conclusiones: [], recomendaciones: [], total: 1 };
+  const out = ed.normalizarCambios([
+    { seccion: 'observaciones', numero: 1, texto: 'Primer párrafo cambiado.' },
+    { seccion: 'observaciones', numero: 2, texto: 'Segundo párrafo cambiado.' },
+    { seccion: 'conclusion', numero: 1, texto: 'Conclusión cambiada.' }
+  ], INFORME_P, pend);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].numero, 2);
+});
+
+test('filtrarCambiosRevision: quitar un punto no pasa por el validador', () => {
+  const validador = () => ({ ok: false });
+  const out = ed.filtrarCambiosRevision([
+    { seccion: 'recomendacion', numero: 2, original: 'x', texto: '', quitar: true },
+    { seccion: 'conclusion', numero: 1, original: 'y', texto: 'Mala.', quitar: false }
+  ], { d: BASE }, validador);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].quitar, true);
+});
+
+test('retoqueRevisado: una frase cambiada no vuelve a la IA; una reescritura o una cifra nueva sí', () => {
+  const p = 'La estructura es aporticada en concreto reforzado, con columnas de 80 cm x 40 cm y vigas de amarre.';
+  assert.ok(ed.retoqueRevisado(p, 'La estructura es aporticada en concreto reforzado, con columnas de 80 cm x 40 cm.'));
+  assert.ok(ed.retoqueRevisado(p, p.replace('concreto reforzado', 'concreto')));
+  assert.ok(!ed.retoqueRevisado(p, 'La cubierta es en teja de zinc sobre perfilería metálica.'));
+  assert.ok(!ed.retoqueRevisado(p, p.replace('80 cm', '90 cm')));
+  assert.ok(!ed.retoqueRevisado('', p));
+});
+
+test('unidadesPendientes: sin sello todo; con sello solo lo nuevo o reescrito', () => {
+  let pend = ed.unidadesPendientes(null, INFORME_P);
+  assert.equal(pend.total, 1 + 3 + 2 + 2);
+  assert.equal(pend.todas, true);
+  assert.deepEqual(pend.observaciones, [1, 2, 3]);
+  // Sello nuevo: con el mismo informe no queda nada.
+  const sello = { unidades: ed.unidadesInforme(INFORME_P), modo: 'IA' };
+  pend = ed.unidadesPendientes(sello, INFORME_P);
+  assert.equal(pend.total, 0);
+  assert.equal(pend.todas, false);
+  // Retoque en el párrafo 2, un punto nuevo y otro movido de lugar.
+  const editado = Object.assign({}, INFORME_P, {
+    observaciones: INFORME_P.observaciones.replace(' según la información suministrada', ''),
+    recomendaciones_items: ['Absténgase de construir niveles adicionales.', 'Ajuste la obra a los niveles aprobados.',
+      'Tramite el reconocimiento de la edificación ante la curaduría urbana.']
+  });
+  pend = ed.unidadesPendientes(sello, editado);
+  assert.deepEqual(pend.observaciones, []);
+  assert.deepEqual(pend.recomendaciones, [3]);
+  assert.equal(pend.total, 1);
+  assert.equal(pend.todas, false);
+  // Una frase aprobada (De la visita o del catálogo) nace revisada.
+  pend = ed.unidadesPendientes(sello, editado, ['Tramite el reconocimiento de la edificación ante la curaduría urbana.']);
+  assert.equal(pend.total, 0);
+});
+
+test('unidadesSelladas: sello con textos (2026-10-17) y sello por secciones', () => {
+  // Sello con textos: lo que se revisó entonces.
+  let s = ed.unidadesSelladas({ textos: INFORME_P }, INFORME_P);
+  assert.deepEqual(s.conclusiones, INFORME_P.conclusiones_items);
+  // Sello por secciones: cuenta la sección cuya huella sigue igual.
+  const h = ed.huellasSecciones(INFORME_P);
+  const editado = Object.assign({}, INFORME_P, { conclusiones_items: ['Otra cosa.'] });
+  s = ed.unidadesSelladas({ secciones: { observaciones: h.observaciones, conclusiones: h.conclusiones } }, editado);
+  assert.equal(s.observaciones.length, 3);
+  assert.deepEqual(s.conclusiones, []);
+  assert.deepEqual(s.antecedentes, []);
+  assert.deepEqual(ed.unidadesSelladas(null, INFORME_P).observaciones, []);
 });

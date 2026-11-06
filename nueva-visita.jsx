@@ -3566,23 +3566,45 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
   // `filaEditando` es número: con === nunca coincidían y al regenerar «Abrir»
   // seguía apuntando al informe anterior, ya en la papelera. En móvil el
   // generador abre en pestaña 'noopener' y el aviso llega por BroadcastChannel.
+  // También recibe {tipo:'informe-obs'}: las observaciones corregidas en el
+  // informe son la descripción de la visita — un solo texto en los dos lados
+  // (2026-11-05, decisión del usuario). Se responde 'informe-obs-recibido' para
+  // que el informe sepa que llegó; el autoguardado (o «Guardar») la persiste.
   React.useEffect(function() {
-    function _aplicar(m) {
-      if (!m || m.tipo !== 'informe-f43-subido' || !m.link) return;
+    function _aplicar(m, responder) {
+      if (!m) return;
+      if (m.tipo === 'informe-obs' && typeof m.texto === 'string') {
+        const mia = (m.idVisita && _idVisitaRef.current)
+          ? String(m.idVisita) === String(_idVisitaRef.current)
+          : (filaEditando && String(m.fila) === String(filaEditando));
+        if (!mia) return;
+        // Cambio del inspector, no línea base: sin esto, si aún no había
+        // tocado el formulario (escribió dentro del iframe o en la otra
+        // pestaña), el efecto de «dirty» lo absorbía y nunca se guardaba.
+        _usuarioTocoRef.current = true;
+        setD(function(prev) { return prev.actuacion === m.texto ? prev : Object.assign({}, prev, { actuacion: m.texto }); });
+        if (responder) responder({ tipo: 'informe-obs-recibido', id: m.id });
+        return;
+      }
+      if (m.tipo !== 'informe-f43-subido' || !m.link) return;
       if (filaEditando && String(m.fila) === String(filaEditando)) {
         setD(function(prev) { return Object.assign({}, prev, { linkDocxInforme: m.link }); });
       }
     }
     function _onMsg(e) {
       if (e.origin !== window.location.origin) return;
-      _aplicar(e && e.data);
+      _aplicar(e && e.data, function(r) {
+        try { if (e.source) e.source.postMessage(r, window.location.origin); } catch (eR) {}
+      });
     }
     window.addEventListener('message', _onMsg);
     let bc = null;
     try {
       if (typeof BroadcastChannel === 'function') {
         bc = new BroadcastChannel('cu-informe-f43');
-        bc.onmessage = function(e) { _aplicar(e && e.data); };
+        bc.onmessage = function(e) {
+          _aplicar(e && e.data, function(r) { try { bc && bc.postMessage(r); } catch (eR) {} });
+        };
       }
     } catch (eBc) { bc = null; }
     return function() {
@@ -5597,7 +5619,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // Mismo control estricto que para el acta: el informe F-GGO-43 se nutre
     // de los mismos campos del formulario y un dato faltante se traduce en
     // un placeholder o un párrafo de IA descontextualizado. Mejor bloquear.
-    const faltanInf = _evaluarFormulario().faltan;
+    // Menos la revisión del texto («Revisar»): se exige para el acta, no para
+    // abrir el informe, que tiene su propia revisión final antes del Word
+    // (2026-11-05). Las observaciones corregidas en el informe vuelven a la
+    // descripción y vencen la revisión de la visita: si la exigiera, cada
+    // corrección hecha en el informe impediría volver a abrirlo.
+    const faltanInf = _evaluarFormulario().faltan
+      .filter(f => !(f.seccion === 'Conclusiones y revisión' && /^Revis/.test(f.nombre)));
     // Si la visita se documenta con informe, la orden nueva se exige aquí
     // como en el acta (2026-11-03, decisión del usuario).
     if (faltaOrdenItem && documentoVisita(d.documento) === 'INFORME') faltanInf.unshift(faltaOrdenItem);
@@ -5605,6 +5633,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       await _avisarFaltantes(faltanInf, 'generar el informe');
       return;
     }
+    // En pestaña nueva (celular, ventana < 1200 px) la pestaña se abre YA,
+    // dentro del toque: tras el await del POT el navegador la bloqueaba sin
+    // avisar y «Regenerar informe» no hacía nada (2026-11-05).
+    let ventanaInforme = null;
+    if (typeof window.informeF43EnPestana === 'function' && window.informeF43EnPestana()
+        && typeof window.preabrirPestanaInforme === 'function') {
+      ventanaInforme = window.preabrirPestanaInforme();
+    }
+    let informeEntregado = false;
     _docOcupadoRef.current = true;
     setAI(true);
     try {
@@ -5748,8 +5785,11 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // que usan un texto mas largo/distinto al de estos chips.
         infraccion:       _infraccionSoloCatalogo(d.infraccion),
         ...potExtra,
-      });
+      }, { ventana: ventanaInforme });
+      informeEntregado = true;
     } finally {
+      // Si algo falló antes de entregarle la pestaña, no dejarla en blanco.
+      if (!informeEntregado && ventanaInforme) { try { ventanaInforme.close(); } catch (e) {} }
       _docOcupadoRef.current = false;
       setAI(false);
     }

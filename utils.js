@@ -3739,6 +3739,13 @@ var SALVEDADES_REVISION = [
   '\\bno fue posible\\b', '\\bno se pudo\\b', '\\bno se logro\\b', '\\bpresunt\\w*',
   '\\bsegun\\b', '\\bmanifest\\w*'
 ];
+// Frases que marcan una recomendación o la conclusión del inspector (mismo
+// formato que SALVEDADES_REVISION).
+var RECOMENDACION_REVISION = ['\\bse (?:le |les )?recomi?end\\w*', '\\brecomienda\\w*'];
+var CONCLUSION_REVISION = [
+  '\\bno se evidencia (?:ninguna )?infracci\\w*', '\\bse concluye\\b', '\\bconstituy\\w*',
+  '\\bcomportamiento contrario\\b', '\\bse configura\\w*'
+];
 function resumenCambios(orig, prop, opts) {
   opts = opts || {};
   orig = String(orig || ''); prop = String(prop || '');
@@ -3772,6 +3779,15 @@ function resumenCambios(orig, prop, opts) {
   // Salvedades y atribuciones que la propuesta quita o reduce.
   var quitadas = SALVEDADES_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
   if (quitadas.length) out.push({ tipo: 'pierde', texto: 'Quita o reduce salvedades: ' + quitadas.slice(0, 4).map(cita).join(', ') + '. Confirma que el sentido no cambia.' });
+
+  // Recomendaciones y conclusión que la propuesta quita (2026-11-05): en un
+  // informe la corrección borró de Observaciones las dos recomendaciones y el
+  // «no se evidencia infracción… toda vez que…», y la pantalla solo decía
+  // «se quitan expresiones de relleno».
+  var quitaRec = RECOMENDACION_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
+  if (quitaRec.length) out.push({ tipo: 'pierde', texto: 'Quita recomendaciones (' + quitaRec.slice(0, 1).map(cita).join(', ') + '). Confirma que estén en otra parte.' });
+  var quitaConc = CONCLUSION_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
+  if (quitaConc.length) out.push({ tipo: 'pierde', texto: 'Quita la conclusión (' + quitaConc.slice(0, 1).map(cita).join(', ') + '). Confirma que esté en otra parte.' });
 
   // Motivos: máximo 2, por prioridad (2026-10-17).
   var motivos = [];

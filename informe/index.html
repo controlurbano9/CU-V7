@@ -393,10 +393,30 @@ body.v2-mode .v2-autosave{display:inline-flex}
   transition:transform 180ms cubic-bezier(0.23,1,0.32,1), opacity 180ms ease-out;
 }
 #modal-emision.visible .caja{transform:scale(1); opacity:1}
-#modal-emision .fase{display:flex; align-items:center; gap:10px; font-size:var(--fs-1); color:var(--texto-suave); margin-bottom:8px}
-#modal-emision .fase.hecha{color:var(--verde-dark)}
-#modal-emision .fase.activa{color:var(--texto); font-weight:600}
-@media (prefers-reduced-motion: reduce){#modal-emision .caja{transition:opacity 1ms}}
+/* Espera (2026-11-05): placa con la franja de obra arriba —la firma Valla,
+   el único amarillo—, qué se está haciendo en una frase y un reloj. Sin
+   pasos marcados que no se pueden medir: el Word se arma en una sola
+   llamada al servidor. */
+#modal-emision .caja.em-espera{position:relative; overflow:hidden; padding:30px 24px 20px}
+#modal-emision .em-franja{
+  position:absolute; left:0; right:0; top:0; height:6px;
+  background:repeating-linear-gradient(-45deg, var(--valla) 0 10px, var(--valla-ink) 10px 20px);
+  animation:em-avanza 900ms linear infinite;
+}
+@keyframes em-avanza{from{background-position:0 0} to{background-position:28.28px 0}}
+#modal-emision .em-ceja{font-size:var(--fs-1); color:var(--texto-3); margin-bottom:4px}
+#modal-emision .em-titulo{font-family:var(--font-cond); font-size:var(--fs-4); font-weight:600; line-height:1.2; color:var(--texto)}
+#modal-emision .em-cuerpo{font-size:var(--fs-2); color:var(--texto-2); line-height:1.5; margin-top:8px}
+#modal-emision .em-pie{
+  display:flex; align-items:baseline; gap:12px; margin-top:18px; padding-top:12px;
+  border-top:1px solid var(--borde);
+}
+#modal-emision .em-reloj{font-size:var(--fs-3); font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums; min-width:3.2em}
+#modal-emision .em-nota{font-size:var(--fs-1); color:var(--texto-3)}
+@media (prefers-reduced-motion: reduce){
+  #modal-emision .caja{transition:opacity 1ms}
+  #modal-emision .em-franja{animation:none}
+}
 
 /* Celular (el generador se abre en pestaña nueva por debajo de 1200 px):
    hasta 2026-10-13 no había ninguna regla para pantallas angostas y el menú
@@ -947,7 +967,7 @@ body.v2-mode .v2-autosave{display:inline-flex}
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="../env.js"></script>
 <!-- utils.js: puntoDesdeTextoCoord para el mapa (dirección que es una coordenada). -->
-<script src="../utils.js?v=183"></script>
+<script src="../utils.js?v=184"></script>
 <script>
 // Webhook único — fuente: env.js (auditoría 2026-07, hallazgo Arch#6/MP1).
 // Fallback load-bearing en producción: GitHub Pages NO sirve env.js (404) y
@@ -1111,12 +1131,55 @@ window.addEventListener('beforeunload', function(e) {
   e.returnValue = '';
 });
 
+// Reloj de la espera: arranca al entrar en 'generando' y sigue corriendo
+// entre pasos de la misma generación; cualquier otro estado lo detiene.
+var _emisionT0 = 0, _emisionTimer = null;
+
+// Lo que se ve mientras espera, por paso. 'word' es el único que corre hoy
+// (editor con forma de documento → «Generar Word»); los otros tres son del
+// asistente viejo (generarInformeV2), que sigue vivo como respaldo.
+var PASOS_EMISION = {
+  leer:      { n: 1, titulo: 'Leyendo la visita',      cuerpo: 'Se reúnen los datos, los hallazgos y las fotos de la visita.' },
+  redactar:  { n: 2, titulo: 'Redactando el informe',  cuerpo: 'Se arma la propuesta de antecedentes, observaciones, conclusiones y recomendaciones.' },
+  verificar: { n: 3, titulo: 'Revisando la redacción', cuerpo: 'Se comprueba que el texto cumpla las reglas del informe.' },
+  word:      { n: 0, titulo: 'Armando el Word',        cuerpo: null }
+};
+
+function _notaEsperaEmision(seg) {
+  if (seg < 60)  return 'Suele tardar menos de un minuto.';
+  if (seg < 150) return 'Está tardando más de lo normal. Sigue trabajando.';
+  return 'Sigue trabajando. Si no termina, revisa la señal.';
+}
+
+function _tickEmision() {
+  var seg = Math.floor((Date.now() - _emisionT0) / 1000);
+  var reloj = document.getElementById('em-reloj');
+  var nota  = document.getElementById('em-nota');
+  if (reloj) reloj.textContent = Math.floor(seg / 60) + ':' + String(seg % 60).padStart(2, '0');
+  if (nota) {
+    var t = _notaEsperaEmision(seg);
+    if (nota.textContent !== t) nota.textContent = t; // solo cambia en los umbrales: el lector de pantalla no lo repite
+  }
+}
+
+function _escEmision(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
 function mostrarModalEmision(estado, datos) {
   datos = datos || {};
   _emisionEnCurso = (estado === 'generando');
   var modal = document.getElementById('modal-emision');
   var caja  = document.getElementById('modal-emision-caja');
   if (!modal || !caja) return;
+
+  if (estado !== 'generando') {
+    if (_emisionTimer) { clearInterval(_emisionTimer); _emisionTimer = null; }
+    _emisionT0 = 0;
+  }
+  caja.classList.toggle('em-espera', estado === 'generando');
 
   if (estado === 'cerrar') { modal.classList.remove('visible'); return; }
 
@@ -1141,13 +1204,27 @@ function mostrarModalEmision(estado, datos) {
       + '<button class="btn btn-o" onclick="mostrarModalEmision(\'cerrar\')">Revisar de nuevo</button>'
       + '</div>';
   } else if (estado === 'generando') {
-    var fases = ['Leyendo visita', 'Redactando', 'Verificando'];
-    var activaIdx = datos.fase || 0;
-    html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:14px">Generando informe</div>'
-      + fases.map(function(f, i) {
-          var cls = i < activaIdx ? 'fase hecha' : (i === activaIdx ? 'fase activa' : 'fase');
-          return '<div class="' + cls + '">' + (i < activaIdx ? '✓' : (i === activaIdx ? '●' : '○')) + ' ' + f + '</div>';
-        }).join('');
+    // fase numérica = llamadas viejas: 0 leer, 1 redactar, 2 armar el Word.
+    var clave = typeof datos.fase === 'string' ? datos.fase
+      : (['leer', 'redactar', 'word'][datos.fase || 0] || 'word');
+    var paso = PASOS_EMISION[clave] || PASOS_EMISION.word;
+    var cuerpo = paso.cuerpo;
+    if (clave === 'word') {
+      var nF = (typeof _nFotosEnLista === 'function') ? _nFotosEnLista() : 0;
+      cuerpo = 'Plantilla oficial F-GGO-43 con el texto del informe y '
+        + (nF > 0 ? 'las ' + nF + ' foto' + (nF === 1 ? '' : 's') : 'las fotos de la visita')
+        + '. Queda en la carpeta de la visita en Drive.';
+    }
+    var rad = (typeof V6_CTX !== 'undefined' && V6_CTX && V6_CTX.radicado) ? 'Radicado ' + V6_CTX.radicado : '';
+    var ceja = [paso.n ? 'Paso ' + paso.n + ' de 3' : '', rad].filter(Boolean).join(' · ');
+    html = '<div class="em-franja" aria-hidden="true"></div>'
+      + (ceja ? '<div class="em-ceja">' + _escEmision(ceja) + '</div>' : '')
+      + '<div class="em-titulo">' + paso.titulo + '…</div>'
+      + '<div class="em-cuerpo">' + _escEmision(cuerpo) + ' No cierres esta ventana.</div>'
+      + '<div class="em-pie">'
+      +   '<span class="em-reloj" id="em-reloj" aria-hidden="true">0:00</span>'
+      +   '<span class="em-nota" id="em-nota"></span>'
+      + '</div>';
   } else if (estado === 'error') {
     html = '<div style="font-family:var(--font-sans);font-size:var(--fs-3);font-weight:600;margin-bottom:10px;color:var(--rojo)">No pudimos generar el informe</div>'
       + '<div style="font-size:var(--fs-1);color:var(--texto-2);margin-bottom:16px">' + (datos.mensaje || 'Intenta de nuevo en unos segundos.') + '</div>'
@@ -1168,6 +1245,11 @@ function mostrarModalEmision(estado, datos) {
   }
   caja.innerHTML = html;
   modal.classList.add('visible');
+  if (estado === 'generando') {
+    if (!_emisionT0) _emisionT0 = Date.now();
+    _tickEmision();
+    if (!_emisionTimer) _emisionTimer = setInterval(_tickEmision, 1000);
+  }
 }
 
 // Orquestador v2: recibo → misma logica de siempre (pedirJsonIA,
@@ -1197,7 +1279,7 @@ async function generarInformeV2() {
     tglobal.conclusiones_items.push(CIERRE_GRAVE_TEXTO);
   }
 
-  mostrarModalEmision('generando', { fase: 2 });
+  mostrarModalEmision('generando', { fase: 'verificar' });
   var validacionInforme = validarInformeIA(tglobal, ctx);
   if (!validacionInforme.ok) {
     // validacionInforme.problemas es un chequeo automatico interno sobre el
@@ -5014,7 +5096,7 @@ async function subirInformeAlDrive(blob) {
 <!-- Editor con forma de documento (ronda 1, docs/PLAN_2026-10-15_editor-informe.md):
      editor.js solo actúa con ?ui=doc y deja el asistente vivo y oculto
      (body.modo-doc) como almacén de datos. -->
-<link rel="stylesheet" href="editor.css?v=14">
-<script src="editor.js?v=18"></script>
+<link rel="stylesheet" href="editor.css?v=15">
+<script src="editor.js?v=19"></script>
 </body>
 </html>

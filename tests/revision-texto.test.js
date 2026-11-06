@@ -469,3 +469,20 @@ test('propuestaAporta: original vacío con propuesta → aporta', () => {
   assert.equal(u.propuestaAporta('', 'La propuesta sale de lo diligenciado.'), true);
   assert.equal(u.propuestaAporta('', ''), false);
 });
+
+// Informe de un gimnasio en obra suspendida (2026-11-05): la corrección quitó
+// las columnas de 80 x 40, las recomendaciones y la conclusión de Observaciones,
+// y la pantalla solo avisaba las cifras.
+test('resumenCambios: avisa recomendaciones y conclusión que la propuesta quita', () => {
+  const { resumenCambios } = require('../utils.js');
+  const orig = 'Se identifican columnas de 80 cm x 40 cm. Se recomienda a los propietarios verificar la vigencia ' +
+    'de la licencia. A pesar del uso diferente, no se evidencia infracción en la edificación.';
+  const prop = 'Se identifican columnas en concreto.';
+  const pierde = resumenCambios(orig, prop).filter(x => x.tipo === 'pierde').map(x => x.texto);
+  assert.ok(pierde.some(t => /cifras: 80, 40/.test(t)));
+  assert.ok(pierde.some(t => /^Quita recomendaciones \(«se recomienda»\)/.test(t)));
+  assert.ok(pierde.some(t => /^Quita la conclusión \(«no se evidencia infracción»\)/.test(t)));
+  // Si la propuesta las conserva, no hay aviso.
+  const igual = resumenCambios(orig, orig.replace('Se identifican', 'Hay')).filter(x => x.tipo === 'pierde');
+  assert.equal(igual.length, 0);
+});
