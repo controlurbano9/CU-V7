@@ -114,7 +114,13 @@ test('chequeo local: «infractor» y área con «No se pudo medir» no pide áre
     actuacion: 'El infractor construyó 40 m2 en el segundo piso.', conclusion: '',
     infraccion: 'A4: Sin licencia o caducada', area: '', areaNoMedible: true,
   });
-  assert.deepEqual(ids(s), ['infractor']);
+  // R29 (2026-11-05) aparece: el área dice «No se pudo medir» y el texto
+  // trae los 40 m2. El caso sin medida sigue igual.
+  assert.deepEqual(ids(s), ['R29', 'infractor']);
+  assert.deepEqual(ids(revisarTextoLocal({
+    actuacion: 'El infractor amplió el segundo piso.', conclusion: '',
+    infraccion: 'A4: Sin licencia o caducada', area: '', areaNoMedible: true,
+  })), ['infractor']);
 });
 
 // ── 2026-10-26: área con «No aplica» ──────────────────────────────────
