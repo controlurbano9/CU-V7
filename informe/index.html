@@ -3004,7 +3004,22 @@ var VERBO_RECTOR_LITERAL_A = /parcel|urbaniz|demol|interven|intervin|intervien|c
 // comportamiento marcado la ponia sin sustento). Sin "y reiterada": la
 // reiteracion es la reincidencia del art. 136 y una primera visita no la
 // acredita.
-var CIERRE_GRAVE_TEXTO = 'En consecuencia, la edificación objeto de inspección incurre en una grave infracción urbanística, afectando no solo los principios de legalidad, planificación y protección del espacio público, sino también en detrimento del ordenamiento territorial y la convivencia en el municipio de Bello.';
+// 2026-11-05 (decisión del usuario): contextual. Sin «grave infracción» (califica
+// y es lo primero que ataca la defensa) ni «legalidad, planificación,
+// convivencia»; el espacio público solo con A3, D13, D17 o D22. Se calcula al
+// leerlo con los comportamientos marcados en ese momento, así que el editor y
+// la condición de «Generar Word» siguen usando CIERRE_GRAVE_TEXTO sin cambios.
+var CIERRE_GRAVE_BASE = 'En consecuencia, las obras descritas afectan el ordenamiento territorial del municipio de Bello en los términos del artículo 135 de la Ley 1801 de 2016.';
+var CIERRE_GRAVE_ESPACIO = 'En consecuencia, las obras descritas afectan el ordenamiento territorial y el espacio público del municipio de Bello en los términos del artículo 135 de la Ley 1801 de 2016.';
+Object.defineProperty(window, 'CIERRE_GRAVE_TEXTO', {
+  configurable: true,
+  get: function() {
+    var tocaEspacio = Array.prototype.some.call(document.querySelectorAll('.comp-ac:checked'), function(c) {
+      return /^(A3|D13|D17|D22)\b/.test(String(c.value || ''));
+    });
+    return tocaEspacio ? CIERRE_GRAVE_ESPACIO : CIERRE_GRAVE_BASE;
+  }
+});
 
 // El parametro se conserva por compatibilidad con las tres llamadas; ya no se usa.
 function _requiereCierreGrave(catalogo) {

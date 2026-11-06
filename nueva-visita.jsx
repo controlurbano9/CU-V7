@@ -803,6 +803,13 @@ function _senalesTextoD(dObj) {
     requiereLicencia: (dObj.reqLicencia || {}).respuesta,
     alturaPisos: dObj.alturaPisos, pisos: dObj.pisos, destActuales: dObj.destActuales,
     destinaciones: dObj.destinaciones, usos: dObj.usos,
+    // Reglas del 2026-11-05 (R22-R29): estado de la obra, suspensión,
+    // modalidades exigibles y datos de la licencia aportada.
+    estadoObra: dObj.estadoObra, suspension: dObj.suspension, nVisita: dObj.nVisita,
+    modalidades: (dObj.reqLicencia || {}).modalidades,
+    motivosNo: (dObj.reqLicencia || {}).motivos,
+    fechaLicencia: dObj.fechaLicencia, tipoLicencia: dObj.tipoLicencia,
+    obsLicencia: dObj.obsLicencia, fechaVisita: dObj.fechaVisita, licenciaN: dObj.licencia,
   });
 }
 // Solo las de coherencia (las de forma y los avisos no vencen). Si cambian los
@@ -845,12 +852,52 @@ function _revisionVigenteD(dObj) {
     _infraccionSoloCatalogo(dObj.infraccion), camposRevision(dObj),
     _senalesCoherenciaD(dObj).length === 0);
 }
-// Lo que va en la celda de conclusiones del acta (A38): solo el texto del
-// inspector. El comportamiento (F36) y el área (F37) tienen casilla propia;
-// la frase del art. 135 que iba aquí los repetía y se comía 3 de los 5
-// renglones (decisión del usuario 2026-10-17). El informe F-43 la conserva.
+// Párrafo determinativo que abre la casilla de conclusiones del acta
+// (A38): se arma con lo diligenciado, sin IA (2026-11-05, decisión del
+// usuario). Lo que escriba el inspector va después, aparte.
+function _conclusionDeterminativaD(dObj) {
+  return conclusionDeterminativa({
+    infraccion: _infraccionSoloCatalogo(dObj.infraccion),
+    requiere: (dObj.reqLicencia || {}).respuesta,
+    modalidades: (dObj.reqLicencia || {}).modalidades,
+    motivosNo: (dObj.reqLicencia || {}).motivos,
+    otroNo: (dObj.reqLicencia || {}).otro,
+    licenciaAportada: dObj.licenciaAportada, licenciaN: dObj.licencia,
+    fechaLicencia: dObj.fechaLicencia, tipoLicencia: dObj.tipoLicencia,
+    obsLicencia: dObj.obsLicencia,
+    pisos: dObj.pisos, destinaciones: dObj.destinaciones,
+    alturaPisos: dObj.alturaPisos, destActuales: dObj.destActuales,
+    estadoObra: dObj.estadoObra, sueloProt: dObj.sueloProt,
+    quebrada: dObj.quebrada, poligono: dObj.poligono,
+    fechaVisita: dObj.fechaVisita, usos: dObj.usos,
+  });
+}
+// Lo que va en la celda de conclusiones del acta (A38): el párrafo
+// determinativo y, debajo, el texto del inspector. El comportamiento (F36)
+// y el área (F37) tienen casilla propia y no se repiten aquí (decisión del
+// usuario 2026-10-17); lo nuevo del 2026-11-05 es la actuación, la licencia,
+// el verbo rector y la vía de regularización del párrafo. El informe F-43
+// conserva su propia conclusión.
+// La intervención exigible que viaja con la descripción a «Revisar»
+// (pistaIntervencion, utils.js).
+function _pistaIntervencionD(dObj) {
+  return pistaIntervencion({ infraccion: _infraccionSoloCatalogo(dObj.infraccion),
+    modalidades: (dObj.reqLicencia || {}).modalidades, estadoObra: dObj.estadoObra });
+}
 function _conclusionesActaD(dObj) {
-  return dObj.obsConclusion || '';
+  return [_conclusionDeterminativaD(dObj), dObj.obsConclusion]
+    .map(s => String(s || '').trim()).filter(Boolean).join('\n');
+}
+// Ayuda bajo «Fecha de expedición» de la licencia: hasta cuándo alcanzaba,
+// según su fecha y el trámite (vigenciaLicencia, utils.js).
+function _ayudaVigenciaLicencia(dObj) {
+  if (!dObj.fechaLicencia) return '';
+  const v = vigenciaLicencia({ fecha: dObj.fechaLicencia, tipo: dObj.tipoLicencia,
+    obs: dObj.obsLicencia, fechaVisita: dObj.fechaVisita });
+  if (v.estado === 'VIGENTE') return 'Vigente hasta el ' + v.vence + ' (sin contar prórroga).';
+  if (v.estado === 'PRORROGA') return 'Venció el ' + v.vence + '; seguía vigente hasta el ' + v.venceProrroga + ' solo si se prorrogó.';
+  if (v.estado === 'VENCIDA') return 'Vencida desde el ' + (v.venceProrroga || v.vence) + ', según su fecha.';
+  return '';
 }
 
 // Secciones del formulario donde está cada dato de una señal de coherencia
@@ -866,6 +913,13 @@ var SECCIONES_SENAL = {
   R15: ['Verificación documental', 'Tipificación y medidas'],
   R16: ['Tipificación y medidas'],
   R19: ['Características de la edificación', 'Tipificación y medidas'],
+  R22: ['Verificación documental', 'Tipificación y medidas'],
+  R22b: ['Verificación documental', 'Tipificación y medidas'],
+  R24: ['Verificación documental'],
+  R25: ['Tipificación y medidas'],
+  R27: ['Tipificación y medidas'],
+  R28: ['Tipificación y medidas'],
+  R29: ['Tipificación y medidas'],
   R21: ['Características de la edificación'],
   area: ['Tipificación y medidas'],
 };
@@ -4277,6 +4331,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     }
     // Nada que pedir y sin contradicciones nuevas: se sella en silencio, sin
     // abrir el panel ni llamar a la IA.
+    // La descripción no nombra la modalidad o no usa el verbo en su tiempo
+    // (R23): la arregla la propuesta, no el inspector (2026-11-05).
+    if (!pedirDesc && _senalesTextoD(d).some(s => s.id === 'R23')) pedirDesc = true;
+    // Con el párrafo de la conclusión armado y la casilla vacía, la IA no
+    // propone otra conclusión: repetiría el párrafo (2026-11-05).
+    if (pedirConc && !String(d.obsConclusion || '').trim() && _conclusionDeterminativaD(d)) pedirConc = false;
     if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d)) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
@@ -4302,7 +4362,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const esActa = esActaPre;
     const parrafos = t => String(t).split(/\n+/).filter(s => s.trim()).length;
     const maxDesc = !esActa ? 0 : topeSituacionRevision(origDesc);
-    const maxConc = !esActa ? 0 : caracteresParaActa('conclusiones', 0, parrafos(origConc));
+    // El tope de las conclusiones descuenta los renglones que ya ocupa el
+    // párrafo determinativo (2026-11-05): la IA solo condensa lo del inspector.
+    const maxConc = !esActa ? 0 : caracteresParaActa('conclusiones',
+      capacidadActa(_conclusionDeterminativaD(d), 'conclusiones').renglones, parrafos(origConc));
     // El campo que no cambió no se manda a la IA: se revisa solo lo que
     // cambió (regla 2026-10-17). Las conclusiones se piden siempre que toca,
     // con lo diligenciado: si el inspector no escribió, la propuesta sale de
@@ -4312,7 +4375,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false;
     try {
       const [tD, tC] = await Promise.all([
-        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc) : Promise.resolve(origDesc),
+        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
           : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
@@ -4357,7 +4420,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // del inspector no cabía (si no, salía también sobre una propuesta hecha
       // desde cero o que solo abrió párrafos).
       condensaDesc: esActa && !capacidadActa(origDesc, 'situacion').cabe,
-      condensaConc: esActa && !capacidadActa(origConc, 'conclusiones').cabe,
+      condensaConc: esActa && !capacidadActa(
+        [_conclusionDeterminativaD(d), origConc].filter(Boolean).join('\n'), 'conclusiones').cabe,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -6720,7 +6784,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
             <_Campo label="N° Licencia">
               <_Input mono value={d.licencia} onChange={v => setCampo('licencia', v)} />
             </_Campo>
-            <_Campo label="Fecha de expedición">
+            <_Campo label="Fecha de expedición" hint={_ayudaVigenciaLicencia(d)}>
               <_Input type="date" value={d.fechaLicencia}
                 onChange={v => setCampo('fechaLicencia', v)} />
             </_Campo>
@@ -7051,8 +7115,21 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       <_Seccion titulo={documentoVisita(d.documento) === 'ACTA' ? 'Conclusiones y revisión' : 'Revisión del texto'} color="gris">
         {documentoVisita(d.documento) === 'ACTA' && (
           <_Campo label="Conclusiones" fullWidth>
+            {/* El párrafo determinativo (2026-11-05) abre la casilla A38: se
+                muestra tal cual saldrá en el acta; el inspector solo agrega
+                debajo lo suyo. */}
+            {_conclusionDeterminativaD(d) && (
+              <div className="input-campo" style={{ display: 'block', whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 2 }}>
+                  Abre la conclusión del acta (se arma con lo diligenciado)
+                </div>
+                {_conclusionDeterminativaD(d)}
+              </div>
+            )}
             <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={4} autoAlto
-              placeholder="Opcional. Si la dejas vacía, «Revisar» te propone una con todo lo diligenciado." />
+              placeholder={_conclusionDeterminativaD(d)
+                ? 'Opcional: lo que quieras agregar después de ese párrafo.'
+                : 'Opcional. Si la dejas vacía, «Revisar» te propone una con todo lo diligenciado.'} />
           </_Campo>
         )}
         {documentoVisita(d.documento) === 'ACTA' && (
