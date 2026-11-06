@@ -3578,6 +3578,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           ? String(m.idVisita) === String(_idVisitaRef.current)
           : (filaEditando && String(m.fila) === String(filaEditando));
         if (!mia) return;
+        // La visita cambió después de la base sobre la que se corrigió en el
+        // informe: no se pisa (revisión GLM 2026-11-05, P2-1). Un informe
+        // viejo no manda `base` y se aplica como antes.
+        const _plano = s => String(s || '').replace(/\s+/g, ' ').trim();
+        const actual = _plano((_dRef.current || {}).actuacion);
+        if (typeof m.base === 'string' && actual !== _plano(m.base) && actual !== _plano(m.texto)) {
+          if (responder) responder({ tipo: 'informe-obs-conflicto', id: m.id });
+          return;
+        }
         // Cambio del inspector, no línea base: sin esto, si aún no había
         // tocado el formulario (escribió dentro del iframe o en la otra
         // pestaña), el efecto de «dirty» lo absorbía y nunca se guardaba.

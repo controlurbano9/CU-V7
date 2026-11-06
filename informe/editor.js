@@ -305,6 +305,21 @@ function unidadesInforme(informe) {
   };
 }
 
+// Dos puntos dicen lo mismo: comparten al menos 6 de cada 10 palabras.
+function _parecidos(a, b) {
+  var pal = function (t) {
+    var s = {};
+    _normTexto(t).split(' ').forEach(function (w) { if (w.length > 2) s[w] = true; });
+    return s;
+  };
+  var A = pal(a), B = pal(b);
+  var na = Object.keys(A).length, nb = Object.keys(B).length;
+  if (!na || !nb) return false;
+  var inter = 0;
+  for (var k in B) if (A[k]) inter++;
+  return inter / (na + nb - inter) >= 0.6;
+}
+
 // ¿Lo que cambió es un retoque de un texto ya revisado? Comparten al menos
 // la mitad de las palabras y no trae cifras nuevas (una cifra nueva es un
 // hecho nuevo: ese sí lo mira la revisión). Más suelto que
@@ -323,7 +338,25 @@ function retoqueRevisado(revisado, actual) {
   if (inter / (na + nb - inter) < 0.5) return false;
   var cifras = function (t) { return String(t || '').match(/\d+([.,]\d+)?/g) || []; };
   var previas = cifras(revisado);
-  return cifras(actual).every(function (n) { return previas.indexOf(n) >= 0; });
+  if (!cifras(actual).every(function (n) { return previas.indexOf(n) >= 0; })) return false;
+  // Quitar o poner un «no» voltea el sentido, y un nombre propio nuevo es un
+  // hecho nuevo: los dos vuelven a la revisión (revisión GLM 2026-11-05, P2-2).
+  var negaciones = function (t) {
+    return (_normTexto(t).match(/\b(no|sin|nunca|ninguna?|ningun|tampoco|ni)\b/g) || []).length;
+  };
+  if (negaciones(revisado) !== negaciones(actual)) return false;
+  var propios = function (t) {
+    var out = [];
+    String(t || '').split(/[.!?:;]\s+|\n+/).forEach(function (o) {
+      o.trim().split(/\s+/).slice(1).forEach(function (w) {
+        var m = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+/.exec(w);
+        if (m) out.push(m[0]);
+      });
+    });
+    return out;
+  };
+  var propiosPrevios = propios(revisado);
+  return propios(actual).every(function (w) { return propiosPrevios.indexOf(w) >= 0; });
 }
 
 // Las unidades que la revisión ya vio, según el sello. Sello nuevo: trae
@@ -452,7 +485,7 @@ function normalizarCambios(cambios, informe, pendientes) {
     conclusion: 'conclusiones', recomendacion: 'recomendaciones' };
   var vistos = {};
   var out = [];
-  (cambios || []).forEach(function (c) {
+  (Array.isArray(cambios) ? cambios : []).forEach(function (c) {
     if (!c) return;
     var sec = String(c.seccion || '').trim().toLowerCase();
     if (!lista[sec]) return;
@@ -465,11 +498,16 @@ function normalizarCambios(cambios, informe, pendientes) {
     if (sec === 'observaciones') texto = texto.replace(/\s*\n+\s*/g, ' ');
     var quitar = !texto;
     if (quitar && (sec === 'antecedentes' || sec === 'observaciones')) return;
+    // La tarjeta solo afirma «dice lo mismo que otro» si de verdad se parece a
+    // otro punto; si no, dice que se propone quitarlo (revisión GLM 2026-11-05, P3-3).
+    var repite = quitar && lista[sec].some(function (otro, j) { return j !== numero - 1 && _parecidos(otro, original); });
     if (!quitar && texto === original) return; // sin cambio real
     vistos[sec + '#' + numero] = true;
     var motivo = String(c.motivo || '').replace(/\s+/g, ' ').trim();
     if (motivo.length > 140) motivo = motivo.slice(0, 137).replace(/\s+\S*$/, '') + '…';
-    out.push({ seccion: sec, numero: numero, original: original, texto: texto, quitar: quitar, motivo: motivo });
+    var cambio = { seccion: sec, numero: numero, original: original, texto: texto, quitar: quitar, motivo: motivo };
+    if (quitar) cambio.repite = repite;
+    out.push(cambio);
   });
   return out.slice(0, MAX_CAMBIOS_REVISION);
 }
@@ -2319,6 +2357,9 @@ function _pintarAvisoObs(tipo) {
     caja.hidden = false;
     caja.innerHTML = '<span>Las observaciones se actualizaron con la descripción de la visita, que cambió después de tu última corrección aquí.</span>' +
       '<button type="button" class="ed-btn ed-btn-neutro ed-btn-chico" data-ed-obs="deshacer">Volver al texto del informe</button>';
+  } else if (tipo === 'conflicto') {
+    caja.hidden = false;
+    caja.innerHTML = '<span>La descripción de la visita cambió mientras corregías aquí: tu corrección queda en el informe y no se pasó a la visita, para no borrar lo que se escribió allá. Revisa los dos textos.</span>';
   } else if (tipo === 'sinVisita') {
     caja.hidden = false;
     caja.innerHTML = '<span>La visita no está abierta: la corrección queda en el informe y pasa a la descripción de la visita la próxima vez que abras el informe desde ella.</span>';
@@ -2371,8 +2412,10 @@ function _enviarObsAVisita(texto) {
   var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   _obsEnvio.id = id;
   _obsEnvio.texto = texto;
+  // `base`: la descripción de la visita sobre la que se corrigió aquí. Si la
+  // visita cambió desde entonces, no la pisa (revisión GLM 2026-11-05, P2-1).
   var msg = { tipo: 'informe-obs', id: id, idVisita: V6_CTX.idVisita || '', fila: V6_CTX.fila,
-    radicado: V6_CTX.radicado, texto: texto };
+    radicado: V6_CTX.radicado, texto: texto, base: _obsVisita };
   // Iframe → la página que lo contiene; pestaña → BroadcastChannel (no las
   // dos: en el iframe la visita recibiría el mismo cambio dos veces).
   try {
@@ -2386,6 +2429,12 @@ function _enviarObsAVisita(texto) {
 }
 
 function _recibirAcuseObs(m) {
+  if (m && m.tipo === 'informe-obs-conflicto' && m.id && m.id === _obsEnvio.id) {
+    clearTimeout(_obsEnvio.espera);
+    _obsEnvio.id = '';
+    _pintarAvisoObs('conflicto');
+    return;
+  }
   if (!m || m.tipo !== 'informe-obs-recibido' || !m.id || m.id !== _obsEnvio.id) return;
   clearTimeout(_obsEnvio.espera);
   _obsVisita = _obsEnvio.texto;
@@ -2545,6 +2594,13 @@ root.addEventListener('click', function (e) {
     _generarWord(); // falló la generación: el informe ya estaba revisado
   } else if (b.hasAttribute('data-ed-rev-cerrar')) {
     _cerrarPanelRevision();
+  } else if (b.hasAttribute('data-ed-rev-reintentar')) {
+    _cerrarPanelRevision();
+    _generarConRevision();
+  } else if (b.hasAttribute('data-ed-rev-sin')) {
+    _cerrarPanelRevision();
+    _sellarRevision('LOCAL');
+    _generarWord();
   } else if (b.hasAttribute('data-ed-rev-todas')) {
     _usarTodasLasPropuestas();
   } else if (b.hasAttribute('data-ed-usar')) {
@@ -2600,6 +2656,14 @@ function _modalRevision(html, ancha) {
   m.hidden = false;
   m.innerHTML = '<div class="ed-modal-caja' + (ancha ? ' ed-modal-ancha' : '') +
     '" role="dialog" aria-modal="true" aria-labelledby="ed-modal-titulo">' + html + '</div>';
+}
+
+function _revisionNoDisponible() {
+  _revPanel = {};
+  _modalRevision(_cabModal('Antes de generar el Word') +
+    '<div class="ed-modal-cuerpo"><p class="ed-rev-estado">No se pudo hacer la revisión: el servicio no respondió bien.</p></div>' +
+    '<div class="ed-modal-pie"><button type="button" class="ed-btn ed-btn-neutro" data-ed-rev-sin>Generar sin revisión</button>' +
+    '<button type="button" class="ed-btn ed-btn-lleno" data-ed-rev-reintentar>Reintentar</button></div>');
 }
 
 function _cerrarPanelRevision() {
@@ -2659,10 +2723,15 @@ function _generarConRevision() {
   pedirJsonIA(armarMensajeRevision(informe, recolectarDatosWizard().d, pend, opts)).then(function (ia) {
     if (!_revPanel) return; // cerró mientras llegaba: no se genera
     if (!ia.ok) {
-      // Sin servicio: mismo trato que sin señal.
-      _cerrarPanelRevision();
-      _sellarRevision('LOCAL');
-      return _generarWord();
+      // Sin señal a mitad de camino: mismo trato que sin señal.
+      if (navigator.onLine === false) {
+        _cerrarPanelRevision();
+        _sellarRevision('LOCAL');
+        return _generarWord();
+      }
+      // Con red y el servicio falló: se dice y el inspector elige (revisión
+      // GLM 2026-11-05, P3-2). Antes se sellaba «sin conexión» en silencio.
+      return _revisionNoDisponible();
     }
     var cambios = filtrarCambiosRevision(
       normalizarCambios((ia.json || {}).cambios, informe, pend),
@@ -2717,7 +2786,8 @@ function _tarjetaRevision(i, c, cual) {
         ' en ' + _esc(_nombreUnidad(c)) + '">Usar este</button>') +
     '</div>';
   if (cual === 'ia' && c.quitar) {
-    html += '<div class="ed-op-txt ed-op-quita">Se quita este punto: dice lo mismo que otro.</div>';
+    html += '<div class="ed-op-txt ed-op-quita">' + (c.repite ? 'Se quita este punto: dice lo mismo que otro.'
+      : 'Se propone quitar este punto. Léelo antes de elegir.') + '</div>';
   } else if (elegida) {
     html += '<textarea class="ed-op-txt" data-ed-c-txt="' + i + '" aria-label="' + titulo +
       ': texto que queda">' + _esc(_revPanel.textos[i]) + '</textarea>';
@@ -2809,6 +2879,8 @@ function _aplicarCambiosRevision() {
     var idLista = c.seccion === 'conclusion' ? 'ed-concl' : (c.seccion === 'recomendacion' ? 'ed-rec' : null);
     if (cual === 'ia' && c.quitar) { quitar[idLista].push(c.numero); return; }
     var texto = String(_revPanel.textos[i]);
+    // Un Enter tecleado en la tarjeta no parte el párrafo (revisión GLM P3-5).
+    if (c.seccion === 'observaciones') texto = texto.replace(/\s*\n+\s*/g, ' ');
     // Comparación exacta (2026-10-17): la normalizada ignoraba una corrección
     // de solo puntuación o tildes y no la aplicaba.
     if (texto.trim() === String(c.original).trim()) return;
@@ -2851,7 +2923,9 @@ function _pintarErrorGenerar(msg) {
 }
 
 async function _generarWord() {
-  if (!_condicionWord().ok) return;
+  // Tras «Aplicar y generar» el modal ya se cerró: si lo aplicado dejó algo
+  // que bloquea, se dice aquí (revisión GLM 2026-11-05, P3-4).
+  if (!_condicionWord().ok) { _pintarErrorGenerar('hay algo por corregir; está marcado en «Estado del informe»'); return; }
   _pintarErrorGenerar('');
   // El asistente oculto sigue siendo el almacén: #obs, #fechaInforme y pies
   // de foto quedan al día antes de leer el payload.

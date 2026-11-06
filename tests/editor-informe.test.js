@@ -512,3 +512,19 @@ test('unidadesSelladas: sello con textos (2026-10-17) y sello por secciones', ()
   assert.deepEqual(s.antecedentes, []);
   assert.deepEqual(ed.unidadesSelladas(null, INFORME_P).observaciones, []);
 });
+
+// Revisión GLM 2026-11-05 (P2-2): voltear una negación o meter un nombre nuevo
+// cambia el sentido y vuelve a la IA.
+test('retoqueRevisado: una negación o un nombre propio nuevo no son retoque', () => {
+  const p = 'Durante la visita no se evidencia infracción urbanística en la edificación de tres niveles.';
+  assert.equal(ed.retoqueRevisado(p, p.replace('no se evidencia', 'se evidencia')), false);
+  const q = 'Atendió la visita la señora María, quien manifestó ser la propietaria del inmueble.';
+  assert.equal(ed.retoqueRevisado(q, q.replace('María', 'Andrea')), false);
+  assert.ok(ed.retoqueRevisado(q, q.replace('manifestó', 'indicó')));
+});
+
+// Revisión GLM 2026-11-05 (P3-1): `cambios` que no es lista no revienta el flujo.
+test('normalizarCambios: «cambios» que no es lista se ignora', () => {
+  assert.deepEqual(ed.normalizarCambios({ seccion: 'conclusion', numero: 1, texto: 'x' }, INFORME_P), []);
+  assert.deepEqual(ed.normalizarCambios(null, INFORME_P), []);
+});
