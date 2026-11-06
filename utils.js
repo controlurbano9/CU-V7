@@ -4259,14 +4259,18 @@ function _comportamientosCitados(texto, poligono) {
 // 2026-10-15: a Alejandro se le pidió justificar el largo de la propuesta
 // de la propia IA, y escribió una conclusión en la casilla).
 // `e`: { actuacion, conclusion, infraccion, poligono, area, areaNoAplica, areaNoMedible }
-var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b', 'aplaza', 'juicio'];
+var SENALES_DE_FORMA = ['externo', 'categoria', 'traslado', 'infractor', 'alcance', 'R06', 'R06b', 'aplaza', 'juicio', 'R23'];
 // Avisos de datos que la app no puede decidir (2026-11-05, decisión del
 // usuario): se muestran en la revisión con su «Ir a…», pero no piden
 // justificación, no bloquean «Aplicar» ni vencen la revisión. R13: la app no
 // sabe si el uso comercial está permitido en el polígono. R23: el verbo que
 // toca lo decide quien escribe; R31: la copropiedad no es la licencia, pero
 // mencionarla no hace daño.
-var SENALES_AVISO = ['R13', 'R23', 'R31'];
+// 2026-11-05 (usuario): no entorpecer. Lo que la propuesta de «Revisar» puede
+// arreglar va como forma o aviso; solo R22 (A2 con la licencia vencida y la
+// obra en ejecución) pide justificación. R22b es la misma regla con la obra
+// terminada o la licencia en tiempo de prórroga: aviso.
+var SENALES_AVISO = ['R13', 'R31', 'R22b', 'R24', 'R25', 'R27', 'R28', 'R29'];
 // Cifra de un área como se escribe en Colombia: decimales con coma
 // («58.75» → «58,75»). Un punto con 3 cifras detrás es de miles y se deja.
 function numeroAreaCO(n) {
@@ -4367,6 +4371,7 @@ function revisarTextoLocal(e) {
     }
   }
 
+  var todoR31 = textos[0].t + ' ' + textos[1].t;
   textos.forEach(function(x) {
     if (!x.t.trim()) return;
     var n = _sinTildesRev(x.t);
@@ -4402,14 +4407,28 @@ function revisarTextoLocal(e) {
     }
     // juicio (2026-11-05): el acta describe hechos; la sanción la decide el
     // inspector de policía, no se anuncia desde la visita.
-    var mJuicio = /\bilegal(es|mente)?\b|flagrante|grave infraccion|(acciones|actuaciones|procesos?) [^.]{0,30}sancionatori|de forma perentoria/.exec(n);
+    // La sanción dicha en condicional («podrán iniciarse») se queda: el
+    // prompt la permite. Solo cuenta la que se anuncia como segura.
+    var mJuicio = /\bilegal(es|mente)?\b|flagrante|grave infraccion|de forma perentoria/.exec(n);
+    if (!mJuicio) {
+      var offJ = 0;
+      n.split(/[.;\n]+/).some(function(o) {
+        var off = n.indexOf(o, offJ); offJ = off + o.length;
+        if (/(acciones|actuaciones|procesos?) [^.]{0,30}sancionatori/.test(o) &&
+            !/\bpodr(a|an|ia|ian)\b/.test(o) && /iniciar(a|an)\b|procedera/.test(o)) {
+          mJuicio = /(acciones|actuaciones|procesos?) [^.]{0,30}sancionatori\w*/.exec(o);
+          if (mJuicio) mJuicio.index += off;
+        }
+        return !!mJuicio;
+      });
+    }
     if (mJuicio) {
       add('juicio', x.donde, x.nombre + ' hay un juicio o una advertencia de sanción (' +
         _citaTextoRev(x.t, n, mJuicio) + '): el acta describe hechos; la decisión es del inspector de policía.');
     }
     // R31 (2026-11-05): la aprobación de la copropiedad no es la licencia.
     if (/\b(administracion del conjunto|copropiedad|propiedad horizontal|reglamento de propiedad)\b/.test(n) &&
-        /\b(aprob|autoriz|permiso)/.test(n)) {
+        /\b(aprob|autoriz|permiso)/.test(n) && !/\blicencia/.test(_sinTildesRev(todoR31))) {
       add('R31', x.donde, 'El texto menciona la aprobación de la copropiedad. Eso no es la licencia urbanística: di si se pidió la licencia y si se aportó.');
     }
     if (/exhaustiv|total ausencia|en su totalidad/.test(n)) {
@@ -4517,11 +4536,12 @@ function revisarTextoLocal(e) {
   if (tiene('A2') && si(e.licenciaAportada) && vig && vig.estado !== 'SIN_DATO') {
     if (vig.estado === 'VENCIDA') {
       var cuando = vig.venceProrroga || vig.vence;
-      add('R22', 'area', String(e.estadoObra || '').trim() === 'Terminada'
+      var termR22 = String(e.estadoObra || '').trim() === 'Terminada';
+      add(termR22 ? 'R22b' : 'R22', 'area', termR22
         ? 'La licencia aportada venció el ' + cuando + ', según su fecha. A2 aplica solo si las obras se ejecutaron mientras la licencia estaba vigente: indica cuándo se ejecutaron, o marca A4.'
         : 'La licencia aportada venció el ' + cuando + ', según su fecha, y la obra sigue en ejecución: lo que se ejecuta con la licencia vencida es A4 (sin licencia o caducada), no A2. Si hubo una prórroga excepcional, indícalo.');
     } else if (vig.estado === 'PRORROGA') {
-      add('R22', 'area', 'La licencia aportada tiene más de ' + vig.meses + ' meses: solo seguía vigente si se prorrogó. A2 aplica únicamente a obras ejecutadas durante la vigencia: confirma la prórroga o marca A4.');
+      add('R22b', 'area', 'La licencia aportada tiene más de ' + vig.meses + ' meses: solo seguía vigente si se prorrogó. A2 aplica únicamente a obras ejecutadas durante la vigencia: confirma la prórroga o marca A4.');
     }
   }
 
@@ -4603,7 +4623,7 @@ function revisarTextoLocal(e) {
 
   // R23: nombre de la modalidad y verbo rector en el tiempo que toca. Aviso:
   // el ejemplo de cómo escribirlo, no un requisito de la revisión.
-  if (desc && Array.isArray(e.modalidades) && e.modalidades.length && e.estadoObra) {
+  if (desc && !ninguno && !indeterminado && Array.isArray(e.modalidades) && e.modalidades.length && e.estadoObra) {
     var modsR23 = e.modalidades.filter(function(m) { return _R23_NOMBRE_MODALIDAD[m]; });
     if (modsR23.length) {
       var verbosR23 = Object.keys(_R23_FORMAS_VERBO).filter(function(v) {
@@ -4637,22 +4657,23 @@ function revisarTextoLocal(e) {
 
   // R24: la descripción describe una ampliación y Verificación documental
   // no la cuenta como tal.
+  // Excepciones (2026-11-05): oraciones con negación («no fue desarrollado»)
+  // o que hablan de lo aprobado («contemplado en la licencia»); con
+  // Modificación, subir muros o alzar la cubierta no es ampliación por sí solo.
   if (desc) {
-    var rxAmplia = [/(nuevo|otro|adicional) (piso|nivel)/,
-                    /(se )?(subieron|elevaron|levantaron|alzaron) (los )?muros/,
-                    /alz\w* (la )?cubierta/,
-                    /area adicional/];
-    var mR24 = null;
-    for (var iR24 = 0; iR24 < rxAmplia.length && !mR24; iR24++) mR24 = rxAmplia[iR24].exec(descN);
-    // «segundo/tercer/… piso» cuenta solo si la misma oración construye o amplía.
-    if (!mR24) {
-      var oracionesD = descN.split(/[.;\n]+/);
-      for (var jR24 = 0; jR24 < oracionesD.length && !mR24; jR24++) {
-        if (/(tercer|cuarto|quinto|segundo) (piso|nivel)/.test(oracionesD[jR24]) &&
-            /construy|levant|subi|agreg|ampli/.test(oracionesD[jR24]))
-          mR24 = /(tercer|cuarto|quinto|segundo) (piso|nivel)/.exec(oracionesD[jR24]);
-      }
-    }
+    var conModif = Array.isArray(e.modalidades) && e.modalidades.indexOf('Modificación') >= 0;
+    var rxAmplia = [/(nuevo|otro|adicional) (piso|nivel)/, /area adicional/];
+    if (!conModif) rxAmplia.push(/(se )?(subieron|elevaron|levantaron|alzaron) (los )?muros/, /alz\w* (la )?cubierta/);
+    var mR24 = null, offR24 = 0;
+    descN.split(/[.;\n]+/).some(function(o) {
+      var off = descN.indexOf(o, offR24); offR24 = off + o.length;
+      if (/\b(no|sin|nunca)\b|contemplad|aprobad|autorizad|licencia aprueba/.test(o)) return false;
+      for (var i = 0; i < rxAmplia.length && !mR24; i++) mR24 = rxAmplia[i].exec(o);
+      if (!mR24 && /(tercer|cuarto|quinto|segundo) (piso|nivel)/.test(o) && /construy|levant|subi|agreg|ampli/.test(o))
+        mR24 = /(tercer|cuarto|quinto|segundo) (piso|nivel)/.exec(o);
+      if (mR24) mR24.index += off;
+      return !!mR24;
+    });
     var sinAmpliacion = Array.isArray(e.modalidades) &&
       e.modalidades.indexOf('Ampliación') < 0 && e.modalidades.indexOf('Obra nueva') < 0;
     if (mR24 && (req === 'NO' || (req === 'SI' && sinAmpliacion))) {
@@ -4673,7 +4694,7 @@ function revisarTextoLocal(e) {
     .map(function(u) { return _sinTildesRev(u).trim(); }).filter(Boolean);
   var usosDesconocidos = !usosNoSabidos.length || usosNoSabidos.every(function(u) { return u === 'se desconoce'; });
   Object.keys(_R25_CHIPS).forEach(function(k) {
-    if (!tiene(k)) return;
+    if (!tiene(k) || !todoN.trim()) return;
     var dato = _R25_CHIPS[k];
     var sinHecho = !dato.re.test(todoN);
     // C11/C12 con usos sin dato: el hecho queda sin describir aunque el
@@ -4688,20 +4709,39 @@ function revisarTextoLocal(e) {
 
   // R27: sin acceso no hay tipificación de lo que no se vio.
   var rxSinAcceso = /no (fue|se) (posible|pudo) (ingresar|acceder|el ingreso|verificar)|no se (tuvo|permitio) (el )?(acceso|ingreso)|sin acceso al|no permitio establecer/;
+  // Excepciones (2026-11-05): no haber entrado a una parte («al tercer
+  // nivel») no impide ver el resto; lo visto desde afuera sí se describe; A1,
+  // A3 y el literal D se ven desde la calle.
   var mR27 = rxSinAcceso.exec(todoN);
-  if (mR27 && (ninguno || marcados.some(function(c) { return c.charAt(0) === 'A'; }))) {
+  if (mR27 && !/no permitio establecer/.test(mR27[0])) {
+    var trasR27 = todoN.slice(mR27.index + mR27[0].length, mR27.index + mR27[0].length + 40);
+    if (!/^\s*(al|a la|a el) (inmueble|predio|vivienda|edificacion|lugar|propiedad|casa|obra)\b/.test(trasR27) &&
+        !/^\s*([.,;]|$)/.test(trasR27)) mR27 = null;
+  }
+  if (mR27 && /desde (el |la )?(exterior|afuera|calle|via|anden|fachada)/.test(todoN)) mR27 = null;
+  if (mR27 && (ninguno || tiene('A2') || tiene('A4'))) {
     add('R27', 'descripcion', 'El texto dice ' + _citaTextoRev(todo, todoN, mR27) +
       '. Si no se vio la intervención, marca «No se pudo determinar» y di qué faltó verificar; si se vio desde afuera, describe lo que se vio.');
   }
 
   // R28: el texto decreta la suspensión y la casilla no.
   var rxSuspende = /se (suspende|suspendio|impone|impuso)[^.]{0,60}suspensi|medida de suspensi|se suspende(n)? (la|las) (obra|intervenci|construcci)/;
-  if (rxSuspende.test(todoN) && String(e.suspension || '').trim().toUpperCase() !== 'SI') {
+  // Seguimiento (visita 2 en adelante): el texto habla de la suspensión de la
+  // primera visita y la casilla de esta visita está bien en NO (medido el
+  // 2026-11-05: 6 de 7 avisos eran seguimientos). Tampoco cuenta verificar
+  // la medida ya impuesta («impuesta», «caso omiso», «sello»).
+  var seguimientoR28 = (parseInt(e.nVisita, 10) || 1) > 1;
+  var suspendeR28 = !seguimientoR28 && todoN.split(/[.;\n]+/).some(function(o) {
+    return rxSuspende.test(o) &&
+      !/\b(no|sin|ni)\b[^.]{0,40}(suspend|suspensi)|amerit|anterior|previa|se habia|encontraba(n)? suspendid|impuesta|caso omiso|incumpli|sello|vigente/.test(o);
+  });
+  if (suspendeR28 && String(e.suspension || '').trim().toUpperCase() !== 'SI') {
     add('R28', 'area', 'El texto dice que se suspende la obra y en Tipificación y medidas «¿Se decreta suspensión?» no es SI.');
   }
 
   // R29: «No se pudo medir» y el texto trae una medida.
-  var rxMedida = /\d+([.,]\d+)?\s*(m2|m²|mts2|metros cuadrados|metros|cm|centimetros)\b/;
+  // Solo m²: alturas, retiros y centímetros no son área (2026-11-05).
+  var rxMedida = /\d+([.,]\d+)?\s*(m2|m²|mts2|metros cuadrados)/;
   var mR29 = rxMedida.exec(todoN);
   if (e.areaNoMedible && mR29) {
     add('R29', 'area', 'El área en contravención dice «No se pudo medir» y el texto menciona ' +
@@ -4892,7 +4932,12 @@ function vigenciaLicencia(o) {
   var sinDato = { estado: 'SIN_DATO', meses: 0, vence: '', venceProrroga: '' };
   var fecha = parsearFecha(o.fecha);
   // R1: el inspector ya constató la caducidad; manda sobre el cómputo.
-  var porObs = /caducad|vencid/.test(_sinTildesRev(o.obs));
+  var obsN = _sinTildesRev(o.obs);
+  var porObs = /caducad|vencid/.test(obsN) && !/\b(no|sin)\b[^.]{0,25}(caducad|vencid)|sin vencer/.test(obsN);
+  // Revalidada: el plazo cambia y la app no lo sabe. Prorrogada: vale hasta
+  // el fin de la prórroga (2026-11-05).
+  if (!porObs && /revalid/.test(obsN)) return sinDato;
+  var prorrogada = !porObs && /prorrog/.test(obsN);
   if (!porObs) {
     // R2: sin fecha no hay cómputo; el reconocimiento no tiene plazo de ejecución.
     var tm = parsearTipoModalidad(o.tipo);
@@ -4921,7 +4966,7 @@ function vigenciaLicencia(o) {
   var fv = parsearFecha(o.fechaVisita) || new Date();
   var estado = porObs ? 'VENCIDA'
     : fv <= vence ? 'VIGENTE'
-    : venceProrroga && fv <= venceProrroga ? 'PRORROGA'
+    : venceProrroga && fv <= venceProrroga ? (prorrogada ? 'VIGENTE' : 'PRORROGA')
     : 'VENCIDA';
   return { estado: estado, meses: termino.meses,
            vence: _padFecha(vence.getDate(), vence.getMonth() + 1, vence.getFullYear()),
@@ -4998,6 +5043,7 @@ function conclusionDeterminativa(o) {
   if (String(o.licenciaN || '').trim() || fechaLicTxt)
     licTxt = 'la licencia' + (String(o.licenciaN || '').trim() ? ' ' + String(o.licenciaN).trim() : '') +
              (fechaLicTxt ? ' del ' + fechaLicTxt : '');
+  if (!licTxt) licTxt = 'la licencia aportada';
   var cierre = 'No se configura comportamiento contrario a la integridad urbanística del artículo 135 de la Ley 1801 de 2016.';
 
   // § 3.d: «No se pudo determinar».
@@ -5044,11 +5090,13 @@ function conclusionDeterminativa(o) {
   var oraciones = [];
   // Oración 1: la actuación y la licencia (solo si requiere con modalidades).
   if (req === 'SI' && mods.length) {
-    var s1 = 'Las obras descritas corresponden a ' + nombresTxt + ', que ' + requiereConc +
+    var s1 = 'Las obras corresponden a ' + nombresTxt + ', que ' + requiereConc +
       ' licencia de construcción en ' + esa + ' (Decreto 1077 de 2015, art. 2.2.6.1.1.7)';
-    if (!si(o.licenciaAportada)) s1 += ', y no se aportó licencia que las ampare.';
+    if (!si(o.licenciaAportada)) s1 += ', y no se aportó licencia.';
     else if (vig.estado === 'VENCIDA')
-      s1 += ', y ' + licTxt + ', aportada en la visita, se encontraba vencida a la fecha de la visita.';
+      s1 += licTxt === 'la licencia aportada'
+        ? ', y la licencia aportada en la visita se encontraba vencida a la fecha de la visita.'
+        : ', y ' + licTxt + ', aportada en la visita, se encontraba vencida a la fecha de la visita.';
     else if (cod.A2) {
       var pa2 = num(o.alturaPisos), pl2 = num(o.pisos), da2 = num(o.destActuales), dl2 = num(o.destinaciones);
       var difP = !isNaN(pa2) && !isNaN(pl2) && pa2 !== pl2;
@@ -5061,7 +5109,7 @@ function conclusionDeterminativa(o) {
         s1 += ', y ' + licTxt + ' aprueba ' + dl2 + ' destinaciones, mientras en sitio se encontraron ' + da2 + '.';
       else
         s1 += ', y lo ejecutado no corresponde a lo aprobado en ' + licTxt + '.';
-    } else s1 += ', y se aportó ' + licTxt + '.';
+    } else s1 += licTxt === 'la licencia aportada' ? ', y se aportó licencia.' : ', y se aportó ' + licTxt + '.';
     oraciones.push(s1);
   }
 
@@ -5070,7 +5118,7 @@ function conclusionDeterminativa(o) {
   var verbo0 = verbos.length ? verbos[0] : 'construir';
   if (chipsA.length === 1 && chipsA[0] === 'A1') {
     if (si(o.sueloProt)) s2 = 'Por ' + verbo0 + 'se en suelo de protección' +
-      (String(o.poligono || '').trim() ? ' (polígono ' + o.poligono + ')' : '') + ', ';
+      (String(o.poligono || '').trim() ? ' (' + o.poligono + ')' : '') + ', ';
     else if (si(o.quebrada)) s2 = 'Por ' + verbo0 + 'se en el retiro de una fuente hídrica, ';
   }
   var frasesA = {
@@ -5083,7 +5131,7 @@ function conclusionDeterminativa(o) {
   var cuerpo = variosA
     ? 'constituyen los comportamientos de ' + chipsA.map(function(k) { return verbo0 + ' ' + frasesA[k]; }).join(' y de ')
     : 'constituyen el comportamiento de ' + verbo0 + ' ' + frasesA[chipsA[0]];
-  cuerpo += ', previsto' + (variosA ? 's' : '') + ' en el artículo 135, literal A, numeral' + (variosA ? 's' : '') +
+  cuerpo += ', previsto' + (variosA ? 's' : '') + ' en el artículo 135, literal A, ' + (variosA ? 'numerales' : 'numeral') +
     ' ' + chipsA.map(function(k) { return k.slice(1); }).join(' y ') + ', de la Ley 1801 de 2016';
   s2 += s2 ? cuerpo : 'C' + cuerpo.slice(1);
   if (otros.length) {
@@ -5119,6 +5167,36 @@ function conclusionDeterminativa(o) {
     oraciones.push(via);
   }
   return oraciones.join(' ');
+}
+
+// Lo que «Revisar» manda a la IA con la descripción (2026-11-05): la
+// modalidad exigible, su verbo rector y el tiempo según el estado de la obra.
+// La IA cambia solo la oración que describe la obra (prompt-actuacion.txt,
+// «La intervención y su nombre»). '' si no hay modalidades, si no hay
+// comportamiento o si no se pudo determinar (R23 tampoco aplica ahí).
+function pistaIntervencion(o) {
+  o = o || {};
+  var chips = String(o.infraccion || '');
+  if (!chips.trim() || chips.indexOf('No se evidencia infracción') >= 0 ||
+      chips.indexOf(CONTRAVENCION_INDETERMINADA) >= 0) return '';
+  var mods = LICENCIA_MODALIDADES.filter(function(m) {
+    return Array.isArray(o.modalidades) && o.modalidades.indexOf(m) >= 0 && _MOD_NOMBRE_ART[m];
+  });
+  if (!mods.length || !o.estadoObra) return '';
+  var nombres = _unirConY(mods.map(function(m) { return _MOD_NOMBRE_ART[m]; }));
+  if (!mods.some(function(m) { return _MOD_SIN_SUFIJO.indexOf(m) >= 0; })) nombres += ' de la edificación existente';
+  var verbos = Object.keys(_VERBO_MODALIDADES).filter(function(v) {
+    return _VERBO_MODALIDADES[v].some(function(m) { return mods.indexOf(m) >= 0; });
+  });
+  var term = String(o.estadoObra).trim() === 'Terminada';
+  var ej = {
+    construir: term ? 'se construyó ' + nombres : 'se está construyendo ' + nombres,
+    intervenir: term ? 'se intervino la edificación existente mediante ' + nombres.replace(/ de la edificación existente$/, '')
+                     : 'se está interviniendo la edificación existente mediante ' + nombres.replace(/ de la edificación existente$/, ''),
+    demoler: term ? 'se demolió la edificación' : 'se está demoliendo la edificación'
+  }[verbos[0]];
+  return nombres + '; verbo «' + _unirConY(verbos) + '»; la obra está ' + (term ? 'terminada' : 'en proceso') +
+    ': «' + ej + '».';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6563,6 +6641,7 @@ var _cuUtilsExports = {
   textoLeyChip: textoLeyChip,
   vigenciaLicencia: vigenciaLicencia,
   conclusionDeterminativa: conclusionDeterminativa,
+  pistaIntervencion: pistaIntervencion,
   comportamientosParaIA: comportamientosParaIA,
   reglasBloqueoActa: reglasBloqueoActa,
   camposRevision: camposRevision,

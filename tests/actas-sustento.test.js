@@ -52,10 +52,16 @@ const LIC_VIGENTE = { fechaLicencia: '2026-05-29', tipoLicencia: 'Licencia de co
 test('R22: A2 con licencia vencida, según el estado de la obra', () => {
   const s = U.revisarTextoLocal(Object.assign({ actuacion: 'Ampliación en ejecución.', infraccion: A2,
     licenciaAportada: 'SI', estadoObra: EN_PROCESO, area: '30' }, LIC_2020));
-  assert.match(s.find(x => x.id === 'R22').mensaje, /sigue en ejecución/);
+  const r22 = s.find(x => x.id === 'R22');
+  assert.match(r22.mensaje, /sigue en ejecución/);
+  // La única regla nueva que pide justificación (2026-11-05).
+  assert.equal(r22.tipo, 'coherencia');
   const t = U.revisarTextoLocal(Object.assign({ actuacion: 'Ampliación terminada.', infraccion: A2,
     licenciaAportada: 'SI', estadoObra: 'Terminada', area: '30' }, LIC_2020));
-  assert.match(t.find(x => x.id === 'R22').mensaje, /se ejecutaron mientras/);
+  // Terminada: aviso, sin justificación (R22b).
+  const r22b = t.find(x => x.id === 'R22b');
+  assert.match(r22b.mensaje, /se ejecutaron mientras/);
+  assert.equal(r22b.tipo, 'aviso');
   // Vigente: no hay nada que preguntar.
   assert.equal(U.revisarTextoLocal(Object.assign({ actuacion: 'Adecuación.', infraccion: A2,
     licenciaAportada: 'SI', area: '30' }, LIC_VIGENTE)).filter(x => x.id === 'R22').length, 0);
@@ -77,7 +83,7 @@ test('R23: caso 2026-008867 — la ampliación sin nombre ni verbo', () => {
   const s = U.revisarTextoLocal(R23_BASE);
   const r23 = s.find(x => x.id === 'R23');
   assert.ok(r23);
-  assert.equal(r23.tipo, 'aviso');
+  assert.equal(r23.tipo, 'forma'); // la corrige la propuesta de «Revisar» (2026-11-05)
   assert.match(r23.mensaje, /nombrar la intervención como ampliación y usar el verbo construir en presente \(«se está construyendo»\)/);
 });
 
@@ -145,12 +151,83 @@ test('R28: el texto decreta la suspensión y la casilla no', () => {
   assert.ok(s.some(x => x.id === 'R28'));
 });
 
-test('R29: «No se pudo medir» y el texto trae una medida', () => {
-  const s = U.revisarTextoLocal({ actuacion: 'El muro sale del plano, saliéndose aproximadamente 80 centímetros.',
+test('R29: «No se pudo medir» y el texto trae m²; alturas y retiros no cuentan', () => {
+  const s = U.revisarTextoLocal({ actuacion: 'Se construyó un tercer piso de 45 m2 sobre la cubierta.',
     infraccion: A4, area: '', areaNoMedible: true });
   const r29 = s.find(x => x.id === 'R29');
   assert.ok(r29);
-  assert.match(r29.mensaje, /el texto menciona «80 centímetros»/);
+  assert.equal(r29.tipo, 'aviso');
+  assert.match(r29.mensaje, /el texto menciona «45 m2»/);
+  // 20261057389 y 20261126691: centímetros de paramento y metros de retiro no son área.
+  assert.equal(U.revisarTextoLocal({ actuacion: 'La fachada sale 80 centímetros del paramento y tiene un retiro de 10,70 metros.',
+    infraccion: A4, area: '', areaNoMedible: true }).filter(x => x.id === 'R29').length, 0);
+});
+
+// ── Excepciones de los avisos (2026-11-05, «que no avise innecesariamente») ──
+test('R27: no avisa si lo que no se vio es una parte o si se describe desde afuera', () => {
+  const parte = U.revisarTextoLocal({ actuacion: 'Se inspeccionaron los apartamentos del tercer nivel. No fue posible ingresar al apartamento posterior.',
+    infraccion: A2, area: '40', licenciaAportada: 'SI' });
+  assert.equal(parte.filter(x => x.id === 'R27').length, 0);
+  const afuera = U.revisarTextoLocal({ actuacion: 'No fue posible ingresar al inmueble. Desde el exterior se observa un tercer piso en mampostería.',
+    infraccion: A4, area: '40' });
+  assert.equal(afuera.filter(x => x.id === 'R27').length, 0);
+  // A3 se ve desde la calle.
+  assert.equal(U.revisarTextoLocal({ actuacion: 'No fue posible ingresar al inmueble. Hay una cubierta en el antejardín.',
+    infraccion: A3, area: '10' }).filter(x => x.id === 'R27').length, 0);
+});
+
+test('R28: no avisa con negación ni con una suspensión anterior', () => {
+  const base = { infraccion: A4, area: '40', suspension: 'N/A', estadoObra: 'Terminada' };
+  assert.equal(U.revisarTextoLocal(Object.assign({ actuacion: 'No se impone medida de suspensión porque la obra está terminada.' }, base))
+    .filter(x => x.id === 'R28').length, 0);
+  assert.equal(U.revisarTextoLocal(Object.assign({ actuacion: 'Se verificó la medida de suspensión impuesta en la visita anterior.' }, base))
+    .filter(x => x.id === 'R28').length, 0);
+});
+
+test('R24: no avisa con negación, con lo aprobado ni por subir muros con Modificación', () => {
+  const base = { infraccion: 'No se evidencia infracción', area: '', areaNoAplica: true, requiereLicencia: 'NO' };
+  assert.equal(U.revisarTextoLocal(Object.assign({ actuacion: 'El tercer piso contemplado en la licencia no fue desarrollado.' }, base))
+    .filter(x => x.id === 'R24').length, 0);
+  assert.ok(U.revisarTextoLocal(Object.assign({ actuacion: 'Se subieron los muros perimetrales para alzar la cubierta.' }, base))
+    .some(x => x.id === 'R24' && x.tipo === 'aviso'));
+  assert.equal(U.revisarTextoLocal({ actuacion: 'Se subieron los muros perimetrales para alzar la cubierta.',
+    infraccion: A4, area: '20', requiereLicencia: 'SI', modalidades: ['Modificación'] }).filter(x => x.id === 'R24').length, 0);
+});
+
+test('R31: no avisa si el texto ya habla de la licencia', () => {
+  assert.equal(U.revisarTextoLocal({ actuacion: 'La administración del conjunto no aprobó la obra. No se aportó licencia de construcción.',
+    infraccion: A4, area: '20' }).filter(x => x.id === 'R31').length, 0);
+});
+
+test('juicio: la sanción en condicional se queda; la anunciada como segura no', () => {
+  const cond = U.revisarTextoLocal({ actuacion: 'Se le informó que podrán iniciarse las acciones administrativas y sancionatorias a que haya lugar.',
+    infraccion: A4, area: '20' });
+  assert.equal(cond.filter(x => x.id === 'juicio').length, 0);
+  const segura = U.revisarTextoLocal({ actuacion: 'Esta Inspección iniciará las acciones administrativas y sancionatorias pertinentes.',
+    infraccion: A4, area: '20' });
+  assert.ok(segura.some(x => x.id === 'juicio'));
+});
+
+test('vigenciaLicencia: «no vencida», prorrogada y revalidada en las observaciones', () => {
+  assert.equal(U.vigenciaLicencia({ fecha: '2026-05-29', tipo: 'Licencia de construcción — Adecuación',
+    obs: 'Licencia no vencida', fechaVisita: '2026-09-23' }).estado, 'VIGENTE');
+  assert.equal(U.vigenciaLicencia({ fecha: '2021-12-31', tipo: 'Licencia de construcción — Ampliación',
+    obs: 'Licencia prorrogada', fechaVisita: '2024-06-01' }).estado, 'VIGENTE');
+  assert.equal(U.vigenciaLicencia({ fecha: '2020-07-17', tipo: 'Licencia de construcción — Obra nueva',
+    obs: 'Con revalidación', fechaVisita: '2026-10-05' }).estado, 'SIN_DATO');
+});
+
+test('pistaIntervencion: lo que viaja a «Revisar» con la descripción', () => {
+  assert.equal(U.pistaIntervencion({ infraccion: 'A1: Área protegida o afectada', modalidades: ['Ampliación'], estadoObra: EN_PROCESO }),
+    'una ampliación de la edificación existente; verbo «construir»; la obra está en proceso: «se está construyendo una ampliación de la edificación existente».');
+  assert.equal(U.pistaIntervencion({ infraccion: 'No se evidencia infracción', modalidades: ['Adecuación'], estadoObra: 'Terminada' }), '');
+});
+
+test('conclusionDeterminativa: sin número ni fecha de licencia no deja huecos', () => {
+  const t = U.conclusionDeterminativa({ infraccion: 'No se evidencia infracción', requiere: 'SI', modalidades: ['Adecuación'],
+    licenciaAportada: 'SI' });
+  assert.ok(!/ por ,|por \./.test(t));
+  assert.match(t, /amparadas por la licencia aportada\./);
 });
 
 test('R31 y juicio: la copropiedad no es la licencia; el acta no juzga', () => {
@@ -175,13 +252,13 @@ const EJ3 = U.conclusionDeterminativa({ infraccion: 'No se evidencia infracción
 
 test('conclusionDeterminativa: ejemplo 1 (A1, ampliación, sin licencia)', () => {
   assert.equal(EJ1,
-    'Las obras descritas corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia que las ampare. ' +
-    'Por construirse en suelo de protección (polígono ZPAP-3), constituyen el comportamiento de construir en áreas protegidas, previsto en el artículo 135, literal A, numeral 1, de la Ley 1801 de 2016, y no pueden legalizarse mediante licencia ni reconocimiento.');
+    'Las obras corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia. ' +
+    'Por construirse en suelo de protección (ZPAP-3), constituyen el comportamiento de construir en áreas protegidas, previsto en el artículo 135, literal A, numeral 1, de la Ley 1801 de 2016, y no pueden legalizarse mediante licencia ni reconocimiento.');
 });
 
 test('conclusionDeterminativa: ejemplo 2 (A4, terminada)', () => {
   assert.equal(EJ2,
-    'Las obras descritas corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia que las ampare. ' +
+    'Las obras corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia. ' +
     'Constituyen el comportamiento de construir sin licencia, previsto en el artículo 135, literal A, numeral 4, de la Ley 1801 de 2016. ' +
     'Para legalizarlas se requiere licencia de construcción en esa modalidad o, si procede, el reconocimiento de la edificación.');
 });
@@ -210,4 +287,17 @@ test('conclusionDeterminativa: «No se pudo determinar» y sin chips', () => {
   assert.equal(U.conclusionDeterminativa({ infraccion: 'No se pudo determinar' }),
     'Por lo anterior, no se califica comportamiento contrario a la integridad urbanística del artículo 135 de la Ley 1801 de 2016.');
   assert.equal(U.conclusionDeterminativa({ infraccion: '' }), '');
+});
+
+test('R28: en una visita de seguimiento la suspensión del texto es la de la primera visita', () => {
+  const e = { actuacion: 'Se verificó que se impuso medida de suspensión de la obra.', infraccion: A4, area: '40',
+    suspension: 'NO', estadoObra: EN_PROCESO };
+  assert.ok(U.revisarTextoLocal(e).some(x => x.id === 'R28'));
+  assert.equal(U.revisarTextoLocal(Object.assign({ nVisita: 2 }, e)).filter(x => x.id === 'R28').length, 0);
+});
+
+test('conclusionDeterminativa: dos comportamientos dicen «numerales»', () => {
+  const t = U.conclusionDeterminativa({ infraccion: 'A1: Área protegida o afectada | ' + A4, requiere: 'SI',
+    modalidades: ['Ampliación'], licenciaAportada: 'NO', estadoObra: EN_PROCESO, sueloProt: 'SI' });
+  assert.match(t, /literal A, numerales 1 y 4,/);
 });

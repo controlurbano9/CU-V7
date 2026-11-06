@@ -805,7 +805,7 @@ function _senalesTextoD(dObj) {
     destinaciones: dObj.destinaciones, usos: dObj.usos,
     // Reglas del 2026-11-05 (R22-R29): estado de la obra, suspensión,
     // modalidades exigibles y datos de la licencia aportada.
-    estadoObra: dObj.estadoObra, suspension: dObj.suspension,
+    estadoObra: dObj.estadoObra, suspension: dObj.suspension, nVisita: dObj.nVisita,
     modalidades: (dObj.reqLicencia || {}).modalidades,
     motivosNo: (dObj.reqLicencia || {}).motivos,
     fechaLicencia: dObj.fechaLicencia, tipoLicencia: dObj.tipoLicencia,
@@ -878,6 +878,12 @@ function _conclusionDeterminativaD(dObj) {
 // usuario 2026-10-17); lo nuevo del 2026-11-05 es la actuación, la licencia,
 // el verbo rector y la vía de regularización del párrafo. El informe F-43
 // conserva su propia conclusión.
+// La intervención exigible que viaja con la descripción a «Revisar»
+// (pistaIntervencion, utils.js).
+function _pistaIntervencionD(dObj) {
+  return pistaIntervencion({ infraccion: _infraccionSoloCatalogo(dObj.infraccion),
+    modalidades: (dObj.reqLicencia || {}).modalidades, estadoObra: dObj.estadoObra });
+}
 function _conclusionesActaD(dObj) {
   return [_conclusionDeterminativaD(dObj), dObj.obsConclusion]
     .map(s => String(s || '').trim()).filter(Boolean).join('\n');
@@ -908,6 +914,7 @@ var SECCIONES_SENAL = {
   R16: ['Tipificación y medidas'],
   R19: ['Características de la edificación', 'Tipificación y medidas'],
   R22: ['Verificación documental', 'Tipificación y medidas'],
+  R22b: ['Verificación documental', 'Tipificación y medidas'],
   R24: ['Verificación documental'],
   R25: ['Tipificación y medidas'],
   R27: ['Tipificación y medidas'],
@@ -4293,6 +4300,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     }
     // Nada que pedir y sin contradicciones nuevas: se sella en silencio, sin
     // abrir el panel ni llamar a la IA.
+    // La descripción no nombra la modalidad o no usa el verbo en su tiempo
+    // (R23): la arregla la propuesta, no el inspector (2026-11-05).
+    if (!pedirDesc && _senalesTextoD(d).some(s => s.id === 'R23')) pedirDesc = true;
+    // Con el párrafo de la conclusión armado y la casilla vacía, la IA no
+    // propone otra conclusión: repetiría el párrafo (2026-11-05).
+    if (pedirConc && !String(d.obsConclusion || '').trim() && _conclusionDeterminativaD(d)) pedirConc = false;
     if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d)) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
@@ -4331,7 +4344,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false;
     try {
       const [tD, tC] = await Promise.all([
-        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc) : Promise.resolve(origDesc),
+        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
           : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
