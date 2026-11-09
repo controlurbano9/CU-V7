@@ -46,9 +46,10 @@ const ARCHIVOS = [
   'ficha-visita.jsx',
   'mis-visitas.jsx',
   'buscar.jsx',
-  // inspecciones-agenda.jsx antes de agenda.jsx (la vista Inspecciones)
-  'inspecciones-agenda.jsx',
   'agenda.jsx',
+  // agenda-semana.jsx después de agenda.jsx (consume PanelReglasAgenda,
+  // nombrePila, inicialesInsp y las marcas AGENDA_*_KEY).
+  'agenda-semana.jsx',
   // audiencias.jsx antes de app.jsx (la pestaña de audiencias del router)
   'audiencias.jsx',
   // tablero.jsx reusa el índice de barrios de buscar.jsx (_cargarIdxBarriosBQ)

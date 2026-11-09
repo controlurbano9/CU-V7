@@ -6153,6 +6153,298 @@ function inspectorConfirmacionInspeccion(plan, elegido, libres) {
   return '';
 }
 
+// ── Inspecciones y visitas no se cruzan (2026-11-09, decisión del usuario) ──
+// El día con inspección al lugar es de la zona de la inspección (su grupo de
+// comunas, diaGrupoInspeccion): ese día el inspector solo lleva visitas de
+// esa zona, y la inspección cuenta como una visita más para la meta
+// (visitasDelDia ya la cuenta). Bloquea, no avisa. Lo usan Agenda ›
+// Inspecciones (programar y arrastrar), Agenda › Visitas («+ AH» y
+// «Asignar»), asignarVisitaAdmin (Buscar, ficha, Semana) y mover de día en la
+// Semana. Sin comuna conocida no hay zona y no se bloquea.
+// tests/inspecciones-visitas.test.js.
+var ZONAS_INSPECCION_TEXTO = { 1: 'las comunas 1, 2 y 3', 2: 'las comunas 4, 5 y 6',
+  3: 'las comunas 7, 8 y 9', 4: 'las comunas 10, 11 y 12', 5: 'la zona rural' };
+
+// Motivo por el que `inspector` no puede llevar `f` el día `fecha`; '' si puede.
+//   opts.inspeccion — `f` va como inspección al lugar (programarla); sin
+//   indicarlo, se lee de la fila. Una inspección choca con las visitas de
+//   otra zona ese día; una visita, con las inspecciones de otra zona.
+// Las visitas del mismo caso no cuentan (montar la inspección sobre la visita
+// asignada de ese caso no es un cruce). Inspección contra inspección tampoco:
+// el tablero ya deja programar fuera de zona (urgencias) y lo marca.
+function choqueZonaInspeccion(datos, inspector, fecha, f, opts) {
+  var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  if (!d || !inspector || !f) return '';
+  var grupo = diaGrupoInspeccion(f);
+  if (!grupo) return '';
+  var comoInsp = opts && opts.inspeccion != null ? !!opts.inspeccion : esInspeccionLugar(f);
+  var caso = claveCasoInspeccion(f);
+  var otros = visitasDelDia(datos, d, inspector).filter(function (x) {
+    if (x === f || (f._idx != null && x._idx === f._idx)) return false;
+    if (caso && claveCasoInspeccion(x) === caso) return false;
+    if (comoInsp === esInspeccionLugar(x)) return false;
+    var g = diaGrupoInspeccion(x);
+    return !!g && g !== grupo;
+  });
+  if (!otros.length) return '';
+  var quien = titleCaseNombre(inspector).split(' ')[0];
+  var zona = ZONAS_INSPECCION_TEXTO[diaGrupoInspeccion(otros[0])];
+  var dia = _DIAS_CORTOS[d.getDay()] + ' ' + d.getDate();
+  if (comoInsp) {
+    return quien + ' ya tiene ' + (otros.length === 1 ? '1 visita' : otros.length + ' visitas') +
+      ' el ' + dia + ' en ' + zona + ': la inspección iría en otra zona. Mueve esas visitas o elige otro día.';
+  }
+  var hora = horaProgramadaDe(otros[0]);
+  return quien + ' tiene inspección al lugar el ' + dia + (hora ? ' a las ' + horaCortaInspeccion(hora) : '') +
+    ' en ' + zona + ': ese día solo lleva visitas de esa zona.';
+}
+
+// Comunas del grupo de la inspección (las de su día): ['7', '8', '9'] o
+// ['RURAL']. Sin grupo conocido, la comuna de la fila. Agenda › Visitas las
+// usa como zona del día del inspector que tiene inspección.
+function comunasGrupoInspeccion(f) {
+  var g = diaGrupoInspeccion(f);
+  if (!g) return [f && f['COMUNA']];
+  return Object.keys(DIAS_GRUPO_INSPECCION).filter(function (k) { return DIAS_GRUPO_INSPECCION[k] === g; });
+}
+
+// Ruta del día con inspecciones (Agenda › Visitas): la inspección tiene hora
+// citada y no se mueve por distancia. Las de la mañana (antes de las 12)
+// abren el recorrido, las de la tarde lo cierran, cada grupo por hora; el
+// resto va con ordenarRuta en medio. Parada con inspección = `p.hora`.
+function ordenarRutaConInspecciones(paradas, oficina) {
+  var porHora = function (a, b) { return horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora); };
+  var manana = [], tarde = [], resto = [];
+  (paradas || []).forEach(function (p) {
+    if (!p || !p.hora) { resto.push(p); return; }
+    (horaAudienciasMin(p.hora) < 12 * 60 ? manana : tarde).push(p);
+  });
+  return manana.sort(porHora).concat(ordenarRuta(resto, oficina), tarde.sort(porHora));
+}
+
+// ── Agenda unificada: la semana del equipo (2026-11-09) ──
+// Una sola pantalla de Agenda (agenda-semana.jsx, TASK 01–06): un renglón por
+// inspector, una columna por día (lunes a viernes) y cada día es su zona para
+// todo, visitas e inspecciones (maqueta propuesta-agenda-unificada.html).
+// Nada se escribe hasta «Asignar»: la pantalla arma un borrador y toda la
+// lógica de abajo es pura (el .jsx solo pinta). tests/agenda-semana.test.js.
+
+// Zona del día (1 = lunes … 5 = viernes, la de DIAS_GRUPO_INSPECCION); null
+// sábado y domingo. Coincide con diaGrupoInspeccion: el lunes es el día de
+// las comunas 1-2-3, etc., así que la zona de un día es el grupo de su comuna.
+function zonaDelDia(fecha) {
+  var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  var dia = d ? d.getDay() : 0;
+  return dia >= 1 && dia <= 5 ? dia : null;
+}
+
+// Comunas de cada zona: la misma regla de DIAS_GRUPO_INSPECCION vista al
+// revés (día → sus comunas). La zona 5 es rural.
+var COMUNAS_ZONA_EQUIPO = { 1: ['1', '2', '3'], 2: ['4', '5', '6'],
+  3: ['7', '8', '9'], 4: ['10', '11', '12'] };
+
+// «Comunas 1 · 2 · 3» … «Comunas 10 · 11 · 12», corto «C 1-2-3» … «C
+// 10-11-12»; «Rural» en los dos. '' si la zona no existe (fin de semana).
+function textoZonaDia(zona, corto) {
+  if (zona === 5) return 'Rural';
+  var cs = COMUNAS_ZONA_EQUIPO[zona];
+  if (!cs) return '';
+  return corto ? 'C ' + cs.join('-') : 'Comunas ' + cs.join(' · ');
+}
+
+// El borrador de la semana: lo que la pantalla arma antes de «Asignar». Es
+// puro (persistirlo en localStorage lo decide el .jsx). Forma:
+//   { lunes: 'DD/MM/YYYY', items: [item] }
+// Un item (los campos que no aplican al tipo no van):
+//   { tipo: 'visita' | 'insp' | 'mover',   // mover: cambiar de día/inspector
+//     fila, radicado, inspector, fecha,    // algo que ya está en BD
+//     hora, expediente,                    // insp (y mover de una inspección)
+//     modo, programadaConocida }           // insp: de inspeccionDelCaso
+// Un caso solo puede estar una vez: agregar reemplaza el item de esa fila.
+function borradorVacio(lunes) {
+  return { lunes: formatearFecha(lunes), items: [] };
+}
+
+function borradorAgregar(b, item) {
+  var items = ((b && b.items) || []).filter(function (x) { return x.fila !== item.fila; });
+  items.push(item);
+  return { lunes: (b && b.lunes) || '', items: items };
+}
+
+function borradorQuitar(b, fila) {
+  return { lunes: (b && b.lunes) || '',
+    items: ((b && b.items) || []).filter(function (x) { return x.fila !== fila; }) };
+}
+
+// { visitas, inspecciones, movidas, total } para la barra del borrador.
+function borradorResumen(b) {
+  var r = { visitas: 0, inspecciones: 0, movidas: 0, total: 0 };
+  ((b && b.items) || []).forEach(function (x) {
+    if (x.tipo === 'insp') r.inspecciones++;
+    else if (x.tipo === 'mover') r.movidas++;
+    else r.visitas++;
+  });
+  r.total = r.visitas + r.inspecciones + r.movidas;
+  return r;
+}
+
+// `datos` con el borrador aplicado: arreglo nuevo donde toda la lógica
+// existente (visitasDelDia, choqueZonaInspeccion, semanaEquipo, la bandeja)
+// ve el borrador como si ya estuviera en BD. No muta `datos` ni sus filas.
+function datosConBorrador(datos, b) {
+  var out = (datos || []).slice();
+  ((b && b.items) || []).forEach(function (item) {
+    if (!item || item.fila == null) return;
+    var i = out.findIndex(function (f) { return f && f._idx === item.fila; });
+    if (i < 0) return;
+    var origen = out[i];
+    if (item.tipo === 'insp') {
+      // El caso sale de la bandeja: la marca de decretada se limpia en la
+      // fila origen y en sus hermanas del caso.
+      var caso = claveCasoInspeccion(origen);
+      out = out.map(function (f) {
+        if (!f) return f;
+        var hermana = !!(caso && claveCasoInspeccion(f) === caso);
+        if (f._idx !== item.fila && !hermana) return f;
+        var copia = Object.assign({}, f, { INSPECCION_DECRETADA: '' });
+        if (item.modo !== 'nueva' && f._idx === item.fila) {
+          Object.assign(copia, { 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': item.inspector,
+            'FECHA ASIGNACION VISITA': item.fecha, DILIGENCIA: 'INSPECCIÓN AL LUGAR',
+            HORA_PROGRAMADA: item.hora || '', _borrador: true });
+        }
+        return copia;
+      });
+      // Visita nueva: fila virtual aparte ('b:' + fila); la origen queda
+      // igual (sin la marca, que ya se limpió arriba).
+      if (item.modo === 'nueva') {
+        out.push(Object.assign({}, origen, { _idx: 'b:' + item.fila, 'ESTADO VISITA': 'ASIGNADO',
+          'VISITADOR(ES)': item.inspector, 'FECHA ASIGNACION VISITA': item.fecha,
+          DILIGENCIA: 'INSPECCIÓN AL LUGAR', HORA_PROGRAMADA: item.hora || '',
+          INSPECCION_DECRETADA: '', _borrador: true }));
+      }
+      return;
+    }
+    if (item.tipo === 'mover') {
+      var movida = Object.assign({}, origen, { 'VISITADOR(ES)': item.inspector,
+        'FECHA ASIGNACION VISITA': item.fecha, _borrador: true });
+      if (item.hora) movida.HORA_PROGRAMADA = item.hora;
+      out[i] = movida;
+      return;
+    }
+    // visita: la candidata PENDIENTE pasa a ASIGNADA a ese inspector ese día.
+    out[i] = Object.assign({}, origen, { 'ESTADO VISITA': 'ASIGNADO',
+      'VISITADOR(ES)': item.inspector, 'FECHA ASIGNACION VISITA': item.fecha, _borrador: true });
+  });
+  return out;
+}
+
+// La semana del equipo: un renglón por inspector, un día por columna. Cada
+// día lleva su zona (zonaDelDia) y si es hábil; cada celda, lo que el
+// inspector tiene ese día (visitasDelDia: la inspección cuenta para la meta).
+// Los items van ordenados: inspecciones primero por hora, luego las visitas
+// tal como llegan.
+//   → { dias: [{ fecha, date, zona, habil }],
+//       filas: [{ inspector, dias: [{ items, visitas, inspecciones, total }] }] }
+// Cada item: { f, tipo: 'insp'|'visita', hora, fueraZona, nueva }.
+function semanaEquipo(datos, lunes, inspectores) {
+  var l = lunesInspecciones(lunes);
+  var dias = [0, 1, 2, 3, 4].map(function (k) {
+    var d = new Date(l.getFullYear(), l.getMonth(), l.getDate() + k);
+    return { fecha: formatearFecha(d), date: d, zona: zonaDelDia(d), habil: esDiaHabil(d) };
+  });
+  var filas = (inspectores || []).map(function (nombre) {
+    return {
+      inspector: nombre,
+      dias: dias.map(function (d) {
+        var items = visitasDelDia(datos, d.date, nombre).map(function (f) {
+          var g = diaGrupoInspeccion(f);
+          return { f: f, tipo: esInspeccionLugar(f) ? 'insp' : 'visita',
+            hora: horaProgramadaDe(f), fueraZona: !!g && g !== d.zona, nueva: !!f._borrador };
+        });
+        items.sort(function (a, b) {
+          if (a.tipo !== b.tipo) return a.tipo === 'insp' ? -1 : 1;
+          return a.tipo === 'insp' ? horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora) : 0;
+        });
+        var inspecciones = items.filter(function (x) { return x.tipo === 'insp'; }).length;
+        return { items: items, inspecciones: inspecciones, visitas: items.length - inspecciones,
+          total: items.length };
+      }),
+    };
+  });
+  return { dias: dias, filas: filas };
+}
+
+// «Por agendar» del día elegido: las inspecciones decretadas sin hora
+// (bandejaInspecciones, las de la zona del día primero, orden estable) y las
+// visitas sugeridas de la zona del día, sin las filas que el borrador ya usa
+// ni los casos decretados (ya están arriba, en la bandeja: un caso decretado
+// se programa como inspección, no se asigna como visita sin más).
+// `datos` viene con el borrador aplicado (datosConBorrador) y `candidatas` es
+// la respuesta de candidatasAgenda sobre esos mismos datos.
+//   → { inspecciones: [item de bandeja], visitas: [candidata por score ↓] }
+function porAgendarDia(datos, candidatas, fecha) {
+  var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  var zona = zonaDelDia(d);
+  var enZona = function (f) { return !!zona && diaGrupoInspeccion(f) === zona; };
+  var inspecciones = bandejaInspecciones(datos).slice().sort(function (a, b) {
+    return (enZona(a.f) ? 0 : 1) - (enZona(b.f) ? 0 : 1);
+  });
+  var usadas = {}, clavePorFila = {};
+  var decretados = inspeccionesDecretadas(datos);
+  (datos || []).forEach(function (f) {
+    if (!f || f._idx == null) return;
+    clavePorFila[f._idx] = claveCasoInspeccion(f);
+    if (f._borrador) usadas[f._idx] = true;
+  });
+  var visitas = [];
+  ((((candidatas || {}).comunas) || [])).forEach(function (g) {
+    if (!zona || !g || DIAS_GRUPO_INSPECCION[claveComunaAgenda(g.comuna)] !== zona) return;
+    (g.visitas || []).forEach(function (v) {
+      if (usadas[v.fila] || decretados[clavePorFila[v.fila]]) return;
+      visitas.push(v);
+    });
+  });
+  visitas.sort(function (a, b) { return b.score - a.score; });
+  return { inspecciones: inspecciones, visitas: visitas };
+}
+
+// Lo que «Asignar» envía, en las acciones que ya existen: confirmarAgenda
+// para las visitas (agrupadas por inspector y fecha), programarInspecciones
+// para las inspecciones (los mover de una inspección van ahí como
+// reprogramar) y un mover por cada visita que cambia de día/inspector
+// (asignarRadicado). null / arreglo vacío si el borrador no trae nada de esa
+// clase.
+function envioBorrador(b) {
+  var asignaciones = [], porClave = {};
+  var inspecciones = [];
+  var mover = [];
+  ((b && b.items) || []).forEach(function (x) {
+    if (x.tipo === 'insp' || (x.tipo === 'mover' && x.hora)) {
+      inspecciones.push({ modo: x.tipo === 'mover' ? 'reprogramar' : x.modo,
+        fila: x.fila, radicadoConocido: x.radicado, inspector: x.inspector,
+        fecha: x.fecha, hora: x.hora || '', expediente: x.expediente || '',
+        programadaConocida: x.programadaConocida || '' });
+      return;
+    }
+    if (x.tipo === 'mover') {
+      mover.push({ fila: x.fila, radicadoConocido: x.radicado,
+        inspector: x.inspector, fechaAsignacion: x.fecha });
+      return;
+    }
+    var k = x.inspector + '|' + x.fecha;
+    if (!porClave[k]) {
+      porClave[k] = { inspector: x.inspector, fechaAsignacion: x.fecha, visitas: [] };
+      asignaciones.push(porClave[k]);
+    }
+    porClave[k].visitas.push({ fila: x.fila, radicado: x.radicado, expediente: x.expediente || '' });
+  });
+  return {
+    confirmarAgenda: asignaciones.length ? { accion: 'confirmarAgenda', asignaciones: asignaciones } : null,
+    programarInspecciones: inspecciones.length ? { accion: 'programarInspecciones', items: inspecciones } : null,
+    mover: mover,
+  };
+}
+
 // Exportar al scope global (navegador) o CommonJS (Node, tests)
 // ── Tarjeta única de visita (arquitectura 2026-10-27, decisión 1) ──
 // Lo que dice cualquier tarjeta de visita de la app, siempre en el mismo
@@ -6759,6 +7051,20 @@ var _cuUtilsExports = {
   claveCasoInspeccion: claveCasoInspeccion,
   claveCasoInspeccionCita: claveCasoInspeccionCita,
   inspectorConfirmacionInspeccion: inspectorConfirmacionInspeccion,
+  choqueZonaInspeccion: choqueZonaInspeccion,
+  comunasGrupoInspeccion: comunasGrupoInspeccion,
+  ordenarRutaConInspecciones: ordenarRutaConInspecciones,
+  // Agenda unificada: la semana del equipo (TASK 01)
+  zonaDelDia: zonaDelDia,
+  textoZonaDia: textoZonaDia,
+  borradorVacio: borradorVacio,
+  borradorAgregar: borradorAgregar,
+  borradorQuitar: borradorQuitar,
+  borradorResumen: borradorResumen,
+  datosConBorrador: datosConBorrador,
+  semanaEquipo: semanaEquipo,
+  porAgendarDia: porAgendarDia,
+  envioBorrador: envioBorrador,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,

@@ -14,7 +14,6 @@
      9) PRINT
    ═══════════════════════════════════════════════════════════════ */
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 1) TOKENS                                                  ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -178,7 +177,6 @@
   --radio-sm:     var(--r-sm);
 }
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 2) RESET / BASE                                            ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -212,7 +210,6 @@ body {
 }
 .oculto { display: none !important; }
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 3) UTILIDADES DE TIPO                                      ║
    ║    Reemplazan los ~140 inline styles de los JSX            ║
@@ -223,7 +220,6 @@ body {
   color: var(--ink-3);
 }
 .t-mono  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
-
 
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 4) LAYOUT                                                  ║
@@ -287,7 +283,6 @@ body {
 }
 .btn-logout:active { transform: scale(0.96); }
 
-
 /* ── Pantallas ─────────────────────────────────────────────── */
 .pantalla {
   display: none;
@@ -306,7 +301,6 @@ body {
 /* ── Pad bottom (espacio sobre nav inferior fija) ──────────── */
 /* 124 y no menos: con la lista al final, el «+» no puede quedar sobre el icono de mapa de la última tarjeta. */
 .pad-bottom { padding-bottom: calc(124px + env(safe-area-inset-bottom)); }
-
 
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 5) COMPONENTES                                             ║
@@ -554,7 +548,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 /* La rejilla no deja margen abajo (main sí): el texto va 8 px bajo los chips. */
 .chip-ley { margin: var(--s-2) 0 10px; max-width: 72ch; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-3); }
 .chip-ley strong { color: var(--ink-2); font-weight: 600; }
-
 
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 6) PUENTE LEGACY                                           ║
@@ -1014,7 +1007,6 @@ textarea.input-campo { resize: vertical; min-height: 80px; line-height: 1.5; }
 .stat-box-v2.compact { padding: 12px; }
 .stat-box-v2.compact .stat-num-v2 { font-size: var(--fs-5); letter-spacing: -1px; }
 .stat-box-v2.compact .stat-label-v2 { font-size: var(--fs-1); margin-top: 4px; }
-
 
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 7) FEATURES ESPECÍFICAS                                    ║
@@ -1853,7 +1845,6 @@ button.fg-celda { width: 100%; padding: 0; appearance: none; cursor: pointer; }
 }
 .filtro-section-chevron.abierto { transform: rotate(180deg); }
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 8) OVERLAYS / NOTIF / OFFLINE                              ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -1868,7 +1859,6 @@ button.fg-celda { width: 100%; padding: 0; appearance: none; cursor: pointer; }
   to   { transform: translateY(0); }
 }
 @keyframes dlgOverlayIn { from { opacity: 0; } to { opacity: 1; } }
-
 
 /* ── 8.1 Diálogo de aviso / confirmación (modal.jsx) ──────────
    Antes vivía 100% en estilos inline: sin :hover posible, sin
@@ -2047,7 +2037,6 @@ body.is-offline .header {
   transition: margin-top .35s cubic-bezier(.4,0,.2,1);
 }
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 9) DESKTOP ≥ 900px                                         ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -2219,7 +2208,6 @@ body.is-offline .header {
 /* El ancho de Inicio en monitores anchos está en «Inicio v2» (desde 1600 ocupa
    todo el ancho disponible). */
 
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 10) ACCESIBILIDAD — MOVIMIENTO REDUCIDO                    ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -2261,7 +2249,6 @@ body.is-offline .header {
   background: var(--surface); color: var(--ink-2);
   font-family: inherit; font-size: var(--fs-1);
 }
-
 
 /* ═════════════════════════════════════════════════════════════
    Semana de visitas (Inicio) — ver semana-visitas.jsx
@@ -3407,173 +3394,16 @@ button.sv-col-head {
   .adm-pend-acc .vc-btn { min-height: var(--tap); flex: 1 1 0; }
 }
 
-/* ── Agenda por inspector (2026-10-03) ─────────────────────────
-   Sin mañana/tarde: mapa de comunas | sugeridas | el día de cada inspector,
-   y una barra con un solo botón para asignar. Color por inspector, en el
-   orden de ⚙ Reglas: terracota, azul, ocre, oliva. agenda.jsx. El segundo
-   era tinta casi negra: su avatar se leía como deshabilitado y su punto
-   desaparecía sobre la barra oscura (revisión 2026-10-13). */
-/* Colores de inspector propios (decisión 2026-10-13): antes eran café, azul,
-   ocre y verde, los mismos de acción y estado, y un botón café aquí quería
-   decir «de Alejandro». Ciruela · verde azulado · gris pizarra · índigo. */
-.ag-pantalla { --ag-i1: #7A4B6E; --ag-i2: #2F6F6A; --ag-i3: #55606B; --ag-i4: #4B4F8A; }
-.ag-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 22px; }
-.ag-dia { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.ag-dia .page-title { margin: 0; white-space: nowrap; }
-.ag-flechas { display: flex; gap: 6px; }
-/* Flechas de día como las de la semana de Inicio: sin borde ni círculo. */
-.ag-flecha { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-ctl);
-  border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: var(--fs-3); line-height: 1; }
-.ag-dia-nota { margin-top: 6px; font-size: var(--fs-1); color: var(--ink-3); }
-.ag-dia-nota button, .ag-link { padding: 0; border: 0; background: none; font: inherit; color: var(--brand-ink);
-  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.ag-cab-der { position: relative; margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--fs-1); color: var(--ink-3); }
-.ag-cab-der > span b { font: 600 var(--fs-2) var(--font-mono); color: var(--ink); }
-.ag-icono { width: 36px; padding: 0; }
-.ag-vacio { padding: 14px 0; font-size: var(--fs-1); color: var(--ink-3); }
-
-/* Rediseño 2026-10-13 (maqueta propuesta-agenda-v3.html): el día de cada
-   inspector, que es lo que se aprueba, deja de ser la columna más angosta.
-   Una columna (<1100): días, comunas, sugeridas. Dos (1100–1599): comunas y
-   sugeridas | días. Tres (≥1600): comunas (con mapa) | sugeridas | días, estas
-   dos del mismo ancho. */
-.ag-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "plan" "mapa" "sug"; }
-.ag-mapa { grid-area: mapa; }
-.ag-sug  { grid-area: sug; }
-.ag-plan { grid-area: plan; display: grid; gap: 12px; align-content: start; }
-
-/* Cajas como el resto de paneles (sistema visual, 2026-10-13): radio 12,
-   sombra y sin borde; títulos en Barlow (la condensada es solo la fecha-título). */
-.ag-caja { background: var(--surface); border: 0; border-radius: var(--r-panel); box-shadow: var(--shadow-sm); padding: 16px 18px; min-width: 0; }
-.ag-caja-cab { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
-.ag-caja-cab h2 { margin: 0; font: 600 var(--fs-2)/1.25 var(--font-sans); color: var(--ink); }
-.ag-caja-cab > span { font-size: var(--fs-1); color: var(--ink-3); }
-
-/* Mapa: SVG propio de las comunas (comunas-mapa.json), sin Google Maps. */
-.ag-ley { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: var(--fs-1); color: var(--ink-3); }
-.ag-escala { display: inline-flex; align-items: center; gap: 6px; }
-.ag-escala span { display: inline-flex; }
-.ag-escala i { width: 18px; height: 10px; }
-.ag-escala i:first-child { border-radius: 2px 0 0 2px; }
-.ag-escala i:last-child { border-radius: 0 2px 2px 0; }
-.ag-punto { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; background: var(--ag-i1); }
-.ag-punto.i2 { background: var(--ag-i2); } .ag-punto.i3 { background: var(--ag-i3); } .ag-punto.i4 { background: var(--ag-i4); }
-.ag-svg { display: block; width: 100%; height: auto; max-height: 300px; }
-.ag-com path { stroke: var(--surface); stroke-width: 1.5; stroke-linejoin: round; cursor: pointer; transition: fill .15s ease-out; }
-.ag-com:focus { outline: none; }
-.ag-com:focus-visible path { stroke: var(--ink); stroke-width: 2.5; }
-.ag-com text { font: 600 var(--fs-1) var(--font-sans); fill: var(--ink); text-anchor: middle; pointer-events: none; }
-.ag-com text.n { font: 400 var(--fs-1) var(--font-mono); fill: var(--ink-2); }
-.ag-filtro { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; pointer-events: none; }
-.ag-rutamapa { --c: var(--ag-i1); pointer-events: none; }
-.ag-rutamapa.i2 { --c: var(--ag-i2); } .ag-rutamapa.i3 { --c: var(--ag-i3); } .ag-rutamapa.i4 { --c: var(--ag-i4); }
-.ag-linea { fill: none; stroke: var(--c); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.ag-vuelta { stroke: var(--c); stroke-width: 1.4; stroke-dasharray: 3 4; stroke-linecap: round; opacity: .7; }
-.ag-pin circle { fill: var(--c); stroke: var(--surface); stroke-width: 2; }
-.ag-pin text { font: 700 var(--fs-1) var(--font-mono); fill: var(--surface); text-anchor: middle; dominant-baseline: central; }
-.ag-ofi { pointer-events: none; }
-.ag-ofi rect { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
-.ag-ofi text { font: 600 var(--fs-1) var(--font-sans); fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
-/* Cuadrícula de comunas: el selector (rediseño 2026-10-13). Todas visibles,
-   de la que más tiene a la que menos; «Todas» primero. */
-.ag-coms { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 10px; }
-/* Comunas: fondo neutro sin borde; la elegida en tinta, como el chip común. */
-.ag-com-b { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 34px; padding: 0 10px;
-  border: 0; border-radius: var(--r-ctl); background: var(--surface-2); cursor: pointer;
-  font: 600 var(--fs-1) var(--font-sans); color: var(--ink-2); }
-.ag-com-b span { font: 400 var(--fs-1) var(--font-mono); color: var(--ink-3); }
-.ag-com-b.activo { background: var(--ink-2); color: var(--surface); }
-.ag-com-b.activo span { color: inherit; opacity: .75; }
-.ag-com-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-/* El mapa y su leyenda solo con ancho de sobra (ver .ag-grid ≥1600). */
-.ag-mapa .ag-ley, .ag-mapa .ag-svg { display: none; }
-@media (hover: hover) and (pointer: fine) {
-  .ag-flecha:hover { background: var(--surface-2); color: var(--ink); }
-  .ag-com-b:not(.activo):hover { background: var(--surface-3); }
-  .ag-com:hover path { fill: #BBA27F; }
-}
-
-/* Sugeridas: el puntaje ordena, la línea de abajo explica el porqué. */
-.ag-rad-inline { font-family: var(--font-mono); font-size: var(--fs-1); }
-.ag-barrio { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 2px; font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); }
-.ag-barrio span { font: 400 var(--fs-1) var(--font-mono); color: var(--ink-4); }
-.ag-sugs { list-style: none; margin: 0; padding: 0; }
-.ag-s { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
-.ag-s-txt { flex: 1; min-width: 0; }
-.ag-dir { font: 600 var(--fs-2)/1.35 var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
-.ag-por { margin-top: 1px; font-size: var(--fs-1); line-height: 1.45; color: var(--ink-3); }
-.ag-por .vencida { color: var(--ink); font-weight: 600; }
-.ag-por .nivel { color: var(--ink-2); font-weight: 600; }
-.ag-s.tomada .ag-dir { color: var(--ink-3); }
-.ag-s-acc { display: flex; gap: 4px; flex: none; }
-.ag-mas { --c: var(--ag-i1); display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 52px; height: 32px; padding: 0 9px 0 7px;
-  border: 0; border-radius: var(--r-full); background: var(--surface-2); font: 600 var(--fs-1) var(--font-sans); color: var(--ink-2); cursor: pointer; }
-.ag-mas::before { content: '+'; font-size: var(--fs-2); font-weight: 500; color: var(--c); }
-.ag-mas.i2 { --c: var(--ag-i2); } .ag-mas.i3 { --c: var(--ag-i3); } .ag-mas.i4 { --c: var(--ag-i4); }
-.ag-en { --c: var(--ag-i1); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-full);
-  background: var(--surface-2); background: color-mix(in srgb, var(--c) 13%, var(--surface)); color: var(--c); font: 600 var(--fs-1) var(--font-sans); cursor: pointer; }
-.ag-en.i2 { --c: var(--ag-i2); } .ag-en.i3 { --c: var(--ag-i3); } .ag-en.i4 { --c: var(--ag-i4); }
-.ag-en::after { content: '×'; font-size: var(--fs-2); font-weight: 400; opacity: .7; }
-.ag-ver { display: block; width: 100%; margin-top: 8px; padding: 10px 0 2px; border: 0; background: none; text-align: left;
-  font: 600 var(--fs-1) var(--font-sans); color: var(--brand-ink); cursor: pointer; }
-@media (hover: hover) and (pointer: fine) {
-  .ag-mas:hover { background: var(--surface-3); }
-}
-
-/* El día de cada inspector, en el orden del recorrido. */
-.ag-insp { --c: var(--ag-i1); }
-.ag-insp.i2 { --c: var(--ag-i2); } .ag-insp.i3 { --c: var(--ag-i3); } .ag-insp.i4 { --c: var(--ag-i4); }
-.ag-insp-cab { display: flex; align-items: center; gap: 10px; }
-.ag-ini { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--c); color: var(--surface);
-  font: 600 var(--fs-1)/34px var(--font-sans); text-align: center; }
-.ag-insp-nom { min-width: 0; }
-.ag-insp-cab h2 { margin: 0; font: 600 var(--fs-2)/1.25 var(--font-sans); color: var(--ink); }
-.ag-insp-cab small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
-.ag-meta { margin-left: auto; text-align: right; font: 600 var(--fs-4)/1 var(--font-mono); color: var(--ink); white-space: nowrap; }
-.ag-meta > span { color: var(--ink-4); }
-.ag-meta small { display: block; margin-top: 3px; font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
-.ag-meta.pasa small { color: var(--amber); font-weight: 600; }
-.ag-ruta { position: relative; list-style: none; margin: 12px 0 0; padding: 0; }
-.ag-ruta::before { content: ''; position: absolute; left: 11px; top: 16px; bottom: 16px; width: 2px; background: var(--c); opacity: .35; }
-.ag-parada { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 0 12px; align-items: start; padding: 8px 0; }
-.ag-parada + .ag-parada::before { content: ''; position: absolute; top: 0; left: 36px; right: 0; height: 1px; background: var(--line); }
-.ag-num { position: relative; z-index: 1; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; background: var(--c); color: var(--surface);
-  font: 700 var(--fs-1)/24px var(--font-mono); text-align: center; box-shadow: 0 0 0 3px var(--surface); }
-/* Lo ya asignado atenuado; lo nuevo con el color del inspector y «Nueva». */
-.ag-insp-cab small .ag-nuevas { font-weight: 600; color: var(--c); }
-.ag-parada.ya .ag-num { background: var(--surface-2); color: var(--ink-3); }
-.ag-parada.ya .ag-dir { font-size: var(--fs-2); color: var(--ink-2); }
-.ag-parada.nueva { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 8%, transparent), transparent 75%); border-radius: var(--r-card); }
-.ag-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); background: var(--c); color: var(--surface);
-  font: 600 var(--fs-1) var(--font-sans); letter-spacing: .02em; vertical-align: 2px; }
-.ag-quitar { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); font-size: var(--fs-3); line-height: 1; cursor: pointer; }
-.ag-vuelve { display: flex; align-items: center; gap: 12px; padding: 6px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
-.ag-vuelve i { width: 24px; height: 24px; flex: none; display: grid; place-items: center; font-style: normal; font-size: var(--fs-1);
-  border: 1.5px solid var(--ink-3); border-radius: 5px; background: var(--surface); position: relative; z-index: 1; }
-.ag-restablecer { justify-self: start; font-size: var(--fs-1); }
-.ag-corta { margin-top: 8px; padding: 8px 10px; border-radius: var(--r-card); background: var(--surface-2); font-size: var(--fs-1); line-height: 1.45; color: var(--ink-2); }
-@media (hover: hover) and (pointer: fine) {
-  .ag-quitar:hover { background: var(--surface-2); color: var(--ink); }
-}
-
-/* Un solo botón para el día: dice exactamente lo que va a escribir. Barra
-   clara con sombra (sistema visual, 2026-10-13): era la única superficie
-   oscura de la app; la acción se lee como acción por el café lleno. */
-.ag-bar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 24px;
-  margin: 16px -16px 0; padding: 12px 16px; background: var(--surface); color: var(--ink);
-  box-shadow: 0 -10px 30px -16px rgba(31,27,22,.35), 0 -1px 0 var(--line); }
-.ag-bar-res { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; flex: 1 1 320px; font-size: var(--fs-2); }
-.ag-bar-res > span { display: inline-flex; align-items: center; gap: 8px; }
-.ag-bar-res b { font-weight: 600; }
-.ag-bar-res .suave { color: var(--ink-3); }
-.ag-bar-res .ag-punto { margin: 0; }
+/* ── Agenda: ⚙ Reglas (PanelReglasAgenda, agenda.jsx) ──────────
+   Lo que queda de la Agenda por inspector (2026-10-03) desde que la
+   pantalla es la semana del equipo (bloque AGENDA SEMANA, al final). */
 .ag-bar-btn { width: 100%; height: 46px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--brand); color: var(--surface);
   font: 600 var(--fs-2) var(--font-sans); cursor: pointer; white-space: nowrap; }
 .ag-bar-btn:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
 @media (hover: hover) and (pointer: fine) {
   .ag-bar-btn:not(:disabled):hover { background: var(--brand-ink); }
 }
-.ag-flecha:focus-visible, .ag-mas:focus-visible, .ag-en:focus-visible, .ag-quitar:focus-visible, .ag-bar-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ag-bar-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* ⚙ Reglas: panel que se despliega del botón; el tablero sigue a la vista. */
 .ag-reglas { position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 340px; max-width: calc(100vw - 32px); box-sizing: border-box;
@@ -3591,43 +3421,11 @@ button.sv-col-head {
 .ag-reglas-pie { display: flex; gap: 8px; padding-top: 14px; }
 .ag-reglas-pie .ag-bar-btn { flex: 1; width: auto; height: 42px; font-size: var(--fs-2); }
 .ag-reglas-pie .vc-btn { min-height: 42px; }
-
-@media (max-width: 1199px), (pointer: coarse) {
-  .ag-mas, .ag-en, .ag-quitar { height: 44px; }
-  .ag-quitar { width: 44px; }
-}
 @media (max-width: 899px) {
-  /* El día largo («Miércoles 30 de septiembre») no cabe en una línea en el
-     celular: con nowrap empujaba las flechas fuera de la pantalla y la página
-     quedaba más ancha que el teléfono (revisión móvil 2026-11-04). */
-  .ag-dia .page-title { font-size: var(--fs-5); white-space: normal; min-width: 0; }
-  .ag-flechas { flex-shrink: 0; }
-  .ag-cab-der { margin-left: 0; flex-wrap: wrap; }
-  .ag-s { flex-wrap: wrap; }
-  .ag-s-acc { width: 100%; }
-  .ag-s-acc > * { flex: 1; }
   .ag-reglas { right: auto; left: 0; }
 }
 @media (min-width: 900px) {
-  .ag-bar { bottom: 0; margin: 20px 0 0; padding: 14px 16px 14px 22px; border-radius: var(--r-panel) var(--r-panel) 0 0; }
-  /* La barra se pega por encima del relleno inferior del contenedor que
-     scrollea, y por esa franja se veían pasar las sugeridas por debajo
-     (revisión 2026-10-13). Se tapa con el fondo de la página. */
-  .ag-bar::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 64px; background: var(--paper); pointer-events: none; }
   .ag-bar-btn { width: auto; }
-}
-@media (min-width: 1100px) {
-  .ag-grid { gap: 18px; align-items: start; grid-template-columns: 420px minmax(0, 1fr);
-    grid-template-rows: auto 1fr; grid-template-areas: "mapa plan" "sug plan"; }
-  .ag-plan { position: sticky; top: 0; }
-}
-/* Con ancho de sobra vuelve el mapa, como selector angosto. */
-@media (min-width: 1600px) {
-  .pantalla.ag-pantalla { max-width: 1800px; }
-  .ag-grid { grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "mapa sug plan"; }
-  .ag-mapa { position: sticky; top: 0; }
-  .ag-mapa .ag-ley { display: flex; margin-bottom: 4px; }
-  .ag-mapa .ag-svg { display: block; max-height: 260px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3718,7 +3516,7 @@ button.sv-col-head {
 .bq-sec-n { font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); background: var(--surface-2); border-radius: var(--r-full); padding: 0 6px; }
 .bq-chev { margin-left: auto; display: inline-flex; color: var(--ink-4); font-size: var(--fs-1); transition: transform .15s; }
 .bq-lista-cerrar svg { vertical-align: -2px; }
-.sv-nav-btn, .ag-flecha { display: inline-flex; align-items: center; justify-content: center; }
+.sv-nav-btn { display: inline-flex; align-items: center; justify-content: center; }
 .bq-plegada .bq-chev { transform: rotate(-90deg); }
 .bq-plegada .bq-sec-cuerpo { display: none; }
 .bq-lbl { font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); margin: 14px 0 6px; }
@@ -4008,14 +3806,6 @@ button.sv-col-head {
 .fv-gestion-pie { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 @media (pointer: coarse) { .bq-gestion .vc-btn { min-height: 44px; } }
 .fv-pqr-x { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; margin-left: 12px; }
-.ag-rad { margin-top: 1px; font: 500 var(--fs-1)/1.4 var(--font-mono); color: var(--ink-2); overflow-wrap: anywhere; }
-/* Expediente opcional de cada parada nueva del borrador (2026-10-19). */
-.ag-exp {
-  margin-top: 3px; width: 130px; min-height: 28px; padding: 2px 8px;
-  border-radius: var(--r-sm); border: 1px solid var(--line-2);
-  background: var(--surface); color: var(--ink-2);
-  font-family: inherit; font-size: var(--fs-1);
-}
 
 /* ── Revisión de UI 2026-10-13 (GLM, plan docs/PLAN_2026-10-13_revision-ui-front.md) ── */
 /* Chip «PQR» (visita-card.jsx): antes estilo inline, 51×19 px con letra de 10. */
@@ -4027,13 +3817,11 @@ button.sv-col-head {
   font-family: inherit; font-size: var(--fs-1); font-weight: 600; line-height: 1.6; text-decoration: none; white-space: nowrap; }
 .pqr-chip::after { content: ''; position: absolute; inset: -12px -6px; }
 .ent-par { display: inline-flex; align-items: center; gap: 6px; }
-.sv-vacio, .ag-ley { font-size: var(--fs-1); }
+.sv-vacio { font-size: var(--fs-1); }
 @media (max-width: 899px) {
   /* Táctil: 44 px los botones sueltos, 36 (--tap-min) los chips en fila. */
-  .sv-nav-btn, .ag-flecha { width: var(--tap); height: var(--tap); }
+  .sv-nav-btn { width: var(--tap); height: var(--tap); }
   .sv-hoy, .sv-chip { min-height: var(--tap-min); height: auto; }
-  .ag-com-b { height: var(--tap); }
-  .ag-dia-nota button { min-height: var(--tap-min); }
   .bq-orden select { height: var(--tap); }
   .bq-gestion .vc-btn { min-height: var(--tap); }
   .bq-orden ~ .vc-btn { min-height: var(--tap); }
@@ -4252,7 +4040,6 @@ button.sv-col-head {
 .au-row .t small { display: block; margin-top: 1px; font-size: var(--fs-1); color: var(--ink-3); overflow-wrap: anywhere; }
 .au-vacio-hoy { padding: 18px 14px; border: 1px dashed var(--line-2); border-radius: var(--r-card);
   font-size: var(--fs-1); color: var(--ink-3); }
-
 
 /* Vista Lista */
 .au-lis-tools { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -5124,7 +4911,6 @@ button.sv-col-head { font-family: var(--font-cond); font-weight: 700; }
 .au-grupo.hoy > h2 { padding-left: 10px; border-left: 3px solid var(--valla); }
 .au-row .hora { font: 700 var(--fs-2) var(--font-cond); }
 
-
 /* ── «Pedir cita»: caso y cupo elegidos llenos de tinta con texto
    blanco; radio visible sobre la tinta con el amarillo de la firma
    (aquí es selección, es su lugar). «Reservar» lleno de 52 px. */
@@ -5365,21 +5151,9 @@ select.login-input {
   border: 0; background: none; border-radius: 0; padding: 4px 0 10px;
 }
 
-/* Agenda, celular: «Reglas» y «Recargar» medían 36 px de alto. */
-@media (max-width: 899px) {
-  .ag-cab-der .vc-btn { min-height: var(--tap); }
-}
-
 /* ╔════════════════════════════════════════════════════════════╗
    ║ VALLA DE OBRA 10 — los dos toques de 44 px que quedaron    ║
    ╚════════════════════════════════════════════════════════════╝ */
-
-/* Agenda, celular: el campo «Expediente» de cada parada nueva medía 28 px.
-   Está solo en su renglón de la parada: el renglón mismo pasa a 44, sin
-   espacio añadido debajo. (.rfm-generar, el otro toque, vive arriba, TASK 04.) */
-@media (max-width: 899px) {
-  .ag-exp { min-height: 44px; display: inline-flex; align-items: center; }
-}
 /* ╔════════════════════════════════════════════════════════════╗
    ║ Tablero territorial (E7)                                   ║
    ╚════════════════════════════════════════════════════════════╝ */
@@ -5791,111 +5565,10 @@ button.tb-det-n { cursor: pointer; }
   .au-cl-act-lote, .au-cl-act.solo-lote { display: none; }
 }
 
-/* ── Agenda › Inspecciones (2026-11-03; maqueta propuesta-inspecciones.html) ── */
+/* Control segmentado (nació en Agenda › Inspecciones; hoy lo usa Audiencias, .au-seg). */
 .ag-seg { display: inline-flex; background: var(--surface-2); border-radius: var(--r-ctl); padding: 3px; }
 .ag-seg button { border: 0; background: none; padding: 0 14px; min-height: 36px; border-radius: 5px; cursor: pointer; color: var(--ink-3); }
 .ag-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-.it { --it-i1: #7A4B6E; --it-i2: #2F6F6A; --it-i3: #55606B; --it-i4: #4B4F8A; }
-.it-titulo { margin: 0; }
-.it-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 16px; }
-.it-semana { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: var(--fs-1); color: var(--ink-3); }
-.it-flecha { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line-2); background: var(--surface); border-radius: var(--r-ctl); cursor: pointer; color: var(--ink); }
-.it-hoy { min-height: 36px; padding: 0 12px; border: 0; background: var(--surface-2); border-radius: var(--r-ctl); cursor: pointer; }
-.it-buscar { position: relative; margin-bottom: 14px; }
-.it-buscar input { width: 100%; max-width: 560px; height: 44px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-2); }
-.it-res { position: absolute; top: 48px; left: 0; width: min(560px, 100%); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 20; overflow: hidden; }
-.it-res button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 10px 14px; cursor: pointer; min-height: 44px; }
-.it-res button:hover { background: var(--surface-2); }
-.it-res b { display: block; font-weight: 600; }
-.it-res small, .it-nota { font-size: var(--fs-1); color: var(--ink-3); }
-.it-nota { margin: 6px 0 0; }
-.it-noesta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; max-width: 560px; margin-top: 8px; padding: 10px 12px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--line-2); font-size: var(--fs-1); color: var(--ink-3); }
-.it-noesta p { margin: 0; flex: 1 1 260px; }
-.it-noesta b { color: var(--ink); font-weight: 600; }
-.it-registrar { margin-bottom: 14px; max-width: 900px; }
-.it-caso { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--r-card); background: var(--valla-bg); border: 1px solid var(--valla); margin-bottom: 14px; }
-.it-caso b { font-weight: 600; }
-.it-caso small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
-.it-caso .it-motivo { color: var(--ink); font-weight: 600; }
-.it-x { margin-left: auto; width: 44px; height: 44px; border: 0; background: none; cursor: pointer; display: grid; place-items: center; color: var(--ink); }
-.it-error { margin: 0 0 14px; padding: 10px 12px; border-radius: var(--r-card); background: var(--red-bg); color: var(--red); font-size: var(--fs-1); }
-.it-cuerpo { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
-.it-bandeja { background: var(--surface); border-radius: var(--r-panel); padding: 14px; position: sticky; top: 16px; }
-.it-bandeja h2 { margin: 0; font-size: var(--fs-2); font-weight: 600; display: flex; gap: 6px; }
-.it-bandeja h2 span { color: var(--ink-3); font-weight: 400; }
-.it-bandeja .it-nota { margin: 2px 0 10px; }
-.it-pend { display: flex; align-items: stretch; border: 1px solid var(--line); background: var(--paper); border-radius: var(--r-card); margin-bottom: 8px; cursor: grab; }
-.it-pend.sel { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-.it-pend-b { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 10px; cursor: pointer; }
-.it-pend-b b { display: block; font-size: var(--fs-2); font-weight: 600; overflow-wrap: anywhere; }
-.it-pend-b small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
-.it-pend-b .it-hace { color: var(--amber); }
-.it-pend-x { width: 44px; border: 0; background: none; cursor: pointer; color: var(--ink-3); display: grid; place-items: center; }
-.it-tablero { display: grid; grid-template-columns: 44px repeat(5, minmax(0, 1fr)); background: var(--surface); border-radius: var(--r-panel); overflow: hidden; }
-.it-dia { padding: 10px 10px 8px; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.it-dia b { display: block; font-size: var(--fs-3); font-weight: 700; }
-.it-dia span { font-size: var(--fs-1); color: var(--ink-3); }
-.it-dia.on { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla); }
-.it-dia.pasado b { color: var(--ink-4); }
-.it-hora { font-size: var(--fs-1); color: var(--ink-3); text-align: right; padding: 8px 8px 0 0; border-bottom: 1px solid var(--line); }
-.it-celda { min-height: 60px; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px; }
-.it-celda.on { background: rgba(255, 244, 194, .45); }
-.it-libre { width: 100%; min-height: 50px; border: 1.5px dashed var(--valla); border-radius: var(--r-ctl); background: var(--valla-bg); cursor: pointer; color: var(--ink-2); font-size: var(--fs-1); font-weight: 600; }
-.it-libre:hover { background: var(--valla); }
-.it-libre.fuera { border-color: var(--line-2); background: transparent; color: var(--ink-4); font-weight: 400; opacity: 0; }
-.it-libre.fuera:hover, .it-libre.fuera:focus-visible { opacity: 1; background: var(--surface-2); }
-@media (hover: none) { .it-libre.fuera { opacity: .5; } }
-.it-tarj { position: relative; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--paper); padding: 6px 8px 6px 10px; font-size: var(--fs-1); line-height: 1.3; cursor: pointer; margin-bottom: 4px; }
-.it-tarj[draggable="true"] { cursor: grab; }
-.it-tarj::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--c); }
-.it-tarj:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
-.it-tarj b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.it-tarj > span { display: block; color: var(--ink-3); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.it-tarj .it-q { color: var(--c); font-weight: 600; }
-.it-tarj .it-id { white-space: nowrap; }
-.it-tarj.fuera { border-style: dashed; border-color: var(--ink-4); }
-.it-tarj.hecha { opacity: .62; }
-.it-tarj.nueva { animation: it-llega .5s ease-out; }
-@keyframes it-llega { from { transform: scale(.92); background: var(--valla); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .it-tarj.nueva { animation: none; } }
-.it-pie { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: var(--fs-1); color: var(--ink-3); }
-.it-ins { display: inline-flex; align-items: center; gap: 6px; }
-.it-ins i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
-.it-fz { color: var(--amber); font-weight: 600; }
-.it-conf { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; max-width: calc(100vw - 32px); padding: 12px 14px 12px 20px; border-radius: var(--r-panel); background: var(--ink); color: var(--surface); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-.it-conf b { font-size: var(--fs-3); font-weight: 700; }
-.it-conf select { height: 40px; border: 0; border-radius: var(--r-ctl); padding: 0 10px; color: var(--ink); }
-.it-conf-fz { color: var(--valla); font-size: var(--fs-1); }
-.it-btn { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-ctl); background: var(--valla); color: var(--ink); font-weight: 600; cursor: pointer; }
-.it-btn:disabled { opacity: .5; cursor: default; }
-.it-btn-txt { min-height: 44px; padding: 0 12px; border: 0; background: none; color: #d8d4c8; cursor: pointer; }
-.it-movil { display: none; }
-.it-tira { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
-.it-tira button { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-card); padding: 8px 2px; min-height: 64px; cursor: pointer; }
-.it-tira button b { display: block; font-weight: 700; }
-.it-tira button small { display: block; font-size: 11px; color: var(--ink-3); }
-.it-tira button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-.it-tira button.on { background: var(--valla-bg); }
-.it-horas-m { background: var(--surface); border-radius: var(--r-panel); }
-.it-hm { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-.it-hm-h { font-weight: 600; padding-top: 12px; }
-.it-hm .it-libre { min-height: 44px; }
-@media (max-width: 1199px) { .it-cuerpo { grid-template-columns: 1fr; } .it-bandeja { position: static; } }
-@media (min-width: 900px) and (max-width: 1199px) { .it-bandeja > .it-pend { display: inline-flex; width: calc(50% - 6px); margin-right: 6px; vertical-align: top; } }
-@media (max-width: 899px) {
-  /* minmax(0, 1fr): con 1fr la columna crecía al ancho mínimo de la tira de
-     días y a 360 px la bandeja «Por programar» se salía 16 px de la pantalla
-     (revisión móvil 2026-11-04). */
-  .it-cuerpo { grid-template-columns: minmax(0, 1fr); }
-  .it-tira { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .it-tira button small { overflow-wrap: anywhere; }
-  .it-flecha { width: var(--tap); height: var(--tap); }
-  .it-bandeja { position: static; }
-  .it-tablero, .it-pie { display: none; }
-  .it-movil { display: block; }
-  .it-semana { margin-left: 0; }
-  .it-conf { bottom: calc(84px + env(safe-area-inset-bottom)); }
-}
 .fv-agenda-link { margin-top: 4px; padding: 0; min-height: 32px; border: 0; background: none; color: var(--ink); font-weight: 600; text-decoration: underline; cursor: pointer; font-size: var(--fs-1); }
 .au-decreto-btn { margin-top: 10px; width: 100%; }
 /* «Decretar inspección» en la fila de la cita (Agenda y Lista, 2026-11-04) */
@@ -6191,6 +5864,223 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .vp .rfm-zoom button:disabled { opacity: .35; cursor: default; }
 @media (pointer: coarse) { .vp .rfm-zoom button { width: 44px; height: 44px; } }
 
+/* ── AGENDA SEMANA (2026-11-09) ───────────────────────────────────
+   Agenda unificada (agenda-semana.jsx, TASK 02): la semana del equipo.
+   Prefijo as- propio (las vistas viejas usan .ag-/.it-). El día elegido
+   mide 2,2 fr (--as-dias lo fija el .jsx) y se marca con --valla-bg y
+   raya superior --valla: el amarillo solo en lo seleccionado
+   (DESIGN.md §3), nunca en botones. Rojo, solo errores. */
+.as-pantalla { --ag-i1: #7A4B6E; --ag-i2: #2F6F6A; --ag-i3: #55606B; --ag-i4: #4B4F8A; min-width: 0; }
+
+/* Cabecera: título + navegación de semana en una fila; Reglas/↻ a la
+   derecha (solo ADMIN; el .jsx decide). Molde de .ag-cab/.it-cab. */
+.as-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 14px; }
+.as-cab .page-title { margin: 0; white-space: nowrap; }
+.as-semana { display: flex; align-items: center; gap: 6px; }
+.as-flecha { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line-2);
+  background: var(--surface); border-radius: var(--r-ctl); cursor: pointer; color: var(--ink); line-height: 1; }
+.as-rango { font: 600 var(--fs-3) var(--font-cond); color: var(--ink); min-width: 168px; text-align: center; }
+.as-hoy { min-height: 36px; padding: 0 12px; margin-left: 4px; border: 0; background: var(--surface-2);
+  border-radius: var(--r-ctl); cursor: pointer; font-size: var(--fs-1); font-weight: 600; color: var(--ink); }
+.as-cab-der { position: relative; margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.as-icono { width: 36px; padding: 0; }
+
+/* Tablero: primera columna inspectores, luego los 5 días. El borde va en
+   cada celda (izq. + abajo), no en la rejilla, para que el fondo del día
+   elegido llegue limpio al borde del panel. */
+.as-tabla { min-width: 0; }
+.as-tablero { display: grid; grid-template-columns: 120px var(--as-dias, 1fr 1fr 1fr 1fr 1fr);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel); overflow: hidden; }
+.as-esq { border-bottom: 1px solid var(--line); }
+
+/* Cabecera de día: botón (festivo, deshabilitado). Elegido = fondo
+   --valla-bg + raya superior de 3 px --valla. */
+.as-dia { border: 0; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: none; text-align: left; padding: 10px 10px 9px; cursor: pointer; font: inherit; min-width: 0; }
+.as-dia:focus-visible, .as-it:focus-visible { outline-offset: -2px; }
+.as-dia b { display: block; font: 700 var(--fs-3) var(--font-cond); color: var(--ink); }
+.as-dia-zona { display: block; font-size: var(--fs-1); color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-dia-n { display: block; font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); margin-top: 2px; }
+.as-dia:disabled { cursor: default; }
+.as-dia.sel { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla); }
+
+/* Columna de inspectores: círculo con su color (--c lo fija el .jsx con
+   --ag-i1…4) y cuánto lleva en la semana. */
+.as-ins { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); min-width: 0; }
+.as-ini { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--c); color: var(--surface);
+  display: grid; place-items: center; font: 600 var(--fs-1) var(--font); }
+.as-ins-nom { min-width: 0; }
+.as-ins-nom b { display: block; font-weight: 600; font-size: var(--fs-2); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-ins-nom small { display: block; color: var(--ink-3); font-size: var(--fs-1); }
+
+/* Celda inspector × día. La elegida lleva el amarillo pálido al 35 %
+   (--valla-bg más suave: los items tienen que seguir leyéndose). */
+.as-celda { border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 6px; min-width: 0; display: flex; flex-direction: column; gap: 4px; min-height: 92px; }
+.as-celda.sel { background: rgba(255, 244, 194, .35); }   /* --valla-bg al 35 %, como la maqueta */
+.as-cuenta { margin-top: auto; font-size: var(--fs-1); color: var(--ink-3);
+  display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; }
+.as-cuenta b { color: var(--ink); font-weight: 600; }
+.as-pasa { color: var(--amber); font-weight: 600; }
+
+/* Item: hora (inspección, condensada 700) · dirección · caso debajo.
+   Inspección sobre --surface-2, visita sobre --carril; fuera de zona con
+   contorno punteado. */
+.as-it { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  gap: 2px 6px; padding: 5px 6px; border-radius: var(--r-ctl); background: var(--carril);
+  font-size: var(--fs-1); line-height: 1.25; min-width: 0; cursor: pointer; }
+.as-it-h { font: 700 var(--fs-2) var(--font-cond); }
+.as-it-d { font: 600 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-it-s { grid-column: 2 / 4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-it-s .as-fz { color: var(--ink-2); }
+.as-it-insp { background: var(--surface-2); }
+.as-it-visita .as-it-h { display: none; }
+.as-it-visita .as-it-d { grid-column: 1 / 3; }
+.as-it-visita .as-it-s { grid-column: 1 / 4; }
+/* Lo del borrador: placa con filete, «Nueva» al inicio del subrenglón y ✕. */
+.as-it-nueva { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+.as-it-s .as-nueva { color: var(--ink); }
+.as-quitar { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: var(--ink-3); cursor: pointer; }
+.as-quitar:hover { background: var(--surface-2); color: var(--ink); }
+
+/* Cuerpo: tablero | «Por agendar» (TASK 03). */
+.as-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.as-panel { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
+  position: sticky; top: 16px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; min-width: 0; }
+.as-panel-cab { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.as-panel-cab h2 { margin: 0; font: 700 var(--fs-4)/1.1 var(--font-cond); color: var(--ink); }
+.as-panel-cab p { margin: 2px 0 10px; font-size: var(--fs-1); color: var(--ink-3); }
+.as-buscar { position: relative; }
+.as-buscar svg { position: absolute; left: 12px; top: 14px; color: var(--ink-4); pointer-events: none; }
+.as-buscar input { width: 100%; height: 44px; padding: 0 12px 0 36px; border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-2); }
+.as-buscar input::placeholder { color: var(--ink-4); }
+.as-panel-lista { overflow: auto; padding: 4px 0 12px; }
+.as-grupo { margin: 14px 16px 4px; font: 700 var(--fs-2) var(--font-cond); color: var(--ink);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.as-grupo span { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.as-fila { padding: 10px 16px; border-top: 1px solid var(--line); }
+.as-grupo + .as-fila { border-top: 0; }
+.as-fila-d { font: 700 var(--fs-3)/1.2 var(--font-cond); color: var(--ink); overflow-wrap: anywhere; }
+.as-fila-m { margin-top: 1px; font-size: var(--fs-1); color: var(--ink-3); }
+.as-fila-m b { color: var(--ink); font-weight: 600; }
+.as-acc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.as-btn-t { min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-ctl); background: var(--surface-2);
+  font-size: var(--fs-1); font-weight: 600; color: var(--ink); cursor: pointer; }
+.as-btn-t:hover { background: var(--surface-3); }
+.as-link { border: 0; background: none; padding: 0; font: 600 var(--fs-1) var(--font-sans); color: var(--ink);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* «+ AH»: mismo molde que .ag-mas de la Agenda vieja; apagado con «–». */
+.as-mas { --c: var(--ag-i1); height: 32px; min-width: 52px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 3px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-full); background: var(--surface-2);
+  font: 600 var(--fs-1) var(--font-sans); color: var(--ink-2); cursor: pointer; }
+.as-mas::before { content: '+'; color: var(--c); font-size: var(--fs-2); font-weight: 500; }
+.as-mas.i2 { --c: var(--ag-i2); } .as-mas.i3 { --c: var(--ag-i3); } .as-mas.i4 { --c: var(--ag-i4); }
+.as-mas[aria-disabled="true"] { color: var(--ink-4); cursor: not-allowed; }
+.as-mas[aria-disabled="true"]::before { content: '–'; color: var(--ink-4); }
+.as-va, .as-nota, .as-motivo { margin: 8px 0 0; font-size: var(--fs-1); color: var(--ink-2); }
+.as-nota { color: var(--ink-3); }
+.as-motivo { color: var(--ink); font-weight: 600; }
+.as-elige, .as-horas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.as-elige button { min-height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-full);
+  background: var(--surface); font-size: var(--fs-1); font-weight: 600; color: var(--ink); cursor: pointer; }
+.as-elige button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.as-elige button[aria-disabled="true"] { color: var(--ink-4); border-style: dashed; cursor: not-allowed; }
+.as-hora { min-height: 32px; min-width: 44px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--r-ctl);
+  background: var(--surface); font: 600 var(--fs-2) var(--font-cond); color: var(--ink); cursor: pointer; }
+.as-hora:hover { background: var(--valla-bg); border-color: var(--valla); }
+.as-exp { display: block; width: 140px; height: 36px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-2); }
+.as-exp::placeholder { color: var(--ink-4); }
+.as-vacio { margin: 0; padding: 12px 16px; font-size: var(--fs-1); color: var(--ink-3); }
+.as-vacio p { margin: 0 0 8px; }
+.as-vacio b { color: var(--ink); }
+.as-registrar { padding: 8px 16px; }
+@media (min-width: 900px) and (max-width: 1439px) {
+  .as-cuerpo { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+@media (max-width: 1279px) {
+  .as-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .as-panel { position: static; max-height: none; }
+}
+
+/* Barra del borrador (TASK 04): pegada abajo, con el único botón lleno. */
+.as-barra { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
+  margin-top: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line-2);
+  border-radius: var(--r-panel); }
+.as-barra-txt { min-width: 0; font-size: var(--fs-2); color: var(--ink); }
+.as-barra-txt b { font-weight: 600; }
+.as-barra-txt small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
+.as-barra-acc { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
+.as-btn-llena { min-height: 44px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--ink);
+  color: var(--surface); font: 700 var(--fs-2) var(--font-sans); cursor: pointer; }
+.as-btn-llena:hover:not(:disabled) { background: var(--brand-ink); }
+.as-btn-llena:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
+.as-btn-txt { min-height: 44px; padding: 0 12px; border: 0; background: none; font: 600 var(--fs-2) var(--font-sans);
+  color: var(--ink-3); cursor: pointer; }
+.as-btn-txt:hover:not(:disabled) { color: var(--ink); }
+/* Arrastrar: lo que se puede mover lleva la mano; la celda destino, punteada. */
+.as-it[draggable="true"] { cursor: grab; }
+/* Expediente de la visita nueva, dentro de su item (ocupa el renglón entero). */
+.as-exp-it { grid-column: 1 / 4; width: 120px; height: 30px; margin-top: 4px; padding: 0 8px; border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-1); }
+.as-exp-it::placeholder { color: var(--ink-4); }
+.as-celda.as-drop { outline: 2px dashed var(--ink-3); outline-offset: -4px; }
+/* «Ver en la Agenda»: la inspección de la ficha se ilumina 2,5 s (selección = --valla-bg). */
+.as-it-resaltada { background: var(--valla-bg); box-shadow: inset 0 0 0 2px var(--valla); transition: background .35s ease-out, box-shadow .35s ease-out; }
+.as-it-fuera { outline: 1px dashed var(--ink-3); outline-offset: -1px; }
+
+/* Días compactos: solo la hora de cada inspección (el .jsx no pinta
+   dirección ni subrenglón) y una línea con las visitas. */
+.as-celda-compacta .as-it { grid-template-columns: auto 1fr; padding: 3px 6px; }
+.as-resumen { font-size: var(--fs-1); color: var(--ink-2); padding: 2px 4px; }
+
+/* 900–1439: la columna de inspectores se angosta y se oculta «N en la
+   semana» (regla de la TASK 02). */
+@media (min-width: 900px) and (max-width: 1439px) {
+  .as-tablero { grid-template-columns: 104px var(--as-dias, 1fr 1fr 1fr 1fr 1fr); }
+  .as-ins-nom small { display: none; }
+}
+
+/* Celular (<900, TASK 05): un día a la vez. La tira elige el día; cada
+   inspector es una placa con su celda del día elegido; «Por agendar»
+   debajo y la barra del borrador encima de las pestañas. Toques de 44 px. */
+.as-tira { display: none; }
+@media (max-width: 899px) {
+  .as-cab { gap: 8px 12px; }
+  .as-rango { min-width: 0; font-size: var(--fs-2); }
+  .as-flecha { width: var(--tap); height: var(--tap); }
+  .as-hoy { min-height: var(--tap); }
+  .as-cab-der .vc-btn { min-height: var(--tap); min-width: var(--tap); justify-content: center; }
+  .as-reglas .as-lbl { display: none; }
+  .as-tira { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-bottom: 12px; }
+  .as-tira button { min-height: 64px; padding: 8px 2px; border: 0; border-radius: var(--r-card); background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--line); text-align: center; cursor: pointer; font: inherit; color: var(--ink); }
+  .as-tira b { display: block; font: 700 var(--fs-2) var(--font-cond); }
+  .as-tira small { display: block; font-size: var(--fs-1); line-height: 1.2; color: var(--ink-3); }
+  .as-tira button[aria-pressed="true"] { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla), inset 0 0 0 1px var(--valla); }
+  .as-tira button:disabled { color: var(--ink-4); cursor: default; }
+  /* La rejilla pasa a un bloque por inspector del día elegido. */
+  .as-tablero { display: block; border: 0; border-radius: 0; background: none; overflow: visible; }
+  .as-esq, .as-dia, .as-celda { display: none; }
+  .as-ins { margin-top: 10px; background: var(--surface); border: 1px solid var(--line-2); border-bottom: 1px solid var(--line);
+    border-radius: var(--r-panel) var(--r-panel) 0 0; }
+  .as-ins-nom small { display: block; }
+  .as-celda.sel { display: flex; min-height: 0; padding: 8px; background: var(--surface); border: 1px solid var(--line-2);
+    border-top: 0; border-radius: 0 0 var(--r-panel) var(--r-panel); }
+  .as-it { padding: 8px; }
+  .as-quitar { width: var(--tap); height: var(--tap); }
+  .as-mas, .as-hora, .as-elige button, .as-btn-t { min-height: var(--tap); }
+  .as-mas { min-width: 56px; }
+  .as-exp, .as-exp-it { height: var(--tap); }
+  .as-cuerpo { gap: 14px; }
+  /* Barra encima de las pestañas (72 px + franja de gestos, como el «+»). */
+  .as-barra { bottom: calc(76px + env(safe-area-inset-bottom)); padding: 10px 12px; }
+  .as-barra-txt small { display: none; }
+}
 
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 9) PRINT                                                   ║

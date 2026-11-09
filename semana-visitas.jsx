@@ -511,10 +511,15 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   async function moverDeDia(f, dia, silencioso) {
     const antes = f['FECHA ASIGNACION VISITA'];
     const nueva = formatearFecha(dia);
+    // Inspecciones y visitas no se cruzan: a un día con inspección de otra
+    // zona no se mueve (choqueZonaInspeccion, 2026-11-09).
+    const cruce = choqueZonaInspeccion(datosEf, primerVisitador(visitadoresBD(f)), dia, f, { inspeccion: false });
+    if (cruce) { appAlert(cruce, { titulo: 'Se cruza con una inspección', tono: 'error' }); return; }
     setAjustes((a) => Object.assign({}, a, { [f._idx]: { fecha: nueva } }));
     try {
-      await gasPost({ accion: 'asignarRadicado', fila: f._idx, inspector: f['VISITADOR(ES)'] || '',
+      const r = await gasPost({ accion: 'asignarRadicado', fila: f._idx, inspector: f['VISITADOR(ES)'] || '',
         radicadoConocido: f['RADICADO'] || '', idVisita: f['ID_VISITA'] || '', fechaAsignacion: nueva });
+      if (r && r.ok === false) throw new Error(r.error || 'No se pudo mover.');
       invalidarCache('visitas');
       if (!silencioso) {
         mostrarAviso('Movida al ' + SV_ROTULOS[dia.getDay() - 1] + ' ' + dia.getDate(),

@@ -351,6 +351,23 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 // el webhook falla.
 async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expediente) {
   const estActual = normalizarEstado(f ? (f['ESTADO VISITA'] || f[13] || '') : '');
+  // La inspección al lugar sin iniciar se cambia en Agenda › Inspecciones:
+  // asignarla aquí movía su día sin mirar la hora ni los cruces (2026-11-09).
+  if (f && esInspeccionLugar(f) && estActual !== 'INICIADO') {
+    await appAlert('La inspección al lugar se cambia en Agenda › Inspecciones, donde se revisan la hora y los cruces con las visitas.',
+      { titulo: 'Inspección al lugar' });
+    return false;
+  }
+  // Inspecciones y visitas no se cruzan (choqueZonaInspeccion): el día con
+  // inspección es de su zona. Una iniciada no cambia de día al reasignarla.
+  if (f && estActual !== 'INICIADO') {
+    const bd = await leerVisitas().catch(() => null);
+    const cruce = choqueZonaInspeccion((bd && bd.datos) || [], inspector, fechaAsignacion || hoyDDMMAAAA(), f, { inspeccion: false });
+    if (cruce) {
+      await appAlert(cruce, { titulo: 'Se cruza con una inspección', tono: 'error' });
+      return false;
+    }
+  }
   if (estActual === 'INICIADO') {
     const actual = primerVisitador(visitadoresBD(f));
     const ok = await appConfirm(
@@ -362,7 +379,9 @@ async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expedient
     );
     if (!ok) return false;
   }
-  await gasPost({
+  // Un rechazo del backend (fila movida, inspección al lugar…) es error, no
+  // éxito: antes se daba por asignada y solo se recargaba.
+  const r = await gasPost({
     accion: 'asignarRadicado', fila, inspector,
     radicadoConocido: (f && f['RADICADO']) || '',
     idVisita: (f && f['ID_VISITA']) || '',
@@ -370,6 +389,7 @@ async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expedient
     // Vacío no pisa un expediente que ya exista (regla del backend).
     expediente: expediente || '',
   });
+  if (r && r.ok === false) throw new Error(r.error || 'No se pudo asignar.');
   invalidarCache('visitas');
   return true;
 }

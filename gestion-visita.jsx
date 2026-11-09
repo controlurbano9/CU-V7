@@ -51,6 +51,16 @@ function useGestionVisita({ datos, recargar }) {
     setBusyFila(filaOrigen);
     try {
       const fOrigen = filaDe(filaOrigen);
+      // La visita nueva es del mismo predio: no va a un día con inspección de
+      // otra zona (choqueZonaInspeccion). Sin DILIGENCIA, cuenta como visita.
+      const bd = await leerVisitas().catch(() => null);
+      const cruce = fOrigen ? choqueZonaInspeccion((bd && bd.datos) || [], inspector, fechaAsignacion || hoyDDMMAAAA(),
+        Object.assign({}, fOrigen, { _idx: null }), { inspeccion: false }) : '';
+      if (cruce) {
+        await appAlert(cruce, { titulo: 'Se cruza con una inspección', tono: 'error' });
+        setBusyFila(null);
+        return;
+      }
       const r = await gasPost({
         accion: 'crearNuevaVisitaAsignada',
         radicadoConocido: (fOrigen && fOrigen['RADICADO']) || '',
@@ -226,6 +236,12 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
   const panelNuevaAbierto = !!filaBase && asignandoFila === ('nueva:' + filaBase._idx);
 
   const abrirPanel = (id) => setAsignandoFila(asignandoFila === id ? null : id);
+  // La inspección al lugar sin iniciar no se asigna ni se reasigna aquí: su
+  // día, hora e inspector se cambian en Agenda › Inspecciones, que revisa los
+  // cruces (2026-11-09). Asignar desde aquí movía su día sin mirar la hora.
+  const inspSinIniciar = esInspeccionLugar(f) && est !== 'INICIADO';
+  const irAgendaInsp = () => window.dispatchEvent(new CustomEvent('cu-ir-agenda-inspeccion',
+    { detail: { fecha: formatearFecha(f['FECHA ASIGNACION VISITA'] || ''), fila: f._idx } }));
   // Sin acciones (p. ej. completada con otra visita pendiente) no hay barra.
   const conNueva = puedeNueva && (abierta || (!pendiente && est === 'COMPLETADO'));
   if (est !== 'PENDIENTE' && est !== 'ASIGNADO' && est !== 'INICIADO' && !conNueva) return null;
@@ -234,16 +250,21 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
     <section className="bq-gestion" aria-label="Gestión">
       <div className="bq-seg">
         <span className="bq-gestion-tit" aria-hidden="true">Gestión</span>
-        {est === 'PENDIENTE' && (
+        {inspSinIniciar && (est === 'PENDIENTE' || est === 'ASIGNADO') && (
+          <button type="button" className="vc-btn" onClick={irAgendaInsp}>Cambiar en la Agenda</button>
+        )}
+        {est === 'PENDIENTE' && !inspSinIniciar && (
           <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
             {abierto ? 'Cancelar' : 'Asignar'}
           </button>
         )}
         {(est === 'ASIGNADO' || est === 'INICIADO') && (
           <>
-            <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
-              {abierto ? 'Cancelar' : 'Reasignar'}
-            </button>
+            {!inspSinIniciar && (
+              <button type="button" className="vc-btn" disabled={busy} onClick={() => abrirPanel(f._idx)}>
+                {abierto ? 'Cancelar' : 'Reasignar'}
+              </button>
+            )}
             <button type="button" className="vc-btn" disabled={busy}
               onClick={() => acciones.desasignar(f._idx, f['RADICADO'], f['ID_VISITA'])}>
               <Icon.Undo size={14} /> Desasignar
@@ -281,7 +302,7 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
           ))}
       </div>
       {/* Panel de inspectores: debajo de los botones, como en la fila vieja. */}
-      {est !== 'COMPLETADO' && (
+      {est !== 'COMPLETADO' && !inspSinIniciar && (
         <PanelSeleccionInspector
           f={f} busy={busy} abierto={abierto} inspectores={inspectores}
           accion="asignar" conFecha conExpediente onAsignar={acciones.asignar} />
