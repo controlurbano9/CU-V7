@@ -6574,7 +6574,154 @@ function historialEvidenciasPorMes(filas) {
   });
 }
 
+// ── Hoja impresa de Consulta norma (2026-11-09, decisión del usuario) ──
+// La pantalla no se imprime: «Imprimir» arma una hoja carta con lo ya
+// consultado. El mapa va como imagen fija de Google (Static Maps) con el
+// contorno del predio y el pin: el mapa interactivo imprime con sus controles
+// y, a veces, con cuadros sin cargar. Maqueta: propuesta-impresion-norma.html.
+
+// Polilínea codificada de Google (puntos [lat, lon]): acorta la URL ~5 veces.
+function codificarPolilinea(puntos) {
+  var salida = '', pLat = 0, pLon = 0;
+  function cod(v) {
+    v = v < 0 ? ~(v << 1) : (v << 1);
+    var s = '';
+    while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  }
+  (puntos || []).forEach(function (p) {
+    var la = Math.round(p[0] * 1e5), lo = Math.round(p[1] * 1e5);
+    salida += cod(la - pLat) + cod(lo - pLon);
+    pLat = la; pLon = lo;
+  });
+  return salida;
+}
+
+// Deja como mucho `max` vértices repartidos y cierra el anillo: una URL de
+// Static Maps no puede pasar de 16.384 caracteres.
+function simplificarAnillo(anillo, max) {
+  var a = (anillo || []).filter(function (p) { return p && isFinite(p[0]) && isFinite(p[1]); });
+  max = max || 120;
+  if (a.length > max) {
+    var paso = a.length / max, r = [];
+    for (var i = 0; i < max; i++) r.push(a[Math.floor(i * paso)]);
+    a = r;
+  }
+  if (a.length > 1) {
+    var f = a[0], u = a[a.length - 1];
+    if (f[0] !== u[0] || f[1] !== u[1]) a = a.concat([f]);
+  }
+  return a;
+}
+
+// Metros por píxel (lógico, escala 1) en Web Mercator.
+function _metrosPorPixel(lat, zoom) {
+  return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+}
+
+// Zoom entero que deja los puntos en ~60 % del marco; entre 15 y 20 (más
+// lejos, el predio no se ve). Con un solo punto (sin contorno), 18: algo de
+// cuadra alrededor para ubicarse.
+function zoomMapaEstatico(puntos, anchoPx, altoPx) {
+  var ps = (puntos || []).filter(function (p) { return p && isFinite(p[0]) && isFinite(p[1]); });
+  if (ps.length < 2) return 18;
+  var minLa = Infinity, maxLa = -Infinity, minLo = Infinity, maxLo = -Infinity;
+  ps.forEach(function (p) {
+    minLa = Math.min(minLa, p[0]); maxLa = Math.max(maxLa, p[0]);
+    minLo = Math.min(minLo, p[1]); maxLo = Math.max(maxLo, p[1]);
+  });
+  var latC = (minLa + maxLa) / 2;
+  var anchoM = (maxLo - minLo) * 111320 * Math.cos(latC * Math.PI / 180);
+  var altoM = (maxLa - minLa) * 110574;
+  for (var z = 20; z > 15; z--) {
+    var mpp = _metrosPorPixel(latC, z);
+    if (anchoM / mpp <= anchoPx * 0.6 && altoM / mpp <= altoPx * 0.6) return z;
+  }
+  return 15;
+}
+
+// Barra de escala: longitud redonda que ocupe cerca de un quinto del ancho.
+function escalaMapaEstatico(lat, zoom, anchoPx) {
+  var mpp = _metrosPorPixel(lat, zoom);
+  var objetivo = anchoPx * 0.2 * mpp;
+  var redondos = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
+  var metros = redondos[0];
+  redondos.forEach(function (m) { if (m <= objetivo) metros = m; });
+  return { metros: metros, fraccion: (metros / mpp) / anchoPx };
+}
+
+// URL de la imagen fija: híbrido, contorno con doble trazo (tinta por fuera,
+// amarillo por dentro: se lee también en blanco y negro) y el pin.
+function urlMapaEstatico(o) {
+  var ancho = o.ancho || 640, alto = o.alto || 590;
+  var anillos = (o.anillos || []).map(function (a) { return simplificarAnillo(a, 120); })
+    .filter(function (a) { return a.length >= 3; });
+  var todos = [[o.lat, o.lon]];
+  anillos.forEach(function (a) { todos = todos.concat(a); });
+  var zoom = zoomMapaEstatico(todos, ancho, alto);
+  var partes = [
+    'center=' + o.lat.toFixed(6) + ',' + o.lon.toFixed(6),
+    'zoom=' + zoom, 'size=' + ancho + 'x' + alto, 'scale=2', 'maptype=hybrid',
+    // Sin íconos de negocios ni transporte: tapan el predio y no dicen nada de la norma.
+    'style=' + encodeURIComponent('feature:poi|visibility:off'),
+    'style=' + encodeURIComponent('feature:transit|visibility:off'),
+  ];
+  anillos.forEach(function (a) {
+    var enc = codificarPolilinea(a);
+    partes.push('path=' + encodeURIComponent('fillcolor:0xF2C2006B|color:0x15140FFF|weight:6|enc:' + enc));
+    partes.push('path=' + encodeURIComponent('color:0xF2C200FF|weight:3|enc:' + enc));
+  });
+  partes.push('markers=' + encodeURIComponent('color:red|' + o.lat.toFixed(6) + ',' + o.lon.toFixed(6)));
+  partes.push('key=' + encodeURIComponent(o.clave || ''));
+  return {
+    url: 'https://maps.googleapis.com/maps/api/staticmap?' + partes.join('&'),
+    zoom: zoom,
+    escala: escalaMapaEstatico(o.lat, zoom, ancho),
+  };
+}
+
+// Filas de «Norma POT» con el mismo texto de la pantalla; `condiciona` marca
+// lo que restringe el predio (barra de tinta en la hoja y renglón «Condiciona»).
+function filasNormaImpresion(r, comunaLabel) {
+  if (!r) return [];
+  var si = function (v) { return String(v || '').toUpperCase() === 'SI'; };
+  var tratamiento = r.tratamiento || '';
+  var filas = [
+    { etiqueta: 'Clasificación del suelo', valor: r.clasificacion || '—' },
+    { etiqueta: 'Polígono uso del suelo', valor: r.poligono || '—' },
+    { etiqueta: 'Tratamiento urbanístico', valor: tratamiento || '—',
+      condiciona: /^P\b|protecci/i.test(tratamiento), corto: 'Tratamiento de protección' },
+    { etiqueta: 'Franja de intensidad', valor: r.intensidad || '—' },
+    { etiqueta: 'Suelo de protección',
+      valor: si(r.sueloProt) ? (r.sueloProtCategoria || 'SI') : 'NO',
+      condiciona: si(r.sueloProt),
+      corto: 'Suelo de protección' + (r.sueloProtCategoria ? ' (' + String(r.sueloProtCategoria).split(':')[0].trim() + ')' : '') },
+    { etiqueta: 'Amenaza natural',
+      valor: si(r.amenaza)
+        ? (r.amenazaTipo ? r.amenazaTipo + (r.amenazaCategoria ? ' (' + r.amenazaCategoria + ')' : '') : 'SI')
+        : 'NO',
+      condiciona: si(r.amenaza),
+      corto: 'Amenaza' + (r.amenazaTipo ? ' por ' + String(r.amenazaTipo).toLowerCase() : '') +
+        (r.amenazaCategoria ? ' (' + String(r.amenazaCategoria).toLowerCase() + ')' : '') },
+    { etiqueta: 'Retiro de corrientes', valor: r.enRetiro || 'NO',
+      condiciona: si(r.enRetiro), corto: 'Retiro de corriente' },
+    { etiqueta: 'Comuna', valor: comunaLabel || '—' },
+    { etiqueta: 'Barrio / vereda', valor: r.barrioSugerido || '—' },
+  ];
+  if (si(r.enDRMI)) {
+    filas.push({ etiqueta: 'DRMI', valor: r.drmiNombre || 'Cerro Quitasol - La Holanda',
+      condiciona: true, corto: 'DRMI', ancho: true });
+  }
+  return filas;
+}
+
 var _cuUtilsExports = {
+  codificarPolilinea: codificarPolilinea,
+  simplificarAnillo: simplificarAnillo,
+  zoomMapaEstatico: zoomMapaEstatico,
+  escalaMapaEstatico: escalaMapaEstatico,
+  urlMapaEstatico: urlMapaEstatico,
+  filasNormaImpresion: filasNormaImpresion,
   candidatasAgenda: candidatasAgenda,
   ESPERA_PELDANOS: ESPERA_PELDANOS,
   escalonEspera: escalonEspera,

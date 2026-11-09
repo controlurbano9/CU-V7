@@ -126,6 +126,153 @@ function _parsearCoordenadas(texto) {
   return null;
 }
 
+// Comuna como la pinta «Norma POT»: la del Comunas.geojson y, si falta, la
+// derivada del barrio. En rural no hay comuna (las 12 del POT son urbanas).
+function _comunaLabelCN(resultado) {
+  if (!resultado) return '—';
+  if (resultado.ambito === 'Rural') return 'No aplica (rural)';
+  var comuna = resultado.comuna ||
+    ((typeof window._lookupComunaPorBarrio === 'function')
+      ? window._lookupComunaPorBarrio(resultado.barrioSugerido) : '');
+  return comuna ? (comuna === 'Vereda' ? 'Vereda' : 'Comuna ' + comuna) : '—';
+}
+
+// ── Hoja impresa (2026-11-09, decisión del usuario) ──────────────
+// La pantalla no se imprime: «Imprimir» arma esta hoja carta con lo ya
+// consultado y la monta en un portal directo bajo <body>; con
+// `body.cn-imprimiendo` el CSS de impresión esconde todo lo demás.
+// Maqueta aprobada: propuesta-impresion-norma.html (no versionada).
+// Marco del mapa: 104 × 96 mm → 640 × 590 px lógicos (scale=2 en la URL).
+const CN_MAPA_ANCHO = 640, CN_MAPA_ALTO = 590;
+
+function _claveMapsCN() {
+  var m = String(window.CU_MAPS_JS_URL || '').match(/[?&]key=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+// Precarga la imagen fija para que el diálogo de impresión no la encuentre a
+// medio bajar. Sin red o con error, la hoja sale sin mapa (y lo dice).
+function _precargarImagenCN(src, ms) {
+  return new Promise(function (resolve) {
+    var img = new Image(), listo = false;
+    var fin = function (ok) { if (!listo) { listo = true; resolve(ok); } };
+    img.onload = function () { fin(true); };
+    img.onerror = function () { fin(false); };
+    setTimeout(function () { fin(false); }, ms || 10000);
+    img.src = src;
+  });
+}
+
+function _HojaImpresionNorma({ d }) {
+  return ReactDOM.createPortal(
+    <article className="cn-hoja-print" aria-hidden="true">
+      <header className="cnp-cab">
+        <img className="cnp-escudo" src="logo.jpg" alt="" />
+        <div className="cnp-ent">
+          <b>Alcaldía de Bello</b>
+          <span>Inspección de Control Urbano N°9</span>
+          <div className="cnp-titulo">Consulta de norma POT</div>
+        </div>
+        <div className="cnp-meta">
+          <b>{d.fecha}</b>
+          {d.usuario && <span>Consultó: {d.usuario}</span>}
+          {d.buscado && <span>Búsqueda: {d.buscado}</span>}
+        </div>
+      </header>
+
+      <section className="cnp-ubic">
+        <div>
+          <div className="cnp-dir">{d.direccion}</div>
+          {d.sub && <div className="cnp-dir-sub">{d.sub}</div>}
+        </div>
+        <div className="cnp-coord">Coordenadas<b>{d.coord}</b></div>
+      </section>
+
+      {d.municipal && (
+        <div className="cnp-aviso">
+          <span className="cnp-aviso-ic">!</span>
+          <span><b>Predio del Municipio de Bello.</b> Razón social {d.municipal}.</span>
+        </div>
+      )}
+
+      <div className="cnp-cond">
+        <span className="cnp-rot">Condiciona</span>
+        {d.condiciona.length
+          ? d.condiciona.map((c, i) => <React.Fragment key={c}>{i > 0 && ' · '}<b>{c}</b></React.Fragment>)
+          : 'Nada de lo consultado restringe el predio'}
+      </div>
+
+      <section className="cnp-medio">
+        <div>
+          <div className="cnp-mapa">
+            {d.mapa
+              ? <>
+                  <img src={d.mapa.src} alt="" />
+                  <span className="cnp-norte" aria-hidden="true">
+                    <svg viewBox="-12 -12 24 24"><circle r="11" /><path d="M0 -8 L4 3 L0 1 L-4 3 Z" /><text y="9.5">N</text></svg>
+                  </span>
+                  <span className="cnp-escala">
+                    <i style={{ width: (d.mapa.escala.fraccion * 100) + '%' }}></i>
+                    <span>{d.mapa.escala.metros} m</span>
+                  </span>
+                </>
+              : <div className="cnp-sin-mapa">El mapa no se pudo cargar (sin conexión).<br />Coordenadas: {d.coord}</div>}
+          </div>
+          {d.mapa && (
+            <div className="cnp-leyenda">
+              {d.mapa.conContorno && <span><i className="cnp-lz-predio"></i>Predio (catastro)</span>}
+              <span><i className="cnp-lz-pin"></i>Punto consultado</span>
+              <span>Imagen © Google</span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="cnp-sec-t">Catastro <em>{d.ficha ? d.fichasTexto : 'Sin ficha'}</em></div>
+          {d.ficha ? (
+            <dl className="cnp-kv">
+              <dt>Ficha</dt><dd>{d.ficha.ficha || '—'}</dd>
+              <dt>Uso</dt><dd>{d.ficha.destinacion || '—'}</dd>
+              <dt>Dirección</dt><dd>{d.ficha.direccion || '—'}</dd>
+              <dt>{d.ficha.esRazonSocial ? 'Razón social' : 'Titular'}</dt><dd>{d.ficha.propietario || '—'}</dd>
+              <dt>NPN</dt><dd className="cnp-num">{d.ficha.catastral || '—'}</dd>
+              <dt>Matrícula</dt><dd>{d.ficha.matricula || '—'}</dd>
+              <dt>Avalúo</dt><dd>{typeof formatearCOP === 'function' ? formatearCOP(d.ficha.avaluo) : (d.ficha.avaluo || '—')}</dd>
+            </dl>
+          ) : (
+            <div className="cnp-mas">El punto no cae dentro de ningún predio del catastro 2026.</div>
+          )}
+          {d.nMas > 0 && (
+            <div className="cnp-mas">
+              {d.nMas === 1 ? 'Otra ficha en el mismo predio.' : d.nMas + ' fichas más en el mismo predio.'} Se imprime
+              {d.coincide ? ' la que coincide con la búsqueda.' : ' la primera.'}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="cnp-sec-t">Norma POT <em>Las filas con barra condicionan el predio</em></div>
+        <dl className="cnp-norma">
+          {d.filas.map(f => (
+            <div key={f.etiqueta} className={'cnp-nr' + (f.condiciona ? ' cond' : '') + (f.ancho ? ' ancho' : '')}>
+              <dt>{f.etiqueta}</dt><dd>{f.valor}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <footer className="cnp-pie">
+        <div><b>Consulta informativa.</b> Se generó con las capas del POT y la base catastral cargadas en el sistema. No reemplaza el concepto de norma urbanística ni el certificado de uso del suelo.</div>
+        <div className="der">Página 1 de 1</div>
+        <div>Fuentes: capas POT de Bello · catastro municipal 2026 · imagen de Google.</div>
+        <div className="der">Control Urbano · Inspección N°9</div>
+      </footer>
+    </article>,
+    document.body
+  );
+}
+
 function ConsultaNormaScreen() {
   const [consulta, setConsulta] = useStateCN('');
   const [punto, setPunto] = useStateCN(null);
@@ -146,6 +293,9 @@ function ConsultaNormaScreen() {
   const [candidatos, setCandidatos] = useStateCN(null);
   const [hallado, setHallado] = useStateCN(null);
   const resultadosRef = useRefCN(null);
+  // Hoja impresa: datos armados al tocar «Imprimir»; null = no se imprime.
+  const [hojaImp, setHojaImp] = useStateCN(null);
+  const [preparandoImp, setPreparandoImp] = useStateCN(false);
 
   const mapDivRef = useRefCN(null);
   const mapRef = useRefCN(null);
@@ -496,6 +646,80 @@ function ConsultaNormaScreen() {
     }
   }
 
+  // «Imprimir»: arma la hoja con lo que ya está en pantalla, precarga el mapa
+  // fijo y abre el diálogo del navegador. Una carga de Static Maps por hoja.
+  async function imprimir() {
+    if (!punto || !resultado || preparandoImp) return;
+    setPreparandoImp(true);
+    try {
+      var anillos = [];
+      try {
+        if (typeof poligonosCatastroGPS === 'function') {
+          anillos = (await poligonosCatastroGPS(punto.lat, punto.lon)).map(t => t.anillo);
+        }
+      } catch (e) { /* sin catastro.json: la hoja sale con el pin solo */ }
+      var mapa = null;
+      var clave = _claveMapsCN();
+      if (clave) {
+        var m = urlMapaEstatico({ lat: punto.lat, lon: punto.lon, anillos: anillos,
+          ancho: CN_MAPA_ANCHO, alto: CN_MAPA_ALTO, clave: clave });
+        if (await _precargarImagenCN(m.url, 10000)) {
+          mapa = { src: m.url, escala: m.escala, conContorno: anillos.length > 0 };
+        }
+      }
+      // Ficha a imprimir: la que coincidió con la búsqueda o la primera.
+      var fichas = catastro || [];
+      var cats = (hallado && hallado.catastrales) || [];
+      var coincide = fichas.find(r => cats.indexOf(r.catastral) >= 0) || null;
+      var ficha = coincide || fichas[0] || null;
+      var muni = fichas.find(r => r.municipal);
+      var filas = filasNormaImpresion(resultado, _comunaLabelCN(resultado));
+      var s = (typeof SESSION !== 'undefined') ? SESSION.leer() : null;
+      var direccion = (ficha && ficha.direccion) ||
+        (consulta && !_parsearCoordenadas(consulta) ? consulta.trim() : '') || 'Punto GPS';
+      setHojaImp({
+        fecha: new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota',
+          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+          .replace(',', ' ·'),
+        usuario: s && s.usuario ? titleCaseNombre(s.usuario) : '',
+        buscado: (consulta || '').trim(),
+        direccion: direccion,
+        sub: [resultado.barrioSugerido ? titleCaseNombre(resultado.barrioSugerido) : '',
+          _comunaLabelCN(resultado) !== '—' ? _comunaLabelCN(resultado) : '',
+          resultado.clasificacion || ''].filter(Boolean).join(' · '),
+        coord: punto.lat.toFixed(6) + ', ' + punto.lon.toFixed(6),
+        municipal: muni ? (muni.propietario || 'MUNICIPIO DE BELLO') : '',
+        condiciona: filas.filter(f => f.condiciona).map(f => f.corto),
+        mapa: mapa,
+        ficha: ficha,
+        fichasTexto: fichas.length > 1 ? '1 de ' + fichas.length + ' fichas' : '1 ficha',
+        nMas: Math.max(0, fichas.length - 1),
+        coincide: !!coincide,
+        filas: filas,
+      });
+    } finally {
+      setPreparandoImp(false);
+    }
+  }
+
+  // Con la hoja montada: esconder el resto e imprimir; al cerrar el diálogo,
+  // desmontarla. Dos cuadros de espera para que el portal ya esté pintado.
+  useEffectCN(() => {
+    if (!hojaImp) return;
+    document.body.classList.add('cn-imprimiendo');
+    var fin = function () { setHojaImp(null); };
+    window.addEventListener('afterprint', fin);
+    var id2 = 0;
+    var id = requestAnimationFrame(function () {
+      id2 = requestAnimationFrame(function () { window.print(); });
+    });
+    return function () {
+      cancelAnimationFrame(id); cancelAnimationFrame(id2);
+      window.removeEventListener('afterprint', fin);
+      document.body.classList.remove('cn-imprimiendo');
+    };
+  }, [hojaImp]);
+
   return (
     <div className="pantalla activa pad-bottom cn-pantalla">
       {/* Dos columnas ≥1440 (ver .cn-pantalla en styles.css): búsqueda y
@@ -736,12 +960,7 @@ function ConsultaNormaScreen() {
           // En rural no hay comuna: las 12 comunas del POT son urbanas. El
           // fallback por barrio también se salta (devolvería la comuna de una
           // vereda homónima).
-          var esRuralCN = resultado.ambito === 'Rural';
-          var comuna = esRuralCN ? '' : (resultado.comuna ||
-            ((typeof window._lookupComunaPorBarrio === 'function')
-              ? window._lookupComunaPorBarrio(resultado.barrioSugerido) : ''));
-          var comunaLabel = esRuralCN ? 'No aplica (rural)'
-            : comuna ? (comuna === 'Vereda' ? 'Vereda' : 'Comuna ' + comuna) : '—';
+          var comunaLabel = _comunaLabelCN(resultado);
           return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
             <CampoResultado label="Clasificación del suelo" valor={resultado.clasificacion || '—'} />
@@ -778,10 +997,17 @@ function ConsultaNormaScreen() {
         })()}
 
         {(consulta || punto || resultado || catastro) && (
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {punto && resultado && !busyPOT && (
+              <button type="button" onClick={imprimir} disabled={preparandoImp}
+                className="btn-neutro cn-limpiar cn-imprimir">
+                <Icon.Printer size={16} />{preparandoImp ? 'Preparando…' : 'Imprimir'}
+              </button>
+            )}
             <button type="button" onClick={limpiar} className="btn-neutro cn-limpiar">Limpiar</button>
           </div>
         )}
+        {hojaImp && <_HojaImpresionNorma d={hojaImp} />}
       </div>
       </div>{/* .cn-col-der */}
     </div>

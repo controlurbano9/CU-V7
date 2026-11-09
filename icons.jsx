@@ -127,6 +127,12 @@ const Icon = {
     React.createElement('polyline', { key: 2, points: '5 12 12 5 19 12' }),
   ], p?.size),
   // Subir un archivo propio (informe hecho por fuera de la app).
+  // «Imprimir» de Consulta norma (2026-11-09).
+  Printer: (p) => _svg([
+    React.createElement('polyline', { key: 1, points: '6 9 6 2 18 2 18 9' }),
+    React.createElement('path',     { key: 2, d: 'M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2' }),
+    React.createElement('rect',     { key: 3, x: 6, y: 14, width: 12, height: 8 }),
+  ], p?.size),
   Upload:  (p) => _svg([
     React.createElement('path',     { key: 1, d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
     React.createElement('polyline', { key: 2, points: '17 8 12 3 7 8' }),

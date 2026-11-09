@@ -6190,3 +6190,103 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .vp-reintentar { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); font-family: inherit; font-size: var(--fs-2); font-weight: 600; cursor: pointer; }
 .vp .rfm-zoom button:disabled { opacity: .35; cursor: default; }
 @media (pointer: coarse) { .vp .rfm-zoom button { width: 44px; height: 44px; } }
+
+
+/* ╔════════════════════════════════════════════════════════════╗
+   ║ 9) PRINT                                                   ║
+   ╚════════════════════════════════════════════════════════════╝
+   Hoja impresa de Consulta norma (2026-11-09; maqueta
+   propuesta-impresion-norma.html). Carta vertical, una página. La hoja vive
+   en un portal bajo <body> y en pantalla no se ve. */
+.cn-imprimir { display: inline-flex; align-items: center; gap: 6px; }
+.cn-hoja-print { display: none; }
+
+@media print {
+  /* Cualquier pantalla: sin el marco de la app. */
+  #sidebar-desktop, .header, .nav-inferior, .fab-nueva, .fab-menu, .cab-velo { display: none !important; }
+
+  @page { size: letter portrait; margin: 0; }
+  body.cn-imprimiendo { background: #fff !important; }
+  body.cn-imprimiendo > *:not(.cn-hoja-print) { display: none !important; }
+  body.cn-imprimiendo .cn-hoja-print { display: flex; }
+
+  .cn-hoja-print {
+    width: 215.9mm; height: 279mm; overflow: hidden; background: #fff; color: var(--ink);  /* 279, no 279,4: el redondeo saca una hoja en blanco */
+    padding: 12mm 13mm 11mm; flex-direction: column; gap: 4.2mm;
+    font-family: var(--font-sans); font-size: 9.6pt; line-height: 1.35; font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; position: relative;
+  }
+  /* Firma de la valla: franja amarilla en el borde de arriba. */
+  .cn-hoja-print::before { content: ''; position: absolute; left: 13mm; right: 13mm; top: 0; height: 2.2mm; background: var(--valla); }
+
+  .cnp-cab { display: grid; grid-template-columns: auto 1fr auto; gap: 4mm; align-items: center;
+    padding-bottom: 3mm; border-bottom: 1.2pt solid var(--ink); }
+  .cnp-escudo { width: 15mm; height: 15mm; object-fit: contain; }
+  .cnp-ent { display: grid; gap: .4mm; }
+  .cnp-ent b { font-size: 10.5pt; }
+  .cnp-ent span { font-size: 8.6pt; color: var(--ink-3); }
+  .cnp-titulo { font-family: var(--font-cond); font-weight: 700; font-size: 17pt; line-height: 1;
+    text-transform: uppercase; letter-spacing: .01em; margin-top: 1.6mm; }
+  .cnp-meta { text-align: right; font-size: 8.6pt; color: var(--ink-3); display: grid; gap: .6mm; max-width: 62mm; }
+  .cnp-meta b { color: var(--ink); font-size: 9.6pt; }
+  .cnp-meta span { overflow-wrap: anywhere; }
+
+  .cnp-ubic { display: grid; grid-template-columns: 1fr auto; gap: 2mm 6mm; align-items: end; }
+  .cnp-dir { font-family: var(--font-cond); font-weight: 700; font-size: 15pt; line-height: 1.1; }
+  .cnp-dir-sub { font-size: 9.6pt; color: var(--ink-3); margin-top: .8mm; }
+  .cnp-coord { text-align: right; font-size: 8.6pt; color: var(--ink-3); }
+  .cnp-coord b { display: block; color: var(--ink); font-size: 9.6pt; font-weight: 600; }
+
+  .cnp-aviso { display: flex; gap: 2.4mm; align-items: center; border: 1.2pt solid var(--ink);
+    border-radius: 1.6mm; padding: 2mm 3mm; }
+  .cnp-aviso-ic { width: 5mm; height: 5mm; flex: none; border-radius: 50%; background: var(--ink); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 8pt; }
+
+  .cnp-rot { font-size: 7.6pt; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-4);
+    font-weight: 600; margin-right: 2mm; }
+  .cnp-cond b { font-weight: 700; }
+
+  .cnp-medio { display: grid; grid-template-columns: 104mm 1fr; gap: 5mm; }
+  .cnp-mapa { position: relative; height: 96mm; border-radius: 1.6mm; overflow: hidden; background: var(--surface-2); }
+  .cnp-mapa img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .cnp-sin-mapa { height: 100%; display: grid; place-content: center; text-align: center; padding: 6mm;
+    font-size: 9pt; color: var(--ink-3); border: .6pt dashed var(--line-2); border-radius: 1.6mm; }
+  .cnp-norte { position: absolute; left: 3mm; top: 3mm; width: 7mm; height: 7mm; }
+  .cnp-norte svg { width: 100%; height: 100%; display: block; }
+  .cnp-norte circle { fill: #fff; stroke: var(--ink); stroke-width: 1; }
+  .cnp-norte path { fill: var(--ink); }
+  .cnp-norte text { font: 700 6.5px var(--font-sans); fill: var(--ink); text-anchor: middle; }
+  .cnp-escala { position: absolute; left: 3mm; bottom: 3mm; width: calc(100% - 6mm); display: flex;
+    align-items: center; gap: 1.6mm; font-size: 7.6pt; font-weight: 600; color: var(--ink); }
+  .cnp-escala i { display: block; height: 1.6mm; background: var(--ink); border: .5pt solid #fff;
+    box-shadow: 0 0 0 .5pt var(--ink); }
+  .cnp-escala span { background: #fff; padding: .2mm 1.2mm; border-radius: .8mm; }
+  .cnp-leyenda { display: flex; gap: 4mm; flex-wrap: wrap; font-size: 7.8pt; color: var(--ink-3); margin-top: 1.6mm; }
+  .cnp-leyenda i { display: inline-block; vertical-align: -0.4mm; margin-right: 1.2mm; }
+  .cnp-lz-predio { width: 4mm; height: 2.6mm; background: rgba(242,194,0,.45); outline: .9pt solid var(--ink); border: .7pt solid var(--valla); }
+  .cnp-lz-pin { width: 2.4mm; height: 2.4mm; border-radius: 50%; background: var(--red); outline: .5pt solid var(--ink); }
+
+  .cnp-sec-t { font-size: 7.6pt; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-4); font-weight: 600;
+    padding-bottom: 1.4mm; border-bottom: .6pt solid var(--line-2); margin-bottom: 1.6mm;
+    display: flex; justify-content: space-between; gap: 4mm; }
+  .cnp-sec-t em { font-style: normal; text-transform: none; letter-spacing: 0; }
+  .cnp-kv { display: grid; grid-template-columns: 18mm 1fr; gap: 1.5mm 3mm; margin: 0; }
+  .cnp-kv dt { color: var(--ink-3); font-size: 8.6pt; padding-top: .2mm; }
+  .cnp-kv dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+  .cnp-kv dd.cnp-num { font-size: 8.6pt; letter-spacing: -.01em; white-space: nowrap; }
+  .cnp-mas { font-size: 8.2pt; color: var(--ink-3); margin-top: 2mm; }
+
+  .cnp-norma { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6mm; margin: 0; }
+  .cnp-nr { display: grid; grid-template-columns: 38mm 1fr; gap: 3mm; padding: 1.8mm 0 1.8mm 2.4mm;
+    border-bottom: .6pt solid var(--line); align-items: baseline; position: relative; }
+  .cnp-nr dt { font-size: 8.6pt; color: var(--ink-3); }
+  .cnp-nr dd { margin: 0; font-weight: 500; }
+  .cnp-nr.cond::before { content: ''; position: absolute; left: 0; top: 1.6mm; bottom: 1.6mm; width: .9mm; background: var(--ink); }
+  .cnp-nr.cond dd { font-weight: 700; }
+  .cnp-nr.ancho { grid-column: 1 / -1; }
+
+  .cnp-pie { margin-top: auto; padding-top: 2.6mm; border-top: .6pt solid var(--line-2);
+    display: grid; grid-template-columns: 1fr auto; gap: 1.4mm 6mm; font-size: 7.8pt; color: var(--ink-3); line-height: 1.4; }
+  .cnp-pie b { color: var(--ink); font-weight: 600; }
+  .cnp-pie .der { text-align: right; white-space: nowrap; }
+}
