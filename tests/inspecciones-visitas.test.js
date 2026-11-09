@@ -11,7 +11,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { choqueZonaInspeccion, ordenarRutaConInspecciones } = require('../utils.js');
+const { choqueZonaInspeccion, choqueZonaDia, ordenarRutaConInspecciones } = require('../utils.js');
 
 const MIE = '25/11/2026'; // miércoles: comunas 7-8-9
 const INSP = (o) => Object.assign({ _idx: 10, RADICADO: '20261000001', 'ESTADO VISITA': 'ASIGNADO',
@@ -80,4 +80,18 @@ test('comunasGrupoInspeccion: las comunas del día de la inspección', () => {
   assert.deepEqual(comunasGrupoInspeccion({ COMUNA: '8' }), ['7', '8', '9']);
   assert.deepEqual(comunasGrupoInspeccion({ COMUNA: 'RURAL' }), ['RURAL']);
   assert.deepEqual(comunasGrupoInspeccion({ COMUNA: '' }), ['']);
+});
+
+test('choqueZonaDia: el aviso de la Agenda para todo el día', () => {
+  // Miércoles (comunas 7-8-9) con inspección en la comuna 4: no recibe visitas del día.
+  const datos = [INSP({ COMUNA: '4' })];
+  assert.match(choqueZonaDia(datos, 'MAURICIO HERRERA LOPERA', MIE),
+    /^Mauricio tiene inspección al lugar el mié 25 a las 9:00 en las comunas 4, 5 y 6/);
+  // Inspección en la zona del día, otro inspector o fin de semana: nada.
+  assert.equal(choqueZonaDia([INSP()], 'MAURICIO HERRERA LOPERA', MIE), '');
+  assert.equal(choqueZonaDia(datos, 'ALEJANDRO HERNANDEZ', MIE), '');
+  assert.equal(choqueZonaDia(datos, 'MAURICIO HERRERA LOPERA', '28/11/2026'), '');
+  // Viernes rural con inspección urbana.
+  const vie = [INSP({ COMUNA: '8', 'FECHA ASIGNACION VISITA': '27/11/2026' })];
+  assert.match(choqueZonaDia(vie, 'MAURICIO HERRERA LOPERA', '27/11/2026'), /comunas 7, 8 y 9/);
 });

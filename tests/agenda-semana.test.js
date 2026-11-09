@@ -73,9 +73,14 @@ test('borrador: vacío, un caso solo una vez, quitar y resumen (sin mutar)', () 
   assert.equal(b.items.filter((x) => x.fila === 20).length, 1);
   assert.equal(b.items.find((x) => x.fila === 20).inspector, ALEJANDRO);
   assert.equal(b1.items.length, 1); // el borrador anterior quedó igual
-  assert.deepEqual(borradorResumen(b), { visitas: 1, inspecciones: 1, movidas: 1, total: 3 });
+  assert.deepEqual(borradorResumen(b), { visitas: 1, inspecciones: 1, reprogramadas: 0, movidas: 1, total: 3 });
   b = borradorQuitar(b, 20);
-  assert.deepEqual(borradorResumen(b), { visitas: 0, inspecciones: 1, movidas: 1, total: 2 });
+  assert.deepEqual(borradorResumen(b), { visitas: 0, inspecciones: 1, reprogramadas: 0, movidas: 1, total: 2 });
+  // Una inspección ya programada que cambia de hora (mover con hora) no es
+  // un «cambio de día» de visita.
+  b = borradorAgregar(b, { tipo: 'mover', fila: 50, radicado: '20261100004', inspector: MAURICIO,
+    fecha: '25/11/2026', hora: '2:00PM' });
+  assert.deepEqual(borradorResumen(b), { visitas: 0, inspecciones: 1, reprogramadas: 1, movidas: 1, total: 3 });
   assert.deepEqual(borradorQuitar(borradorVacio(LUN), 99).items, []);
 });
 

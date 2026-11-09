@@ -5889,7 +5889,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
    cada celda (izq. + abajo), no en la rejilla, para que el fondo del día
    elegido llegue limpio al borde del panel. */
 .as-tabla { min-width: 0; }
-.as-tablero { display: grid; grid-template-columns: 120px var(--as-dias, 1fr 1fr 1fr 1fr 1fr);
+.as-tablero { display: grid; grid-template-columns: 152px var(--as-dias, 1fr 1fr 1fr 1fr 1fr);
   background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel); overflow: hidden; }
 .as-esq { border-bottom: 1px solid var(--line); }
 
@@ -5903,6 +5903,11 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as-dia-n { display: block; font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); margin-top: 2px; }
 .as-dia:disabled { cursor: default; }
+/* Hoy: etiqueta junto a la fecha (el amarillo es del día elegido, no de hoy). */
+.as-hoy-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--ink); border-radius: var(--r-ctl);
+  font: 600 var(--fs-1)/1.4 var(--font-sans); color: var(--ink); vertical-align: 2px; }
+/* Quién no recibe las visitas de la zona del día (tiene inspección en otra). */
+.as-aviso { margin: 4px 16px 8px; font-size: var(--fs-1); color: var(--ink-2); }
 .as-dia.sel { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla); }
 
 /* Columna de inspectores: círculo con su color (--c lo fija el .jsx con
@@ -5913,7 +5918,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-ins-nom { min-width: 0; }
 .as-ins-nom b { display: block; font-weight: 600; font-size: var(--fs-2); color: var(--ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.as-ins-nom small { display: block; color: var(--ink-3); font-size: var(--fs-1); }
+.as-ins-nom small { display: block; color: var(--ink-3); font-size: var(--fs-1); white-space: nowrap; }
 
 /* Celda inspector × día. La elegida lleva el amarillo pálido al 35 %
    (--valla-bg más suave: los items tienen que seguir leyéndose). */
@@ -5926,15 +5931,21 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-pasa { color: var(--amber); font-weight: 600; }
 
 /* Item: hora (inspección, condensada 700) · dirección · caso debajo.
-   Inspección sobre --surface-2, visita sobre --carril; fuera de zona con
-   contorno punteado. */
+   Inspección sobre --surface-2, visita sobre --carril. */
 .as-it { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
   gap: 2px 6px; padding: 5px 6px; border-radius: var(--r-ctl); background: var(--carril);
   font-size: var(--fs-1); line-height: 1.25; min-width: 0; cursor: pointer; }
 .as-it-h { font: 700 var(--fs-2) var(--font-cond); }
 .as-it-d { font: 600 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as-it-s { grid-column: 2 / 4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.as-it-s .as-fz { color: var(--ink-2); }
+/* La hora de una inspección que se puede reprogramar: botón con ▾ que
+   despliega sus horas libres dentro del item (.as-it-horas). */
+.as-it-hbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 26px; padding: 0 4px; margin: -2px 0;
+  border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); cursor: pointer; }
+.as-it-hbtn:hover, .as-it-hbtn[aria-expanded="true"] { background: var(--valla-bg); border-color: var(--valla); }
+.as-it-horas { grid-column: 1 / 4; margin-top: 4px; cursor: default; }
+.as-hora[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.as-cancelar { display: block; min-height: 36px; margin-top: 4px; padding: 0; }
 .as-it-insp { background: var(--surface-2); }
 .as-it-visita .as-it-h { display: none; }
 .as-it-visita .as-it-d { grid-column: 1 / 3; }
@@ -5947,9 +5958,16 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-quitar:hover { background: var(--surface-2); color: var(--ink); }
 
 /* Cuerpo: tablero | «Por agendar» (TASK 03). */
-.as-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.as-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start;
+  grid-template-areas: "tabla panel" "barra panel"; grid-template-rows: auto 1fr; }
+.as-tabla { grid-area: tabla; }
+.as-panel { grid-area: panel; }
+.as-barra { grid-area: barra; }
 .as-panel { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
-  position: sticky; top: 16px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; min-width: 0; }
+  position: sticky; top: 16px; max-height: calc(100vh - 120px);
+  display: flex; flex-direction: column; min-width: 0; }
+/* El alto real lo fija agenda-semana.jsx (lo visible del área que desplaza);
+   este es el respaldo antes de medir. */
 .as-panel-cab { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 .as-panel-cab h2 { margin: 0; font: 700 var(--fs-4)/1.1 var(--font-cond); color: var(--ink); }
 .as-panel-cab p { margin: 2px 0 10px; font-size: var(--fs-1); color: var(--ink-3); }
@@ -6003,13 +6021,14 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-cuerpo { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 @media (max-width: 1279px) {
-  .as-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .as-cuerpo { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tabla" "panel" "barra"; grid-template-rows: auto; }
   .as-panel { position: static; max-height: none; }
 }
 
-/* Barra del borrador (TASK 04): pegada abajo, con el único botón lleno. */
+/* Barra del borrador (TASK 04), con el único botón lleno: en escritorio justo
+   bajo el tablero (fila 2 de .as-cuerpo); fija abajo si el tablero no cabe. */
 .as-barra { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
-  margin-top: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line-2);
+  align-self: start; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line-2);
   border-radius: var(--r-panel); }
 .as-barra-txt { min-width: 0; font-size: var(--fs-2); color: var(--ink); }
 .as-barra-txt b { font-weight: 600; }
@@ -6031,17 +6050,18 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-celda.as-drop { outline: 2px dashed var(--ink-3); outline-offset: -4px; }
 /* «Ver en la Agenda»: la inspección de la ficha se ilumina 2,5 s (selección = --valla-bg). */
 .as-it-resaltada { background: var(--valla-bg); box-shadow: inset 0 0 0 2px var(--valla); transition: background .35s ease-out, box-shadow .35s ease-out; }
-.as-it-fuera { outline: 1px dashed var(--ink-3); outline-offset: -1px; }
 
 /* Días compactos: solo la hora de cada inspección (el .jsx no pinta
    dirección ni subrenglón) y una línea con las visitas. */
 .as-celda-compacta .as-it { grid-template-columns: auto 1fr; padding: 3px 6px; }
 .as-resumen { font-size: var(--fs-1); color: var(--ink-2); padding: 2px 4px; }
 
-/* 900–1439: la columna de inspectores se angosta y se oculta «N en la
-   semana» (regla de la TASK 02). */
+/* 900–1439: la columna de inspectores se angosta (círculo más chico, el
+   nombre de pila cabe entero) y se oculta «N en la semana». */
 @media (min-width: 900px) and (max-width: 1439px) {
-  .as-tablero { grid-template-columns: 104px var(--as-dias, 1fr 1fr 1fr 1fr 1fr); }
+  .as-tablero { grid-template-columns: 128px var(--as-dias, 1fr 1fr 1fr 1fr 1fr); }
+  .as-ins { gap: 6px; }
+  .as-ini { width: 24px; height: 24px; }
   .as-ins-nom small { display: none; }
 }
 
@@ -6073,7 +6093,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
     border-top: 0; border-radius: 0 0 var(--r-panel) var(--r-panel); }
   .as-it { padding: 8px; }
   .as-quitar { width: var(--tap); height: var(--tap); }
-  .as-mas, .as-hora, .as-elige button, .as-btn-t { min-height: var(--tap); }
+  .as-mas, .as-hora, .as-elige button, .as-btn-t, .as-it-hbtn, .as-cancelar { min-height: var(--tap); }
   .as-mas { min-width: 56px; }
   .as-exp, .as-exp-it { height: var(--tap); }
   .as-cuerpo { gap: 14px; }

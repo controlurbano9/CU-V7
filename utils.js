@@ -660,7 +660,12 @@ function puntoDesdeTextoCoord(texto) {
       lon = (num(g[5]) + num(g[6]) / 60 + num(g[7]) / 3600) * (g[8].toUpperCase() === 'E' ? 1 : -1);
     } else {
       var d = /^\s*(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})\s*$/.exec(s);
-      if (!d) return null;
+      if (!d) {
+        // Decimales con hemisferio o el punto repetido («6.361722N, -75.573306W//
+        // 6.361481N, -75.573305W»): vale si el texto no trae nada más.
+        var p = _partirCoordTexto(s);
+        return p && !p.resto ? p.punto : null;
+      }
       lat = parseFloat(d[1]);
       lon = -Math.abs(parseFloat(d[2]));
     }
@@ -678,7 +683,39 @@ function puntoDesdeTextoCoord(texto) {
 // tal cual. No toca ''/null: el texto por defecto lo pone quien llama.
 function direccionVisible(dir) {
   if (!dir) return dir;
-  return puntoDesdeTextoCoord(dir) ? 'Punto GPS' : dir;
+  if (puntoDesdeTextoCoord(dir)) return 'Punto GPS';
+  // Coordenada al comienzo y texto después («6.326444-75 538885 PREDIO EPM
+  // TANQUE MACHADO»): se dice «Punto GPS» y se deja el texto, que sí orienta.
+  var p = _partirCoordTexto(dir);
+  return p ? 'Punto GPS' + (p.resto ? ' · ' + p.resto : '') : dir;
+}
+
+// Coordenada en grados decimales al comienzo de un texto, como la escriben a
+// mano: hemisferio pegado («6.361722N, -75.573306W»), longitud con espacio
+// en vez de punto («6.326444-75 538885»), el punto repetido tras «//».
+// → { punto: { lat, lon }, resto } o null. resto = lo que queda sin las
+// coordenadas ni los separadores ('' si no queda nada). Solo vale dentro de
+// Bello y con ≥ 3 decimales en cada número: «CL 6 # 5-30» no es un punto.
+var _RE_COORD_INICIO = /^\s*(-?\d{1,2}[.,]\d{3,})\s*°?\s*([NS])?\s*[,;\/\s]*\s*(-?\d{2,3})(?:[.,]|\s+)(\d{3,})\s*°?\s*([WOE])?(?![A-Za-z0-9])/i;
+function _partirCoordTexto(texto) {
+  var s = String(texto || '');
+  var m = _RE_COORD_INICIO.exec(s);
+  if (!m) return null;
+  var lat = parseFloat(m[1].replace(',', '.')) * (String(m[2] || '').toUpperCase() === 'S' ? -1 : 1);
+  var lon = Math.abs(parseFloat(m[3] + '.' + m[4])) * (String(m[5] || '').toUpperCase() === 'E' ? 1 : -1);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (lat < _RANGO_COORD.lat[0] || lat > _RANGO_COORD.lat[1] ||
+      lon < _RANGO_COORD.lon[0] || lon > _RANGO_COORD.lon[1]) return null;
+  var resto = s.slice(m[0].length);
+  // Más puntos repetidos detrás («// 6.361481N, -75.573305W»).
+  for (var i = 0; i < 5; i++) {
+    var r = resto.replace(/^[\s,;\/\-–]+/, '');
+    var m2 = _RE_COORD_INICIO.exec(r);
+    if (!m2) break;
+    resto = r.slice(m2[0].length);
+  }
+  resto = resto.replace(/^[\s,;\/\-–·.]+/, '').replace(/\s+$/, '');
+  return { punto: { lat: lat, lon: lon }, resto: resto };
 }
 
 // ── Numeración de visitas de un radicado (Buscar) ─────────────
@@ -1453,7 +1490,8 @@ function nivelPrioridad(bc) {
 }
 
 // El porqué de una sugerida, en vez del puntaje: «Alta · vencida hace 158
-// días», «Baja · 163 días», «Sin análisis · 101 días». `c` = candidata de
+// días», «Baja · radicada hace 163 días», «Sin análisis · radicada hace 101
+// días» (`dias` = antigüedad del radicado). `c` = candidata de
 // obtenerAgenda ({ prioridad, dias }).
 function motivoPrioridad(c) {
   var p = nivelPrioridad(c && c.prioridad);
@@ -1464,7 +1502,7 @@ function motivoPrioridad(c) {
     var v = dias - p.plazo;
     return { nivel: nivel, texto: 'vencida hace ' + v + (v === 1 ? ' día' : ' días'), vencida: true };
   }
-  return { nivel: nivel, texto: dias + (dias === 1 ? ' día' : ' días'), vencida: false };
+  return { nivel: nivel, texto: 'radicada hace ' + dias + (dias === 1 ? ' día' : ' días'), vencida: false };
 }
 
 // Distancia aproximada en metros (equirrectangular: sobra a escala de Bello).
@@ -6199,6 +6237,18 @@ function choqueZonaInspeccion(datos, inspector, fecha, f, opts) {
     ' en ' + zona + ': ese día solo lleva visitas de esa zona.';
 }
 
+// Por qué `inspector` no recibe visitas de la zona del día `fecha` (tiene
+// una inspección al lugar en otra zona ese día); '' si las recibe. Es el
+// mismo motivo que apaga su «+» en cada visita sugerida de la Agenda, dicho
+// una vez para todo el día.
+function choqueZonaDia(datos, inspector, fecha) {
+  var z = zonaDelDia(fecha);
+  if (!z) return '';
+  var com = z === 5 ? 'RURAL' : (COMUNAS_ZONA_EQUIPO[z] || [])[0];
+  if (!com) return '';
+  return choqueZonaInspeccion(datos, inspector, fecha, { _idx: '__zona__', COMUNA: com }, { inspeccion: false });
+}
+
 // Comunas del grupo de la inspección (las de su día): ['7', '8', '9'] o
 // ['RURAL']. Sin grupo conocido, la comuna de la fila. Agenda › Visitas las
 // usa como zona del día del inspector que tiene inspección.
@@ -6276,15 +6326,18 @@ function borradorQuitar(b, fila) {
     items: ((b && b.items) || []).filter(function (x) { return x.fila !== fila; }) };
 }
 
-// { visitas, inspecciones, movidas, total } para la barra del borrador.
+// { visitas, inspecciones, reprogramadas, movidas, total } para la barra del
+// borrador. reprogramadas = inspecciones ya programadas que cambian de día,
+// inspector u hora (mover con hora); movidas = visitas que cambian de día.
 function borradorResumen(b) {
-  var r = { visitas: 0, inspecciones: 0, movidas: 0, total: 0 };
+  var r = { visitas: 0, inspecciones: 0, reprogramadas: 0, movidas: 0, total: 0 };
   ((b && b.items) || []).forEach(function (x) {
     if (x.tipo === 'insp') r.inspecciones++;
+    else if (x.tipo === 'mover' && x.hora) r.reprogramadas++;
     else if (x.tipo === 'mover') r.movidas++;
     else r.visitas++;
   });
-  r.total = r.visitas + r.inspecciones + r.movidas;
+  r.total = r.visitas + r.inspecciones + r.reprogramadas + r.movidas;
   return r;
 }
 
@@ -7052,6 +7105,7 @@ var _cuUtilsExports = {
   claveCasoInspeccionCita: claveCasoInspeccionCita,
   inspectorConfirmacionInspeccion: inspectorConfirmacionInspeccion,
   choqueZonaInspeccion: choqueZonaInspeccion,
+  choqueZonaDia: choqueZonaDia,
   comunasGrupoInspeccion: comunasGrupoInspeccion,
   ordenarRutaConInspecciones: ordenarRutaConInspecciones,
   // Agenda unificada: la semana del equipo (TASK 01)

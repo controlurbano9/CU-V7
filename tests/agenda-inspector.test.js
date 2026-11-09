@@ -19,7 +19,7 @@ const vm = require('node:vm');
 const {
   AGENDA_OFICINA, nivelPrioridad, motivoPrioridad, ordenarRuta, armarBorradorAgenda,
   diaInicialAgenda, moverDiaHabil, fechaLargaAgenda, visitasDelDia,
-  puntoDesdeTextoCoord, claveComunaAgenda,
+  puntoDesdeTextoCoord, claveComunaAgenda, direccionVisible,
 } = require('../utils.js');
 
 test('nivelPrioridad: escala de la priorización y su plazo', () => {
@@ -38,9 +38,9 @@ test('motivoPrioridad: las tres sugeridas de la captura del 2026-10-03', () => {
   assert.deepEqual(motivoPrioridad({ prioridad: 8, dias: 178 }),
     { nivel: 'Alta', texto: 'vencida hace 158 días', vencida: true });
   assert.deepEqual(motivoPrioridad({ prioridad: 3, dias: 163 }),
-    { nivel: 'Baja', texto: '163 días', vencida: false });
+    { nivel: 'Baja', texto: 'radicada hace 163 días', vencida: false });
   assert.deepEqual(motivoPrioridad({ prioridad: null, dias: 101 }),
-    { nivel: 'Sin análisis', texto: '101 días', vencida: false });
+    { nivel: 'Sin análisis', texto: 'radicada hace 101 días', vencida: false });
   // Dentro del plazo no está vencida; sin días solo queda el nivel.
   assert.equal(motivoPrioridad({ prioridad: 8, dias: 20 }).vencida, false);
   assert.equal(motivoPrioridad({ prioridad: 8, dias: 21 }).texto, 'vencida hace 1 día');
@@ -151,6 +151,21 @@ test('puntoDesdeTextoCoord: coordenadas escritas como dirección', () => {
   assert.equal(puntoDesdeTextoCoord('CR 52 N° 64-134'), null);
   assert.equal(puntoDesdeTextoCoord('4°36\'N 74°04\'W'), null, 'fuera de Bello no se acepta');
   assert.equal(puntoDesdeTextoCoord(''), null);
+  // Decimales con hemisferio y el punto repetido (Agenda, 2026-11-09).
+  assert.ok(cerca(puntoDesdeTextoCoord('6.361722N, -75.573306W// 6.361481N, -75.573305W'), 6.361722, -75.573306));
+  // Con texto detrás no es solo una coordenada: Maps sigue con el texto.
+  assert.equal(puntoDesdeTextoCoord('6.326444-75 538885 PREDIO EPM TANQUE MACHADO'), null);
+});
+
+test('direccionVisible: coordenadas → «Punto GPS», y el texto que las acompaña se queda', () => {
+  assert.equal(direccionVisible('6.361722N, -75.573306W// 6.361481N, -75.573305W'), 'Punto GPS');
+  assert.equal(direccionVisible('6.326444-75 538885 PREDIO EPM TANQUE MACHADO'), 'Punto GPS · PREDIO EPM TANQUE MACHADO');
+  assert.equal(direccionVisible('6.3456, -75.5612'), 'Punto GPS');
+  assert.equal(direccionVisible('CL 29 # 55-22'), 'CL 29 # 55-22');
+  assert.equal(direccionVisible('CR 52 N° 64-134'), 'CR 52 N° 64-134');
+  assert.equal(direccionVisible('CL 6 # 5-30'), 'CL 6 # 5-30');
+  assert.equal(direccionVisible('4.600123, -74.081234 BOGOTÁ'), '4.600123, -74.081234 BOGOTÁ', 'fuera de Bello no');
+  assert.equal(direccionVisible(''), '');
 });
 
 test('días de la agenda: abre en hoy o en el siguiente día hábil', () => {

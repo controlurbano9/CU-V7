@@ -177,7 +177,9 @@ function AgendaSemana({ usuario }) {
   const [asignando, setAsignando] = useStateAS(false);
   const [dropCelda, setDropCelda] = useStateAS(null); // 'dia|inspector' bajo el arrastre
   const arrastre = useRefAS(null);
+  const panelRef = useRefAS(null);
   const [abierta, setAbierta] = useStateAS(null);   // clave del caso de la inspección desplegada
+  const [horaDe, setHoraDe] = useStateAS(null);     // _idx de la inspección del tablero con sus horas abiertas
   const [elegidos, setElegidos] = useStateAS({});   // clave del caso → inspector elegido
   const [expedientes, setExpedientes] = useStateAS({}); // clave del caso → expediente tecleado
   const [q, setQ] = useStateAS('');
@@ -237,8 +239,46 @@ function AgendaSemana({ usuario }) {
     return () => clearTimeout(t);
   }, [resaltada, hayDatos]);
 
+  // «Por agendar» (fijo arriba al bajar) cabe en lo visible: termina 12 px
+  // antes del fondo del área que desplaza. La barra del borrador ya no va
+  // debajo del panel (está bajo el tablero, en la otra columna), así que no
+  // lo tapa.
+  useEffectAS(() => {
+    if (!hayDatos) return undefined;
+    const panel = panelRef.current;
+    if (!panel) return undefined;
+    let zona = panel.parentElement;
+    while (zona && zona !== document.body) {
+      const oy = getComputedStyle(zona).overflowY;
+      if (oy === 'auto' || oy === 'scroll') break;
+      zona = zona.parentElement;
+    }
+    let raf = 0;
+    const ajustar = () => {
+      raf = 0;
+      if (window.innerWidth < 1280) { panel.style.maxHeight = ''; return; }
+      // Sin el relleno inferior del área que desplaza.
+      let fondo = window.innerHeight;
+      if (zona && zona !== document.body) {
+        const cs = getComputedStyle(zona);
+        fondo = zona.getBoundingClientRect().bottom - (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.borderBottomWidth) || 0);
+      }
+      const alto = fondo - 12 - panel.getBoundingClientRect().top;
+      panel.style.maxHeight = Math.max(240, Math.floor(alto)) + 'px';
+    };
+    const pedir = () => { if (!raf) raf = requestAnimationFrame(ajustar); };
+    ajustar();
+    window.addEventListener('scroll', pedir, true);
+    window.addEventListener('resize', pedir);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', pedir, true);
+      window.removeEventListener('resize', pedir);
+    };
+  }, [hayDatos]);
+
   // Otra semana, su borrador guardado.
-  useEffectAS(() => { setBorrador(_asBorradorDe(lunes)); setAbierta(null); }, [lunes]);
+  useEffectAS(() => { setBorrador(_asBorradorDe(lunes)); setAbierta(null); setHoraDe(null); }, [lunes]);
   // Cada cambio se guarda en el equipo (solo el de la semana a la vista).
   useEffectAS(() => {
     if (borrador.lunes === formatearFecha(lunes)) _asGuardarBorrador(borrador);
@@ -324,41 +364,43 @@ function AgendaSemana({ usuario }) {
   const avisar = m => appAlert(m, { titulo: 'No se puede agregar' });
   const tituloZona = textoZonaDia(dia.zona, false);
 
-  // Fila de una inspección por programar (b = item de la bandeja, { f, fecha, quien }).
-  const filaInspeccion = (b) => {
-    const k = claveCasoInspeccion(b.f) || String(b.f._idx);
-    const caso = visitasDelCaso(datosEf, b.f);
+  // Clave del caso para «abierta», el inspector elegido y el expediente.
+  const claveIns = f => claveCasoInspeccion(f) || String(f._idx);
+  const expedienteCaso = (k, caso) => (expedientes[k] != null ? expedientes[k] : (caso.map(expedienteDe).find(Boolean) || ''));
+
+  // Lo que se despliega al programar una inspección en el día elegido:
+  // inspector (si no es fijo), sus horas libres y el expediente. Lo usan la
+  // bandeja, el buscador (cualquier caso, como la Agenda de inspecciones
+  // anterior) y la fila de una visita pendiente («Programar inspección»).
+  const cuerpoInspeccion = (f, k) => {
+    const caso = visitasDelCaso(datosEf, f);
     const plan = inspeccionDelCaso(caso, usuario.rol);
-    const enZona = diaGrupoInspeccion(b.f);
-    const diaZona = enZona && enZona !== dia.zona ? semana.dias.findIndex(d => d.zona === enZona) : -1;
-    const exp = expedientes[k] != null ? expedientes[k] : (caso.map(expedienteDe).find(Boolean) || '');
-    const meta1 = [exp ? 'Exp. ' + exp : '', b.f['RADICADO'] || '',
-      b.f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(b.f['COMUNA']) || b.f['COMUNA']) : '',
-      b.fecha ? 'decretada el ' + b.fecha : ''].filter(Boolean).join(' · ');
-    const abiertaEsta = abierta === k;
-    let cuerpo = null;
-    if (abiertaEsta) {
-      // Con inspector fijo (hizo la visita anterior, o la inspección ya lo tiene) no se elige.
-      const fijo = plan.fijo || (plan.modo === 'reprogramar' && !!plan.inspector);
-      const ins = fijo ? plan.inspector : (elegidos[k] || '');
-      const choque = ins ? choqueZonaInspeccion(datosEf, ins, dia.date, b.f, { inspeccion: true }) : '';
-      const excepto = plan.modo === 'reprogramar' ? plan.fila : null;
-      const horas = ins && !choque && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
-      const fOrig = (datos || []).find(x => x._idx === plan.fila) || null;
-      const programar = h => {
-        setBorrador(bb => borradorAgregar(bb, { tipo: 'insp', fila: plan.fila, radicado: plan.radicado,
-          inspector: ins, fecha: dia.fecha, hora: h, expediente: exp, modo: plan.modo,
-          programadaConocida: _asProgramadaConocida(fOrig) }));
-        setAbierta(null);
-      };
-      cuerpo = !plan.puede ? <p className="as-motivo">{plan.motivo || 'No se puede programar.'}</p> : (
+    const exp = expedienteCaso(k, caso);
+    // Con inspector fijo (hizo la visita anterior, o la inspección ya lo tiene) no se elige.
+    const fijo = plan.fijo || (plan.modo === 'reprogramar' && !!plan.inspector);
+    const ins = fijo ? plan.inspector : (elegidos[k] || '');
+    const choque = ins ? choqueZonaInspeccion(datosEf, ins, dia.date, f, { inspeccion: true }) : '';
+    const excepto = plan.modo === 'reprogramar' ? plan.fila : null;
+    const horas = ins && !choque && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
+    const fOrig = (datos || []).find(x => x._idx === plan.fila) || null;
+    const programar = h => {
+      setBorrador(bb => borradorAgregar(bb, { tipo: 'insp', fila: plan.fila, radicado: plan.radicado,
+        inspector: ins, fecha: dia.fecha, hora: h, expediente: exp, modo: plan.modo,
+        programadaConocida: _asProgramadaConocida(fOrig) }));
+      setAbierta(null);
+    };
+    const cancelar = (
+      <button type="button" className="as-btn-txt as-cancelar" onClick={() => setAbierta(null)}>Cancelar</button>
+    );
+    if (!plan.puede) return <><p className="as-motivo">{plan.motivo || 'No se puede programar.'}</p>{cancelar}</>;
+    return (
         <>
           {fijo ? (
             <p className="as-va">Va <b>{nombrePila(ins)}</b>{plan.fijo ? ', que hizo la visita anterior.' : '.'}</p>
           ) : (
             <div className="as-elige" role="group" aria-label="Inspector">
               {inspectores.map(n => {
-                const m = choqueZonaInspeccion(datosEf, n, dia.date, b.f, { inspeccion: true });
+                const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
                 return (
                   <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
                     title={m || undefined}
@@ -383,9 +425,22 @@ function AgendaSemana({ usuario }) {
           <input className="as-exp" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
             placeholder="Expediente" aria-label="Expediente (opcional, solo números)" value={exp}
             onChange={e => setExpedientes(x => Object.assign({}, x, { [k]: e.target.value.replace(/\D+/g, '').slice(0, 6) }))} />
+          {cancelar}
         </>
-      );
-    }
+    );
+  };
+
+  // Fila de una inspección por programar (b = { f, fecha, quien }: de la
+  // bandeja, o un caso del buscador con fecha ''). etiqueta = el botón.
+  const filaInspeccion = (b, etiqueta) => {
+    const k = claveIns(b.f);
+    const exp = expedienteCaso(k, visitasDelCaso(datosEf, b.f));
+    const enZona = diaGrupoInspeccion(b.f);
+    const diaZona = enZona && enZona !== dia.zona ? semana.dias.findIndex(d => d.zona === enZona) : -1;
+    const meta1 = [exp ? 'Exp. ' + exp : '', b.f['RADICADO'] || '',
+      b.f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(b.f['COMUNA']) || b.f['COMUNA']) : '',
+      b.fecha ? 'decretada el ' + b.fecha : ''].filter(Boolean).join(' · ');
+    const abiertaEsta = abierta === k;
     return (
       <div key={'i' + k} className="as-fila">
         <div className="as-fila-d">{_asDir(b.f)}</div>
@@ -398,9 +453,9 @@ function AgendaSemana({ usuario }) {
               </button></>
           )}
         </div>
-        {abiertaEsta ? cuerpo : (
+        {abiertaEsta ? cuerpoInspeccion(b.f, k) : (
           <div className="as-acc">
-            <button type="button" className="as-btn-t" onClick={() => setAbierta(k)}>Elegir hora</button>
+            <button type="button" className="as-btn-t" onClick={() => setAbierta(k)}>{etiqueta || 'Elegir hora'}</button>
           </div>
         )}
       </div>
@@ -408,16 +463,28 @@ function AgendaSemana({ usuario }) {
   };
 
   // Fila de una visita sugerida (v = candidata). Solo ADMIN asigna visitas.
-  const filaVisita = (v, fueraZona) => {
+  // fInsp (desde el buscador): la misma visita se puede programar también
+  // como inspección al lugar; el botón despliega cuerpoInspeccion.
+  const filaVisita = (v, fInsp) => {
     const m = motivoPrioridad(v);
     const com = claveComunaAgenda(v.comuna);
     const meta1 = [nivelPrioridad(v.prioridad) ? m.nivel : '', m.texto, v.radicado, v.barrio || 'Sin barrio',
       com ? etiquetaComuna(com) : ''].filter(Boolean).join(' · ');
     const fv = { _idx: v.fila, RADICADO: v.radicado, COMUNA: v.comuna, 'BARRIO/VEREDA': v.barrio };
+    const kI = fInsp ? claveIns(fInsp) : null;
+    if (kI && abierta === kI) {
+      return (
+        <div key={'v' + v.fila} className="as-fila">
+          <div className="as-fila-d">{direccionVisible(v.direccion || '') || 'Sin dirección'}</div>
+          <div className="as-fila-m">{meta1}</div>
+          {cuerpoInspeccion(fInsp, kI)}
+        </div>
+      );
+    }
     return (
       <div key={'v' + v.fila} className="as-fila">
         <div className="as-fila-d">{direccionVisible(v.direccion || '') || 'Sin dirección'}</div>
-        <div className="as-fila-m">{meta1}{fueraZona && <> · <b>fuera de zona</b></>}</div>
+        <div className="as-fila-m">{meta1}</div>
         <div className="as-acc">
           {inspVisitas.map(n => {
             const i = inspectores.indexOf(n);
@@ -436,13 +503,19 @@ function AgendaSemana({ usuario }) {
               </button>
             );
           })}
+          {kI && (
+            <button type="button" className="as-btn-t" onClick={() => setAbierta(kI)}>Programar inspección</button>
+          )}
         </div>
       </div>
     );
   };
 
   // Resultado del buscador: inspección decretada → fila de inspección;
-  // última visita PENDIENTE → fila de visita (solo ADMIN); si no, su estado.
+  // última visita PENDIENTE → fila de visita (solo ADMIN), que también se
+  // puede programar como inspección; cualquier otro caso se programa como
+  // inspección si inspeccionDelCaso lo deja (como la Agenda de inspecciones
+  // anterior); si no, su estado y el motivo.
   const filaResultado = (c) => {
     const visitas = visitasDelCaso(datosEf, c.ultima);
     const decr = visitas.find(f => String(f['INSPECCION_DECRETADA'] || '').trim());
@@ -450,9 +523,14 @@ function AgendaSemana({ usuario }) {
       const p = String(decr['INSPECCION_DECRETADA']).split(' · ');
       return filaInspeccion({ f: decr, fecha: p[0], quien: p.slice(1).join(' · ') });
     }
+    const plan = inspeccionDelCaso(visitas, usuario.rol);
     const est = estadoBuscarDe(c.ultima);
     if (est === 'PENDIENTE' && esAdmin) {
-      return filaVisita(_asCandidataDeFila(c.ultima), diaGrupoInspeccion(c.ultima) !== dia.zona);
+      return filaVisita(_asCandidataDeFila(c.ultima), plan.puede ? c.ultima : null);
+    }
+    if (plan.puede) {
+      return filaInspeccion({ f: c.ultima, fecha: '', quien: '' },
+        plan.modo === 'reprogramar' ? 'Cambiar día u hora' : 'Programar inspección');
     }
     const quien = primerVisitador(visitadoresBD(c.ultima));
     const textoEst = { PENDIENTE: 'Pendiente', ASIGNADO: 'Asignada', INICIADO: 'Iniciada', COMPLETADO: 'Completada',
@@ -461,6 +539,7 @@ function AgendaSemana({ usuario }) {
       <div key={'r' + c.clave} className="as-fila">
         <div className="as-fila-d">{_asDir(c.ultima)}</div>
         <div className="as-fila-m">{c.radicado} · {textoEst}{quien ? ' · ' + nombrePila(quien) : ''}</div>
+        {plan.motivo && <p className="as-motivo">{plan.motivo}</p>}
       </div>
     );
   };
@@ -604,9 +683,32 @@ function AgendaSemana({ usuario }) {
         hora: hora || undefined, programadaConocida: esInsp ? _asProgramadaConocida(filaDeDatos(f._idx)) : '' };
     setBorrador(b => borradorAgregar(b, nuevo));
   }
+  // ── Cambiar la hora de una inspección del día elegido (tocar su hora) ──
+  // Mismo día y mismo inspector: va como reprogramar (mover con hora). Si
+  // queda igual que en BD, el cambio sale del borrador.
+  const puedeCambiarHora = it => it.tipo === 'insp' && !cerrado &&
+    (it.nueva || _normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO');
+  function cambiarHora(it, insp, h) {
+    setHoraDe(null);
+    const f = it.f;
+    const filaB = _asFilaBorrador(f);
+    const item = borrador.items.find(x => x.fila === filaB) || null;
+    const orig = filaDeDatos(filaB);
+    const igualBD = x => !!orig && esInspeccionLugar(orig) && formatearFecha(orig['FECHA ASIGNACION VISITA'] || '') === x.fecha &&
+      primerVisitador(visitadoresBD(orig)) === x.inspector && horaAudienciasMin(horaProgramadaDe(orig)) === horaAudienciasMin(x.hora);
+    if (item) {
+      const nuevo = Object.assign({}, item, { hora: h });
+      setBorrador(b => (item.tipo === 'mover' && igualBD(nuevo) ? borradorQuitar(b, filaB) : borradorAgregar(b, nuevo)));
+      return;
+    }
+    if (horaAudienciasMin(horaProgramadaDe(f)) === horaAudienciasMin(h)) return;
+    setBorrador(b => borradorAgregar(b, { tipo: 'mover', fila: f._idx, radicado: String(f['RADICADO'] || '').trim(),
+      inspector: insp, fecha: dia.fecha, hora: h, programadaConocida: _asProgramadaConocida(orig) }));
+  }
   const partesResumen = [];
   if (resumen.visitas) partesResumen.push(resumen.visitas === 1 ? '1 visita' : resumen.visitas + ' visitas');
   if (resumen.inspecciones) partesResumen.push(resumen.inspecciones === 1 ? '1 inspección' : resumen.inspecciones + ' inspecciones');
+  if (resumen.reprogramadas) partesResumen.push(resumen.reprogramadas === 1 ? '1 inspección reprogramada' : resumen.reprogramadas + ' inspecciones reprogramadas');
   if (resumen.movidas) partesResumen.push(resumen.movidas === 1 ? '1 cambio de día' : resumen.movidas + ' cambios de día');
   const textoResumen = partesResumen.length > 1
     ? partesResumen.slice(0, -1).join(', ') + ' y ' + partesResumen[partesResumen.length - 1] : partesResumen[0];
@@ -651,8 +753,9 @@ function AgendaSemana({ usuario }) {
       {/* Celular (<900): un día a la vez; la tira elige el día (TASK 05). */}
       <div className="as-tira" role="group" aria-label="Día">
         {semana.dias.map((d, k) => (
-          <button key={d.fecha} type="button" aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}>
-            <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}</b>
+          <button key={d.fecha} type="button" aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}
+            aria-current={d.date.getTime() === hoy0.getTime() ? 'date' : undefined}>
+            <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}{d.date.getTime() === hoy0.getTime() && <span className="as-hoy-tag">Hoy</span>}</b>
             <small>{d.habil ? textoZonaDia(d.zona, true) : 'Festivo'}</small>
             <small>{nPorAgendar[k]} por agendar</small>
           </button>
@@ -666,8 +769,9 @@ function AgendaSemana({ usuario }) {
           <div className="as-esq" aria-hidden="true"></div>
           {semana.dias.map((d, k) => (
             <button type="button" key={d.fecha} className={'as-dia' + (k === diaSel ? ' sel' : '')}
-              aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}>
-              <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}</b>
+              aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}
+              aria-current={d.date.getTime() === hoy0.getTime() ? 'date' : undefined}>
+              <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}{d.date.getTime() === hoy0.getTime() && <span className="as-hoy-tag">Hoy</span>}</b>
               <span className="as-dia-zona">{d.habil ? textoZonaDia(d.zona, k !== diaSel) : 'Festivo'}</span>
               <span className="as-dia-n">{nPorAgendar[k]} por agendar</span>
             </button>
@@ -701,6 +805,11 @@ function AgendaSemana({ usuario }) {
                           onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
                           expediente={it.nueva && it.tipo === 'visita' ? expedienteBorrador(it.f._idx) : null}
                           onExpediente={it.nueva && it.tipo === 'visita' ? v => cambiarExpediente(it.f._idx, v) : null}
+                          horaAbierta={horaDe != null && it.f && horaDe === it.f._idx}
+                          onAbrirHora={puedeCambiarHora(it) ? () => setHoraDe(h => (h === it.f._idx ? null : it.f._idx)) : null}
+                          horas={horaDe != null && it.f && horaDe === it.f._idx
+                            ? _asHorasLibres(datosEf, fila.inspector, semana.dias[k].date, _asFilaBorrador(it.f)) : null}
+                          onHora={h => cambiarHora(it, fila.inspector, h)}
                           onArrastrar={arrastrar(it)} onFinArrastre={() => setDropCelda(null)} />))
                       : <>
                         {c.items.filter(it => it.tipo === 'insp').map((it, j) => (
@@ -725,7 +834,7 @@ function AgendaSemana({ usuario }) {
         </section>
       </div>
 
-      <aside className="as-panel" aria-labelledby="as-pa-t">
+      <aside className="as-panel" aria-labelledby="as-pa-t" ref={panelRef}>
         <div className="as-panel-cab">
           <h2 id="as-pa-t">Por agendar</h2>
           <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}{tituloZona ? ' · ' + tituloZona : ''}</p>
@@ -765,13 +874,19 @@ function AgendaSemana({ usuario }) {
             </>
           ) : (
             <>
-              <h3 className="as-grupo">Inspecciones por programar <span>{pa.inspecciones.length}</span></h3>
-              {pa.inspecciones.length ? pa.inspecciones.map(filaInspeccion)
-                : <p className="as-vacio">Nada decretado en Audiencias sin hora.</p>}
+              {/* Sin decretadas, una línea: no ocupa un bloque vacío. */}
+              <h3 className="as-grupo">Inspecciones por programar <span>{pa.inspecciones.length || 'ninguna'}</span></h3>
+              {pa.inspecciones.map(filaInspeccion)}
               {esAdmin && (
                 <>
                   <h3 className="as-grupo">Visitas{tituloZona ? ' · ' + tituloZona : ''} <span>{pa.visitas.length}</span></h3>
-                  {pa.visitas.length ? pa.visitas.map(v => filaVisita(v, false))
+                  {/* Quien tiene inspección en otra zona ese día no recibe estas
+                      visitas: se dice una vez aquí, no solo en el «+» apagado. */}
+                  {!cerrado && inspVisitas.map(n => {
+                    const m = choqueZonaDia(datosEf, n, dia.date);
+                    return m ? <p key={'z' + n} className="as-aviso">{m}</p> : null;
+                  })}
+                  {pa.visitas.length ? pa.visitas.map(v => filaVisita(v, null))
                     : <p className="as-vacio">No quedan visitas por agendar en esta zona. Busca otro caso arriba si hace falta.</p>}
                 </>
               )}
@@ -779,9 +894,10 @@ function AgendaSemana({ usuario }) {
           )}
         </div>
       </aside>
-      </div>
 
-      {/* Barra del borrador: «Asignar» es el único botón lleno de la pantalla. */}
+      {/* Barra del borrador: «Asignar» es el único botón lleno de la pantalla.
+          Va en el cuerpo: en escritorio queda justo bajo el tablero (columna
+          izquierda), no al fondo de la ventana; en el celular, al final. */}
       <div className="as-barra" role="region" aria-label="Borrador de la semana">
         <div className="as-barra-txt" aria-live="polite">
           {resumen.total ? <b>Borrador: {textoResumen}</b> : <b>Sin cambios</b>}
@@ -797,6 +913,7 @@ function AgendaSemana({ usuario }) {
           </button>
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -804,15 +921,18 @@ function AgendaSemana({ usuario }) {
 // Un item de la celda: inspección (lleva hora) o visita. Detallado en el
 // día elegido (hora · dirección · caso); compacto, solo la hora de la
 // inspección. Tocarlo abre la visita (como la tarjeta de Inspecciones).
-function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre, expediente, onExpediente }) {
+// onAbrirHora (inspección que se puede reprogramar): la hora es un botón que
+// despliega sus horas libres (horas) dentro del item; onHora elige una.
+function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre, expediente, onExpediente,
+  horaAbierta, onAbrirHora, horas, onHora }) {
   const f = it.f;
   const dir = _asDir(f);
   const sub = _asSub(it);
   const hora = it.tipo === 'insp' ? horaCortaInspeccion(it.hora) : '';
-  const clase = 'as-it as-it-' + it.tipo + (it.fueraZona ? ' as-it-fuera' : '') + (it.nueva ? ' as-it-nueva' : '') +
+  const clase = 'as-it as-it-' + it.tipo + (it.nueva ? ' as-it-nueva' : '') +
     (resaltada != null && f && f._idx === resaltada ? ' as-it-resaltada' : '');
-  const title = dir + (it.fueraZona ? ' · fuera de zona' : '') + ' — ' + sub;
-  const label = (hora ? hora + ', ' : '') + sub + ', ' + dir + (it.fueraZona ? ', fuera de zona' : '');
+  const title = dir + ' — ' + sub;
+  const label = (hora ? hora + ', ' : '') + sub + ', ' + dir;
   const abrir = () => { if (window.abrirVisitaDetail) window.abrirVisitaDetail(f); };
   const tecla = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } };
   // Arrastrable (escritorio) solo si el tablero lo permite (sePuedeArrastrar).
@@ -828,7 +948,13 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
   return (
     <div className={clase} role="button" tabIndex={0} title={title} aria-label={label}
       onClick={abrir} onKeyDown={tecla} {...arr}>
-      <span className="as-it-h">{it.tipo === 'insp' ? horaCortaInspeccion(it.hora) : ''}</span>
+      {onAbrirHora ? (
+        <button type="button" className="as-it-h as-it-hbtn" aria-expanded={!!horaAbierta}
+          aria-label={'Cambiar la hora, ahora ' + hora} title="Cambiar la hora"
+          onClick={e => { e.stopPropagation(); onAbrirHora(); }} onKeyDown={e => e.stopPropagation()}>
+          {hora}<Icon.Chevron size={12} />
+        </button>
+      ) : <span className="as-it-h">{hora}</span>}
       <span className="as-it-d">{dir}</span>
       {onQuitar ? (
         <button type="button" className="as-quitar" aria-label={'Quitar ' + dir + ' del borrador'}
@@ -838,10 +964,20 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
       ) : <span></span>}
       <span className="as-it-s">
         {it.nueva && <b className="as-nueva">Nueva</b>}
-        {it.nueva ? ' · ' : ''}
-        {it.fueraZona && <b className="as-fz">Fuera de zona</b>}
-        {it.fueraZona ? ' · ' : ''}{sub}
+        {it.nueva ? ' · ' : ''}{sub}
       </span>
+      {horaAbierta && horas && (
+        <div className="as-horas as-it-horas" role="group" aria-label={'Hora de ' + dir}
+          onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+          {horas.map(h => {
+            const actual = horaAudienciasMin(h) === horaAudienciasMin(it.hora);
+            return (
+              <button key={h} type="button" className="as-hora" aria-pressed={actual}
+                onClick={() => (actual ? onAbrirHora() : onHora(h))}>{horaCortaInspeccion(h)}</button>
+            );
+          })}
+        </div>
+      )}
       {/* Visita nueva: el expediente del caso lo conoce quien asigna (opcional, solo números). */}
       {onExpediente && (
         <input className="as-exp-it" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
