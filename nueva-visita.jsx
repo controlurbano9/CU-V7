@@ -856,7 +856,15 @@ function _revisionVigenteD(dObj) {
 // (A38): se arma con lo diligenciado, sin IA (2026-11-05, decisión del
 // usuario). Lo que escriba el inspector va después, aparte.
 function _conclusionDeterminativaD(dObj) {
+  // Detalle del POT en el punto actual (categoría del suelo de protección,
+  // fenómeno y nivel de la amenaza): solo si la consulta es de este punto.
+  const ref = dObj.potProtQueb && String(dObj.potProtQueb.lat) === String(dObj.lat) &&
+    String(dObj.potProtQueb.lon) === String(dObj.lon) ? dObj.potProtQueb : {};
   return conclusionDeterminativa({
+    sueloProtCategoria: ref.sueloProt === 'SI' ? ref.sueloProtCategoria : '',
+    amenaza: dObj.amenaza,
+    amenazaTipo: ref.amenaza === 'SI' ? ref.amenazaTipo : '',
+    amenazaCategoria: ref.amenaza === 'SI' ? ref.amenazaCategoria : '',
     infraccion: _infraccionSoloCatalogo(dObj.infraccion),
     requiere: (dObj.reqLicencia || {}).respuesta,
     modalidades: (dObj.reqLicencia || {}).modalidades,
@@ -868,7 +876,7 @@ function _conclusionDeterminativaD(dObj) {
     pisos: dObj.pisos, destinaciones: dObj.destinaciones,
     alturaPisos: dObj.alturaPisos, destActuales: dObj.destActuales,
     estadoObra: dObj.estadoObra, sueloProt: dObj.sueloProt,
-    quebrada: dObj.quebrada, poligono: dObj.poligono,
+    quebrada: dObj.quebrada,
     fechaVisita: dObj.fechaVisita, usos: dObj.usos,
   });
 }
@@ -3182,7 +3190,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!r) return;
     setD(prev => {
       if (String(prev.lat) !== String(lat) || String(prev.lon) !== String(lon)) return prev;
-      const ref = { lat: lat, lon: lon, sueloProt: r.sueloProt || '', quebrada: r.enRetiro || '' };
+      const ref = { lat: lat, lon: lon, sueloProt: r.sueloProt || '', quebrada: r.enRetiro || '',
+        sueloProtCategoria: r.sueloProtCategoria || '', amenaza: r.amenaza || '',
+        amenazaTipo: r.amenazaTipo || '', amenazaCategoria: r.amenazaCategoria || '' };
       const next = Object.assign({}, prev, { potProtQueb: ref });
       if (ref.sueloProt && prev.sueloProt !== ref.sueloProt) next.sueloProt = ref.sueloProt;
       if (ref.quebrada && prev.quebrada !== ref.quebrada) next.quebrada = ref.quebrada;

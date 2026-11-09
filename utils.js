@@ -5171,9 +5171,19 @@ function conclusionDeterminativa(o) {
   var s2 = '';
   var verbo0 = verbos.length ? verbos[0] : 'construir';
   if (chipsA.length === 1 && chipsA[0] === 'A1') {
+    // Entre paréntesis va la categoría del suelo de protección que da el POT
+    // en el punto (ZIM-4, ZPAP-3…), nunca el polígono de uso del suelo, que es
+    // otra capa (2026-11-09). La amenaza acompaña, no sustenta sola el A1.
+    var catProt = String(o.sueloProtCategoria || '').trim();
+    var enAmenaza = '';
+    if (si(o.amenaza)) {
+      var catAm = String(o.amenazaCategoria || '').trim().toLowerCase();
+      var tipoAm = String(o.amenazaTipo || '').trim().toLowerCase();
+      enAmenaza = ' y en zona de amenaza' + (catAm ? ' ' + catAm : '') + (tipoAm ? ' por ' + tipoAm : '');
+    }
     if (si(o.sueloProt)) s2 = 'Por ' + verbo0 + 'se en suelo de protección' +
-      (String(o.poligono || '').trim() ? ' (' + o.poligono + ')' : '') + ', ';
-    else if (si(o.quebrada)) s2 = 'Por ' + verbo0 + 'se en el retiro de una fuente hídrica, ';
+      (catProt ? ' (' + catProt + ')' : '') + enAmenaza + ', ';
+    else if (si(o.quebrada)) s2 = 'Por ' + verbo0 + 'se en el retiro de una fuente hídrica' + enAmenaza + ', ';
   }
   var frasesA = {
     A1: 'en áreas protegidas',

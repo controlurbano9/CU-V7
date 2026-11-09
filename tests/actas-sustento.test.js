@@ -242,7 +242,8 @@ test('R31 y juicio: la copropiedad no es la licencia; el acta no juzga', () => {
 
 // ── conclusionDeterminativa ──────────────────────────────────
 const EJ1 = U.conclusionDeterminativa({ infraccion: 'A1: Área protegida o afectada', requiere: 'SI',
-  modalidades: ['Ampliación'], licenciaAportada: 'NO', estadoObra: EN_PROCESO, sueloProt: 'SI', poligono: 'ZPAP-3' });
+  modalidades: ['Ampliación'], licenciaAportada: 'NO', estadoObra: EN_PROCESO, sueloProt: 'SI', poligono: 'ZR-1-C5',
+  sueloProtCategoria: 'ZPAP-3' });
 const EJ2 = U.conclusionDeterminativa({ infraccion: A4, requiere: 'SI',
   modalidades: ['Ampliación'], licenciaAportada: 'NO', estadoObra: 'Terminada' });
 const EJ3 = U.conclusionDeterminativa({ infraccion: 'No se evidencia infracción', requiere: 'SI',
@@ -254,6 +255,20 @@ test('conclusionDeterminativa: ejemplo 1 (A1, ampliación, sin licencia)', () =>
   assert.equal(EJ1,
     'Las obras corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia. ' +
     'Por construirse en suelo de protección (ZPAP-3), constituyen el comportamiento de construir en áreas protegidas, previsto en el artículo 135, literal A, numeral 1, de la Ley 1801 de 2016, y no pueden legalizarse mediante licencia ni reconocimiento.');
+});
+
+test('conclusionDeterminativa: A1 nombra la categoría de protección y la amenaza, no el uso del suelo', () => {
+  const base = { infraccion: 'A1: Área protegida o afectada', requiere: 'SI', modalidades: ['Ampliación'],
+    licenciaAportada: 'NO', sueloProt: 'SI', poligono: 'ZR-1-C5' };
+  const sinDetalle = U.conclusionDeterminativa(base);
+  assert.ok(sinDetalle.includes('Por construirse en suelo de protección, constituyen'));
+  assert.ok(!sinDetalle.includes('ZR-1-C5'));
+  const t = U.conclusionDeterminativa(Object.assign({}, base, { sueloProtCategoria: 'ZIM-4: Zona de Interés Municipal',
+    amenaza: 'SI', amenazaTipo: 'Movimiento en masa', amenazaCategoria: 'Alta' }));
+  assert.ok(t.includes('Por construirse en suelo de protección (ZIM-4: Zona de Interés Municipal) y en zona de amenaza alta por movimiento en masa, constituyen'));
+  assert.ok(U.conclusionDeterminativa(Object.assign({}, base, { amenaza: 'SI' }))
+    .includes('en suelo de protección y en zona de amenaza, constituyen'));
+  assert.ok(!U.conclusionDeterminativa(Object.assign({}, base, { amenaza: 'NO', amenazaTipo: 'Inundación' })).includes('amenaza'));
 });
 
 test('conclusionDeterminativa: ejemplo 2 (A4, terminada)', () => {
