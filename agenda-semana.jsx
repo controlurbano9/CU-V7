@@ -322,10 +322,9 @@ function AgendaSemana({ usuario }) {
   useEffectAS(() => {
     if (!datos) return;
     setBorrador(b => {
-      const vale = b.items.filter(it => {
-        const f = datos.find(x => x._idx === it.fila);
-        return !!f && claveRadicado(f['RADICADO']) === claveRadicado(it.radicado);
-      });
+      // También lo que ya no está como cuando se armó (otro lo asignó, inició o
+      // completó): reenviarlo pisaría ese trabajo (itemBorradorVigente).
+      const vale = b.items.filter(it => itemBorradorVigente(it, datos.find(x => x._idx === it.fila)));
       return vale.length === b.items.length ? b : Object.assign({}, b, { items: vale });
     });
   }, [datos]);
@@ -423,7 +422,8 @@ function AgendaSemana({ usuario }) {
     }).pop() || null);
     const inspAnterior = anterior ? primerVisitador(visitadoresBD(anterior.f)) : '';
     const actual = plan.modo === 'reprogramar' && inspVisitas.indexOf(plan.inspector) >= 0 ? plan.inspector : '';
-    const ins = elegidos[k] != null ? elegidos[k] : actual;
+    // Lo elegido vale solo si sigue en Reglas (pudo desmarcarse entretanto).
+    const ins = elegidos[k] != null && inspVisitas.indexOf(elegidos[k]) >= 0 ? elegidos[k] : actual;
     const choque = ins ? choqueZonaInspeccion(datosEf, ins, dia.date, f, { inspeccion: true }) : '';
     const excepto = plan.modo === 'reprogramar' ? plan.fila : null;
     const horas = ins && !choque && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
@@ -756,7 +756,8 @@ function AgendaSemana({ usuario }) {
     const m = choqueZonaInspeccion(dEf, insp, d.date, f, { inspeccion: esInsp });
     if (m) { avisar(m); return; }
     const hora = esInsp ? (item ? item.hora : horaProgramadaDe(f)) : '';
-    if (esInsp && !_asHorasLibres(dEf, insp, d.date, filaB).some(h => horaAudienciasMin(h) === horaAudienciasMin(hora))) {
+    // Sin hora programada no hay con qué chocar (antes avisaba «a las  ese día»).
+    if (esInsp && hora && !_asHorasLibres(dEf, insp, d.date, filaB).some(h => horaAudienciasMin(h) === horaAudienciasMin(hora))) {
       avisar(nombrePila(insp) + ' ya tiene inspección a las ' + horaCortaInspeccion(hora) + ' ese día.');
       return;
     }

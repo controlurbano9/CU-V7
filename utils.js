@@ -6331,6 +6331,26 @@ function borradorAgregar(b, item) {
   return { lunes: (b && b.lunes) || '', items: items };
 }
 
+// ¿Sigue valiendo un item del borrador con la fila como está hoy en BD?
+// (revisión 2026-11-10). El borrador vive días en el equipo y entretanto otro
+// puede asignar, iniciar o completar el caso: reenviarlo pisaría ese trabajo
+// (un cambio de día viejo volvía ASIGNADA una visita COMPLETADA).
+//   visita      — la candidata sigue PENDIENTE
+//   mover       — la visita (o inspección) sigue ASIGNADA
+//   insp montar / reprogramar — la fila sigue sin iniciar (PENDIENTE o ASIGNADA)
+//   insp nueva  — basta con que la fila origen exista con su radicado
+function itemBorradorVigente(item, f) {
+  if (!item || !f) return false;
+  if (claveRadicado(f['RADICADO']) !== claveRadicado(item.radicado)) return false;
+  var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
+  var pendiente = AGENDA_ESTADOS.indexOf(e) !== -1;
+  var asignada = e === 'ASIGNADO' || e === 'ASIGNADA';
+  if (item.tipo === 'visita') return pendiente;
+  if (item.tipo === 'mover') return asignada;
+  if (item.tipo === 'insp') return item.modo === 'nueva' ? true : (pendiente || asignada);
+  return false;
+}
+
 function borradorQuitar(b, fila) {
   return { lunes: (b && b.lunes) || '',
     items: ((b && b.items) || []).filter(function (x) { return x.fila !== fila; }) };
@@ -7204,6 +7224,7 @@ var _cuUtilsExports = {
   semanaEquipo: semanaEquipo,
   porAgendarDia: porAgendarDia,
   envioBorrador: envioBorrador,
+  itemBorradorVigente: itemBorradorVigente,
   cuposDiaEquipo: cuposDiaEquipo,
   fechaLargaConAnio: fechaLargaConAnio,
   horaLargaInspeccion: horaLargaInspeccion,

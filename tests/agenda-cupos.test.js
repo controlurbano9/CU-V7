@@ -72,3 +72,40 @@ test('proponer: nada si ya cumplieron la meta o no hay sugeridas', () => {
   assert.deepEqual(proponerDiaAgenda([{ fila: 1, barrio: 'X' }], { [AH]: { n: 2, barrios: [] } }, [AH], 2), []);
   assert.deepEqual(proponerDiaAgenda([], {}, [AH, MH], 2), []);
 });
+
+// ── Revisión 2026-11-10: lo del borrador que ya no está como cuando se armó ──
+const { itemBorradorVigente } = require('../utils.js');
+
+test('borrador: un cambio de día viejo no reabre una visita completada', () => {
+  const mover = { tipo: 'mover', fila: 5, radicado: '20261100001', inspector: AH, fecha: '12/11/2026' };
+  assert.equal(itemBorradorVigente(mover, { RADICADO: '20261100001', 'ESTADO VISITA': 'ASIGNADO' }), true);
+  assert.equal(itemBorradorVigente(mover, { RADICADO: '20261100001', 'ESTADO VISITA': 'COMPLETADO' }), false);
+  assert.equal(itemBorradorVigente(mover, { RADICADO: '20261100001', 'ESTADO VISITA': 'INICIADO' }), false);
+});
+
+test('borrador: visita nueva solo si sigue pendiente; inspección según su modo', () => {
+  const v = { tipo: 'visita', fila: 6, radicado: '20261100002' };
+  assert.equal(itemBorradorVigente(v, { RADICADO: 20261100002, 'ESTADO VISITA': 'PENDIENTE' }), true);
+  assert.equal(itemBorradorVigente(v, { RADICADO: '20261100002', 'ESTADO VISITA': 'ASIGNADO' }), false);
+  const montar = { tipo: 'insp', modo: 'montar', fila: 7, radicado: '20261100003' };
+  assert.equal(itemBorradorVigente(montar, { RADICADO: '20261100003', 'ESTADO VISITA': 'ASIGNADO' }), true);
+  assert.equal(itemBorradorVigente(montar, { RADICADO: '20261100003', 'ESTADO VISITA': 'INICIADO' }), false);
+  const nueva = { tipo: 'insp', modo: 'nueva', fila: 8, radicado: '20261100004' };
+  assert.equal(itemBorradorVigente(nueva, { RADICADO: '20261100004', 'ESTADO VISITA': 'COMPLETADO' }), true);
+});
+
+test('borrador: fila que ya es de otro radicado o que no existe, fuera', () => {
+  const v = { tipo: 'visita', fila: 6, radicado: '20261100002' };
+  assert.equal(itemBorradorVigente(v, { RADICADO: '20261199999', 'ESTADO VISITA': 'PENDIENTE' }), false);
+  assert.equal(itemBorradorVigente(v, null), false);
+});
+
+const fsB = require('node:fs'), pathB = require('node:path');
+const BACK = pathB.join(__dirname, '..', '..', 'apps_script_unificado.js');
+test('backend: asignarRadicado no reasigna una visita completada', { skip: fsB.existsSync(BACK) ? false : 'sin backend en esta copia' }, () => {
+  const src = fsB.readFileSync(BACK, 'utf8');
+  const ini = src.indexOf('function asignarRadicado(');
+  const cuerpo = src.slice(ini, src.indexOf("setValue('ASIGNADO')", ini));
+  assert.match(cuerpo, /estadoActual === 'COMPLETADO' \|\| estadoActual === 'COMPLETADA'/);
+  assert.match(cuerpo, /return \{ ok: false/);
+});
