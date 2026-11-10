@@ -86,6 +86,9 @@ function _asDiaInicial(marca) {
 // volver. { 'DD/MM/YYYY' (lunes): borrador }. Las semanas ya pasadas se
 // descartan al leer.
 const AS_BORRADOR_KEY = 'cu_agenda_semana_borrador_v1';
+// Reglas de fábrica si no se pueden leer: los visitadores de fábrica del backend
+// (leerConfigAgenda) y la meta de 2 por día (decisión del usuario 2026-11-10).
+const AS_CONFIG_FABRICA = { visitasPorInspector: 2, inspectoresAgenda: ['ALEJANDRO', 'MAURICIO'] };
 function _asLeerBorradores() {
   try {
     const g = JSON.parse(localStorage.getItem(AS_BORRADOR_KEY) || '{}') || {};
@@ -204,7 +207,10 @@ function AgendaSemana({ usuario }) {
       const [bd, lista, c] = await Promise.all([
         leerVisitas(forzar ? { forzar: true } : undefined),
         listarInspectoresActivos(),
-        leerConfigAgenda({ onActualizado: setCfg }),
+        // Las reglas no bloquean la Agenda: si no se pueden leer (el backend
+        // anterior solo se las daba al ADMIN y el supervisor se quedaba en
+        // «No se pudo cargar»), se usan las de fábrica (AS_CONFIG_FABRICA).
+        leerConfigAgenda({ onActualizado: setCfg }).catch(() => null),
       ]);
       setDatos(((bd && bd.datos) || []).concat((bd && bd.noCompetencia) || []));
       setActivos(lista || []);
@@ -345,11 +351,11 @@ function AgendaSemana({ usuario }) {
   // Visitas: solo quien está en ⚙ Reglas («Quién recibe visitas de la
   // agenda»); las inspecciones, cualquiera de los asignables.
   const inspVisitas = useMemoAS(() => {
-    const kw = cfg && cfg.inspectoresAgenda;
+    const kw = (cfg && cfg.inspectoresAgenda) || AS_CONFIG_FABRICA.inspectoresAgenda;
     return kw && kw.length ? inspectores.filter(n => esInspectorAgenda(n, kw)) : inspectores;
   }, [inspectores, cfg]);
   // Meta por visitador (⚙ Reglas). Cupos del día = meta × visitadores (2 × 2 = 4).
-  const meta = (cfg && cfg.visitasPorInspector) || 2;
+  const meta = (cfg && cfg.visitasPorInspector) || AS_CONFIG_FABRICA.visitasPorInspector;
   const semana = useMemoAS(() => semanaEquipo(datosEf, lunes, inspectores), [datosEf, lunes, inspectores]);
   // Candidatas una sola vez: porAgendarDia filtra por la zona de cada día.
   const candidatas = useMemoAS(() => candidatasAgenda(datosEf, new Date()), [datosEf]);
