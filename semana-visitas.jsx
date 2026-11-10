@@ -343,7 +343,7 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, ordenable, onDragStart,
 }
 
 // ── Componente principal ───────────────────────────────────────
-function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasignar, inspector: inspectorExt, onInspector, onAbrirDia,
+function SemanaVisitas({ datos, esAdmin, puedeGestionar, miNombre, inspectores, onAbrir, onReasignar, inspector: inspectorExt, onInspector, onAbrirDia,
   offset: offsetExt, onOffset, enAtencion, cargando }) {
   // `cargando`: primera carga sin copia local. Se pintan los días y las
   // columnas reales con esqueletos en vez de «Sin visitas» (propuesta de
@@ -467,13 +467,16 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
   // completado no se ordena (ya se hizo).
   function puedeOrdenar(f) {
     if (normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'COMPLETADO') return false;
-    return esAdmin || String(f['VISITADOR(ES)'] || '').toUpperCase().indexOf(String(miNombre || '').toUpperCase()) >= 0;
+    // Los demás (inspector y supervisor), solo las suyas: el backend
+    // (guardarOrdenDia) omite las ajenas de quien no es ADMIN. esAdmin aquí es
+    // «ve todo» (el supervisor también); lo que escribe va con puedeGestionar.
+    return !!puedeGestionar || (!!miNombre && String(f['VISITADOR(ES)'] || '').toUpperCase().indexOf(String(miNombre).toUpperCase()) >= 0);
   }
   // Mover de día: solo el admin y solo una asignada que no se ha iniciado.
   // La inspección al lugar no: el día y la hora se citaron con las partes;
   // se cambian en la ficha con «Cambiar inspección».
   function puedeMover(f) {
-    return esAdmin && normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'ASIGNADO' &&
+    return !!puedeGestionar && normalizarEstado(f['ESTADO VISITA'] || f[13] || '') === 'ASIGNADO' &&
       !esInspeccionLugar(f);
   }
 
@@ -487,9 +490,16 @@ function SemanaVisitas({ datos, esAdmin, miNombre, inspectores, onAbrir, onReasi
     });
     setAjustes((a) => Object.assign({}, a, nuevos));
     try {
-      await gasPost({ accion: 'guardarOrdenDia', fecha, visitas: lista.map((f, k) => ({
+      const r = await gasPost({ accion: 'guardarOrdenDia', fecha, visitas: lista.map((f, k) => ({
         fila: f._idx, radicadoConocido: f['RADICADO'] || '', idVisita: f['ID_VISITA'] || '', orden: k + 1 })) });
       invalidarCache('visitas');
+      // El backend responde ok aunque omita alguna (ajena o fila corrida):
+      // antes el orden se veía guardado y volvía al recargar, sin aviso.
+      const omit = (r && r.omitidas) || [];
+      if (omit.length) {
+        appAlert((omit.length === 1 ? 'Una visita no se pudo reordenar' : omit.length + ' visitas no se pudieron reordenar') +
+          ' (no es tuya o la fila cambió). Recarga para ver el orden guardado.', { tono: 'aviso' });
+      }
     } catch (e) {
       setAjustes((a) => Object.assign({}, a, previos));
       appAlert('No se pudo guardar el orden: ' + e.message, { tono: 'error' });

@@ -89,9 +89,20 @@ const AS_BORRADOR_KEY = 'cu_agenda_semana_borrador_v1';
 // Reglas de fábrica si no se pueden leer: los visitadores de fábrica del backend
 // (leerConfigAgenda) y la meta de 2 por día (decisión del usuario 2026-11-10).
 const AS_CONFIG_FABRICA = { visitasPorInspector: 2, inspectoresAgenda: ['ALEJANDRO', 'MAURICIO'] };
-function _asLeerBorradores() {
+// Por usuario (revisión de permisos 2026-11-10): en un equipo compartido el
+// borrador del admin le aparecía al supervisor, y al tocar «Asignar» el
+// backend se lo rechazaba. La clave sin usuario (hasta v334) la hereda el
+// primer ADMIN que entre, una vez, y se borra.
+function _asClave(quien) { return AS_BORRADOR_KEY + '_' + String(quien || '').trim().toUpperCase(); }
+function _asLeerBorradores(quien) {
   try {
-    const g = JSON.parse(localStorage.getItem(AS_BORRADOR_KEY) || '{}') || {};
+    const clave = _asClave(quien);
+    let txt = localStorage.getItem(clave);
+    if (txt == null && _asLeerBorradores.heredar) {
+      const viejo = localStorage.getItem(AS_BORRADOR_KEY);
+      if (viejo != null) { localStorage.setItem(clave, viejo); localStorage.removeItem(AS_BORRADOR_KEY); txt = viejo; }
+    }
+    const g = JSON.parse(txt || '{}') || {};
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     Object.keys(g).forEach(k => {
       const l = parsearFecha(k);
@@ -100,15 +111,15 @@ function _asLeerBorradores() {
     return g;
   } catch (e) { return {}; }
 }
-function _asBorradorDe(lunes) {
-  const b = _asLeerBorradores()[formatearFecha(lunes)];
+function _asBorradorDe(lunes, quien) {
+  const b = _asLeerBorradores(quien)[formatearFecha(lunes)];
   return b && Array.isArray(b.items) ? b : borradorVacio(lunes);
 }
-function _asGuardarBorrador(b) {
+function _asGuardarBorrador(b, quien) {
   try {
-    const g = _asLeerBorradores();
+    const g = _asLeerBorradores(quien);
     if (b.items.length) g[b.lunes] = b; else delete g[b.lunes];
-    localStorage.setItem(AS_BORRADOR_KEY, JSON.stringify(g));
+    localStorage.setItem(_asClave(quien), JSON.stringify(g));
   } catch (e) { /* sin espacio: queda en memoria */ }
 }
 // Arrastrar solo con mouse (en el celular no hay arrastre: TASK 05).
@@ -181,7 +192,9 @@ function AgendaSemana({ usuario }) {
   const [cargando, setCargando] = useStateAS(false);
   const [error, setError] = useStateAS('');
   // Borrador de la semana: guardado en el equipo y enviado con «Asignar».
-  const [borrador, setBorrador] = useStateAS(() => _asBorradorDe(lunes));
+  const quien = (usuario && usuario.usuario) || '';
+  _asLeerBorradores.heredar = !!(usuario && usuario.rol === 'ADMIN');
+  const [borrador, setBorrador] = useStateAS(() => _asBorradorDe(lunes, quien));
   const [asignando, setAsignando] = useStateAS(false);
   const [dropCelda, setDropCelda] = useStateAS(null); // 'dia|inspector' bajo el arrastre
   const arrastre = useRefAS(null);
@@ -318,10 +331,10 @@ function AgendaSemana({ usuario }) {
   }
 
   // Otra semana, su borrador guardado.
-  useEffectAS(() => { setBorrador(_asBorradorDe(lunes)); setAbierta(null); setHoraDe(null); }, [lunes]);
+  useEffectAS(() => { setBorrador(_asBorradorDe(lunes, quien)); setAbierta(null); setHoraDe(null); }, [lunes]);
   // Cada cambio se guarda en el equipo (solo el de la semana a la vista).
   useEffectAS(() => {
-    if (borrador.lunes === formatearFecha(lunes)) _asGuardarBorrador(borrador);
+    if (borrador.lunes === formatearFecha(lunes)) _asGuardarBorrador(borrador, quien);
   }, [borrador]);
   // Con la BD al día, fuera lo que ya no aplica: la fila no existe o su
   // RADICADO cambió (se borró una fila en el Sheet y las de abajo subieron).
@@ -741,6 +754,9 @@ function AgendaSemana({ usuario }) {
   const sePuedeArrastrar = it => {
     if (!conPuntero) return false;
     if (!esAdmin && it.tipo !== 'insp') return false;
+    // Una inspección sin hora no se arrastra: el cambio iría por asignarRadicado,
+    // que el backend rechaza para inspecciones. Se le pone hora desde la lista.
+    if (it.tipo === 'insp' && !it.hora) return false;
     if (it.nueva) return true;
     return _normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO';
   };

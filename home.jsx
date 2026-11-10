@@ -237,6 +237,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           cargando={cargando}
           datos={datos}
           esAdmin={veTodo}
+          puedeGestionar={usuario.rol === 'ADMIN'}
           miNombre={miNombre}
           inspectores={inspectores}
           onAbrir={onContinuar}
@@ -245,7 +246,7 @@ function HomeScreen({ usuario, onContinuar, onNavegar }) {
           onInspector={setInspector}
           offset={offsetSemana}
           onOffset={setOffsetSemana}
-          onAbrirDia={usuario.rol === 'ADMIN' ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
+          onAbrirDia={veTodo ? (f) => _abrirAgendaEnDia(f, onNavegar) : undefined}
           enAtencion={enAtencion}
         />
       </div>
