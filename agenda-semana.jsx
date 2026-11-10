@@ -413,9 +413,17 @@ function AgendaSemana({ usuario }) {
     const caso = visitasDelCaso(datosEf, f);
     const plan = inspeccionDelCaso(caso, usuario.rol);
     const exp = expedienteCaso(k, caso);
-    // Con inspector fijo (hizo la visita anterior, o la inspección ya lo tiene) no se elige.
-    const fijo = plan.fijo || (plan.modo === 'reprogramar' && !!plan.inspector);
-    const ins = fijo ? plan.inspector : (elegidos[k] || '');
+    // El inspector siempre lo elige quien agenda (admin o supervisor; 2026-11-10,
+    // decisión del usuario), entre los visitadores de ⚙ Reglas. Quien hizo la
+    // visita anterior solo se muestra. Al cambiar el día u hora de una
+    // inspección ya programada, arranca marcado el que la tiene (si está en Reglas).
+    const anterior = (numerarVisitasRadicado(caso).filter(x => {
+      const e = _normEstadoVisitaBD(x.f['ESTADO VISITA'] || '');
+      return (e === 'INICIADO' || e === 'COMPLETADO' || e === 'COMPLETADA') && primerVisitador(visitadoresBD(x.f));
+    }).pop() || null);
+    const inspAnterior = anterior ? primerVisitador(visitadoresBD(anterior.f)) : '';
+    const actual = plan.modo === 'reprogramar' && inspVisitas.indexOf(plan.inspector) >= 0 ? plan.inspector : '';
+    const ins = elegidos[k] != null ? elegidos[k] : actual;
     const choque = ins ? choqueZonaInspeccion(datosEf, ins, dia.date, f, { inspeccion: true }) : '';
     const excepto = plan.modo === 'reprogramar' ? plan.fila : null;
     const horas = ins && !choque && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
@@ -432,26 +440,23 @@ function AgendaSemana({ usuario }) {
     if (!plan.puede) return <div className="as-prog"><p className="as-motivo">{plan.motivo || 'No se puede programar.'}</p>{cancelar}</div>;
     return (
       <div className="as-prog">
-        {fijo ? (
-          <p className="as-va">Va <b>{nombrePila(ins)}</b>{plan.fijo ? ', que hizo la visita anterior.' : '.'}</p>
-        ) : (
-          <div className="as-elige" role="group" aria-label="Inspector">
-            {/* Se elige entre los visitadores de la agenda (Alejandro y Mauricio). */}
-            {inspVisitas.map(n => {
-              const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
-              return (
-                <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
-                  title={m || undefined}
-                  onClick={() => (m ? avisar(m) : setElegidos(e => Object.assign({}, e, { [k]: n })))}>
-                  {nombrePila(n)}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {inspAnterior && <p className="as-va">Visita anterior: <b>{nombrePila(inspAnterior)}</b></p>}
+        <div className="as-elige" role="group" aria-label="Inspector">
+          {/* Se elige entre los visitadores de la agenda (Alejandro y Mauricio). */}
+          {inspVisitas.map(n => {
+            const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
+            return (
+              <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
+                title={m || undefined}
+                onClick={() => (m ? avisar(m) : setElegidos(e => Object.assign({}, e, { [k]: n })))}>
+                {nombrePila(n)}
+              </button>
+            );
+          })}
+        </div>
         {cerrado ? <p className="as-motivo">{cerrado}</p>
           : choque ? <p className="as-motivo">{choque}</p>
-          : !ins ? <p className="as-nota">Elige quién va para ver sus horas libres.</p>
+          : !ins ? null
           : (
             <div className="as-horas" role="group" aria-label="Hora">
               {horas.length ? horas.map(h => (
@@ -592,6 +597,12 @@ function AgendaSemana({ usuario }) {
   const esInspItem = it => it.tipo === 'insp' || (it.tipo === 'mover' && !!it.hora);
   const filaDeDatos = fila => (datos || []).find(x => x._idx === fila) || null;
   const expedienteBorrador = fila => ((borrador.items.find(x => x.fila === fila) || {}).expediente) || '';
+  // Casilla de expediente en la tarjeta: visitas nuevas e inspecciones
+  // programadas en el borrador (no en un cambio de hora o de día).
+  const esNuevaConExp = it => {
+    const x = borrador.items.find(y => y.fila === _asFilaBorrador(it.f));
+    return !!x && (x.tipo === 'visita' || x.tipo === 'insp');
+  };
   const cambiarExpediente = (fila, v) => setBorrador(b => {
     const it = b.items.find(x => x.fila === fila);
     return it ? borradorAgregar(b, Object.assign({}, it, { expediente: v })) : b;
@@ -741,11 +752,6 @@ function AgendaSemana({ usuario }) {
     const item = borrador.items.find(x => x.fila === filaB) || null;
     const actualIns = primerVisitador(visitadoresBD(f));
     if (formatearFecha(f['FECHA ASIGNACION VISITA'] || '') === d.fecha && actualIns === insp) return;
-    // La inspección va con quien hizo la visita anterior.
-    if (esInsp && actualIns !== insp) {
-      const plan = inspeccionDelCaso(visitasDelCaso(datosEf, f), usuario.rol);
-      if (plan.fijo) { avisar('Esta inspección va con ' + nombrePila(plan.inspector) + ', que hizo la visita anterior.'); return; }
-    }
     const dEf = datosConBorrador(datos, item ? borradorQuitar(borrador, filaB) : borrador);
     const m = choqueZonaInspeccion(dEf, insp, d.date, f, { inspeccion: esInsp });
     if (m) { avisar(m); return; }
@@ -995,7 +1001,6 @@ function AgendaSemana({ usuario }) {
               const recibe = inspVisitas.indexOf(n) >= 0;
               const nuevas = (c.items || []).filter(it => it.nueva).length;
               const pasa = recibe && c.total > meta;
-              const aviso = recibe && !cerrado ? choqueZonaDia(datosEf, n, dia.date) : '';
               return (
                 <div key={n} className={'as-ins' + (dropIns === n ? ' as-drop' : '')} style={{ '--c': colorDe(n) }}
                   onDragOver={conPuntero ? e => { if (arrastre.current && !cerrado) { e.preventDefault(); if (dropIns !== n) setDropIns(n); } } : undefined}
@@ -1008,12 +1013,11 @@ function AgendaSemana({ usuario }) {
                       <b>{c.total}</b>{recibe ? ' de ' + meta : ''}{pasa ? ' · pasa la meta' : nuevas ? ' · ' + nuevas + (nuevas === 1 ? ' nueva' : ' nuevas') : ''}
                     </span>
                   </div>
-                  {aviso && <p className="as-aviso">{aviso}</p>}
                   {(c.items || []).length ? c.items.map((it, j) => (
                     <AsItem key={it.f && it.f._idx != null ? it.f._idx : 'i' + j} it={it} detallado={true} resaltada={resaltada}
                       onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
-                      expediente={it.nueva && it.tipo === 'visita' ? expedienteBorrador(it.f._idx) : null}
-                      onExpediente={it.nueva && it.tipo === 'visita' ? v => cambiarExpediente(it.f._idx, v) : null}
+                      expediente={it.nueva && esNuevaConExp(it) ? expedienteBorrador(_asFilaBorrador(it.f)) : null}
+                      onExpediente={it.nueva && esNuevaConExp(it) ? v => cambiarExpediente(_asFilaBorrador(it.f), v) : null}
                       horaAbierta={horaDe != null && it.f && horaDe === it.f._idx}
                       onAbrirHora={puedeCambiarHora(it) ? () => setHoraDe(h => (h === it.f._idx ? null : it.f._idx)) : null}
                       horas={horaDe != null && it.f && horaDe === it.f._idx
