@@ -6471,6 +6471,81 @@ function porAgendarDia(datos, candidatas, fecha) {
   return { inspecciones: inspecciones, visitas: visitas };
 }
 
+// Cupos del día en la Agenda (2026-11-10, decisión del usuario): meta por
+// visitador × visitadores de la agenda (⚙ Reglas), sin separar por persona.
+// Cuentan visitas e inspecciones al lugar. Es meta, no tope: libres puede
+// quedar negativo. semana = semanaEquipo(...); k = día (0–4).
+//   → { total, usados, libres }
+function cuposDiaEquipo(semana, k, visitadores, meta) {
+  var lista = visitadores || [];
+  var total = (Number(meta) || 0) * lista.length;
+  var usados = 0;
+  ((semana && semana.filas) || []).forEach(function (fila) {
+    if (lista.indexOf(fila.inspector) < 0) return;
+    var c = fila.dias && fila.dias[k];
+    usados += c ? (c.total || 0) : 0;
+  });
+  return { total: total, usados: usados, libres: total - usados };
+}
+
+// «Lunes 9 de noviembre de 2026»: la fecha con año de la confirmación de una
+// inspección (se le comunica a las partes; sin año se presta a errores).
+function fechaLargaConAnio(fecha) {
+  var d = fecha instanceof Date ? fecha : parsearFecha(fecha);
+  return d ? fechaLargaAgenda(d) + ' de ' + d.getFullYear() : '';
+}
+
+// '9:00AM' → '9:00 a. m.'; '2:00PM' → '2:00 p. m.'. Sin hora legible, tal cual.
+function horaLargaInspeccion(hora) {
+  var m = /^\s*(\d{1,2}:\d{2})\s*([AP])\.?\s*M\.?\s*$/i.exec(String(hora || ''));
+  return m ? m[1] + (m[2].toUpperCase() === 'A' ? ' a. m.' : ' p. m.') : String(hora || '').trim();
+}
+
+// Las visitas sugeridas agrupadas por barrio, en el orden en que aparece
+// cada barrio (la lista ya viene por urgencia: el barrio con el caso más
+// urgente va primero). → [{ barrio, visitas }]
+function agruparPorBarrioAgenda(visitas) {
+  var grupos = [], porClave = {};
+  (visitas || []).forEach(function (v) {
+    var b = String((v && v.barrio) || '').trim() || 'Sin barrio';
+    var k = b.toUpperCase();
+    if (!porClave[k]) { porClave[k] = { barrio: b, visitas: [] }; grupos.push(porClave[k]); }
+    porClave[k].visitas.push(v);
+  });
+  return grupos;
+}
+
+// «Proponer» de la Agenda: llena lo que le falta a cada visitador para su
+// meta con lo más urgente, prefiriendo un barrio que ese visitador ya visita
+// ese día (o el que va tomando), para que la ruta quede junta. Solo propone:
+// lo propuesto va al borrador.
+//   visitas    — sugeridas del día, por urgencia: [{ fila, radicado, barrio }]
+//   ocupados   — { inspector: { n, barrios: ['PARÍS', …] } } lo que ya lleva
+//   visitadores — en orden; quien no deba recibir (cruce de zona) no va aquí
+//   → [{ fila, radicado, inspector }]
+function proponerDiaAgenda(visitas, ocupados, visitadores, meta) {
+  var libres = (visitas || []).slice();
+  var norm = function (b) { return String(b || '').trim().toUpperCase(); };
+  var out = [];
+  (visitadores || []).forEach(function (n) {
+    var o = (ocupados && ocupados[n]) || { n: 0, barrios: [] };
+    var barrios = (o.barrios || []).map(norm);
+    var faltan = (Number(meta) || 0) - (o.n || 0);
+    while (faltan > 0 && libres.length) {
+      var i = -1;
+      for (var j = 0; j < libres.length; j++) {
+        if (barrios.indexOf(norm(libres[j].barrio)) >= 0) { i = j; break; }
+      }
+      if (i < 0) i = 0;
+      var v = libres.splice(i, 1)[0];
+      out.push({ fila: v.fila, radicado: v.radicado, inspector: n });
+      barrios.push(norm(v.barrio));
+      faltan--;
+    }
+  });
+  return out;
+}
+
 // Lo que «Asignar» envía, en las acciones que ya existen: confirmarAgenda
 // para las visitas (agrupadas por inspector y fecha), programarInspecciones
 // para las inspecciones (los mover de una inspección van ahí como
@@ -7129,6 +7204,11 @@ var _cuUtilsExports = {
   semanaEquipo: semanaEquipo,
   porAgendarDia: porAgendarDia,
   envioBorrador: envioBorrador,
+  cuposDiaEquipo: cuposDiaEquipo,
+  fechaLargaConAnio: fechaLargaConAnio,
+  horaLargaInspeccion: horaLargaInspeccion,
+  agruparPorBarrioAgenda: agruparPorBarrioAgenda,
+  proponerDiaAgenda: proponerDiaAgenda,
   horaParaBD: horaParaBD,
   horaParaInput: horaParaInput,
   tarjetaVisita: tarjetaVisita,

@@ -3,18 +3,23 @@
 // (2026-11-09, maqueta aprobada propuesta-agenda-unificada.html). Reemplaza
 // las dos vistas que tenía la Agenda («Visitas» e «Inspecciones»).
 //
-// Un renglón por inspector, un día por columna (lunes a viernes); cada día
-// es una zona para visitas e inspecciones (lunes comunas 1-2-3 … viernes
-// rural). El día elegido se abre (2,2 fr) con hora · dirección · caso; los
-// demás quedan compactos. A la derecha, «Por agendar» del día elegido:
-// inspecciones decretadas sin hora y visitas sugeridas de la zona. Todo va
-// a un borrador (guardado en el equipo, por semana) hasta «Asignar», que lo
+// Rediseño 2026-11-10 (maqueta propuesta-agenda-dia.html): elegir es lo
+// difícil, así que la lista manda. Arriba, la semana en una tira: zona de
+// cada día (lunes comunas 1-2-3 … viernes rural), cupos libres (meta ×
+// visitadores de ⚙ Reglas, cuentan visitas e inspecciones; es meta, no
+// tope) y horas de inspección. Abajo, «Por agendar» del día elegido, ancho,
+// un renglón por caso (filtro de comuna, orden por urgencia o por barrio,
+// buscador y «Registrar»), y a la derecha «El día»: un bloque por inspector
+// que se va llenando, «Proponer» y el borrador con «Asignar». Todo va a un
+// borrador (guardado en el equipo, por semana) hasta «Asignar», que lo
 // envía con las acciones de siempre (programarInspecciones, confirmarAgenda,
-// asignarRadicado). La regla del cruce (choqueZonaInspeccion) bloquea.
-// Arrastrar (solo escritorio) cambia de día o de inspector. En el celular,
-// un día a la vez. La lógica vive en utils.js (semanaEquipo, porAgendarDia,
-// datosConBorrador, envioBorrador…; tests/agenda-semana.test.js): aquí solo
-// se pinta. PanelReglasAgenda y los ayudantes de nombres vienen de agenda.jsx.
+// asignarRadicado); las inspecciones programadas se confirman en una
+// ventana con caso, fecha (con año) y hora. La regla del cruce
+// (choqueZonaInspeccion) bloquea. Arrastrar (solo escritorio): un caso al
+// inspector, o algo del día a otro inspector o a otro día de la tira. La
+// lógica vive en utils.js (semanaEquipo, porAgendarDia, cuposDiaEquipo,
+// proponerDiaAgenda…; tests/agenda-semana.test.js, agenda-cupos.test.js).
+// PanelReglasAgenda y los ayudantes de nombres vienen de agenda.jsx.
 // ═══════════════════════════════════════════════════════════════
 const { useState: useStateAS, useEffect: useEffectAS, useMemo: useMemoAS, useRef: useRefAS } = React;
 
@@ -185,6 +190,13 @@ function AgendaSemana({ usuario }) {
   const [q, setQ] = useStateAS('');
   const [registrando, setRegistrando] = useStateAS(false);
   const [idxBarrios, setIdxBarrios] = useStateAS(null);
+  const [com, setCom] = useStateAS('');             // filtro de comuna de la lista ('' = todas)
+  const [orden, setOrden] = useStateAS('urg');      // 'urg' | 'barrio'
+  const [dropIns, setDropIns] = useStateAS(null);   // visitador bajo el arrastre
+  const [confirmadas, setConfirmadas] = useStateAS(null); // { inspecciones, visitas } tras «Asignar»
+  const [avisoOk, setAvisoOk] = useStateAS('');     // aviso breve de abajo
+  const listoRef = useRefAS(null);
+  const volverRef = useRefAS(null);
 
   async function cargar(forzar) {
     setCargando(true);
@@ -277,6 +289,28 @@ function AgendaSemana({ usuario }) {
     };
   }, [hayDatos]);
 
+  // Otro día: sin filtro de comuna y sin nada desplegado.
+  useEffectAS(() => { setCom(''); setAbierta(null); setHoraDe(null); }, [diaSel]);
+  // El aviso breve se va solo.
+  useEffectAS(() => {
+    if (!avisoOk) return undefined;
+    const t = setTimeout(() => setAvisoOk(''), 3500);
+    return () => clearTimeout(t);
+  }, [avisoOk]);
+  // Confirmación de inspecciones: el foco va a «Listo»; Esc la cierra.
+  useEffectAS(() => {
+    if (!confirmadas) return undefined;
+    if (listoRef.current) listoRef.current.focus();
+    const tecla = e => { if (e.key === 'Escape') cerrarConfirmacion(); };
+    document.addEventListener('keydown', tecla);
+    return () => document.removeEventListener('keydown', tecla);
+  }, [confirmadas]);
+  function cerrarConfirmacion() {
+    setConfirmadas(null);
+    const v = volverRef.current;
+    if (v && typeof v.focus === 'function' && document.body.contains(v)) v.focus();
+  }
+
   // Otra semana, su borrador guardado.
   useEffectAS(() => { setBorrador(_asBorradorDe(lunes)); setAbierta(null); setHoraDe(null); }, [lunes]);
   // Cada cambio se guarda en el equipo (solo el de la semana a la vista).
@@ -315,7 +349,8 @@ function AgendaSemana({ usuario }) {
     const kw = cfg && cfg.inspectoresAgenda;
     return kw && kw.length ? inspectores.filter(n => esInspectorAgenda(n, kw)) : inspectores;
   }, [inspectores, cfg]);
-  const meta = (cfg && cfg.visitasPorInspector) || 3;
+  // Meta por visitador (⚙ Reglas). Cupos del día = meta × visitadores (2 × 2 = 4).
+  const meta = (cfg && cfg.visitasPorInspector) || 2;
   const semana = useMemoAS(() => semanaEquipo(datosEf, lunes, inspectores), [datosEf, lunes, inspectores]);
   // Candidatas una sola vez: porAgendarDia filtra por la zona de cada día.
   const candidatas = useMemoAS(() => candidatasAgenda(datosEf, new Date()), [datosEf]);
@@ -327,15 +362,6 @@ function AgendaSemana({ usuario }) {
     if (!datos || q.trim().length < 3) return [];
     return (buscarCasos(datosEf, q).casos || []).filter(c => !c.sinRadicado).slice(0, 8);
   }, [datosEf, q]);
-  // «N por agendar» de cada cabecera: lo de esa zona (bandeja + sugeridas
-  // de la zona), la misma cuenta que usará el panel «Por agendar» (TASK 03).
-  const nPorAgendar = useMemoAS(() => semana.dias.map((d, k) => {
-    const r = porAgendar[k] || { inspecciones: [], visitas: [] };
-    let n = (r.visitas || []).length;
-    (r.inspecciones || []).forEach(b => { if (diaGrupoInspeccion(b.f) === d.zona) n++; });
-    return n;
-  }), [porAgendar, semana]);
-
   const esAdmin = !!(usuario && usuario.rol === 'ADMIN');
   const escalon = useEscalera(!datos && !error);
 
@@ -354,7 +380,7 @@ function AgendaSemana({ usuario }) {
   const esEstaSemana = lunes.getTime() === lunesInspecciones(new Date()).getTime();
   const moverSemana = dias => setLunes(d => lunesInspecciones(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias)));
 
-  // ── «Por agendar» del día elegido ──
+  // ── El día elegido ──
   const dia = semana.dias[diaSel];
   const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
   // Día pasado o festivo: se ve lo que hay, pero no se agrega nada.
@@ -363,15 +389,26 @@ function AgendaSemana({ usuario }) {
   const quitar = fila => setBorrador(b => borradorQuitar(b, fila));
   const avisar = m => appAlert(m, { titulo: 'No se puede agregar' });
   const tituloZona = textoZonaDia(dia.zona, false);
+  const colorDe = n => 'var(--ag-i' + ((Math.max(0, inspectores.indexOf(n)) % 4) + 1) + ')';
+  const filaDelDia = n => semana.filas.find(x => x.inspector === n);
+  const delDia = n => { const fi = filaDelDia(n); return (fi && fi.dias[diaSel]) || { items: [], total: 0 }; };
 
   // Clave del caso para «abierta», el inspector elegido y el expediente.
   const claveIns = f => claveCasoInspeccion(f) || String(f._idx);
   const expedienteCaso = (k, caso) => (expedientes[k] != null ? expedientes[k] : (caso.map(expedienteDe).find(Boolean) || ''));
 
+  // Agregar una visita sugerida al día de un visitador (botón o arrastre).
+  function agregarVisita(v, n) {
+    const fv = { _idx: v.fila, RADICADO: v.radicado, COMUNA: v.comuna, 'BARRIO/VEREDA': v.barrio };
+    const motivo = cerrado || (inspVisitas.indexOf(n) < 0 ? nombrePila(n) + ' no recibe visitas de la agenda (⚙ Reglas).' : '') ||
+      choqueZonaInspeccion(datosEf, n, dia.date, fv, { inspeccion: false });
+    if (motivo) { avisar(motivo); return; }
+    setBorrador(b => borradorAgregar(b, { tipo: 'visita', fila: v.fila, radicado: v.radicado, inspector: n, fecha: dia.fecha }));
+  }
+
   // Lo que se despliega al programar una inspección en el día elegido:
   // inspector (si no es fijo), sus horas libres y el expediente. Lo usan la
-  // bandeja, el buscador (cualquier caso, como la Agenda de inspecciones
-  // anterior) y la fila de una visita pendiente («Programar inspección»).
+  // bandeja, el buscador (cualquier caso) y la fila de una visita pendiente.
   const cuerpoInspeccion = (f, k) => {
     const caso = visitasDelCaso(datosEf, f);
     const plan = inspeccionDelCaso(caso, usuario.rol);
@@ -392,130 +429,124 @@ function AgendaSemana({ usuario }) {
     const cancelar = (
       <button type="button" className="as-btn-txt as-cancelar" onClick={() => setAbierta(null)}>Cancelar</button>
     );
-    if (!plan.puede) return <><p className="as-motivo">{plan.motivo || 'No se puede programar.'}</p>{cancelar}</>;
+    if (!plan.puede) return <div className="as-prog"><p className="as-motivo">{plan.motivo || 'No se puede programar.'}</p>{cancelar}</div>;
     return (
-        <>
-          {fijo ? (
-            <p className="as-va">Va <b>{nombrePila(ins)}</b>{plan.fijo ? ', que hizo la visita anterior.' : '.'}</p>
-          ) : (
-            <div className="as-elige" role="group" aria-label="Inspector">
-              {inspectores.map(n => {
-                const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
-                return (
-                  <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
-                    title={m || undefined}
-                    onClick={() => (m ? avisar(m) : setElegidos(e => Object.assign({}, e, { [k]: n })))}>
-                    {nombrePila(n)}
-                  </button>
-                );
-              })}
+      <div className="as-prog">
+        {fijo ? (
+          <p className="as-va">Va <b>{nombrePila(ins)}</b>{plan.fijo ? ', que hizo la visita anterior.' : '.'}</p>
+        ) : (
+          <div className="as-elige" role="group" aria-label="Inspector">
+            {/* Se elige entre los visitadores de la agenda (Alejandro y Mauricio). */}
+            {inspVisitas.map(n => {
+              const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
+              return (
+                <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
+                  title={m || undefined}
+                  onClick={() => (m ? avisar(m) : setElegidos(e => Object.assign({}, e, { [k]: n })))}>
+                  {nombrePila(n)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {cerrado ? <p className="as-motivo">{cerrado}</p>
+          : choque ? <p className="as-motivo">{choque}</p>
+          : !ins ? <p className="as-nota">Elige quién va para ver sus horas libres.</p>
+          : (
+            <div className="as-horas" role="group" aria-label="Hora">
+              {horas.length ? horas.map(h => (
+                <button key={h} type="button" className="as-hora" onClick={() => programar(h)}>{horaCortaInspeccion(h)}</button>
+              )) : <span className="as-nota">{nombrePila(ins)} no tiene horas libres ese día.</span>}
             </div>
           )}
-          {cerrado ? <p className="as-motivo">{cerrado}</p>
-            : choque ? <p className="as-motivo">{choque}</p>
-            : !ins ? <p className="as-nota">Elige quién va para ver sus horas libres.</p>
-            : (
-              <div className="as-horas" role="group" aria-label="Hora">
-                {horas.length ? horas.map(h => (
-                  <button key={h} type="button" className="as-hora" onClick={() => programar(h)}>{horaCortaInspeccion(h)}</button>
-                )) : <span className="as-nota">{nombrePila(ins)} no tiene horas libres ese día.</span>}
-              </div>
-            )}
-          {/* Expediente del caso (opcional, solo números): arranca con el que ya tenga. */}
-          <input className="as-exp" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
-            placeholder="Expediente" aria-label="Expediente (opcional, solo números)" value={exp}
-            onChange={e => setExpedientes(x => Object.assign({}, x, { [k]: e.target.value.replace(/\D+/g, '').slice(0, 6) }))} />
-          {cancelar}
-        </>
+        {/* Expediente del caso (opcional, solo números): arranca con el que ya tenga. */}
+        <input className="as-exp" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
+          placeholder="Expediente" aria-label="Expediente (opcional, solo números)" value={exp}
+          onChange={e => setExpedientes(x => Object.assign({}, x, { [k]: e.target.value.replace(/\D+/g, '').slice(0, 6) }))} />
+        {cancelar}
+      </div>
     );
   };
 
-  // Fila de una inspección por programar (b = { f, fecha, quien }: de la
+  // Renglón de una inspección por programar (b = { f, fecha, quien }: de la
   // bandeja, o un caso del buscador con fecha ''). etiqueta = el botón.
   const filaInspeccion = (b, etiqueta) => {
     const k = claveIns(b.f);
     const exp = expedienteCaso(k, visitasDelCaso(datosEf, b.f));
     const enZona = diaGrupoInspeccion(b.f);
     const diaZona = enZona && enZona !== dia.zona ? semana.dias.findIndex(d => d.zona === enZona) : -1;
-    const meta1 = [exp ? 'Exp. ' + exp : '', b.f['RADICADO'] || '',
-      b.f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(b.f['COMUNA']) || b.f['COMUNA']) : '',
-      b.fecha ? 'decretada el ' + b.fecha : ''].filter(Boolean).join(' · ');
+    const com = b.f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(b.f['COMUNA']) || b.f['COMUNA']) : '';
+    const barrio = String(b.f['BARRIO/VEREDA'] || b.f['BARRIO'] || '').trim();
     const abiertaEsta = abierta === k;
     return (
       <div key={'i' + k} className="as-fila">
-        <div className="as-fila-d">{_asDir(b.f)}</div>
-        <div className="as-fila-m">
-          {meta1}
+        <span className="as-f-dir">{_asDir(b.f)}</span>
+        <span className="as-f-bar">{[barrio, com].filter(Boolean).join(' · ')}</span>
+        <span className="as-f-urg">
+          {b.fecha ? 'decretada el ' + b.fecha : (exp ? 'Exp. ' + exp : '')}
           {diaZona >= 0 && (
-            <> · <b>su día es {AS_DIAS[semana.dias[diaZona].date.getDay()].toLowerCase()}</b>{' '}
-              <button type="button" className="as-link" onClick={() => setDiaSel(diaZona)}>
-                Ir al {AS_DIAS[semana.dias[diaZona].date.getDay()].toLowerCase()}
-              </button></>
+            <> · <button type="button" className="as-link" onClick={() => setDiaSel(diaZona)}>
+              su día es el {AS_DIAS[semana.dias[diaZona].date.getDay()].toLowerCase()}
+            </button></>
           )}
-        </div>
-        {abiertaEsta ? cuerpoInspeccion(b.f, k) : (
-          <div className="as-acc">
-            <button type="button" className="as-btn-t" onClick={() => setAbierta(k)}>{etiqueta || 'Elegir hora'}</button>
-          </div>
-        )}
+        </span>
+        <span className="as-f-rad">{b.f['RADICADO'] || ''}</span>
+        <span className="as-f-acc">
+          {!abiertaEsta && <button type="button" className="as-btn-t" onClick={() => setAbierta(k)}>{etiqueta || 'Elegir hora'}</button>}
+        </span>
+        {abiertaEsta && cuerpoInspeccion(b.f, k)}
       </div>
     );
   };
 
-  // Fila de una visita sugerida (v = candidata). Solo ADMIN asigna visitas.
+  // Renglón de una visita sugerida (v = candidata). Solo ADMIN asigna visitas.
   // fInsp (desde el buscador): la misma visita se puede programar también
-  // como inspección al lugar; el botón despliega cuerpoInspeccion.
+  // como inspección al lugar. Se arrastra (escritorio) al día de un visitador.
   const filaVisita = (v, fInsp) => {
     const m = motivoPrioridad(v);
     const com = claveComunaAgenda(v.comuna);
-    const meta1 = [nivelPrioridad(v.prioridad) ? m.nivel : '', m.texto, v.radicado, v.barrio || 'Sin barrio',
-      com ? etiquetaComuna(com) : ''].filter(Boolean).join(' · ');
     const fv = { _idx: v.fila, RADICADO: v.radicado, COMUNA: v.comuna, 'BARRIO/VEREDA': v.barrio };
     const kI = fInsp ? claveIns(fInsp) : null;
-    if (kI && abierta === kI) {
-      return (
-        <div key={'v' + v.fila} className="as-fila">
-          <div className="as-fila-d">{direccionVisible(v.direccion || '') || 'Sin dirección'}</div>
-          <div className="as-fila-m">{meta1}</div>
-          {cuerpoInspeccion(fInsp, kI)}
-        </div>
-      );
-    }
+    const abiertaI = kI && abierta === kI;
+    const arr = conPuntero && !cerrado ? {
+      draggable: true,
+      onDragStart: e => { arrastre.current = { cand: v }; try { e.dataTransfer.effectAllowed = 'move'; } catch (er) { /* sin dataTransfer */ } },
+      onDragEnd: () => { arrastre.current = null; setDropIns(null); setDropCelda(null); },
+    } : {};
     return (
-      <div key={'v' + v.fila} className="as-fila">
-        <div className="as-fila-d">{direccionVisible(v.direccion || '') || 'Sin dirección'}</div>
-        <div className="as-fila-m">{meta1}</div>
-        <div className="as-acc">
-          {inspVisitas.map(n => {
-            const i = inspectores.indexOf(n);
+      <div key={'v' + v.fila} className="as-fila" {...arr}>
+        <span className="as-f-dir">{direccionVisible(v.direccion || '') || 'Sin dirección'}</span>
+        <span className="as-f-bar">{[v.barrio || 'Sin barrio', com ? etiquetaComuna(com) : ''].filter(Boolean).join(' · ')}</span>
+        <span className="as-f-urg">{nivelPrioridad(v.prioridad) && <b>{m.nivel}</b>}{nivelPrioridad(v.prioridad) && m.texto ? ' · ' : ''}{m.texto}</span>
+        <span className="as-f-rad">{v.radicado}</span>
+        <span className="as-f-acc">
+          {!abiertaI && inspVisitas.map(n => {
             // Cruza con una inspección de otra zona ese día: apagado, y al
             // tocarlo dice por qué (en el celular no hay title).
             const motivo = cerrado || choqueZonaInspeccion(datosEf, n, dia.date, fv, { inspeccion: false });
             return (
-              <button key={n} type="button" className={'as-mas i' + ((i % 4) + 1)}
+              <button key={n} type="button" className="as-mas" style={{ '--c': colorDe(n) }}
                 aria-disabled={motivo ? 'true' : undefined}
                 aria-label={motivo ? 'No se puede agregar al día de ' + nombrePila(n) + ': ' + motivo : 'Agregar al día de ' + nombrePila(n)}
                 title={motivo || 'Agregar al día de ' + nombrePila(n)}
-                onClick={() => (motivo ? avisar(motivo)
-                  : setBorrador(b => borradorAgregar(b, { tipo: 'visita', fila: v.fila, radicado: v.radicado,
-                    inspector: n, fecha: dia.fecha })))}>
-                {inicialesInsp(n)}
+                onClick={() => (motivo ? avisar(motivo) : agregarVisita(v, n))}>
+                <i aria-hidden="true"></i>{inicialesInsp(n)}
               </button>
             );
           })}
-          {kI && (
-            <button type="button" className="as-btn-t" onClick={() => setAbierta(kI)}>Programar inspección</button>
+          {kI && !abiertaI && (
+            <button type="button" className="as-btn-t" onClick={() => setAbierta(kI)}>Inspección</button>
           )}
-        </div>
+        </span>
+        {abiertaI && cuerpoInspeccion(fInsp, kI)}
       </div>
     );
   };
 
-  // Resultado del buscador: inspección decretada → fila de inspección;
-  // última visita PENDIENTE → fila de visita (solo ADMIN), que también se
+  // Resultado del buscador: inspección decretada → renglón de inspección;
+  // última visita PENDIENTE → renglón de visita (solo ADMIN), que también se
   // puede programar como inspección; cualquier otro caso se programa como
-  // inspección si inspeccionDelCaso lo deja (como la Agenda de inspecciones
-  // anterior); si no, su estado y el motivo.
+  // inspección si inspeccionDelCaso lo deja; si no, su estado y el motivo.
   const filaResultado = (c) => {
     const visitas = visitasDelCaso(datosEf, c.ultima);
     const decr = visitas.find(f => String(f['INSPECCION_DECRETADA'] || '').trim());
@@ -535,11 +566,15 @@ function AgendaSemana({ usuario }) {
     const quien = primerVisitador(visitadoresBD(c.ultima));
     const textoEst = { PENDIENTE: 'Pendiente', ASIGNADO: 'Asignada', INICIADO: 'Iniciada', COMPLETADO: 'Completada',
       CERRADO: 'Cerrada sin visita' }[est] || est;
+    const barrio = String(c.ultima['BARRIO/VEREDA'] || c.ultima['BARRIO'] || '').trim();
     return (
       <div key={'r' + c.clave} className="as-fila">
-        <div className="as-fila-d">{_asDir(c.ultima)}</div>
-        <div className="as-fila-m">{c.radicado} · {textoEst}{quien ? ' · ' + nombrePila(quien) : ''}</div>
-        {plan.motivo && <p className="as-motivo">{plan.motivo}</p>}
+        <span className="as-f-dir">{_asDir(c.ultima)}</span>
+        <span className="as-f-bar">{barrio}</span>
+        <span className="as-f-urg">{textoEst}{quien ? ' · ' + nombrePila(quien) : ''}</span>
+        <span className="as-f-rad">{c.radicado}</span>
+        <span className="as-f-acc"></span>
+        {plan.motivo && <p className="as-motivo as-prog">{plan.motivo}</p>}
       </div>
     );
   };
@@ -552,7 +587,7 @@ function AgendaSemana({ usuario }) {
     if (!idxBarrios && typeof _cargarIdxBarriosBQ === 'function') _cargarIdxBarriosBQ().then(setIdxBarrios).catch(() => {});
   };
 
-  // ── Asignar: un solo envío con todo el borrador (TASK 04) ──
+  // ── Asignar: un solo envío con todo el borrador ──
   const resumen = borradorResumen(borrador);
   const esInspItem = it => it.tipo === 'insp' || (it.tipo === 'mover' && !!it.hora);
   const filaDeDatos = fila => (datos || []).find(x => x._idx === fila) || null;
@@ -580,15 +615,25 @@ function AgendaSemana({ usuario }) {
       return;
     }
     setAsignando(true);
+    const items = borrador.items.slice();
+    // Lo que irá en la confirmación de cada inspección (caso, fecha y hora),
+    // tomado antes de enviar: luego el borrador se vacía.
+    const fichas = items.filter(esInspItem).map(it => {
+      const f = filaDeDatos(it.fila) || {};
+      const exp = it.expediente || expedienteDe(f) || '';
+      return { fila: it.fila, fecha: it.fecha, hora: it.hora, inspector: it.inspector, radicado: it.radicado || f['RADICADO'] || '',
+        expediente: exp, dir: _asDir(f), barrio: String(f['BARRIO/VEREDA'] || f['BARRIO'] || '').trim(),
+        comuna: f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(f['COMUNA']) || f['COMUNA']) : '' };
+    });
     const env = envioBorrador(borrador);
     const hechas = {};      // fila → true
     const fallos = [];      // '· radicado: motivo'
     let recargar = false;
     const fallo = (it, motivo) => fallos.push('· ' + (it.radicado || _asDir(filaDeDatos(it.fila) || {})) + ': ' + motivo);
-    // 1) Inspecciones (y los cambios de día de una inspección). El resultado
-    // viene en el mismo orden que los items enviados.
+    // 1) Inspecciones (y los cambios de día u hora de una inspección). El
+    // resultado viene en el mismo orden que los items enviados.
     if (env.programarInspecciones) {
-      const enviados = borrador.items.filter(esInspItem);
+      const enviados = items.filter(esInspItem);
       try {
         const r = await gasPost(env.programarInspecciones);
         enviados.forEach((it, i) => {
@@ -603,7 +648,7 @@ function AgendaSemana({ usuario }) {
     }
     // 2) Visitas nuevas: confirmarAgenda dice cuáles omitió y por qué.
     if (env.confirmarAgenda) {
-      const enviadas = borrador.items.filter(it => it.tipo === 'visita');
+      const enviadas = items.filter(it => it.tipo === 'visita');
       try {
         const r = await gasPost(env.confirmarAgenda);
         if (!r || r.ok === false) throw new Error((r && r.error) || 'no se pudo asignar');
@@ -615,9 +660,9 @@ function AgendaSemana({ usuario }) {
         });
       } catch (e) { enviadas.forEach(it => fallo(it, e.message)); }
     }
-    // 3) Visitas asignadas que cambian de día o de inspector.
+    // 3) Visitas asignadas que cambian de día o de visitador.
     for (const mv of env.mover) {
-      const it = borrador.items.find(x => x.fila === mv.fila);
+      const it = items.find(x => x.fila === mv.fila);
       try {
         const r = await gasPost(Object.assign({ accion: 'asignarRadicado' }, mv));
         if (r && r.ok === false) throw new Error(r.error || 'no se pudo mover');
@@ -635,6 +680,16 @@ function AgendaSemana({ usuario }) {
         (recargar ? '\n\nOtra persona cambió la agenda: revisa antes de volver a intentarlo.' : ''),
         { titulo: 'Asignación parcial', tono: 'aviso' });
     }
+    // Inspecciones programadas: confirmación con caso, fecha (con año) y hora.
+    // Solo visitas: aviso breve que se va solo.
+    const okInsp = fichas.filter(x => hechas[x.fila]);
+    const okVis = items.filter(it => !esInspItem(it) && hechas[it.fila]).length;
+    if (okInsp.length) {
+      volverRef.current = document.activeElement;
+      setConfirmadas({ inspecciones: okInsp, visitas: okVis });
+    } else if (okVis) {
+      setAvisoOk(okVis === 1 ? 'Asignada 1 visita.' : 'Asignadas ' + okVis + ' visitas.');
+    }
   }
 
   async function descartar() {
@@ -644,7 +699,27 @@ function AgendaSemana({ usuario }) {
     if (ok) setBorrador(borradorVacio(lunes));
   }
 
-  // ── Arrastrar (solo escritorio): a otro día y/o inspector ──
+  // ── Proponer: llena lo que falta de la meta con lo más urgente ──
+  function proponer() {
+    if (cerrado) { avisar(cerrado); return; }
+    const ocupados = {};
+    inspVisitas.forEach(n => {
+      const c = delDia(n);
+      ocupados[n] = { n: c.total || 0, barrios: (c.items || []).map(it => String(it.f['BARRIO/VEREDA'] || it.f['BARRIO'] || '')) };
+    });
+    const elegibles = inspVisitas.filter(n => !choqueZonaDia(datosEf, n, dia.date));
+    const nuevos = proponerDiaAgenda(visitasLista, ocupados, elegibles, meta);
+    if (!nuevos.length) {
+      setAvisoOk(visitasLista.length ? 'Los visitadores ya tienen su meta de este día.' : 'No quedan visitas por agendar en esta zona.');
+      return;
+    }
+    setBorrador(b => nuevos.reduce((acc, x) =>
+      borradorAgregar(acc, { tipo: 'visita', fila: x.fila, radicado: x.radicado, inspector: x.inspector, fecha: dia.fecha }), b));
+  }
+
+  // ── Arrastrar (solo escritorio) ──
+  // Un caso de la lista → al día de un visitador. Algo del día → a otro
+  // visitador (su bloque) o a otro día (la tira), con el mismo visitador.
   const conPuntero = _asConPuntero();
   const sePuedeArrastrar = it => {
     if (!conPuntero) return false;
@@ -653,9 +728,10 @@ function AgendaSemana({ usuario }) {
     return _normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO';
   };
   function soltar(k, insp) {
-    const a = arrastre.current;
+    const a = arrastre.current && arrastre.current.it;
     arrastre.current = null;
     setDropCelda(null);
+    setDropIns(null);
     if (!a) return;
     const d = semana.dias[k];
     if (!d.habil || d.date < hoy0) return;
@@ -683,6 +759,12 @@ function AgendaSemana({ usuario }) {
         hora: hora || undefined, programadaConocida: esInsp ? _asProgramadaConocida(filaDeDatos(f._idx)) : '' };
     setBorrador(b => borradorAgregar(b, nuevo));
   }
+  // Soltar sobre el bloque de un visitador del día elegido.
+  function soltarEnVisitador(n) {
+    const a = arrastre.current;
+    if (a && a.cand) { arrastre.current = null; setDropIns(null); agregarVisita(a.cand, n); return; }
+    soltar(diaSel, n);
+  }
   // ── Cambiar la hora de una inspección del día elegido (tocar su hora) ──
   // Mismo día y mismo inspector: va como reprogramar (mover con hora). Si
   // queda igual que en BD, el cambio sale del borrador.
@@ -705,6 +787,7 @@ function AgendaSemana({ usuario }) {
     setBorrador(b => borradorAgregar(b, { tipo: 'mover', fila: f._idx, radicado: String(f['RADICADO'] || '').trim(),
       inspector: insp, fecha: dia.fecha, hora: h, programadaConocida: _asProgramadaConocida(orig) }));
   }
+
   const partesResumen = [];
   if (resumen.visitas) partesResumen.push(resumen.visitas === 1 ? '1 visita' : resumen.visitas + ' visitas');
   if (resumen.inspecciones) partesResumen.push(resumen.inspecciones === 1 ? '1 inspección' : resumen.inspecciones + ' inspecciones');
@@ -712,6 +795,19 @@ function AgendaSemana({ usuario }) {
   if (resumen.movidas) partesResumen.push(resumen.movidas === 1 ? '1 cambio de día' : resumen.movidas + ' cambios de día');
   const textoResumen = partesResumen.length > 1
     ? partesResumen.slice(0, -1).join(', ') + ' y ' + partesResumen[partesResumen.length - 1] : partesResumen[0];
+
+  // ── La lista de visitas: filtro de comuna (zonas de varias) y orden ──
+  const comunasZona = COMUNAS_ZONA_EQUIPO[dia.zona] || [];
+  const visitasLista = com ? pa.visitas.filter(v => claveComunaAgenda(v.comuna) === com) : pa.visitas;
+  const conDragDia = it => (sePuedeArrastrar(it)
+    ? e => { arrastre.current = { it }; try { e.dataTransfer.effectAllowed = 'move'; } catch (er) { /* sin dataTransfer */ } }
+    : null);
+  const finArrastre = () => { arrastre.current = null; setDropCelda(null); setDropIns(null); };
+  const cabeceraCols = (
+    <div className="as-cols" aria-hidden="true">
+      <span>Dirección</span><span>Barrio</span><span>Urgencia</span><span>Radicado</span><span>Agregar al día de</span>
+    </div>
+  );
 
   return (
     <div className="as-pantalla">
@@ -736,7 +832,6 @@ function AgendaSemana({ usuario }) {
               <Icon.Admin size={14} /><span className="as-lbl">Reglas</span>
             </button>
           )}
-          {/* Gira mientras recarga, como el ↻ de la cabecera de la Agenda. */}
           <button type="button" className={'vc-btn as-icono' + (cargando ? ' icono-girando' : '')} aria-label="Recargar" title="Recargar"
             onClick={() => cargar(true)} disabled={cargando} aria-busy={cargando || undefined}>
             <Icon.Refresh size={14} />
@@ -750,170 +845,230 @@ function AgendaSemana({ usuario }) {
         </div>
       </header>
 
-      {/* Celular (<900): un día a la vez; la tira elige el día (TASK 05). */}
-      <div className="as-tira" role="group" aria-label="Día">
-        {semana.dias.map((d, k) => (
-          <button key={d.fecha} type="button" aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}
-            aria-current={d.date.getTime() === hoy0.getTime() ? 'date' : undefined}>
-            <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}{d.date.getTime() === hoy0.getTime() && <span className="as-hoy-tag">Hoy</span>}</b>
-            <small>{d.habil ? textoZonaDia(d.zona, true) : 'Festivo'}</small>
-            <small>{nPorAgendar[k]} por agendar</small>
-          </button>
-        ))}
+      {/* La semana en una tira: zona, cupos libres del día (meta × visitadores,
+          cuentan visitas e inspecciones; es meta, no tope) y horas de inspección.
+          Con cupo: cifra grande y cuadros vacíos; sin cupo: apagado. */}
+      <div className="as-tira" role="group" aria-label="Día de la semana">
+        {semana.dias.map((d, k) => {
+          const cu = cuposDiaEquipo(semana, k, inspVisitas, meta);
+          const usadosVis = Math.min(cu.usados, cu.total);
+          const esHoy = d.date.getTime() === hoy0.getTime();
+          const horasInsp = semana.filas.reduce((acc, fi) => acc.concat((fi.dias[k].items || []).filter(it => it.tipo === 'insp').map(it => it.hora)), [])
+            .sort((a, b) => horaAudienciasMin(a) - horaAudienciasMin(b)).map(horaCortaInspeccion);
+          const txt = !d.habil ? 'Festivo'
+            : cu.libres > 0 ? <><b>{cu.libres}</b> {cu.libres === 1 ? 'cupo libre' : 'cupos libres'}</>
+            : cu.libres === 0 ? 'Sin cupos' : 'Sin cupos · ' + cu.usados + ' de ' + cu.total;
+          const clave = 'd' + k;
+          return (
+            <button key={d.fecha} type="button"
+              className={'as-dia' + (d.habil && cu.libres > 0 ? ' con-cupo' : ' lleno') + (dropCelda === clave ? ' as-drop' : '')}
+              aria-pressed={k === diaSel} aria-current={esHoy ? 'date' : undefined} disabled={!d.habil} onClick={() => setDiaSel(k)}
+              onDragOver={conPuntero ? e => { const a = arrastre.current; if (a && a.it && d.habil && d.date >= hoy0) { e.preventDefault(); if (dropCelda !== clave) setDropCelda(clave); } } : undefined}
+              onDragLeave={conPuntero ? e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCelda(x => (x === clave ? null : x)); } : undefined}
+              onDrop={conPuntero ? e => { e.preventDefault(); const a = arrastre.current; if (a && a.it) soltar(k, primerVisitador(visitadoresBD(a.it.f))); } : undefined}>
+              <span className="as-dia-1"><b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}</b>{esHoy && <span className="as-hoy-tag">Hoy</span>}</span>
+              <span className="as-dia-zona">{d.habil ? textoZonaDia(d.zona, false) : ''}</span>
+              <span className="as-cupos">
+                <span className="as-cupos-txt">{txt}</span>
+                {d.habil && cu.total > 0 && (
+                  <span className="as-cuadros" aria-hidden="true">
+                    {Array.from({ length: cu.total }, (_, j) => <i key={j} className={j < usadosVis ? 'on' : undefined}></i>)}
+                  </span>
+                )}
+              </span>
+              {horasInsp.length > 0 && <span className="as-dia-insp">Inspección {horasInsp.join(' · ')}</span>}
+            </button>
+          );
+        })}
       </div>
 
       <div className="as-cuerpo">
-      <div className="as-tabla">
-        <section className="as-tablero" aria-label="Semana del equipo"
-          style={{ '--as-dias': semana.dias.map((d, k) => k === diaSel ? '2.2fr' : '1fr').join(' ') }}>
-          <div className="as-esq" aria-hidden="true"></div>
-          {semana.dias.map((d, k) => (
-            <button type="button" key={d.fecha} className={'as-dia' + (k === diaSel ? ' sel' : '')}
-              aria-pressed={k === diaSel} disabled={!d.habil} onClick={() => setDiaSel(k)}
-              aria-current={d.date.getTime() === hoy0.getTime() ? 'date' : undefined}>
-              <b>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}{d.date.getTime() === hoy0.getTime() && <span className="as-hoy-tag">Hoy</span>}</b>
-              <span className="as-dia-zona">{d.habil ? textoZonaDia(d.zona, k !== diaSel) : 'Festivo'}</span>
-              <span className="as-dia-n">{nPorAgendar[k]} por agendar</span>
-            </button>
-          ))}
-          {semana.filas.map((fila, fi) => {
-            // Cuánto lleva en toda la semana (el pie de cada celda dice el día).
-            const lleva = fila.dias.reduce((s, d) => s + d.total, 0);
-            return (
-              <React.Fragment key={fila.inspector}>
-                <div className="as-ins" style={{ '--c': 'var(--ag-i' + ((fi % 4) + 1) + ')' }}>
-                  <span className="as-ini" aria-hidden="true">{inicialesInsp(fila.inspector)}</span>
-                  <div className="as-ins-nom">
-                    <b title={fila.inspector}>{nombrePila(fila.inspector)}</b>
-                    <small>{lleva} en la semana</small>
-                  </div>
-                </div>
-                {fila.dias.map((c, k) => {
-                  const clave = k + '|' + fila.inspector;
-                  const arrastrar = it => (sePuedeArrastrar(it)
-                    ? e => { arrastre.current = it; try { e.dataTransfer.effectAllowed = 'move'; } catch (er) { /* sin dataTransfer */ } }
-                    : null);
-                  return (
-                  <div key={semana.dias[k].fecha}
-                    className={'as-celda' + (k === diaSel ? ' sel' : ' as-celda-compacta') + (dropCelda === clave ? ' as-drop' : '')}
-                    onDragOver={conPuntero ? e => { if (arrastre.current) { e.preventDefault(); if (dropCelda !== clave) setDropCelda(clave); } } : undefined}
-                    onDragLeave={conPuntero ? e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCelda(d => (d === clave ? null : d)); } : undefined}
-                    onDrop={conPuntero ? e => { e.preventDefault(); soltar(k, fila.inspector); } : undefined}>
-                    {k === diaSel
-                      ? c.items.map((it, j) => (
-                        <AsItem key={it.f && it.f._idx != null ? it.f._idx : 'i' + j} it={it} detallado={true} resaltada={resaltada}
-                          onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
-                          expediente={it.nueva && it.tipo === 'visita' ? expedienteBorrador(it.f._idx) : null}
-                          onExpediente={it.nueva && it.tipo === 'visita' ? v => cambiarExpediente(it.f._idx, v) : null}
-                          horaAbierta={horaDe != null && it.f && horaDe === it.f._idx}
-                          onAbrirHora={puedeCambiarHora(it) ? () => setHoraDe(h => (h === it.f._idx ? null : it.f._idx)) : null}
-                          horas={horaDe != null && it.f && horaDe === it.f._idx
-                            ? _asHorasLibres(datosEf, fila.inspector, semana.dias[k].date, _asFilaBorrador(it.f)) : null}
-                          onHora={h => cambiarHora(it, fila.inspector, h)}
-                          onArrastrar={arrastrar(it)} onFinArrastre={() => setDropCelda(null)} />))
-                      : <>
-                        {c.items.filter(it => it.tipo === 'insp').map((it, j) => (
-                          <AsItem key={it.f && it.f._idx != null ? it.f._idx : 'i' + j} it={it} detallado={false} resaltada={resaltada}
-                            onArrastrar={arrastrar(it)} onFinArrastre={() => setDropCelda(null)} />))}
-                        {c.visitas > 0 && (
-                          <div className="as-resumen">{c.visitas} {c.visitas === 1 ? 'visita' : 'visitas'}</div>
-                        )}
-                      </>}
-                    <div className="as-cuenta">
-                      <span>{c.total ? '' : 'Libre'}</span>
-                      <span className={c.total > meta ? 'as-pasa' : undefined}>
-                        <b>{c.total}</b>/{meta}{c.total > meta ? ' · pasa la meta' : ''}
-                      </span>
-                    </div>
-                  </div>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-        </section>
-      </div>
-
-      <aside className="as-panel" aria-labelledby="as-pa-t" ref={panelRef}>
-        <div className="as-panel-cab">
-          <h2 id="as-pa-t">Por agendar</h2>
-          <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}{tituloZona ? ' · ' + tituloZona : ''}</p>
-          <div className="as-buscar">
-            <Icon.Search size={16} />
-            <input type="search" value={q} autoComplete="off" onChange={e => { setQ(e.target.value); setRegistrando(false); }}
-              aria-label="Buscar otro caso" placeholder="Otro caso: radicado, orden o dirección" />
+        <section className="as-lista" aria-labelledby="as-pa-t">
+          <div className="as-lista-cab">
+            <h2 id="as-pa-t">Por agendar</h2>
+            <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}{tituloZona ? ' · ' + tituloZona : ''}</p>
           </div>
-        </div>
-        <div className="as-panel-lista">
-          {q.trim().length >= 3 ? (
-            <>
-              <h3 className="as-grupo">Resultados <span>{resultados.length}</span></h3>
-              {resultados.map(filaResultado)}
-              {noEsta && !registrando && (
-                puedeRegistrar ? (
-                  <div className="as-vacio">
-                    <p><b>{qRad} no está en la base.</b> Si es una PQR nueva, regístrala y luego agéndala.</p>
-                    <button type="button" className="as-btn-t" onClick={abrirRegistro}>Registrar {qRad}</button>
+          <div className="as-filtros">
+            <div className="as-buscar">
+              <Icon.Search size={16} />
+              <input type="search" value={q} autoComplete="off" onChange={e => { setQ(e.target.value); setRegistrando(false); }}
+                aria-label="Buscar un caso" placeholder="Radicado, orden o dirección" />
+            </div>
+            {esAdmin && q.trim().length < 3 && comunasZona.length > 1 && (
+              <div className="as-seg" role="group" aria-label="Comuna">
+                {[''].concat(comunasZona).map(c => (
+                  <button key={c || 'todas'} type="button" aria-pressed={com === c} onClick={() => setCom(c)}>{c ? 'C' + c : 'Todas'}</button>
+                ))}
+              </div>
+            )}
+            {esAdmin && q.trim().length < 3 && (
+              <div className="as-seg" role="group" aria-label="Orden">
+                <button type="button" aria-pressed={orden === 'urg'} onClick={() => setOrden('urg')}>Más urgente</button>
+                <button type="button" aria-pressed={orden === 'barrio'} onClick={() => setOrden('barrio')}>Por barrio</button>
+              </div>
+            )}
+          </div>
+          <div className="as-lista-cuerpo">
+            {q.trim().length >= 3 ? (
+              <>
+                <h3 className="as-grupo">Resultados <span>{resultados.length}</span></h3>
+                {resultados.map(filaResultado)}
+                {noEsta && !registrando && (
+                  puedeRegistrar ? (
+                    <div className="as-vacio">
+                      <p><b>{qRad} no está en la base.</b> Si es una PQR nueva, regístrala y luego agéndala.</p>
+                      <button type="button" className="as-btn-t" onClick={abrirRegistro}>Registrar {qRad}</button>
+                    </div>
+                  ) : (
+                    <p className="as-vacio">
+                      {formaRadicadoValida(qRad)
+                        ? 'Ningún caso coincide. Si es una PQR nueva, pídele al administrador que la registre.'
+                        : 'Ningún caso coincide.'}
+                    </p>
+                  )
+                )}
+                {registrando && typeof RegistrarRadicadoBQ === 'function' && (
+                  <div className="as-registrar">
+                    <RegistrarRadicadoBQ radicado={qRad} idxBarrios={idxBarrios}
+                      onCancelar={() => setRegistrando(false)}
+                      onRegistrado={rad => { setRegistrando(false); invalidarCache('visitas'); cargar(true);
+                        setAvisoOk('Radicado ' + (rad || qRad) + ' registrado. Ya puedes agendarlo.'); }}
+                      onRecargar={() => { setRegistrando(false); invalidarCache('visitas'); cargar(true); }} />
                   </div>
-                ) : (
-                  <p className="as-vacio">
-                    {formaRadicadoValida(qRad)
-                      ? 'Ningún caso coincide. Si es una PQR nueva, pídele al administrador que la registre.'
-                      : 'Ningún caso coincide.'}
-                  </p>
-                )
-              )}
-              {registrando && typeof RegistrarRadicadoBQ === 'function' && (
-                <div className="as-registrar">
-                  <RegistrarRadicadoBQ radicado={qRad} idxBarrios={idxBarrios}
-                    onCancelar={() => setRegistrando(false)}
-                    onRegistrado={() => { setRegistrando(false); invalidarCache('visitas'); cargar(true); }}
-                    onRecargar={() => { setRegistrando(false); invalidarCache('visitas'); cargar(true); }} />
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Sin decretadas, una línea: no ocupa un bloque vacío. */}
-              <h3 className="as-grupo">Inspecciones por programar <span>{pa.inspecciones.length || 'ninguna'}</span></h3>
-              {pa.inspecciones.map(filaInspeccion)}
-              {esAdmin && (
-                <>
-                  <h3 className="as-grupo">Visitas{tituloZona ? ' · ' + tituloZona : ''} <span>{pa.visitas.length}</span></h3>
-                  {/* Quien tiene inspección en otra zona ese día no recibe estas
-                      visitas: se dice una vez aquí, no solo en el «+» apagado. */}
-                  {!cerrado && inspVisitas.map(n => {
-                    const m = choqueZonaDia(datosEf, n, dia.date);
-                    return m ? <p key={'z' + n} className="as-aviso">{m}</p> : null;
-                  })}
-                  {pa.visitas.length ? pa.visitas.map(v => filaVisita(v, null))
-                    : <p className="as-vacio">No quedan visitas por agendar en esta zona. Busca otro caso arriba si hace falta.</p>}
-                </>
-              )}
-            </>
-          )}
-        </div>
-      </aside>
+                )}
+              </>
+            ) : (
+              <>
+                {pa.inspecciones.length > 0 && (
+                  <>
+                    <h3 className="as-grupo">Inspecciones por programar <span>{pa.inspecciones.length} · decretadas en Audiencias</span></h3>
+                    {pa.inspecciones.map(b => filaInspeccion(b))}
+                  </>
+                )}
+                {esAdmin ? (
+                  <>
+                    <h3 className="as-grupo">Visitas <span>{visitasLista.length === pa.visitas.length ? pa.visitas.length : visitasLista.length + ' de ' + pa.visitas.length}</span></h3>
+                    {!visitasLista.length ? (
+                      <p className="as-vacio">{pa.visitas.length ? 'Ninguna visita en esa comuna.' : 'No quedan visitas por agendar en esta zona. Busca otro caso arriba si hace falta.'}</p>
+                    ) : orden === 'urg' ? (
+                      <>{cabeceraCols}{visitasLista.map(v => filaVisita(v, null))}</>
+                    ) : agruparPorBarrioAgenda(visitasLista).map(g => {
+                      const van = inspVisitas.filter(n => (delDia(n).items || []).some(it =>
+                        String(it.f['BARRIO/VEREDA'] || it.f['BARRIO'] || '').trim().toUpperCase() === g.barrio.toUpperCase())).map(nombrePila);
+                      return (
+                        <React.Fragment key={'b' + g.barrio}>
+                          <h4 className="as-barrio">{g.barrio} <span>{g.visitas.length}{g.visitas.length === 1 ? ' caso' : ' casos'}
+                            {van.length ? ' · ' + van.join(' y ') + ' ya va a este barrio' : ''}</span></h4>
+                          {g.visitas.map(v => filaVisita(v, null))}
+                        </React.Fragment>
+                      );
+                    })}
+                    {visitasLista.length > 0 && conPuntero && (
+                      <p className="as-pie-lista">Arrastra un caso al visitador, o toca su botón.</p>
+                    )}
+                  </>
+                ) : !pa.inspecciones.length && (
+                  <p className="as-vacio">No hay inspecciones decretadas sin hora en esta zona. Busca un caso arriba para programarlo.</p>
+                )}
+              </>
+            )}
+          </div>
+        </section>
 
-      {/* Barra del borrador: «Asignar» es el único botón lleno de la pantalla.
-          Va en el cuerpo: en escritorio queda justo bajo el tablero (columna
-          izquierda), no al fondo de la ventana; en el celular, al final. */}
-      <div className="as-barra" role="region" aria-label="Borrador de la semana">
-        <div className="as-barra-txt" aria-live="polite">
-          {resumen.total ? <b>Borrador: {textoResumen}</b> : <b>Sin cambios</b>}
-          <small>{resumen.total ? 'Nada se escribe hasta asignar.' : 'Elige un día y agrega desde «Por agendar».'}</small>
-        </div>
-        <div className="as-barra-acc">
-          {resumen.total > 0 && (
-            <button type="button" className="as-btn-txt" onClick={descartar} disabled={asignando}>Descartar</button>
-          )}
-          <button type="button" className="as-btn-llena" onClick={asignar} disabled={!resumen.total || asignando}
-            aria-busy={asignando || undefined}>
-            {asignando ? 'Asignando…' : resumen.total ? 'Asignar ' + resumen.total : 'Asignar'}
-          </button>
-        </div>
+        {/* El día: un bloque por inspector que se va llenando; al pie, el
+            borrador con «Asignar» (el único botón lleno de la pantalla). */}
+        <aside className="as-dia-panel" aria-labelledby="as-dia-t" ref={panelRef}>
+          <div className="as-dia-cab">
+            <h2 id="as-dia-t">El día</h2>
+            <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}</p>
+            {esAdmin && (
+              <button type="button" className="as-btn-t" onClick={proponer}
+                title="Llena lo que falta de la meta con lo más urgente, por barrio">Proponer</button>
+            )}
+          </div>
+          <div className="as-insps">
+            {/* Solo los visitadores de la agenda (⚙ Reglas: Alejandro y Mauricio).
+                Otro inspector sale solo si ya tiene algo ese día, para que nada
+                agendado quede sin verse. */}
+            {inspectores.filter(n => inspVisitas.indexOf(n) >= 0 || (delDia(n).items || []).length > 0).map(n => {
+              const c = delDia(n);
+              const recibe = inspVisitas.indexOf(n) >= 0;
+              const nuevas = (c.items || []).filter(it => it.nueva).length;
+              const pasa = recibe && c.total > meta;
+              const aviso = recibe && !cerrado ? choqueZonaDia(datosEf, n, dia.date) : '';
+              return (
+                <div key={n} className={'as-ins' + (dropIns === n ? ' as-drop' : '')} style={{ '--c': colorDe(n) }}
+                  onDragOver={conPuntero ? e => { if (arrastre.current && !cerrado) { e.preventDefault(); if (dropIns !== n) setDropIns(n); } } : undefined}
+                  onDragLeave={conPuntero ? e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropIns(x => (x === n ? null : x)); } : undefined}
+                  onDrop={conPuntero ? e => { e.preventDefault(); soltarEnVisitador(n); } : undefined}>
+                  <div className="as-ins-cab">
+                    <span className="as-ini" aria-hidden="true">{inicialesInsp(n)}</span>
+                    <b title={n}>{nombrePila(n)}</b>
+                    <span className={'as-cuenta' + (pasa ? ' as-pasa' : '')}>
+                      <b>{c.total}</b>{recibe ? ' de ' + meta : ''}{pasa ? ' · pasa la meta' : nuevas ? ' · ' + nuevas + (nuevas === 1 ? ' nueva' : ' nuevas') : ''}
+                    </span>
+                  </div>
+                  {aviso && <p className="as-aviso">{aviso}</p>}
+                  {(c.items || []).length ? c.items.map((it, j) => (
+                    <AsItem key={it.f && it.f._idx != null ? it.f._idx : 'i' + j} it={it} detallado={true} resaltada={resaltada}
+                      onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
+                      expediente={it.nueva && it.tipo === 'visita' ? expedienteBorrador(it.f._idx) : null}
+                      onExpediente={it.nueva && it.tipo === 'visita' ? v => cambiarExpediente(it.f._idx, v) : null}
+                      horaAbierta={horaDe != null && it.f && horaDe === it.f._idx}
+                      onAbrirHora={puedeCambiarHora(it) ? () => setHoraDe(h => (h === it.f._idx ? null : it.f._idx)) : null}
+                      horas={horaDe != null && it.f && horaDe === it.f._idx
+                        ? _asHorasLibres(datosEf, n, dia.date, _asFilaBorrador(it.f)) : null}
+                      onHora={h => cambiarHora(it, n, h)}
+                      onArrastrar={conDragDia(it)} onFinArrastre={finArrastre} />
+                  )) : <p className="as-libre">Libre</p>}
+                </div>
+              );
+            })}
+          </div>
+          <div className="as-pie" role="region" aria-label="Borrador de la semana">
+            <div className="as-pie-txt" aria-live="polite">
+              <b>{resumen.total ? 'Borrador: ' + textoResumen : 'Sin cambios'}</b>
+              <small>{resumen.total ? 'Nada se escribe hasta asignar.' : 'Agrega casos desde la lista.'}</small>
+            </div>
+            {resumen.total > 0 && (
+              <button type="button" className="as-btn-txt" onClick={descartar} disabled={asignando}>Descartar</button>
+            )}
+            <button type="button" className="as-btn-llena" onClick={asignar} disabled={!resumen.total || asignando}
+              aria-busy={asignando || undefined}>
+              {asignando ? 'Asignando…' : resumen.total ? 'Asignar ' + resumen.total : 'Asignar'}
+            </button>
+          </div>
+        </aside>
       </div>
-      </div>
+
+      {avisoOk && <div className="as-ok" role="status">{avisoOk}</div>}
+
+      {/* Inspecciones programadas: una ficha por inspección con caso, fecha
+          (con año, para no equivocarse al citar) y hora. */}
+      {confirmadas && ReactDOM.createPortal(
+        <div className="as-velo" onClick={e => { if (e.target === e.currentTarget) cerrarConfirmacion(); }}>
+          <div className="as-dlg" role="dialog" aria-modal="true" aria-labelledby="as-dlg-t">
+            <h2 id="as-dlg-t">{confirmadas.inspecciones.length === 1 ? 'Inspección programada' : confirmadas.inspecciones.length + ' inspecciones programadas'}</h2>
+            <p>Quedó en la agenda del inspector. Cita a las partes con estos datos.</p>
+            {confirmadas.inspecciones.map(x => (
+              <div key={x.fila} className="as-ficha">
+                <div className="as-ficha-cuando"><b>{fechaLargaConAnio(x.fecha)}</b><span>{horaLargaInspeccion(x.hora)}</span></div>
+                <dl>
+                  <dt>Caso</dt><dd>{x.radicado}{x.expediente ? ' · Exp. ' + x.expediente : ''}</dd>
+                  <dt>Dirección</dt><dd>{[x.dir, x.barrio, x.comuna].filter(Boolean).join(' · ')}</dd>
+                  <dt>Inspector</dt><dd>{titleCaseNombre(x.inspector)}</dd>
+                </dl>
+              </div>
+            ))}
+            {confirmadas.visitas > 0 && (
+              <p className="as-dlg-otros">Además se {confirmadas.visitas === 1 ? 'asignó 1 visita.' : 'asignaron ' + confirmadas.visitas + ' visitas.'}</p>
+            )}
+            <div className="as-dlg-acc">
+              <button type="button" className="as-btn-llena" ref={listoRef} onClick={cerrarConfirmacion}>Listo</button>
+            </div>
+          </div>
+        </div>,
+        document.body)}
     </div>
   );
 }

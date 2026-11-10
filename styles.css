@@ -3396,7 +3396,7 @@ button.sv-col-head {
 
 /* ── Agenda: ⚙ Reglas (PanelReglasAgenda, agenda.jsx) ──────────
    Lo que queda de la Agenda por inspector (2026-10-03) desde que la
-   pantalla es la semana del equipo (bloque AGENDA SEMANA, al final). */
+   pantalla es la semana del equipo (bloque AGENDA, al final). */
 .ag-bar-btn { width: 100%; height: 46px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--brand); color: var(--surface);
   font: 600 var(--fs-2) var(--font-sans); cursor: pointer; white-space: nowrap; }
 .ag-bar-btn:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
@@ -5864,16 +5864,14 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .vp .rfm-zoom button:disabled { opacity: .35; cursor: default; }
 @media (pointer: coarse) { .vp .rfm-zoom button { width: 44px; height: 44px; } }
 
-/* ── AGENDA SEMANA (2026-11-09) ───────────────────────────────────
-   Agenda unificada (agenda-semana.jsx, TASK 02): la semana del equipo.
-   Prefijo as- propio (las vistas viejas usan .ag-/.it-). El día elegido
-   mide 2,2 fr (--as-dias lo fija el .jsx) y se marca con --valla-bg y
-   raya superior --valla: el amarillo solo en lo seleccionado
-   (DESIGN.md §3), nunca en botones. Rojo, solo errores. */
+/* ── AGENDA (rediseño 2026-11-10; maqueta propuesta-agenda-dia.html) ──
+   agenda-semana.jsx. Arriba la semana en una tira (zona, cupos libres del
+   día, horas de inspección); abajo «Por agendar», ancho, un renglón por
+   caso, y a la derecha «El día» con un bloque por inspector y «Asignar».
+   Amarillo solo en lo seleccionado (DESIGN.md §3); rojo, solo errores. */
 .as-pantalla { --ag-i1: #7A4B6E; --ag-i2: #2F6F6A; --ag-i3: #55606B; --ag-i4: #4B4F8A; min-width: 0; }
 
-/* Cabecera: título + navegación de semana en una fila; Reglas/↻ a la
-   derecha (solo ADMIN; el .jsx decide). Molde de .ag-cab/.it-cab. */
+/* Cabecera: título + semana; Reglas/↻ a la derecha. */
 .as-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 14px; }
 .as-cab .page-title { margin: 0; white-space: nowrap; }
 .as-semana { display: flex; align-items: center; gap: 6px; }
@@ -5885,124 +5883,106 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-cab-der { position: relative; margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .as-icono { width: 36px; padding: 0; }
 
-/* Tablero: primera columna inspectores, luego los 5 días. El borde va en
-   cada celda (izq. + abajo), no en la rejilla, para que el fondo del día
-   elegido llegue limpio al borde del panel. */
-.as-tabla { min-width: 0; }
-.as-tablero { display: grid; grid-template-columns: 152px var(--as-dias, 1fr 1fr 1fr 1fr 1fr);
+/* La semana: cinco días en una placa. Cupos = meta × visitadores (es meta,
+   no tope). Con cupo: cifra grande en tinta y cuadros vacíos; sin cupo: el
+   día atenuado, cuadros en gris. Elegido: --valla-bg + raya de 3 px. */
+.as-tira { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 16px;
   background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel); overflow: hidden; }
-.as-esq { border-bottom: 1px solid var(--line); }
-
-/* Cabecera de día: botón (festivo, deshabilitado). Elegido = fondo
-   --valla-bg + raya superior de 3 px --valla. */
-.as-dia { border: 0; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
-  background: none; text-align: left; padding: 10px 10px 9px; cursor: pointer; font: inherit; min-width: 0; }
-.as-dia:focus-visible, .as-it:focus-visible { outline-offset: -2px; }
-.as-dia b { display: block; font: 700 var(--fs-3) var(--font-cond); color: var(--ink); }
-.as-dia-zona { display: block; font-size: var(--fs-1); color: var(--ink-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.as-dia-n { display: block; font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); margin-top: 2px; }
+.as-dia { border: 0; border-left: 1px solid var(--line); background: none; text-align: left; padding: 10px 14px 12px;
+  min-width: 0; cursor: pointer; font: inherit; color: var(--ink); display: flex; flex-direction: column; }
+.as-dia:first-child { border-left: 0; }
+.as-dia:hover:not(:disabled) { background: var(--carril); }
+.as-dia:focus-visible { outline-offset: -3px; }
 .as-dia:disabled { cursor: default; }
+.as-dia[aria-pressed="true"], .as-dia[aria-pressed="true"]:hover { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla); }
+.as-dia-1 { display: flex; align-items: baseline; gap: 8px; }
+.as-dia-1 b { font: 700 var(--fs-3) var(--font-cond); }
 /* Hoy: etiqueta junto a la fecha (el amarillo es del día elegido, no de hoy). */
-.as-hoy-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--ink); border-radius: var(--r-ctl);
-  font: 600 var(--fs-1)/1.4 var(--font-sans); color: var(--ink); vertical-align: 2px; }
-/* Quién no recibe las visitas de la zona del día (tiene inspección en otra). */
-.as-aviso { margin: 4px 16px 8px; font-size: var(--fs-1); color: var(--ink-2); }
-.as-dia.sel { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla); }
+.as-hoy-tag { padding: 0 5px; border: 1px solid var(--ink); border-radius: var(--r-ctl); font: 600 var(--fs-1)/1.4 var(--font-sans); }
+.as-dia-zona { font-size: var(--fs-1); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
+.as-cupos { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; }
+.as-cupos-txt { font: 600 var(--fs-2) var(--font-cond); white-space: nowrap; }
+.as-cupos-txt b { font: 700 var(--fs-4)/1 var(--font-cond); margin-right: 2px; }
+.as-cuadros { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-left: auto; }
+.as-cuadros i { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--ink); }
+.as-cuadros i.on { background: var(--ink); }
+.as-dia.lleno .as-cupos-txt, .as-dia.lleno .as-dia-1 b, .as-dia.lleno .as-dia-zona, .as-dia.lleno .as-dia-insp { color: var(--ink-4); }
+.as-dia.lleno .as-cuadros i { background: var(--surface-3); box-shadow: none; }
+.as-dia.lleno:not([aria-pressed="true"]) { background: var(--carril); }
+.as-dia-insp { margin-top: 2px; font-size: var(--fs-1); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-dia.as-drop { outline: 2px dashed var(--ink-3); outline-offset: -5px; }
 
-/* Columna de inspectores: círculo con su color (--c lo fija el .jsx con
-   --ag-i1…4) y cuánto lleva en la semana. */
-.as-ins { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); min-width: 0; }
-.as-ini { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--c); color: var(--surface);
-  display: grid; place-items: center; font: 600 var(--fs-1) var(--font); }
-.as-ins-nom { min-width: 0; }
-.as-ins-nom b { display: block; font-weight: 600; font-size: var(--fs-2); color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.as-ins-nom small { display: block; color: var(--ink-3); font-size: var(--fs-1); white-space: nowrap; }
+/* Cuerpo: por agendar (ancho) | el día (angosto, fijo al bajar). */
+.as-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.as-lista, .as-dia-panel { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel); min-width: 0; }
 
-/* Celda inspector × día. La elegida lleva el amarillo pálido al 35 %
-   (--valla-bg más suave: los items tienen que seguir leyéndose). */
-.as-celda { border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
-  padding: 6px; min-width: 0; display: flex; flex-direction: column; gap: 4px; min-height: 92px; }
-.as-celda.sel { background: rgba(255, 244, 194, .35); }   /* --valla-bg al 35 %, como la maqueta */
-.as-cuenta { margin-top: auto; font-size: var(--fs-1); color: var(--ink-3);
-  display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; }
-.as-cuenta b { color: var(--ink); font-weight: 600; }
-.as-pasa { color: var(--amber); font-weight: 600; }
-
-/* Item: hora (inspección, condensada 700) · dirección · caso debajo.
-   Inspección sobre --surface-2, visita sobre --carril. */
-.as-it { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
-  gap: 2px 6px; padding: 5px 6px; border-radius: var(--r-ctl); background: var(--carril);
-  font-size: var(--fs-1); line-height: 1.25; min-width: 0; cursor: pointer; }
-.as-it-h { font: 700 var(--fs-2) var(--font-cond); }
-.as-it-d { font: 600 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.as-it-s { grid-column: 2 / 4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* La hora de una inspección que se puede reprogramar: botón con ▾ que
-   despliega sus horas libres dentro del item (.as-it-horas). */
-.as-it-hbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 26px; padding: 0 4px; margin: -2px 0;
-  border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); cursor: pointer; }
-.as-it-hbtn:hover, .as-it-hbtn[aria-expanded="true"] { background: var(--valla-bg); border-color: var(--valla); }
-.as-it-horas { grid-column: 1 / 4; margin-top: 4px; cursor: default; }
-.as-hora[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
-.as-cancelar { display: block; min-height: 36px; margin-top: 4px; padding: 0; }
-.as-it-insp { background: var(--surface-2); }
-.as-it-visita .as-it-h { display: none; }
-.as-it-visita .as-it-d { grid-column: 1 / 3; }
-.as-it-visita .as-it-s { grid-column: 1 / 4; }
-/* Lo del borrador: placa con filete, «Nueva» al inicio del subrenglón y ✕. */
-.as-it-nueva { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
-.as-it-s .as-nueva { color: var(--ink); }
-.as-quitar { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 50%;
-  background: none; color: var(--ink-3); cursor: pointer; }
-.as-quitar:hover { background: var(--surface-2); color: var(--ink); }
-
-/* Cuerpo: tablero | «Por agendar» (TASK 03). */
-.as-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start;
-  grid-template-areas: "tabla panel" "barra panel"; grid-template-rows: auto 1fr; }
-.as-tabla { grid-area: tabla; }
-.as-panel { grid-area: panel; }
-.as-barra { grid-area: barra; }
-.as-panel { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-panel);
-  position: sticky; top: 16px; max-height: calc(100vh - 120px);
-  display: flex; flex-direction: column; min-width: 0; }
-/* El alto real lo fija agenda-semana.jsx (lo visible del área que desplaza);
-   este es el respaldo antes de medir. */
-.as-panel-cab { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
-.as-panel-cab h2 { margin: 0; font: 700 var(--fs-4)/1.1 var(--font-cond); color: var(--ink); }
-.as-panel-cab p { margin: 2px 0 10px; font-size: var(--fs-1); color: var(--ink-3); }
-.as-buscar { position: relative; }
-.as-buscar svg { position: absolute; left: 12px; top: 14px; color: var(--ink-4); pointer-events: none; }
-.as-buscar input { width: 100%; height: 44px; padding: 0 12px 0 36px; border: 1px solid var(--line-2);
+/* Por agendar: cabecera, filtros (fijos al bajar) y renglones. */
+.as-lista-cab { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 14px 16px 0; }
+.as-lista-cab h2, .as-dia-cab h2 { margin: 0; font: 700 var(--fs-4)/1.1 var(--font-cond); color: var(--ink); }
+.as-lista-cab p, .as-dia-cab p { margin: 0; font-size: var(--fs-1); color: var(--ink-3); }
+.as-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5; background: var(--surface); border-radius: var(--r-panel) var(--r-panel) 0 0; }
+.as-buscar { position: relative; flex: 1 1 240px; max-width: 380px; }
+.as-buscar svg { position: absolute; left: 12px; top: 12px; color: var(--ink-4); pointer-events: none; }
+.as-buscar input { width: 100%; height: 40px; padding: 0 12px 0 36px; border: 1px solid var(--line-2);
   border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-2); }
 .as-buscar input::placeholder { color: var(--ink-4); }
-.as-panel-lista { overflow: auto; padding: 4px 0 12px; }
-.as-grupo { margin: 14px 16px 4px; font: 700 var(--fs-2) var(--font-cond); color: var(--ink);
-  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.as-grupo span { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
-.as-fila { padding: 10px 16px; border-top: 1px solid var(--line); }
-.as-grupo + .as-fila { border-top: 0; }
-.as-fila-d { font: 700 var(--fs-3)/1.2 var(--font-cond); color: var(--ink); overflow-wrap: anywhere; }
-.as-fila-m { margin-top: 1px; font-size: var(--fs-1); color: var(--ink-3); }
-.as-fila-m b { color: var(--ink); font-weight: 600; }
-.as-acc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.as-btn-t { min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-ctl); background: var(--surface-2);
+.as-seg { display: inline-flex; background: var(--surface-2); border-radius: var(--r-ctl); padding: 3px; font-size: var(--fs-1); }
+.as-seg button { border: 0; background: none; min-height: 30px; padding: 0 10px; border-radius: 4px; color: var(--ink-3); cursor: pointer; font: inherit; }
+.as-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; }
+.as-grupo { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 14px 16px 6px; font: 700 var(--fs-2) var(--font-cond); color: var(--ink); }
+.as-grupo span, .as-barrio span { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.as-barrio { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 12px 16px 4px; border-top: 1px solid var(--line);
+  font: 600 var(--fs-2) var(--font-cond); color: var(--ink); }
+.as-cols, .as-fila { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .85fr) minmax(0, 1.6fr) 104px minmax(132px, auto);
+  gap: 0 14px; align-items: center; padding: 0 16px; }
+.as-cols { font-size: var(--fs-1); color: var(--ink-4); padding-bottom: 4px; }
+.as-cols span:last-child { text-align: right; }
+.as-fila { min-height: 46px; border-top: 1px solid var(--line); }
+.as-fila:hover { background: var(--carril); }
+.as-fila[draggable="true"] { cursor: grab; }
+.as-grupo + .as-fila, .as-cols + .as-fila, .as-barrio + .as-fila { border-top: 0; }
+.as-f-dir { font: 600 var(--fs-2) var(--font-cond); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-f-bar, .as-f-urg, .as-f-rad { font-size: var(--fs-1); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-f-urg b { color: var(--ink); font-weight: 600; }
+.as-f-acc { display: flex; gap: 6px; justify-content: flex-end; padding: 6px 0; }
+/* Lo que se despliega en el renglón (programar una inspección, motivo). */
+.as-prog { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 2px 0 12px; }
+.as-prog .as-va, .as-prog .as-nota, .as-prog .as-motivo { margin: 0; }
+.as-vacio { margin: 0; padding: 14px 16px 18px; font-size: var(--fs-1); color: var(--ink-3); }
+.as-vacio p { margin: 0 0 8px; }
+.as-vacio b { color: var(--ink); }
+.as-registrar { padding: 8px 16px 16px; }
+.as-pie-lista { margin: 0; padding: 10px 16px 14px; border-top: 1px solid var(--line); font-size: var(--fs-1); color: var(--ink-3); }
+
+/* Botones. «+ AH» = punto con el color del visitador e iniciales; apagado
+   (cruce de zona) con borde y sin relleno. */
+.as-mas { --c: var(--ag-i1); min-height: 32px; min-width: 60px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 10px; border: 0; border-radius: var(--r-ctl); background: var(--surface-2);
+  font: 600 var(--fs-1) var(--font-sans); color: var(--ink); cursor: pointer; }
+.as-mas i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.as-mas:hover { background: var(--surface-3); }
+.as-mas[aria-disabled="true"] { color: var(--ink-4); background: none; box-shadow: inset 0 0 0 1px var(--line-2); cursor: not-allowed; }
+.as-mas[aria-disabled="true"] i { opacity: .35; }
+.as-btn-t { min-height: 32px; padding: 0 12px; border: 0; border-radius: var(--r-ctl); background: var(--surface-2);
   font-size: var(--fs-1); font-weight: 600; color: var(--ink); cursor: pointer; }
 .as-btn-t:hover { background: var(--surface-3); }
 .as-link { border: 0; background: none; padding: 0; font: 600 var(--fs-1) var(--font-sans); color: var(--ink);
   text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-/* «+ AH»: mismo molde que .ag-mas de la Agenda vieja; apagado con «–». */
-.as-mas { --c: var(--ag-i1); height: 32px; min-width: 52px; display: inline-flex; align-items: center; justify-content: center;
-  gap: 3px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-full); background: var(--surface-2);
-  font: 600 var(--fs-1) var(--font-sans); color: var(--ink-2); cursor: pointer; }
-.as-mas::before { content: '+'; color: var(--c); font-size: var(--fs-2); font-weight: 500; }
-.as-mas.i2 { --c: var(--ag-i2); } .as-mas.i3 { --c: var(--ag-i3); } .as-mas.i4 { --c: var(--ag-i4); }
-.as-mas[aria-disabled="true"] { color: var(--ink-4); cursor: not-allowed; }
-.as-mas[aria-disabled="true"]::before { content: '–'; color: var(--ink-4); }
+.as-btn-llena { min-height: 44px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--ink);
+  color: var(--surface); font: 700 var(--fs-2) var(--font-sans); cursor: pointer; white-space: nowrap; }
+.as-btn-llena:hover:not(:disabled) { background: var(--brand-ink); }
+.as-btn-llena:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
+.as-btn-txt { min-height: 44px; padding: 0 10px; border: 0; background: none; font: 600 var(--fs-2) var(--font-sans);
+  color: var(--ink-3); cursor: pointer; }
+.as-btn-txt:hover:not(:disabled) { color: var(--ink); }
+.as-cancelar { min-height: 32px; font-size: var(--fs-1); }
+
+/* Programar una inspección: inspector, horas libres, expediente. */
 .as-va, .as-nota, .as-motivo { margin: 8px 0 0; font-size: var(--fs-1); color: var(--ink-2); }
 .as-nota { color: var(--ink-3); }
 .as-motivo { color: var(--ink); font-weight: 600; }
-.as-elige, .as-horas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.as-elige, .as-horas { display: flex; flex-wrap: wrap; gap: 6px; }
 .as-elige button { min-height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-full);
   background: var(--surface); font-size: var(--fs-1); font-weight: 600; color: var(--ink); cursor: pointer; }
 .as-elige button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
@@ -6010,65 +5990,106 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-hora { min-height: 32px; min-width: 44px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--r-ctl);
   background: var(--surface); font: 600 var(--fs-2) var(--font-cond); color: var(--ink); cursor: pointer; }
 .as-hora:hover { background: var(--valla-bg); border-color: var(--valla); }
-.as-exp { display: block; width: 140px; height: 36px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--line-2);
-  border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-2); }
+.as-hora[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.as-exp { width: 130px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-1); }
 .as-exp::placeholder { color: var(--ink-4); }
-.as-vacio { margin: 0; padding: 12px 16px; font-size: var(--fs-1); color: var(--ink-3); }
-.as-vacio p { margin: 0 0 8px; }
-.as-vacio b { color: var(--ink); }
-.as-registrar { padding: 8px 16px; }
-@media (min-width: 900px) and (max-width: 1439px) {
-  .as-cuerpo { grid-template-columns: minmax(0, 1fr) 320px; }
-}
-@media (max-width: 1279px) {
-  .as-cuerpo { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tabla" "panel" "barra"; grid-template-rows: auto; }
-  .as-panel { position: static; max-height: none; }
-}
 
-/* Barra del borrador (TASK 04), con el único botón lleno: en escritorio justo
-   bajo el tablero (fila 2 de .as-cuerpo); fija abajo si el tablero no cabe. */
-.as-barra { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
-  align-self: start; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line-2);
-  border-radius: var(--r-panel); }
-.as-barra-txt { min-width: 0; font-size: var(--fs-2); color: var(--ink); }
-.as-barra-txt b { font-weight: 600; }
-.as-barra-txt small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
-.as-barra-acc { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-.as-btn-llena { min-height: 44px; padding: 0 22px; border: 0; border-radius: var(--r-ctl); background: var(--ink);
-  color: var(--surface); font: 700 var(--fs-2) var(--font-sans); cursor: pointer; }
-.as-btn-llena:hover:not(:disabled) { background: var(--brand-ink); }
-.as-btn-llena:disabled { background: var(--surface-2); color: var(--ink-4); cursor: default; }
-.as-btn-txt { min-height: 44px; padding: 0 12px; border: 0; background: none; font: 600 var(--fs-2) var(--font-sans);
-  color: var(--ink-3); cursor: pointer; }
-.as-btn-txt:hover:not(:disabled) { color: var(--ink); }
-/* Arrastrar: lo que se puede mover lleva la mano; la celda destino, punteada. */
+/* El día: fijo al bajar; el alto lo mide agenda-semana.jsx (lo visible del
+   área que desplaza). Bloques por inspector con su cuenta y, al pie, el
+   borrador con «Asignar» (el único botón lleno de la pantalla). */
+.as-dia-panel { position: sticky; top: 16px; max-height: calc(100vh - 120px); display: flex; flex-direction: column; }
+.as-dia-cab { display: flex; align-items: baseline; gap: 4px 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.as-dia-cab .as-btn-t { margin-left: auto; align-self: center; }
+.as-insps { overflow: auto; flex: 1 1 auto; }
+.as-ins { padding: 12px 16px 14px; border-top: 1px solid var(--line); }
+.as-ins:first-child { border-top: 0; }
+.as-ins.as-drop { background: var(--valla-bg); }
+.as-ins-cab { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.as-ins-cab > b { font-weight: 600; font-size: var(--fs-2); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-ini { width: 26px; height: 26px; flex: none; border-radius: 50%; background: var(--c); color: var(--surface);
+  display: grid; place-items: center; font: 600 12px var(--font-sans); }
+.as-cuenta { margin-left: auto; font-size: var(--fs-1); color: var(--ink-3); white-space: nowrap; }
+.as-cuenta b { color: var(--ink); font-weight: 600; }
+.as-cuenta.as-pasa, .as-cuenta.as-pasa b { color: var(--amber); }
+/* Quién no recibe las visitas de la zona del día (tiene inspección en otra). */
+.as-aviso { margin: 0 0 8px; font-size: var(--fs-1); color: var(--ink-2); }
+.as-libre { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-4); }
+.as-pie { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line-2); }
+.as-pie-txt { min-width: 0; margin-right: auto; font-size: var(--fs-2); color: var(--ink); }
+.as-pie-txt b { display: block; font-weight: 600; }
+.as-pie-txt small { display: block; font-size: var(--fs-1); color: var(--ink-3); }
+
+/* Item del día: hora (inspección) · dirección · caso debajo. */
+.as-it { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
+  padding: 6px 8px; margin-top: 4px; border-radius: var(--r-ctl); background: var(--carril);
+  font-size: var(--fs-1); line-height: 1.25; min-width: 0; cursor: pointer; }
+.as-it:focus-visible { outline-offset: -2px; }
 .as-it[draggable="true"] { cursor: grab; }
-/* Expediente de la visita nueva, dentro de su item (ocupa el renglón entero). */
+.as-it-insp { background: var(--surface-2); }
+.as-it-h { font: 700 var(--fs-2) var(--font-cond); }
+.as-it-d { font: 600 var(--fs-2) var(--font-cond); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-it-s { grid-column: 2 / 4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-it-visita .as-it-h { display: none; }
+.as-it-visita .as-it-d { grid-column: 1 / 3; }
+.as-it-visita .as-it-s { grid-column: 1 / 4; }
+.as-it-hbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 26px; padding: 0 5px;
+  border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); cursor: pointer; }
+.as-it-hbtn:hover, .as-it-hbtn[aria-expanded="true"] { background: var(--valla-bg); border-color: var(--valla); }
+.as-it-horas { grid-column: 1 / 4; margin-top: 6px; cursor: default; }
+/* Lo del borrador: placa con filete, «Nueva» al inicio del subrenglón y ✕. */
+.as-it-nueva { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+.as-it-s .as-nueva { color: var(--ink); }
+.as-quitar { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: var(--ink-3); cursor: pointer; }
+.as-quitar:hover { background: var(--surface-2); color: var(--ink); }
 .as-exp-it { grid-column: 1 / 4; width: 120px; height: 30px; margin-top: 4px; padding: 0 8px; border: 1px solid var(--line-2);
   border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-1); }
 .as-exp-it::placeholder { color: var(--ink-4); }
-.as-celda.as-drop { outline: 2px dashed var(--ink-3); outline-offset: -4px; }
-/* «Ver en la Agenda»: la inspección de la ficha se ilumina 2,5 s (selección = --valla-bg). */
+/* «Ver en la Agenda»: la inspección de la ficha se ilumina 2,5 s. */
 .as-it-resaltada { background: var(--valla-bg); box-shadow: inset 0 0 0 2px var(--valla); transition: background .35s ease-out, box-shadow .35s ease-out; }
 
-/* Días compactos: solo la hora de cada inspección (el .jsx no pinta
-   dirección ni subrenglón) y una línea con las visitas. */
-.as-celda-compacta .as-it { grid-template-columns: auto 1fr; padding: 3px 6px; }
-.as-resumen { font-size: var(--fs-1); color: var(--ink-2); padding: 2px 4px; }
+/* Aviso breve (asignadas solo visitas, radicado registrado): se va solo. */
+.as-ok { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px);
+  padding: 12px 18px; border-radius: var(--r-card); background: var(--ink); color: var(--surface); font-size: var(--fs-2);
+  box-shadow: 0 8px 24px rgba(21, 20, 15, .25); }
 
-/* 900–1439: la columna de inspectores se angosta (círculo más chico, el
-   nombre de pila cabe entero) y se oculta «N en la semana». */
+/* Confirmación de inspecciones: una ficha por inspección, fecha con año. */
+.as-velo { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(21, 20, 15, .42); }
+.as-dlg { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px 22px 18px;
+  background: var(--surface); border-radius: var(--r-panel); box-shadow: 0 18px 48px rgba(21, 20, 15, .28); color: var(--ink); }
+.as-dlg h2 { margin: 0; font: 700 var(--fs-4)/1.15 var(--font-cond); }
+.as-dlg > p { margin: 4px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.as-ficha { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-card); background: var(--carril); }
+.as-ficha-cuando { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.as-ficha-cuando b { font: 700 var(--fs-4)/1.15 var(--font-cond); }
+.as-ficha-cuando span { font: 600 var(--fs-3) var(--font-cond); color: var(--ink-2); }
+.as-ficha dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 10px 0 0; font-size: var(--fs-2); }
+.as-ficha dt { padding-top: 2px; font-size: var(--fs-1); color: var(--ink-3); }
+.as-ficha dd { margin: 0; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.as-dlg-otros { margin: 12px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.as-dlg-acc { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+/* 900–1439: renglones más compactos (sin radicado en su columna). */
 @media (min-width: 900px) and (max-width: 1439px) {
-  .as-tablero { grid-template-columns: 128px var(--as-dias, 1fr 1fr 1fr 1fr 1fr); }
-  .as-ins { gap: 6px; }
-  .as-ini { width: 24px; height: 24px; }
-  .as-ins-nom small { display: none; }
+  .as-cuerpo { grid-template-columns: minmax(0, 1fr) 320px; }
+  .as-cols, .as-fila { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.4fr) minmax(124px, auto); }
+  .as-cols span:nth-child(4), .as-f-rad { display: none; }
+  .as-dia { padding: 10px 10px 12px; }
+  .as-cuadros i { width: 11px; height: 11px; }
 }
-
-/* Celular (<900, TASK 05): un día a la vez. La tira elige el día; cada
-   inspector es una placa con su celda del día elegido; «Por agendar»
-   debajo y la barra del borrador encima de las pestañas. Toques de 44 px. */
-.as-tira { display: none; }
+/* <1280: «El día» arriba de la lista y a lo ancho, un bloque por inspector
+   lado a lado; el borrador queda fijo abajo. */
+@media (max-width: 1279px) {
+  .as-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .as-dia-panel { position: static; max-height: none; order: -1; }
+  .as-insps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); overflow: visible; }
+  .as-ins { border-top: 0; border-left: 1px solid var(--line); }
+  .as-ins:first-child { border-left: 0; }
+  .as-pie { position: sticky; bottom: 0; z-index: 6; background: var(--surface); border-radius: 0 0 var(--r-panel) var(--r-panel); }
+}
+/* Celular: tira de días compacta, renglones apilados, toques de 44 px y el
+   borrador encima de las pestañas (72 px + franja de gestos, como el «+»). */
 @media (max-width: 899px) {
   .as-cab { gap: 8px 12px; }
   .as-rango { min-width: 0; font-size: var(--fs-2); }
@@ -6076,30 +6097,36 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-hoy { min-height: var(--tap); }
   .as-cab-der .vc-btn { min-height: var(--tap); min-width: var(--tap); justify-content: center; }
   .as-reglas .as-lbl { display: none; }
-  .as-tira { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-bottom: 12px; }
-  .as-tira button { min-height: 64px; padding: 8px 2px; border: 0; border-radius: var(--r-card); background: var(--surface);
-    box-shadow: inset 0 0 0 1px var(--line); text-align: center; cursor: pointer; font: inherit; color: var(--ink); }
-  .as-tira b { display: block; font: 700 var(--fs-2) var(--font-cond); }
-  .as-tira small { display: block; font-size: var(--fs-1); line-height: 1.2; color: var(--ink-3); }
-  .as-tira button[aria-pressed="true"] { background: var(--valla-bg); box-shadow: inset 0 3px 0 var(--valla), inset 0 0 0 1px var(--valla); }
-  .as-tira button:disabled { color: var(--ink-4); cursor: default; }
-  /* La rejilla pasa a un bloque por inspector del día elegido. */
-  .as-tablero { display: block; border: 0; border-radius: 0; background: none; overflow: visible; }
-  .as-esq, .as-dia, .as-celda { display: none; }
-  .as-ins { margin-top: 10px; background: var(--surface); border: 1px solid var(--line-2); border-bottom: 1px solid var(--line);
-    border-radius: var(--r-panel) var(--r-panel) 0 0; }
-  .as-ins-nom small { display: block; }
-  .as-celda.sel { display: flex; min-height: 0; padding: 8px; background: var(--surface); border: 1px solid var(--line-2);
-    border-top: 0; border-radius: 0 0 var(--r-panel) var(--r-panel); }
-  .as-it { padding: 8px; }
+  .as-dia { padding: 8px 4px 10px; text-align: center; align-items: center; min-height: 64px; }
+  .as-dia-1 { display: block; }
+  .as-dia-1 b { display: block; font-size: var(--fs-2); }
+  .as-hoy-tag { display: inline-block; margin-top: 2px; }
+  .as-dia-zona, .as-dia-insp, .as-cuadros { display: none; }
+  .as-cupos { display: block; margin-top: 2px; }
+  .as-cupos-txt { display: block; font-size: var(--fs-1); line-height: 1.2; white-space: normal; }
+  .as-cupos-txt b { display: block; margin: 0; font-size: var(--fs-3); }
+  .as-insps { grid-template-columns: minmax(0, 1fr); }
+  .as-ins { border-left: 0; border-top: 1px solid var(--line); }
+  .as-cols { display: none; }
+  .as-fila { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 14px; }
+  .as-f-dir { grid-column: 1 / -1; white-space: normal; }
+  .as-f-bar { grid-column: 1; grid-row: 2; }
+  .as-f-urg { grid-column: 1; grid-row: 3; white-space: normal; }
+  .as-f-rad { display: none; }
+  .as-f-acc { grid-column: 2; grid-row: 2 / 4; flex-wrap: wrap; }
+  .as-buscar { max-width: none; flex-basis: 100%; }
+  .as-buscar input, .as-exp, .as-exp-it { height: var(--tap); }
+  .as-buscar svg { top: 14px; }
+  .as-filtros { position: static; }
   .as-quitar { width: var(--tap); height: var(--tap); }
-  .as-mas, .as-hora, .as-elige button, .as-btn-t, .as-it-hbtn, .as-cancelar { min-height: var(--tap); }
-  .as-mas { min-width: 56px; }
-  .as-exp, .as-exp-it { height: var(--tap); }
-  .as-cuerpo { gap: 14px; }
-  /* Barra encima de las pestañas (72 px + franja de gestos, como el «+»). */
-  .as-barra { bottom: calc(76px + env(safe-area-inset-bottom)); padding: 10px 12px; }
-  .as-barra-txt small { display: none; }
+  .as-mas, .as-hora, .as-elige button, .as-btn-t, .as-it-hbtn, .as-cancelar, .as-seg button { min-height: var(--tap); }
+  .as-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .as-pie { position: fixed; left: 0; right: 0; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 30;
+    border-radius: 0; border-top: 1px solid var(--line-2); box-shadow: 0 -6px 16px rgba(21, 20, 15, .08); }
+  .as-pie-txt small { display: none; }
+  .as-pantalla { padding-bottom: 72px; }
+  .as-ok { bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .as-dlg-acc .as-btn-llena { width: 100%; }
 }
 
 /* ╔════════════════════════════════════════════════════════════╗
