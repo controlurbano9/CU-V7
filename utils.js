@@ -3699,6 +3699,35 @@ function comportamientosParaIA(infraccion) {
   return out;
 }
 
+// La calificación jurídica del art. 135 no va en la situación encontrada
+// (2026-11-11, decisión del usuario): la escribe la app en las conclusiones
+// (párrafo armado, conclusionDeterminativa). La IA la agregaba como último
+// párrafo aunque el original no la trajera, así que la propuesta de «Revisar»
+// pasa por aquí: se quita cada oración que califica y quedan los hechos. Se
+// conservan los saltos de línea; un párrafo que queda vacío se va con su
+// separación. Solo para la propuesta: el texto propio del inspector no se toca.
+var _CALIFICACION_ART135_RE = /integridad\s+urban[ií]stica|art[ií]culo\s+135|\bart\.\s*135|ley\s+1801|literal\s+[ABCD]\b[^.]{0,60}numeral/i;
+function quitarCalificacionArt135(texto) {
+  var t = String(texto == null ? '' : texto);
+  if (!_CALIFICACION_ART135_RE.test(t)) return t;
+  var partes = t.split(/(\n[ \t]*\n+|\n)/);   // [párrafo, separador, párrafo, …]
+  var salida = [];
+  for (var i = 0; i < partes.length; i += 2) {
+    var par = partes[i];
+    if (_CALIFICACION_ART135_RE.test(par)) {
+      // Fin de oración = . ! ? seguido de espacio y mayúscula o comilla:
+      // «art. 135» o «No. 12» no cortan.
+      par = par.replace(/([.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿«"“])/g, '$1\u0001').split('\u0001')
+        .filter(function(o) { return !_CALIFICACION_ART135_RE.test(o); })
+        .join(' ').trim();
+    }
+    if (par.trim()) salida.push({ par: par, sep: partes[i + 1] || '' });
+  }
+  return salida.map(function(s, k) {
+    return s.par + (k < salida.length - 1 ? (s.sep || '\n\n') : '');
+  }).join('');
+}
+
 // ── Capacidad de las celdas del acta F-GGO-46 ─────────────────
 // La celda no crece: lo que no cabe no sale en el PDF, y nadie se entera.
 // Medido el 2026-10-15 en PDF reales: la situación (A30) se cortó en el
@@ -3808,6 +3837,12 @@ function resumenCambios(orig, prop, opts) {
   var out = [];
   var on = _sinTildesRev(orig), pn = _sinTildesRev(prop);
   var cuenta = function(t, src) { return (t.match(new RegExp(src, 'g')) || []).length; };
+  // La calificación del art. 135 sale de la propuesta a propósito (va en las
+  // conclusiones, quitarCalificacionArt135): sus cifras (135, 1801, 2016) y su
+  // «constituye» no cuentan como perdidos; se dice el motivo.
+  var quitaCalif = _CALIFICACION_ART135_RE.test(orig) && !_CALIFICACION_ART135_RE.test(prop);
+  var origCmp = quitaCalif ? quitarCalificacionArt135(orig) : orig;
+  var onCmp = _sinTildesRev(origCmp);
   // Cita el fragmento tal como lo escribió el inspector: sin tildes el texto
   // conserva el largo (NFC → base + marcas → base), así que el índice sirve.
   var cita = function(src) {
@@ -3825,7 +3860,7 @@ function resumenCambios(orig, prop, opts) {
   var norm = function(n) { return n.replace(/[.,]/g, ''); };
   var numsProp = crudos(prop).map(norm);
   var vistos = {};
-  var perdidas = crudos(orig).filter(function(n) {
+  var perdidas = crudos(origCmp).filter(function(n) {
     var k = norm(n);
     if (vistos[k] || numsProp.indexOf(k) >= 0) return false;
     return (vistos[k] = true);
@@ -3840,13 +3875,14 @@ function resumenCambios(orig, prop, opts) {
   // informe la corrección borró de Observaciones las dos recomendaciones y el
   // «no se evidencia infracción… toda vez que…», y la pantalla solo decía
   // «se quitan expresiones de relleno».
-  var quitaRec = RECOMENDACION_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
+  var quitaRec = RECOMENDACION_REVISION.filter(function(p) { return cuenta(onCmp, p) > cuenta(pn, p); });
   if (quitaRec.length) out.push({ tipo: 'pierde', texto: 'Quita recomendaciones (' + quitaRec.slice(0, 1).map(cita).join(', ') + '). Confirma que estén en otra parte.' });
-  var quitaConc = CONCLUSION_REVISION.filter(function(p) { return cuenta(on, p) > cuenta(pn, p); });
+  var quitaConc = CONCLUSION_REVISION.filter(function(p) { return cuenta(onCmp, p) > cuenta(pn, p); });
   if (quitaConc.length) out.push({ tipo: 'pierde', texto: 'Quita la conclusión (' + quitaConc.slice(0, 1).map(cita).join(', ') + '). Confirma que esté en otra parte.' });
 
   // Motivos: máximo 2, por prioridad (2026-10-17).
   var motivos = [];
+  if (quitaCalif) motivos.push('La calificación del artículo 135 sale de aquí: va en las conclusiones del acta.');
 
   // 1. Quitó expresiones de IA (las de orig que ya no están en la propuesta).
   var enProp = {};
@@ -7448,6 +7484,7 @@ var _cuUtilsExports = {
   comportamientosSinNombrar: comportamientosSinNombrar,
   pistaIntervencion: pistaIntervencion,
   comportamientosParaIA: comportamientosParaIA,
+  quitarCalificacionArt135: quitarCalificacionArt135,
   reglasBloqueoActa: reglasBloqueoActa,
   camposRevision: camposRevision,
   huellaRevision: huellaRevision,

@@ -42,3 +42,35 @@ test('comportamientosParaIA: textos de V2 sin código se ignoran', () => {
   assert.deepEqual(comportamientosParaIA('#9,11 Y 12 | A4: Sin licencia o caducada'),
     ['A4 — ' + citaArt135('A', 4)]);
 });
+
+// 2026-11-11: la calificación del art. 135 sale de la propuesta de la
+// situación encontrada (va en las conclusiones, párrafo armado).
+const { quitarCalificacionArt135, resumenCambios } = require('../utils.js');
+
+test('quitarCalificacionArt135: quita el párrafo final que califica', () => {
+  const t = 'Se observa una ampliación de 12 m2 en proceso. No se aportó licencia.\n\n' +
+    'Se impuso sello de suspensión de obra.\n\n' +
+    'Las modificaciones constatadas corresponden al comportamiento contrario a la integridad urbanística del literal A, numeral 4, del artículo 135 de la Ley 1801 de 2016: parcelar, urbanizar, demoler, intervenir o construir en terrenos aptos para estas actuaciones, sin licencia o cuando esta hubiere caducado.';
+  assert.equal(quitarCalificacionArt135(t),
+    'Se observa una ampliación de 12 m2 en proceso. No se aportó licencia.\n\nSe impuso sello de suspensión de obra.');
+});
+
+test('quitarCalificacionArt135: en un párrafo mixto quita solo la oración', () => {
+  const t = 'La obra está terminada. Esto constituye un comportamiento del art. 135 de la ley. Se recomendó tramitar el reconocimiento.';
+  assert.equal(quitarCalificacionArt135(t), 'La obra está terminada. Se recomendó tramitar el reconocimiento.');
+});
+
+test('quitarCalificacionArt135: sin calificación no toca nada (saltos incluidos)', () => {
+  const t = 'Primer párrafo.\nSegundo párrafo, con 3,5 m.\n\nTercero.';
+  assert.equal(quitarCalificacionArt135(t), t);
+  assert.equal(quitarCalificacionArt135(''), '');
+  assert.equal(quitarCalificacionArt135(null), '');
+});
+
+test('resumenCambios: quitar la calificación no se avisa como cifras perdidas', () => {
+  const orig = 'Se observa un segundo piso de 40 m2. Constituye comportamiento contrario a la integridad urbanística del artículo 135 de la Ley 1801 de 2016.';
+  const prop = 'Se observa un segundo piso de 40 m2.';
+  const r = resumenCambios(orig, prop);
+  assert.ok(!r.some(x => x.tipo === 'pierde'), JSON.stringify(r));
+  assert.ok(r.some(x => /artículo 135/.test(x.texto)));
+});

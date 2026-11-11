@@ -4411,8 +4411,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // y el panel avisa (concFallo).
     let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false;
     try {
+      // La calificación del art. 135 va en las conclusiones (párrafo armado),
+      // no en la situación: se quita de la propuesta aunque la IA la agregue
+      // (2026-11-11, quitarCalificacionArt135). Antes del segundo intento,
+      // para que no la herede como si fuera del original.
+      const sinCalif = t => t ? quitarCalificacionArt135(t) : t;
       const [tD, tC] = await Promise.all([
-        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)) : Promise.resolve(origDesc),
+        pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)).then(sinCalif) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
           : mejorarTexto(restoConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
@@ -4436,7 +4441,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         pedirDesc ? masCorta(tD, 'actuacion', 'situacion', tD, _pistaIntervencionD(d), maxDesc) : Promise.resolve(tD),
         pedirConc && tC ? masCorta(tC, 'conclusionActa', 'conclusiones', celdaConc(tC), _contextoVisitaD(d), maxConc) : Promise.resolve(tC),
       ]);
-      if (pedirDesc) desc = tD2;
+      if (pedirDesc) desc = sinCalif(tD2);
       // '' = la IA falló.
       if (pedirConc) { if (tC2) conc = conArmado(tC2); else concFallo = true; }
     } catch (e) {
