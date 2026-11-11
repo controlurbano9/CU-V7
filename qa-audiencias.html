@@ -363,6 +363,14 @@ window.leerVisitas = function () {
       'FECHA CITACION': '21/04/2027 · 9:00 a. m.', 'FECHA DE VISITA': '15/04/2027',
       'NOMBRE PERSONA ATIENDE': 'Hernán Gil', 'ID PERSONA ATIENDE': '9876543',
       DIRECCION: 'CL 46 # 52-30', 'BARRIO/VEREDA': 'Los Alpes', EXPEDIENTE: '2352' },
+    // Inspecciones al lugar programadas (2026-11-11): salen en la Agenda de
+    // Audiencias por hora, con «Inspector» en la columna del sustanciador.
+    { _idx: 900, RADICADO: '20270877120', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'ALEJANDRO HERNANDEZ',
+      DILIGENCIA: 'Inspección al lugar', 'FECHA ASIGNACION VISITA': '05/04/2027', HORA_PROGRAMADA: '10:00AM',
+      NOTA_DILIGENCIA: 'Llevar planos aprobados', 'DIRECCION INFRACCION': 'CL 30 # 45-12', 'BARRIO/VEREDA': 'Niquía', EXPEDIENTE: '2198' },
+    { _idx: 901, RADICADO: '20261102233', 'ESTADO VISITA': 'ASIGNADO', 'VISITADOR(ES)': 'MAURICIO HERRERA',
+      DILIGENCIA: 'Inspección al lugar', 'FECHA ASIGNACION VISITA': '06/04/2027', HORA_PROGRAMADA: '8:00AM',
+      'DIRECCION INFRACCION': 'CR 65 # 24-30', 'BARRIO/VEREDA': 'París' },
   ];
   return Promise.resolve({ datos: agenda.concat(deCitas) });
 };

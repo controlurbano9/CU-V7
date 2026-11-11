@@ -6129,6 +6129,65 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-dlg-acc .as-btn-llena { width: 100%; }
 }
 
+/* ── Audiencias v2 (2026-11-11; maqueta propuesta-audiencias-v2.html) ──
+   La cita sigue mandando. El sustanciador va en una columna fija a la derecha
+   con su rótulo (en el celular, bajo la hora con el nombre corto). Inspecciones
+   al lugar en la misma fila, con un pin y «Inspector» en la columna. «Pedidas
+   hoy» arriba y chica. Sin colores nuevos: el color es del estado. */
+.au-row .au-sus { flex: none; width: 168px; min-width: 0; padding-left: 12px; border-left: 1px solid var(--line); }
+.au-sus .rot { display: block; font-size: 11px; line-height: 1.3; color: var(--ink-4); }
+.au-sus .nom { display: block; font: 600 var(--fs-1)/1.3 var(--font-sans); color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-sus.sin .nom { font-weight: 400; color: var(--ink-4); }
+.au-sus-corto { display: none; }
+@media (max-width: 599px) {
+  .au-row .au-sus { display: none; }
+  .au-row .hora { align-self: flex-start; }
+  .au-sus-corto { display: block; margin-top: 2px; font: 600 12px/1.25 var(--font-sans); color: var(--ink-2);
+    overflow-wrap: anywhere; }
+  .au-sus-corto.sin { font-weight: 400; color: var(--ink-4); }
+}
+.au-pin { vertical-align: -2px; margin-right: 4px; color: var(--ink-3); }
+.au-chip-sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line-2); }
+
+/* Buscador común de Agenda y Lista + línea de resultado */
+.au-resultado { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: -2px 0 12px;
+  font-size: var(--fs-1); color: var(--ink-3); }
+.au-resultado .au-cl-texto { min-height: var(--tap-min); text-decoration: underline; text-underline-offset: 3px; }
+.au-tabla .au-tabla-sep td { padding: 6px 10px; background: var(--paper); font-weight: 600; color: var(--ink-3); }
+.au-lrows-sep { margin: 10px 0 6px; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.au-lrows-sep:first-child { margin-top: 0; }
+
+/* Pedidas hoy: un renglón plegable (y renglones de una línea al abrirlo) */
+.au-ped-linea { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tap); margin: 0 0 12px;
+  padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface);
+  font: 400 var(--fs-1) var(--font-sans); color: var(--ink); text-align: left; cursor: pointer; }
+.au-ped-linea b { flex: none; font-weight: 600; white-space: nowrap; }
+.au-ped-linea .ult { min-width: 0; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-ped-linea .ver { flex: none; margin-left: auto; color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; }
+.au-ped-linea.vacia { min-height: 0; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: default; }
+.au-ped-abierta { margin: -6px 0 12px; padding: 2px 12px; border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--surface); }
+.au-ped-r { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tap-min); padding: 0;
+  border: 0; border-bottom: 1px solid var(--line); background: none; font: 400 var(--fs-1) var(--font-sans);
+  color: var(--ink); text-align: left; }
+.au-ped-r:last-child { border-bottom: 0; }
+button.au-ped-r { cursor: pointer; }
+.au-ped-r .cuando { flex: none; font-weight: 600; white-space: nowrap; }
+.au-ped-r .resto { flex: 1; min-width: 0; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-ped-r .hace { flex: none; color: var(--ink-4); white-space: nowrap; }
+.au-ped-r .hace.fallo { color: var(--red); }
+.au-pedidas-nada { margin-top: 4px; font-size: var(--fs-1); color: var(--ink-3); }
+.au-caja.au-pedidas { margin-bottom: 0; padding-top: 12px; padding-bottom: 8px; }
+.au-caja.au-pedidas > h2 { margin-bottom: 2px; }
+/* Admin en escritorio: caja del riel; por debajo, el renglón plegable. */
+@media (min-width: 1200px) { .au-ped-arriba.admin { display: none; } }
+@media (max-width: 1199px) { .au-riel-pedidas { display: none; } }
+@media (max-width: 899px) {
+  .au-ped-r { min-height: var(--tap); }
+  .au-ped-linea .ult { display: none; }
+}
+
 /* Conclusiones del acta: párrafo armado editable (2026-11-11). El bloque
    gris es el párrafo que la app arma; «Editar» lo pasa a la casilla. */
 .concl-armada { display: block; white-space: pre-wrap; margin-bottom: 8px; }
@@ -6145,7 +6204,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .concl-cambio-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ╔════════════════════════════════════════════════════════════╗
-   ║ 9) PRINT                                                   ║
+   ║ 9) PRINT                                                 ║
    ╚════════════════════════════════════════════════════════════╝
    Hoja impresa de Consulta norma (2026-11-09; maqueta
    propuesta-impresion-norma.html). Carta vertical, una página. La hoja vive

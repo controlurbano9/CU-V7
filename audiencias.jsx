@@ -247,7 +247,7 @@ function PedirCitaHoja({ usuario, agenda, cuposIniciales, casoInicial, onCerrar,
           <p className="est">{hecha.encolado ? '⇡ En cola · se confirma al volver la señal' : '✓ Cita confirmada'}</p>
           <p className="f">{_auMayus(_auFechaLarga(hecha.cupo.fecha))}</p>
           <p className="h">{horaBonitaAudiencias(hecha.cupo.hora)}</p>
-          <p className="s">{titleCaseNombre(hecha.cupo.sustanciador)}</p>
+          {hecha.cupo.sustanciador && <p className="s">Ante <b>{titleCaseNombre(hecha.cupo.sustanciador)}</b></p>}
           <p className="caso">{hecha.caso.radicado ? 'Rad. ' + hecha.caso.radicado : 'Orden ' + hecha.caso.ordenPolicia}</p>
           {hecha.encolado && <p className="nota">Es tu cupo apartado: puedes entregarla.</p>}
         </div>
@@ -432,7 +432,7 @@ function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLib
         <p className="est">{pasada ? 'Audiencia pasada' : '✓ Cita confirmada'}</p>
         <p className="f">{_auMayus(_auFechaLarga(c.fecha))}</p>
         <p className="h">{horaBonitaAudiencias(c.hora)}</p>
-        <p className="s">{titleCaseNombre(c.sustanciador)}</p>
+        {c.sustanciador && <p className="s">Audiencia ante <b>{titleCaseNombre(c.sustanciador)}</b></p>}
       </div>
       <dl className="au-cita-datos">
         <dt>Caso</dt><dd>{_auCaso(c)}{c.expediente && c.radicado ? ' · ' + c.radicado : ''}</dd>
@@ -875,24 +875,71 @@ function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerr
 // (sin sustanciador: no se inventa). Nada se reubica en «hoy».
 // `sinInspector`: en «Mis citas» el inspector es quien mira, no se repite.
 // `decreto(r, fecha)`: el botón «Decretar inspección» de la fila (o null).
-function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, clicableCita, onAbrirCita, decreto }) {
-  if (!dias.length) return <p className="au-vacio-hoy">Sin audiencias de hoy en adelante</p>;
+// (2026-11-11, maqueta propuesta-audiencias-v2.html) La cita sigue mandando
+// (hora · citado · caso); el sustanciador salió del renglón gris a una columna
+// fija a la derecha con su rótulo, siempre en el mismo sitio. En el celular va
+// bajo la hora con el nombre corto. Con un sustanciador elegido la columna
+// sobra y no sale. Las inspecciones al lugar entran por hora: misma fila, con
+// «Inspector» en la columna (no tienen sustanciador); al tocarlas abren la visita.
+function _auPrimerNombre(n) { return titleCaseNombre(String(n || '').trim().split(/\s+/)[0] || ''); }
+function _auCuentaDia(citas) {
+  const i = citas.filter(function (r) { return r.fuente === 'inspeccion'; }).length;
+  const a = citas.length - i;
+  return [a ? a + (a === 1 ? ' audiencia' : ' audiencias') : '',
+    i ? i + (i === 1 ? ' inspección al lugar' : ' inspecciones al lugar') : ''].filter(Boolean).join(' · ');
+}
+const _AU_SVG_PIN = (
+  <svg className="au-pin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>
+);
+
+function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, buscando, clicableCita, onAbrirCita, decreto }) {
+  if (!dias.length) {
+    // Con búsqueda, la línea de resultado ya dice que no hay nada.
+    return buscando ? null : <p className="au-vacio-hoy">Sin audiencias de hoy en adelante</p>;
+  }
+  const conColumna = !filtroSus;
   function fila(r, clave, fecha) {
+    const esInsp = r.fuente === 'inspeccion';
     const clicable = r.fuente === 'bloque' ? clicableCita(r.cupo) : !!(r.fila && window.abrirVisitaDetail);
     const Tag = clicable ? 'button' : 'div';
     const alClic = !clicable ? undefined : (r.fuente === 'bloque'
       ? function () { onAbrirCita(r.cupo); }
       : function () { window.abrirVisitaDetail(r.fila); });
-    const sub = [r.direccion, sinInspector ? '' : _auInsp(r.inspector), filtroSus ? '' : _auSust(r.sustanciador)];
-    const dec = decreto ? decreto(r, fecha) : null;
+    const dec = !esInsp && decreto ? decreto(r, fecha) : null;
+    let titulo, sub, colRot, colNom, colCorto, colSin = false;
+    if (esInsp) {
+      titulo = <><b>{_AU_SVG_PIN}Inspección al lugar</b> · {[r.direccion, r.barrio].filter(Boolean).join(' · ')}</>;
+      // El caso como en las citas («Exp. N» o el radicado). Sin la columna, el
+      // inspector va en el renglón gris.
+      sub = <>{_auCaso(r.caso || {})}{[r.nota, conColumna ? '' : _auInsp(r.inspector)]
+        .filter(Boolean).map(function (x) { return ' · ' + x; }).join('')}</>;
+      colRot = 'Inspector'; colNom = titleCaseNombre(r.inspector || ''); colCorto = 'Insp. ' + _auPrimerNombre(r.inspector);
+    } else {
+      titulo = <><b>{r.citado || _auCaso(r.caso)}</b>{r.citado ? <> · {_auCaso(r.caso)}</> : null}</>;
+      sub = [r.direccion, sinInspector ? '' : _auInsp(r.inspector)].filter(Boolean).join(' · ');
+      colRot = 'Sustanciador';
+      colSin = !r.sustanciador;
+      colNom = colSin ? 'Sin asignar' : titleCaseNombre(r.sustanciador);
+      colCorto = colSin ? 'Sin sust.' : _auPrimerNombre(r.sustanciador);
+    }
     return (
-      <div className={'au-row' + (dec ? ' au-row-dec' : '')} key={clave}>
-        <span className="hora">{r.hora ? horaBonitaAudiencias(r.hora) : 'Sin hora'}</span>
+      <div className={'au-row' + (dec ? ' au-row-dec' : '') + (esInsp ? ' au-row-insp' : '')} key={clave}>
+        <span className="hora">{r.hora ? horaBonitaAudiencias(r.hora) : 'Sin hora'}
+          {conColumna && <span className={'au-sus-corto' + (colSin ? ' sin' : '')}>{colCorto}</span>}</span>
         <Tag className="t" type={clicable ? 'button' : undefined} onClick={alClic}>
-          <b>{r.citado || _auCaso(r.caso)}</b>{r.citado ? <> · {_auCaso(r.caso)}</> : null}
-          <small>{sub.filter(Boolean).join(' · ')}</small>
+          {titulo}
+          <small>{sub}</small>
         </Tag>
+        {/* «Decretar inspección» antes de la columna: así la columna queda en
+            el mismo sitio en todas las filas, tenga o no el botón. */}
         {dec && <span className="au-dec">{dec}</span>}
+        {conColumna && (
+          <span className={'au-sus' + (colSin ? ' sin' : '')}
+            title={colSin ? 'Cita anotada a mano en la visita: el sustanciador se asigna en el Excel' : undefined}>
+            <span className="rot">{colRot}</span><span className="nom">{colNom}</span>
+          </span>
+        )}
       </div>
     );
   }
@@ -902,7 +949,7 @@ function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, clicableCita, onAb
         return (
           <div className={'au-grupo' + (g.fecha === hoyTxt ? ' hoy' : '')} key={g.fecha}>
             <h2>{g.fecha === hoyTxt ? 'Hoy · ' : ''}{_auMayus(_auFechaLarga(g.fecha))}
-              <span className="au-grupo-n"> · {g.citas.length} audiencia{g.citas.length === 1 ? '' : 's'}</span></h2>
+              <span className="au-grupo-n"> · {_auCuentaDia(g.citas)}</span></h2>
             {g.citas.map(function (r, i) { return fila(r, g.fecha + i, g.fecha); })}
           </div>
         );
@@ -1226,80 +1273,124 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
 // ── Vista Lista: todas las citas, también las pasadas ──
 // `decreto(c)`: el botón «Decretar inspección» de la fila (o null). Sin
 // `decreto` (inspector) la tabla no lleva esa columna.
-function VistaLista({ rows, q, setQ, esAdmin, clicableCita, onAbrirCita, decreto }) {
-  const n = rows.length;
+// (2026-11-11) El buscador es de la pantalla (común con la Agenda). La Lista
+// arranca en «De hoy en adelante»; las pasadas van plegadas y, cuando se
+// busca, abiertas (`pasadasAbiertas`). Las inspecciones al lugar de hoy en
+// adelante entran como filas (`c._insp`): abren la visita, sin sustanciador.
+function VistaLista({ proximas, pasadas, pasadasAbiertas, onVerPasadas, buscando, esAdmin, clicableCita, onAbrirCita, decreto }) {
+  if (!proximas.length && !pasadas.length) {
+    return buscando ? null : <p className="au-vacio-hoy">Sin citaciones</p>;
+  }
+  const verPasadas = pasadasAbiertas && pasadas.length > 0;
+  const nCol = decreto ? 8 : 7;
+  const sep = function (texto, k) { return <tr className="au-tabla-sep" key={k}><td colSpan={nCol}>{texto}</td></tr>; };
+  const botonPasadas = !buscando && pasadas.length > 0 && (
+    <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={pasadasAbiertas ? 'true' : 'false'}
+      onClick={onVerPasadas}>
+      {pasadasAbiertas ? 'Ocultar las pasadas' : 'Ver las ' + pasadas.length + ' pasadas'}
+    </button>
+  );
+  const filaInspTabla = function (c) {
+    return (
+      <tr key={c.idCupo} className="clic" onClick={function () { window.abrirVisitaDetail && window.abrirVisitaDetail(c.fila); }}>
+        <td><button type="button" className="au-tabla-abrir"
+          aria-label={'Abrir la inspección al lugar del ' + c.fecha}
+          onClick={function (e) { e.stopPropagation(); window.abrirVisitaDetail && window.abrirVisitaDetail(c.fila); }}>{c.fecha}</button></td>
+        <td>{c.hora ? horaBonitaAudiencias(c.hora) : 'Sin hora'}</td>
+        <td><span className="au-sindoc">—</span></td>
+        <td>{_auCaso(c)}</td>
+        <td><b>{_AU_SVG_PIN}Inspección al lugar</b>{c.nota ? <span className="au-sindoc"> · {c.nota}</span> : null}</td>
+        <td></td>
+        <td>{titleCaseNombre(c.inspector || '')}</td>
+        {decreto && <td></td>}
+      </tr>
+    );
+  };
   return (
     <div>
-      <div className="au-lis-tools">
-        <input className="au-lis-buscar" type="search" value={q}
-          placeholder="Nombre, radicado, orden, expediente o documento"
-          aria-label="Buscar citación"
-          onChange={function (e) { setQ(e.target.value); }} />
+      <div className="au-tabla">
+        <table>
+          <thead><tr><th>Fecha</th><th>Hora</th><th>Sustanciador</th><th>Exp./Radicado</th>
+            <th>Citado</th><th>Documento</th><th>Inspector</th>{decreto && <th>Inspección</th>}</tr></thead>
+          <tbody>
+            {proximas.length > 0 && sep('De hoy en adelante', 'sep-prox')}
+            {proximas.map(function (c) { return c._insp ? filaInspTabla(c) : filaTabla(c); })}
+            {verPasadas && sep('Pasadas', 'sep-pas')}
+            {verPasadas && pasadas.map(filaTabla)}
+          </tbody>
+        </table>
       </div>
-      <p className="au-hoy-libres">{n} citaci{n === 1 ? 'ón' : 'ones'}</p>
-      {!n ? <p className="au-vacio-hoy">Sin resultados</p> : (<>
-        <div className="au-tabla">
-          <table>
-            <thead><tr><th>Fecha</th><th>Hora</th><th>Sustanciador</th><th>Exp./Radicado</th>
-              <th>Citado</th><th>Documento</th><th>Inspector</th>{decreto && <th>Inspección</th>}</tr></thead>
-            <tbody>
-              {rows.map(function (c) {
-                // Con teclado se abre desde el botón de la fecha (la fila
-                // sigue siendo clicable con el puntero): un <tr> con onClick
-                // no recibe foco y la cita no se podía abrir sin mouse.
-                const clic = clicableCita(c);
-                return (
-                  <tr key={c.idCupo} className={clic ? 'clic' : ''}
-                    onClick={clic ? function () { onAbrirCita(c); } : undefined}>
-                    <td>{clic
-                      ? <button type="button" className="au-tabla-abrir"
-                          aria-label={'Abrir la cita del ' + c.fecha + ', ' + horaBonitaAudiencias(c.hora) + (c.citado ? ', ' + c.citado : '')}
-                          onClick={function (e) { e.stopPropagation(); onAbrirCita(c); }}>{c.fecha}</button>
-                      : c.fecha}</td>
-                    <td>{horaBonitaAudiencias(c.hora)}</td>
-                    <td>{titleCaseNombre(c.sustanciador)}</td>
-                    <td>{_auCaso(c)}</td>
-                    <td><b>{c.citado}</b></td>
-                    <td>{c.citado ? _auDocTxt(c) : null}</td>
-                    <td>{titleCaseNombre(c.reservadoPor || '')}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
-                    {decreto && <td className="au-dec-td">{decreto(c)}</td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="au-lrows">
-          {rows.map(function (c) {
-            // Clicable = botón (foco y Enter/Espacio); si no, un div.
-            const clic = clicableCita(c);
-            const Fila = clic ? 'button' : 'div';
-            const cuerpo = (<>
-              <span className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></span>
-              <span className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</span>
-              <span className="l3">{_auCaso(c)} · {_auSust(c.sustanciador)}{c.reservadoPor ? ' · ' + _auInsp(c.reservadoPor) : ''}
-                {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</span>
-            </>);
-            const dec = decreto ? decreto(c) : null;
-            // Con el botón de decretar la fila no puede ser un botón (no se
-            // anidan): el borde va afuera y la parte que abre la cita, adentro.
-            if (dec) return (
-              <div className="au-lrow au-lrow-dec" key={c.idCupo}>
-                <Fila className={'au-lrow-b' + (clic ? ' clic' : '')} type={clic ? 'button' : undefined}
-                  onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
-                <span className="au-dec">{dec}</span>
-              </div>
-            );
-            return (
-              <Fila className={'au-lrow' + (clic ? ' clic' : '')} key={c.idCupo}
-                type={clic ? 'button' : undefined}
-                onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
-            );
-          })}
-        </div>
-      </>)}
+      <div className="au-lrows">
+        {proximas.length > 0 && <p className="au-lrows-sep">De hoy en adelante</p>}
+        {proximas.map(function (c) { return c._insp ? filaInspMovil(c) : filaMovil(c); })}
+        {verPasadas && <p className="au-lrows-sep">Pasadas</p>}
+        {verPasadas && pasadas.map(filaMovil)}
+      </div>
+      {botonPasadas}
     </div>
   );
+
+  function filaInspMovil(c) {
+    return (
+      <button type="button" className="au-lrow clic" key={c.idCupo}
+        onClick={function () { window.abrirVisitaDetail && window.abrirVisitaDetail(c.fila); }}>
+        <span className="l1"><span>{c.fecha} · {c.hora ? horaBonitaAudiencias(c.hora) : 'Sin hora'}</span></span>
+        <span className="l2"><b>{_AU_SVG_PIN}Inspección al lugar</b> · {c.direccion}</span>
+        <span className="l3">{_auCaso(c)}{[c.nota, _auInsp(c.inspector)].filter(Boolean).map(function (x) { return ' · ' + x; }).join('')}</span>
+      </button>
+    );
+  }
+
+  function filaTabla(c) {
+    // Con teclado se abre desde el botón de la fecha (la fila sigue siendo
+    // clicable con el puntero): un <tr> con onClick no recibe foco y la cita
+    // no se podía abrir sin mouse.
+    const clic = clicableCita(c);
+    return (
+      <tr key={c.idCupo} className={clic ? 'clic' : ''}
+        onClick={clic ? function () { onAbrirCita(c); } : undefined}>
+        <td>{clic
+          ? <button type="button" className="au-tabla-abrir"
+              aria-label={'Abrir la cita del ' + c.fecha + ', ' + horaBonitaAudiencias(c.hora) + (c.citado ? ', ' + c.citado : '')}
+              onClick={function (e) { e.stopPropagation(); onAbrirCita(c); }}>{c.fecha}</button>
+          : c.fecha}</td>
+        <td>{horaBonitaAudiencias(c.hora)}</td>
+        <td>{titleCaseNombre(c.sustanciador)}</td>
+        <td>{_auCaso(c)}</td>
+        <td><b>{c.citado}</b></td>
+        <td>{c.citado ? _auDocTxt(c) : null}</td>
+        <td>{titleCaseNombre(c.reservadoPor || '')}{esAdmin && c.sinVisita && <span className="au-sindoc"> · sin visita asociada</span>}</td>
+        {decreto && <td className="au-dec-td">{decreto(c)}</td>}
+      </tr>
+    );
+  }
+
+  function filaMovil(c) {
+    // Clicable = botón (foco y Enter/Espacio); si no, un div.
+    const clic = clicableCita(c);
+    const Fila = clic ? 'button' : 'div';
+    const cuerpo = (<>
+      <span className="l1"><span>{c.fecha} · {horaBonitaAudiencias(c.hora)}</span></span>
+      <span className="l2"><b>{c.citado || _auCaso(c)}</b>{c.citado ? <> · {_auDocTxt(c)}</> : null}</span>
+      <span className="l3">{_auCaso(c)} · {_auSust(c.sustanciador)}{c.reservadoPor ? ' · ' + _auInsp(c.reservadoPor) : ''}
+        {esAdmin && c.sinVisita ? ' · sin visita asociada' : ''}</span>
+    </>);
+    const dec = decreto ? decreto(c) : null;
+    // Con el botón de decretar la fila no puede ser un botón (no se anidan):
+    // el borde va afuera y la parte que abre la cita, adentro.
+    if (dec) return (
+      <div className="au-lrow au-lrow-dec" key={c.idCupo}>
+        <Fila className={'au-lrow-b' + (clic ? ' clic' : '')} type={clic ? 'button' : undefined}
+          onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
+        <span className="au-dec">{dec}</span>
+      </div>
+    );
+    return (
+      <Fila className={'au-lrow' + (clic ? ' clic' : '')} key={c.idCupo}
+        type={clic ? 'button' : undefined}
+        onClick={clic ? function () { onAbrirCita(c); } : undefined}>{cuerpo}</Fila>
+    );
+  }
 }
 
 // ── Citaciones visitas completadas (solo admin): copiar de a una ──
@@ -1324,9 +1415,15 @@ function _auCasoExcel(r) {
   return caso || '';
 }
 
+// (2026-11-11, maqueta propuesta-audiencias-v2.html) Tope de 3 por copiar y
+// «Ver N más»: la lista no tenía tope y empujaba todo lo demás hacia abajo
+// (por debajo de 1200 px va encima de la Agenda).
+var _AU_COMPLETADAS_TOPE = 3;
 function CompletadasCaja({ lista, pegadas, copiadasLocal, aviso, onCopiar }) {
   const [verCopiadas, setVerCopiadas] = useStateAU(false);
+  const [verTodas, setVerTodas] = useStateAU(false);
   const sep = separarPegadasExcel(lista, pegadas);
+  const ocultas = verTodas ? 0 : Math.max(0, sep.pendientes.length - _AU_COMPLETADAS_TOPE);
   // «N por copiar» descuenta las recién copiadas (marca local): el renglón se
   // queda en su sitio hasta recargar, pero el conteo dice lo que falta.
   const porCopiar = sep.pendientes.filter(function (r) { return !copiadasLocal[r.idCupo]; }).length;
@@ -1372,7 +1469,13 @@ function CompletadasCaja({ lista, pegadas, copiadasLocal, aviso, onCopiar }) {
         ? <p className="au-vacio-hoy">{sep.pegadas.length ? 'Todas están copiadas' : 'Sin citaciones'}</p>
         : <p className="au-exc-cuenta">{porCopiar} por copiar</p>}
       <p className="sr-only" role="status" aria-live="polite">{aviso}</p>
-      {sep.pendientes.map(fila)}
+      {(ocultas ? sep.pendientes.slice(0, _AU_COMPLETADAS_TOPE) : sep.pendientes).map(fila)}
+      {(ocultas > 0 || (verTodas && sep.pendientes.length > _AU_COMPLETADAS_TOPE)) && (
+        <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={verTodas ? 'true' : 'false'}
+          onClick={function () { setVerTodas(!verTodas); }}>
+          {verTodas ? 'Ver menos' : 'Ver ' + ocultas + ' más'}
+        </button>
+      )}
       {sep.pegadas.length > 0 && (
         <button type="button" className="au-cl-texto au-ver-pegadas" aria-expanded={verCopiadas ? 'true' : 'false'}
           onClick={function () { setVerCopiadas(!verCopiadas); }}>
@@ -1386,36 +1489,70 @@ function CompletadasCaja({ lista, pegadas, copiadasLocal, aviso, onCopiar }) {
 
 // ── Pedidas hoy: lo que reservaron hoy todos los inspectores ──
 // Con las pedidas sin señal que la cola todavía no confirmó (`pendientes`).
-function PedidasHoyCaja({ cupos, pendientes, hoyTxt, usuario, yo, clicableCita, onAbrirCita }) {
-  const lista = pedidasHoyAudiencias(cupos, hoyTxt);
-  const fila = function (c, estado, clave, onClic) {
+// (2026-11-11, decisión del usuario: arriba, pero chica) Un renglón de una
+// línea por pedida. Admin en escritorio (≥1200): primera caja del riel, encima
+// de las completadas. Resto (inspector, supervisor y admin <1200): un solo
+// renglón plegable bajo el título (PedidasHoyLinea).
+function _auPedidasTodas(cupos, pendientes, hoyTxt) {
+  return pendientes.map(function (p) {
+    return { c: Object.assign({}, p.cupo, { radicado: p.caso.radicado, ordenPolicia: p.caso.ordenPolicia }),
+      estado: p.estado, clave: 'p' + p.requestId, cola: true };
+  }).concat(pedidasHoyAudiencias(cupos, hoyTxt).map(function (c) {
+    return { c: c, estado: 'ok', clave: c.idCupo };
+  }));
+}
+
+function AuPedidasRenglones({ items, usuario, yo, clicableCita, onAbrirCita }) {
+  return items.map(function (it) {
+    const c = it.c;
     const mia = normNombreAudiencias(c.reservadoPor || usuario.usuario) === yo;
-    const Tag = onClic ? 'button' : 'span';
+    const onClic = !it.cola && clicableCita(c) ? function () { onAbrirCita(c); } : undefined;
+    const Tag = onClic ? 'button' : 'div';
+    const cuando = it.estado === 'cola' ? 'en cola' : it.estado === 'fallo' ? 'no se pudo: pide otra'
+      : String(c.reservadoEn || '').slice(11, 16);
     return (
-      <div className="au-row" key={clave}>
-        <span className={'au-est-dot ' + estado} role="img"
-          aria-label={estado === 'ok' ? 'Confirmada' : estado === 'cola' ? 'En cola' : 'No se pudo'}></span>
-        <span className="hora">{horaBonitaAudiencias(c.hora)}</span>
-        <Tag className="t" type={onClic ? 'button' : undefined} onClick={onClic}>
-          <b>{_auDiaCorto(c.fecha)}</b> · {_auCaso(c)}
-          <small>{_auSust(c.sustanciador)} · {mia ? 'la pediste tú' : _auInsp(c.reservadoPor)}
-            {estado === 'cola' ? ' · en cola' : estado === 'fallo' ? ' · no se pudo: pide otra' : ''}</small>
-        </Tag>
-      </div>
+      <Tag className="au-ped-r" key={it.clave} type={onClic ? 'button' : undefined} onClick={onClic}>
+        <span className={'au-est-dot ' + it.estado} role="img"
+          aria-label={it.estado === 'ok' ? 'Confirmada' : it.estado === 'cola' ? 'En cola' : 'No se pudo'}></span>
+        <span className="cuando">{_auDiaCorto(c.fecha)} · {horaBonitaAudiencias(c.hora)}</span>
+        <span className="resto">{_auPrimerNombre(c.sustanciador)} · {_auCaso(c)} · {mia ? 'tú' : _auPrimerNombre(c.reservadoPor)}</span>
+        {cuando && <span className={'hace' + (it.estado === 'fallo' ? ' fallo' : '')}>{cuando}</span>}
+      </Tag>
     );
-  };
+  });
+}
+
+function PedidasHoyCaja({ cupos, pendientes, hoyTxt, usuario, yo, clicableCita, onAbrirCita }) {
+  const items = _auPedidasTodas(cupos, pendientes, hoyTxt);
   return (
     <section className="au-caja au-pedidas" aria-labelledby="au-t-ped">
-      <h2 id="au-t-ped">Pedidas hoy</h2>
-      {!lista.length && !pendientes.length ? <p className="au-vacio-hoy">Ninguna</p> : null}
-      {pendientes.map(function (p) {
-        return fila(Object.assign({}, p.cupo, { radicado: p.caso.radicado, ordenPolicia: p.caso.ordenPolicia }),
-          p.estado, 'p' + p.requestId);
-      })}
-      {lista.map(function (c) {
-        return fila(c, 'ok', c.idCupo, clicableCita(c) ? function () { onAbrirCita(c); } : undefined);
-      })}
+      <h2 id="au-t-ped">Pedidas hoy{items.length ? <span className="au-grupo-n"> · {items.length}</span> : null}</h2>
+      {!items.length ? <p className="au-pedidas-nada">Ninguna</p>
+        : <AuPedidasRenglones items={items} usuario={usuario} yo={yo} clicableCita={clicableCita} onAbrirCita={onAbrirCita} />}
     </section>
+  );
+}
+
+function PedidasHoyLinea({ cupos, pendientes, hoyTxt, usuario, yo, clicableCita, onAbrirCita }) {
+  const [abierta, setAbierta] = useStateAU(false);
+  const items = _auPedidasTodas(cupos, pendientes, hoyTxt);
+  if (!items.length) return <p className="au-ped-linea vacia">Hoy no se han pedido citas</p>;
+  const u = items[0].c;
+  return (
+    <div className="au-ped-wrap">
+      <button type="button" className="au-ped-linea" aria-expanded={abierta ? 'true' : 'false'} aria-controls="au-ped-abierta"
+        onClick={function () { setAbierta(!abierta); }}>
+        <span className="au-est-dot ok" aria-hidden="true"></span>
+        <b>{items.length} {items.length === 1 ? 'pedida hoy' : 'pedidas hoy'}</b>
+        <span className="ult">· la última: {_auDiaCorto(u.fecha)} · {horaBonitaAudiencias(u.hora)}</span>
+        <span className="ver">{abierta ? 'Ocultar' : 'Ver'}</span>
+      </button>
+      {abierta && (
+        <div className="au-ped-abierta" id="au-ped-abierta">
+          <AuPedidasRenglones items={items} usuario={usuario} yo={yo} clicableCita={clicableCita} onAbrirCita={onAbrirCita} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1436,7 +1573,8 @@ function AudienciasScreen({ usuario }) {
   const [vista, setVista] = useStateAU('agenda');   // 'agenda' | 'cupos' | 'lista'
   const [filtroSus, setFiltroSus] = useStateAU(''); // '' = todos; norm(nombre)
   const [misCitas, setMisCitas] = useStateAU(true); // inspector: «Mis citas» al entrar
-  const [q, setQ] = useStateAU('');                 // búsqueda de la Lista
+  const [q, setQ] = useStateAU('');                 // búsqueda común de Agenda y Lista
+  const [verPasadas, setVerPasadas] = useStateAU(false); // Lista: las pasadas abiertas
   // «Citaciones visitas completadas»: marcas de copiado optimistas (la del
   // servidor viaja en excel.pegadas) y el aviso para el lector de pantalla.
   const [copiadasLocal, setCopiadasLocal] = useStateAU({});
@@ -1575,19 +1713,44 @@ function AudienciasScreen({ usuario }) {
   // ── Derivados de vista ──
   const soloMias = esInsp && misCitas;
 
-  const listaRows = useMemoAU(function () {
-    if (!datos) return [];
-    return filtrarListaAudiencias(datos.cupos, {
-      q: q, incluirPasadas: true, hoy: hoyTxt, deQuien: soloMias ? yo : ''
+  // Chip «Inspecciones al lugar» (2026-11-11): vive en filtroSus como 'INSP'.
+  // Un sustanciador elegido filtra audiencias; las inspecciones siguen
+  // (decisión del usuario: la supervisora entra filtrada y también las ve).
+  const soloInsp = filtroSus === 'INSP';
+  const susFiltro = soloInsp ? '' : filtroSus;
+  const buscando = !!q.trim();
+
+  // Lista: citas del bloque con los mismos filtros de la Agenda (antes los
+  // chips de sustanciador no la filtraban) más las inspecciones de hoy en
+  // adelante, partidas en próximas y pasadas.
+  const lista = useMemoAU(function () {
+    if (!datos) return { proximas: [], pasadas: [] };
+    const citas = soloInsp ? [] : filtrarListaAudiencias(datos.cupos, {
+      q: q, incluirPasadas: true, hoy: hoyTxt, deQuien: soloMias ? yo : '', sustanciador: susFiltro
     });
-  }, [datos, q, hoyTxt, soloMias, yo]);
+    const p = partirListaAudiencias(citas, hoyTxt);
+    const insp = agendaAudienciasDias(filas, [], hoyTxt,
+      { soloInspecciones: true, q: q, soloDe: soloMias ? usuario.usuario : '' })
+      .reduce(function (a, g) { return a.concat(g.citas); }, [])
+      .map(function (r) {
+        return { _insp: true, idCupo: 'insp-' + (r.fila._idx != null ? r.fila._idx : r.caso.radicado), fecha: r.fechaTxt,
+          hora: r.hora, radicado: r.caso.radicado, ordenPolicia: r.caso.ordenPolicia, expediente: r.caso.expediente,
+          direccion: r.direccion, inspector: r.inspector, nota: r.nota, fila: r.fila };
+      });
+    const proximas = p.proximas.concat(insp).sort(function (a, b) {
+      return (parsearFecha(a.fecha) - parsearFecha(b.fecha)) || (horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora));
+    });
+    return { proximas: proximas, pasadas: p.pasadas };
+  }, [datos, filas, q, hoyTxt, soloMias, yo, susFiltro, soloInsp]);
 
   // Vista Agenda: filtros vigentes («Mis citas» del inspector, chip de
-  // sustanciador — con sustanciador elegido las citas viejas no salen).
+  // sustanciador — con sustanciador elegido las citas viejas no salen), la
+  // búsqueda común y las inspecciones al lugar.
   const agendaDias = useMemoAU(function () {
-    const opts = { soloDe: soloMias ? usuario.usuario : '', sustanciador: filtroSus };
+    const opts = { soloDe: soloMias ? usuario.usuario : '', sustanciador: susFiltro, q: q,
+      inspecciones: true, soloInspecciones: soloInsp };
     return agendaAudienciasDias(filas, (datos && datos.cupos) || [], hoyTxt, opts);
-  }, [filas, datos, hoyTxt, soloMias, filtroSus]);
+  }, [filas, datos, hoyTxt, soloMias, susFiltro, soloInsp, q]);
 
   const decretadas = useMemoAU(function () { return inspeccionesDecretadas(filas); }, [filas]);
 
@@ -1813,20 +1976,41 @@ function AudienciasScreen({ usuario }) {
     return !esSup || normNombreAudiencias(n.sustanciador) === yo;
   }).sort(function (a, b) { return (parsearFecha(a.desde) || 0) - (parsearFecha(b.desde) || 0); });
 
-  const pedidas = (
-    <PedidasHoyCaja cupos={datos.cupos} pendientes={pendientes} hoyTxt={hoyTxt} usuario={usuario} yo={yo}
-      clicableCita={clicableCita} onAbrirCita={abrirCita} />
-  );
+  const propsPedidas = { cupos: datos.cupos, pendientes: pendientes, hoyTxt: hoyTxt, usuario: usuario, yo: yo,
+    clicableCita: clicableCita, onAbrirCita: abrirCita };
 
   // Vistas en control segmentado y filtros en chips: antes eran el mismo chip
   // y en el celular se mezclaban al saltar de renglón.
   const vistas = [['agenda', 'Agenda']].concat(esInsp ? [] : [['cupos', 'Cupos']]).concat([['lista', 'Lista']]);
+  // «Inspecciones al lugar» no aplica a Cupos: allí no se ofrece.
   const filtros = esInsp
     ? [['mias', 'Mis citas', misCitas, function () { setMisCitas(true); }],
        ['todas', 'Todas', !misCitas, function () { setMisCitas(false); }]]
     : [['todos', 'Todos', !filtroSus, function () { setFiltroSus(''); }]].concat(sustanciadores.map(function (s) {
         return [s.norm, titleCaseNombre(s.nombre.split(' ')[0]), filtroSus === s.norm, function () { setFiltroSus(s.norm); }];
-      }));
+      })).concat(vista === 'cupos' ? [] : [['INSP', 'Inspecciones al lugar', soloInsp, function () { setFiltroSus('INSP'); }]]);
+  function irVista(v) {
+    if (v === 'cupos' && soloInsp) setFiltroSus('');
+    setVista(v);
+  }
+
+  // Línea de resultado de la búsqueda. En la Agenda (de hoy en adelante) dice
+  // cuántas pasadas coinciden y lleva a la Lista, donde salen abiertas.
+  const resultado = buscando && vista !== 'cupos' && (function () {
+    const prox = vista === 'agenda'
+      ? agendaDias.reduce(function (a, g) { return a.concat(g.citas); }, [])
+      : lista.proximas.map(function (c) { return c._insp ? { fuente: 'inspeccion' } : {}; });
+    const nP = lista.pasadas.length;
+    const txt = prox.length ? _auCuentaDia(prox) + ' de hoy en adelante' : 'Nada de hoy en adelante';
+    return (
+      <p className="au-resultado" role="status" aria-live="polite">
+        <span>{txt}{nP ? ' · ' + nP + (vista === 'agenda' ? (nP === 1 ? ' ya pasó' : ' ya pasaron') : (nP === 1 ? ' pasada' : ' pasadas')) : ''}</span>
+        {vista === 'agenda' && nP > 0 && (
+          <button type="button" className="au-cl-texto" onClick={function () { irVista('lista'); }}>Ver en la Lista</button>
+        )}
+      </p>
+    );
+  })();
 
   return (
     <div className="au-pantalla">
@@ -1851,7 +2035,9 @@ function AudienciasScreen({ usuario }) {
         <p className="au-aviso-linea">Quedan cupos solo hasta el <b>{datos.ultimaFechaConCupo}</b>. Hay que apartar más en el Excel.</p>
       )}
 
-      {esInsp && pedidas}
+      {/* Pedidas hoy, un renglón plegable. El admin en escritorio (≥1200) la
+          tiene en el riel y este renglón se oculta por CSS. */}
+      <div className={'au-ped-arriba' + (esAdmin ? ' admin' : '')}><PedidasHoyLinea {...propsPedidas} /></div>
 
       <div className={esAdmin ? 'au-grid' + (vista === 'agenda' ? ' v-agenda' : '') : ''}>
         <div className="au-principal">
@@ -1859,39 +2045,57 @@ function AudienciasScreen({ usuario }) {
             <div className="ag-seg au-seg" role="group" aria-label="Vista">
               {vistas.map(function (v) {
                 return <button type="button" key={v[0]} aria-pressed={vista === v[0] ? 'true' : 'false'}
-                  onClick={function () { setVista(v[0]); }}>{v[1]}</button>;
+                  onClick={function () { irVista(v[0]); }}>{v[1]}</button>;
               })}
             </div>
             <span className="sp"></span>
             <div className="au-filtro" role="group" aria-label={esInsp ? 'Qué citas' : 'Sustanciador'}>
-              {filtros.map(function (f) { return <ChipAU key={f[0]} on={f[2]} onClick={f[3]}>{f[1]}</ChipAU>; })}
+              {filtros.map(function (f) {
+                return <React.Fragment key={f[0]}>{f[0] === 'INSP' && <span className="au-chip-sep" aria-hidden="true"></span>}
+                  <ChipAU on={f[2]} onClick={f[3]}>{f[1]}</ChipAU></React.Fragment>;
+              })}
             </div>
           </div>
 
+          {/* Un solo buscador para Agenda y Lista (2026-11-11): lo escrito se
+              conserva al cambiar de vista. */}
+          {vista !== 'cupos' && (
+            <div className="au-lis-tools">
+              <input className="au-lis-buscar" type="search" value={q}
+                placeholder="Nombre, documento, radicado, expediente…"
+                title="Busca por citado, documento, radicado, N° de orden, expediente, dirección, sustanciador o inspector"
+                aria-label="Buscar audiencia por citado, documento, radicado, orden, expediente, sustanciador o inspector"
+                onChange={function (e) { setQ(e.target.value); }} />
+            </div>
+          )}
+          {resultado}
+
           {vista === 'agenda' && (
-            <VistaAgenda dias={agendaDias} hoyTxt={hoyTxt} filtroSus={filtroSus} sinInspector={soloMias}
+            <VistaAgenda dias={agendaDias} hoyTxt={hoyTxt} filtroSus={susFiltro} sinInspector={soloMias} buscando={buscando}
               clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={(esAdmin || esSup) ? decretoDe : null} />
           )}
           {vista === 'cupos' && (
             <VistaCupos datos={datos} novedades={novedades} esAdmin={esAdmin} hoyTxt={hoyTxt}
-              filtroSus={filtroSus} sustanciadores={sustanciadores} ocupado={ocupado}
+              filtroSus={susFiltro} sustanciadores={sustanciadores} ocupado={ocupado}
               escribir={escribir} onCambio={function () { cargar({ fresca: true }); }} onAbrirCita={abrirCita}
               onAbrirNovedades={function () { setHoja({ t: 'novedades' }); }} />
           )}
           {vista === 'lista' && (
-            <VistaLista rows={listaRows} q={q} setQ={setQ} esAdmin={esAdmin}
-              clicableCita={clicableCita} onAbrirCita={abrirCita}
+            <VistaLista proximas={lista.proximas} pasadas={lista.pasadas} buscando={buscando}
+              pasadasAbiertas={buscando || verPasadas} onVerPasadas={function () { setVerPasadas(!verPasadas); }}
+              esAdmin={esAdmin} clicableCita={clicableCita} onAbrirCita={abrirCita}
               decreto={(esAdmin || esSup) ? function (c) { return decretoDe(c); } : null} />
           )}
         </div>
 
-        {/* Escritorio (≥1200): columna lateral fija. Más angosto: arriba de la
-            Agenda (es la tarea diaria del admin) y fuera de Cupos y Lista. */}
+        {/* Escritorio (≥1200): columna lateral fija, con «Pedidas hoy» primero
+            y chica. Más angosto: arriba de la Agenda, solo las completadas (las
+            pedidas van en el renglón plegable) y fuera de Cupos y Lista. */}
         {esAdmin && (
           <aside className="au-riel">
+            <div className="au-riel-pedidas"><PedidasHoyCaja {...propsPedidas} /></div>
             <CompletadasCaja lista={completadas} pegadas={(excel && excel.pegadas) || {}}
               copiadasLocal={copiadasLocal} aviso={avisoCopia} onCopiar={copiarFilaExcel} />
-            {pedidas}
           </aside>
         )}
       </div>

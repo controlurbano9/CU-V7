@@ -5348,24 +5348,61 @@ function horaBonitaAudiencias(hora) {
   return h12 + ':' + m[2] + ' ' + ap;
 }
 
+// ── Búsqueda de Audiencias (2026-11-11): un solo buscador para Agenda y Lista ──
+// Sin tildes ni mayúsculas, y sin puntos: «43.123.456» encuentra 43123456 y
+// «Exp. 2201» encuentra el expediente 2201.
+function _normBusquedaAudiencias(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/\./g, '').replace(/\s+/g, ' ');
+}
+// ¿Alguno de `campos` contiene `q`? Sin q, todo coincide.
+function coincideTextoAudiencias(campos, q) {
+  var t = _normBusquedaAudiencias(q).trim();
+  if (!t) return true;
+  return (campos || []).some(function (v) { return v != null && v !== '' && _normBusquedaAudiencias(v).indexOf(t) >= 0; });
+}
+// Lo que se busca en un renglón de la Agenda: del bloque, de una cita anotada
+// en la visita o de una inspección al lugar.
+function coincideRenglonAudiencias(r, q) {
+  var c = r.caso || {}, cupo = r.cupo || {};
+  return coincideTextoAudiencias([r.citado, c.radicado, c.ordenPolicia, c.expediente ? 'exp ' + c.expediente : '',
+    cupo.documentoCitado, r.direccion, r.barrio, r.nota, r.sustanciador, r.inspector,
+    r.fuente === 'inspeccion' ? 'inspeccion al lugar' : ''], q);
+}
+
+// Lista: lo de hoy en adelante (más próximo primero) y lo pasado (más reciente
+// primero, plegado en la pantalla salvo cuando se busca). Antes la Lista
+// arrancaba por la cita más vieja del año.
+function partirListaAudiencias(rows, hoyTxt) {
+  var h = parsearFecha(hoyTxt);
+  var proximas = [], pasadas = [];
+  (rows || []).forEach(function (c) {
+    var d = parsearFecha(c.fecha);
+    (h && d && d < h ? pasadas : proximas).push(c);
+  });
+  // Día más reciente primero; dentro del día, por hora.
+  pasadas.sort(function (a, b) {
+    return (parsearFecha(b.fecha) - parsearFecha(a.fecha)) || (horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora));
+  });
+  return { proximas: proximas, pasadas: pasadas };
+}
+
 // Filtro de «Lista»: solo citas (RESERVADO), de hoy en adelante salvo
 // incluirPasadas, con búsqueda por nombre/radicado/orden/expediente/documento
 // y, para el inspector, solo las suyas (deQuien normalizado).
+// (2026-11-11) También filtra por sustanciador (`opts.sustanciador`, normalizado
+// como los chips: antes los chips se veían en la Lista y no hacían nada) y la
+// búsqueda alcanza sustanciador, quien la pidió y dirección (coincideTextoAudiencias).
 function filtrarListaAudiencias(cupos, opts) {
   opts = opts || {};
-  var q = String(opts.q || '').trim().toLowerCase();
   var hoyT = String(opts.hoy || '');
   return (cupos || []).filter(function (c) {
     if (c.estado !== 'RESERVADO') return false;
     if (!opts.incluirPasadas && hoyT && parsearFecha(c.fecha) && parsearFecha(c.fecha) < parsearFecha(hoyT)) return false;
     if (opts.deQuien && normNombreAudiencias(c.reservadoPor) !== opts.deQuien) return false;
-    if (q) {
-      var en = [c.citado, c.radicado, c.ordenPolicia, c.expediente, c.documentoCitado].some(function (v) {
-        return v && String(v).toLowerCase().indexOf(q) >= 0;
-      });
-      if (!en) return false;
-    }
-    return true;
+    if (opts.sustanciador && normNombreAudiencias(c.sustanciador) !== opts.sustanciador) return false;
+    return coincideTextoAudiencias([c.citado, c.radicado, c.ordenPolicia, c.expediente, c.documentoCitado,
+      c.sustanciador, c.reservadoPor, c.direccion], opts.q);
   }).sort(function (a, b) {
     var da = parsearFecha(a.fecha), db = parsearFecha(b.fecha);
     if (da && db && da - db) return da - db;
@@ -5822,10 +5859,64 @@ function diasConAudiencias(filas, cupos, desdeTxt, opts) {
 // (cupos del bloque + FECHA CITACION de las visitas, mismas reglas de
 // audienciasDelDia: una visita en las dos fuentes sale una vez). Si hoy no
 // hay, el primer grupo es el siguiente día con audiencias.
+//
+// (2026-11-11, decisiones del usuario) Opciones nuevas:
+//   opts.q                → búsqueda (coincideRenglonAudiencias), la misma de la Lista.
+//   opts.inspecciones     → suma las inspecciones al lugar del día, por hora.
+//   opts.soloInspecciones → solo las inspecciones (chip «Inspecciones al lugar»).
+// Con un sustanciador elegido las inspecciones se siguen viendo: no son de
+// ningún sustanciador, y así la supervisora (que entra filtrada por su nombre)
+// también las ve. `soloDe` («Mis citas») sí las filtra: las de su inspector.
 function agendaAudienciasDias(filas, cupos, desdeTxt, opts) {
-  return diasConAudiencias(filas, cupos, desdeTxt, opts).map(function (f) {
-    return { fecha: f, citas: audienciasDelDia(filas, cupos, f, opts) };
-  }).filter(function (g) { return g.citas.length > 0; });
+  opts = opts || {};
+  var soloInsp = !!opts.soloInspecciones;
+  var porFecha = {};
+  if (!soloInsp) {
+    diasConAudiencias(filas, cupos, desdeTxt, opts).forEach(function (f) {
+      porFecha[f] = audienciasDelDia(filas, cupos, f, opts);
+    });
+  }
+  if (opts.inspecciones || soloInsp) {
+    var desde = parsearFecha(desdeTxt);
+    inspeccionesAgendaAudiencias(filas, opts).forEach(function (r) {
+      var d = parsearFecha(r.fechaTxt);
+      if (!d || (desde && d < desde)) return;
+      (porFecha[r.fechaTxt] = porFecha[r.fechaTxt] || []).push(r);
+    });
+  }
+  var porMin = function (x) { return x.minutos == null ? 24 * 60 : x.minutos; };
+  return Object.keys(porFecha).sort(function (a, b) { return parsearFecha(a) - parsearFecha(b); })
+    .map(function (f) {
+      var citas = porFecha[f].filter(function (r) { return coincideRenglonAudiencias(r, opts.q); })
+        .map(function (r, i) { return { r: r, i: i }; })
+        .sort(function (a, b) { return porMin(a.r) - porMin(b.r) || a.i - b.i; })
+        .map(function (x) { return x.r; });
+      return { fecha: f, citas: citas };
+    }).filter(function (g) { return g.citas.length > 0; });
+}
+
+// Inspecciones al lugar como renglones de la Agenda de Audiencias (2026-11-11):
+// la fila de BD VISITAS con DILIGENCIA «Inspección al lugar», su día
+// (FECHA ASIGNACION VISITA) y su hora (HORA_PROGRAMADA; sin hora, al final del
+// día). Las decretadas sin día no salen: viven en la bandeja de la Agenda.
+// `opts.soloDe`: solo las del inspector (misma regla del diligenciador).
+function inspeccionesAgendaAudiencias(filas, opts) {
+  var nombre = (opts && opts.soloDe) || '';
+  return (filas || []).filter(function (f) {
+    return esInspeccionLugar(f) && !!parsearFecha(f['FECHA ASIGNACION VISITA'] || '') &&
+      (!nombre || _esVisitaDe(f, nombre));
+  }).map(function (f) {
+    var caso = casoDeVisitaAudiencias(f);
+    var hora = horaProgramadaDe(f);
+    return {
+      fechaTxt: formatearFecha(parsearFecha(f['FECHA ASIGNACION VISITA'])),
+      hora: hora, minutos: hora ? horaAudienciasMin(hora) : null,
+      citado: '', caso: caso, direccion: caso.direccion, barrio: caso.barrio,
+      inspector: primerVisitador(visitadoresBD(f)),
+      nota: String(f['NOTA_DILIGENCIA'] || '').trim(),
+      sustanciador: '', fuente: 'inspeccion', fila: f
+    };
+  });
 }
 
 // «Citaciones visitas completadas» (solo admin): el backend solo arma las de
@@ -7245,6 +7336,10 @@ var _cuUtilsExports = {
   pendientesMisVisitas: pendientesMisVisitas,
   atencionInicio: atencionInicio,
   agendaAudienciasDias: agendaAudienciasDias,
+  inspeccionesAgendaAudiencias: inspeccionesAgendaAudiencias,
+  coincideTextoAudiencias: coincideTextoAudiencias,
+  coincideRenglonAudiencias: coincideRenglonAudiencias,
+  partirListaAudiencias: partirListaAudiencias,
   citaVisitaTexto: citaVisitaTexto,
   esInspeccionLugar: esInspeccionLugar,
   horaProgramadaDe: horaProgramadaDe,
