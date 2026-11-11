@@ -892,8 +892,25 @@ function _pistaIntervencionD(dObj) {
   return pistaIntervencion({ infraccion: _infraccionSoloCatalogo(dObj.infraccion),
     modalidades: (dObj.reqLicencia || {}).modalidades, estadoObra: dObj.estadoObra });
 }
+// Párrafo armado editado (2026-11-11, decisión del usuario): con
+// `conclusionBase` lleno, el párrafo ya vive en la casilla del inspector
+// (obsConclusion) y no se antepone otra vez.
+function _conclusionEditadaD(dObj) {
+  return !!String(dObj.conclusionBase || '').trim();
+}
+// El párrafo armado que el acta antepone: ninguno si el inspector lo editó.
+function _conclusionArmadaActaD(dObj) {
+  return _conclusionEditadaD(dObj) ? '' : _conclusionDeterminativaD(dObj);
+}
+// Con lo diligenciado, el párrafo armado cambió desde que el inspector lo
+// editó: devuelve el nuevo ('' si no hay nada que avisar).
+function _conclusionArmadaNuevaD(dObj) {
+  if (!_conclusionEditadaD(dObj)) return '';
+  const nuevo = _conclusionDeterminativaD(dObj);
+  return parrafoArmadoCambio(dObj.conclusionBase, nuevo) ? nuevo : '';
+}
 function _conclusionesActaD(dObj) {
-  return [_conclusionDeterminativaD(dObj), dObj.obsConclusion]
+  return [_conclusionArmadaActaD(dObj), dObj.obsConclusion]
     .map(s => String(s || '').trim()).filter(Boolean).join('\n');
 }
 // Ayuda bajo «Fecha de expedición» de la licencia: hasta cuándo alcanzaba,
@@ -1148,6 +1165,9 @@ function _estadoInicial(datosIniciales) {
     direccion:      d['DIRECCION INFRACCION'] || d['DIRECCION']         || '',
     // Columna propia (referenciaDireccion), fuera del payload posicional.
     referenciaDireccion: d['REFERENCIA_DIRECCION'] || '',
+    // Párrafo armado de las conclusiones del que partió el inspector al
+    // editarlo (2026-11-11); vacío = el párrafo se arma solo.
+    conclusionBase: d['CONCLUSION_BASE'] || '',
     barrio:        d['BARRIO/VEREDA']        || d['BARRIO']            || '',
     comuna:         d['COMUNA']               || '',
     // normalizarCoord repara las filas que quedaron con el decimal comido
@@ -3511,7 +3531,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         // Visita ya iniciada: el estado viaja tal cual. El autoguardado nunca
         // lo cambia (la guarda de arriba deja fuera PENDIENTE/ASIGNADO).
         const vals = _construirPayload(dFinal, estadoVisita, dCur.linkDrive || '', datosIniciales);
-        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur), referenciaDireccion: dCur.referenciaDireccion || '', citadoVisita: _citadoParaGuardar(dCur) });
+        const rAuto = await guardarVisita({ valores: vals, fila: filaEditando, ultimaModConocida: dCur.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dCur), revisionTexto: _revisionParaGuardar(dCur), documentoVisita: dCur.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dCur), referenciaDireccion: dCur.referenciaDireccion || '', conclusionBase: dCur.conclusionBase || '', citadoVisita: _citadoParaGuardar(dCur) });
         _radicadoFilaRef.current = String(vals[0] || '');
         if (rAuto && rAuto.ultimaModConocida) setD(prev => ({ ...prev, ultimaModConocida: rAuto.ultimaModConocida }));
         _lastSavedRef.current = snap;
@@ -4346,7 +4366,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (!pedirDesc && _senalesTextoD(d).some(s => s.id === 'R23')) pedirDesc = true;
     // Con el párrafo de la conclusión armado y la casilla vacía, la IA no
     // propone otra conclusión: repetiría el párrafo (2026-11-05).
-    if (pedirConc && !String(d.obsConclusion || '').trim() && _conclusionDeterminativaD(d)) pedirConc = false;
+    // Párrafo armado editado (2026-11-11): su primer párrafo no va a la IA —
+    // el prompt de la conclusión no cita el art. 135 y se lo quitaría—; solo
+    // lo que el inspector escribió debajo. Se vuelve a anteponer a la propuesta.
+    const editadaConc = _conclusionEditadaD(d);
+    const primeroConc = editadaConc ? String(d.obsConclusion || '').trim().split('\n')[0].trim() : '';
+    const restoConc = editadaConc ? quitarParrafoArmado(d.obsConclusion) : (d.obsConclusion || '');
+    if (pedirConc && !String(restoConc).trim() && (editadaConc || _conclusionArmadaActaD(d))) pedirConc = false;
     if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d)) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
@@ -4375,7 +4401,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // El tope de las conclusiones descuenta los renglones que ya ocupa el
     // párrafo determinativo (2026-11-05): la IA solo condensa lo del inspector.
     const maxConc = !esActa ? 0 : caracteresParaActa('conclusiones',
-      capacidadActa(_conclusionDeterminativaD(d), 'conclusiones').renglones, parrafos(origConc));
+      capacidadActa(editadaConc ? primeroConc : _conclusionArmadaActaD(d), 'conclusiones').renglones,
+      parrafos(restoConc));
     // El campo que no cambió no se manda a la IA: se revisa solo lo que
     // cambió (regla 2026-10-17). Las conclusiones se piden siempre que toca,
     // con lo diligenciado: si el inspector no escribió, la propuesta sale de
@@ -4387,13 +4414,13 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const [tD, tC] = await Promise.all([
         pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
-          : mejorarTexto(origConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
+          : mejorarTexto(restoConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
       ]);
       if (pedirDesc && !tD) throw new Error('respuesta vacía');
       if (pedirDesc) desc = tD;
       // '' = la IA falló.
-      if (pedirConc) { if (tC) conc = tC; else concFallo = true; }
+      if (pedirConc) { if (tC) conc = editadaConc ? textoConParrafoArmado(primeroConc, tC) : tC; else concFallo = true; }
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -4431,7 +4458,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // desde cero o que solo abrió párrafos).
       condensaDesc: esActa && !capacidadActa(origDesc, 'situacion').cabe,
       condensaConc: esActa && !capacidadActa(
-        [_conclusionDeterminativaD(d), origConc].filter(Boolean).join('\n'), 'conclusiones').cabe,
+        [_conclusionArmadaActaD(d), origConc].filter(Boolean).join('\n'), 'conclusiones').cabe,
     });
     // Desde Conclusiones el panel queda lejos: llevar la vista hasta él.
     setTimeout(() => {
@@ -5308,7 +5335,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const vals = _construirPayload(dFinal, 'INICIADO', linkDrive, datosIniciales);
 
       // 3. POST único — clientId para que AS deduplique reintentos offline
-      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal), referenciaDireccion: dFinal.referenciaDireccion || '', citadoVisita: _citadoParaGuardar(dFinal) });
+      const r = await guardarVisita({ valores: vals, fila: filaEditando, clientId, ultimaModConocida: dFinal.ultimaModConocida, radicadoConocido: _radicadoFilaRef.current, idVisita: _idVisitaRef.current, ubicacionConfirmada: _origenConfirmadoParaGuardar(dFinal), revisionTexto: _revisionParaGuardar(dFinal), documentoVisita: dFinal.documento || undefined, licenciaExtra: _licenciaExtraParaGuardar(dFinal), referenciaDireccion: dFinal.referenciaDireccion || '', conclusionBase: dFinal.conclusionBase || '', citadoVisita: _citadoParaGuardar(dFinal) });
       _radicadoFilaRef.current = String(vals[0] || '');
       if (r && r.idVisita) _idVisitaRef.current = String(r.idVisita);
       if (r && r.fila) setFE(r.fila);
@@ -5605,6 +5632,21 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       const mConc = marcadoresPendientes(d.obsConclusion);
       if (mConc.length) faltan.push({ seccion: 'Conclusiones y revisión',
         nombre: 'Las conclusiones tienen datos por completar (' + mConc.slice(0, 3).join(', ') + '): escribe el dato o quítalo' });
+      // Párrafo armado editado (2026-11-11): el texto debe seguir nombrando
+      // cada comportamiento marcado con su literal y numeral, y si lo
+      // diligenciado cambió después, el inspector elige antes del acta.
+      if (_conclusionEditadaD(d)) {
+        const sinNombrar = comportamientosSinNombrar(d.obsConclusion, _infraccionSoloCatalogo(d.infraccion));
+        if (sinNombrar.length) faltan.push({ seccion: 'Conclusiones y revisión',
+          nombre: 'Las conclusiones ya no nombran ' +
+            (sinNombrar.length === 1
+              ? 'el comportamiento ' + sinNombrar[0] + ' (artículo 135, literal ' + sinNombrar[0].charAt(0) + ', numeral ' + sinNombrar[0].slice(1) + ')'
+              : 'los comportamientos ' + sinNombrar.slice(0, -1).join(', ') + ' y ' + sinNombrar[sinNombrar.length - 1] +
+                ' (artículo 135, con su literal y numeral)') +
+            (sinNombrar.length === 1 ? ': agrégalo' : ': agrégalos') + ' o usa «Volver al armado»' });
+        if (_conclusionArmadaNuevaD(d)) faltan.push({ seccion: 'Conclusiones y revisión',
+          nombre: 'El párrafo armado cambió con lo diligenciado: elige «Usar el nuevo» o «Dejar el mío»' });
+      }
       // Toda orden nueva sale con el acta ya escaneada (2026-11-03). Primera
       // de la lista: el aviso muestra 20 y al final quedaba en «… y N más».
       if (faltaOrdenItem) faltan.unshift(faltaOrdenItem);
@@ -7126,20 +7168,68 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
         {documentoVisita(d.documento) === 'ACTA' && (
           <_Campo label="Conclusiones" fullWidth>
             {/* El párrafo determinativo (2026-11-05) abre la casilla A38: se
-                muestra tal cual saldrá en el acta; el inspector solo agrega
-                debajo lo suyo. */}
-            {_conclusionDeterminativaD(d) && (
-              <div className="input-campo" style={{ display: 'block', whiteSpace: 'pre-wrap', marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: 'var(--texto-suave)', marginBottom: 2 }}>
-                  Abre la conclusión del acta (se arma con lo diligenciado)
+                muestra tal cual saldrá en el acta y el inspector agrega debajo
+                lo suyo. Desde el 2026-11-11 (decisión del usuario) se puede
+                editar: «Editar» lo pasa a la casilla y CONCLUSION_BASE guarda
+                el párrafo del que partió, para no volver a anteponerlo y para
+                avisar si lo diligenciado cambia después. */}
+            {_conclusionArmadaActaD(d) && (
+              <div className="input-campo concl-armada">
+                <div className="concl-armada-cab">
+                  <span className="concl-armada-rot">Abre la conclusión del acta (se arma con lo diligenciado)</span>
+                  <button type="button" className="btn-texto concl-btn" onClick={() => {
+                    const armado = _conclusionDeterminativaD(d);
+                    setCampo('obsConclusion', textoConParrafoArmado(armado, d.obsConclusion));
+                    setCampo('conclusionBase', armado);
+                    setTimeout(() => {
+                      const el = document.getElementById('nv-conclusiones');
+                      if (el) { el.focus(); el.setSelectionRange(armado.length, armado.length); }
+                    }, 0);
+                  }}>
+                    Editar
+                  </button>
                 </div>
                 {_conclusionDeterminativaD(d)}
               </div>
             )}
-            <TextAreaNV value={d.obsConclusion} onChange={v => setCampo('obsConclusion', v)} rows={4} autoAlto
-              placeholder={_conclusionDeterminativaD(d)
+            {_conclusionArmadaNuevaD(d) && (
+              <div className="concl-cambio" role="status">
+                <p className="concl-cambio-tit">Con lo que cambiaste en el formulario, el párrafo armado ahora dice:</p>
+                <p className="concl-cambio-txt">{_conclusionArmadaNuevaD(d)}</p>
+                <div className="concl-cambio-btns">
+                  <button type="button" className="btn-accion" onClick={() => {
+                    const nuevo = _conclusionArmadaNuevaD(d);
+                    setCampo('obsConclusion', cambiarParrafoArmado(d.obsConclusion, nuevo));
+                    setCampo('conclusionBase', nuevo);
+                  }}>Usar el nuevo</button>
+                  <button type="button" className="btn-neutro" onClick={() =>
+                    setCampo('conclusionBase', _conclusionArmadaNuevaD(d))}>Dejar el mío</button>
+                </div>
+              </div>
+            )}
+            <TextAreaNV id="nv-conclusiones" value={d.obsConclusion} rows={4} autoAlto
+              onChange={v => {
+                setCampo('obsConclusion', v);
+                // Casilla vaciada con el párrafo editado: vuelve el armado.
+                if (_conclusionEditadaD(d) && !String(v || '').trim()) setCampo('conclusionBase', '');
+              }}
+              placeholder={_conclusionArmadaActaD(d)
                 ? 'Opcional: lo que quieras agregar después de ese párrafo.'
                 : 'Opcional. Si la dejas vacía, «Revisar» te propone una con todo lo diligenciado.'} />
+            {_conclusionEditadaD(d) && (
+              <div className="concl-editada">
+                <span>Editaste el párrafo armado: el primer párrafo de la casilla abre la conclusión del acta.</span>
+                <button type="button" className="btn-texto concl-btn" onClick={async () => {
+                  const ok = await appConfirm('Tu versión del primer párrafo se cambia por el párrafo armado con lo diligenciado. Lo que escribiste debajo se conserva.',
+                    { titulo: 'Volver al párrafo armado', btnOk: 'Volver al armado' });
+                  if (!ok) return;
+                  setCampo('obsConclusion', quitarParrafoArmado(d.obsConclusion));
+                  setCampo('conclusionBase', '');
+                }}>
+                  Volver al armado
+                </button>
+              </div>
+            )}
           </_Campo>
         )}
         {documentoVisita(d.documento) === 'ACTA' && (

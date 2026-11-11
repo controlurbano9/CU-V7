@@ -6129,6 +6129,21 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-dlg-acc .as-btn-llena { width: 100%; }
 }
 
+/* Conclusiones del acta: párrafo armado editable (2026-11-11). El bloque
+   gris es el párrafo que la app arma; «Editar» lo pasa a la casilla. */
+.concl-armada { display: block; white-space: pre-wrap; margin-bottom: 8px; }
+.concl-armada-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px 0 2px; }
+.concl-armada-rot { font-size: 12px; color: var(--texto-suave); white-space: normal; }
+.concl-btn { flex: 0 0 auto; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.concl-editada { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; margin-top: 4px;
+  font-size: var(--fs-1); color: var(--ink-3); }
+.concl-editada > span { flex: 1 1 260px; }
+.concl-cambio { margin: 0 0 8px; padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--amber-bg); border: 1px solid var(--amber); }
+.concl-cambio-tit { margin: 0 0 6px; font-size: var(--fs-1); font-weight: 600; color: var(--amber); }
+.concl-cambio-txt { margin: 0 0 10px; font-size: var(--fs-2); color: var(--ink); white-space: pre-wrap; }
+.concl-cambio-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
 /* ╔════════════════════════════════════════════════════════════╗
    ║ 9) PRINT                                                   ║
    ╚════════════════════════════════════════════════════════════╝

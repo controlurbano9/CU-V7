@@ -5233,6 +5233,59 @@ function conclusionDeterminativa(o) {
   return oraciones.join(' ');
 }
 
+// ── Párrafo armado editado por el inspector (2026-11-11) ──────
+// Decisión del usuario: el párrafo de conclusionDeterminativa se puede
+// editar. Al tocar «Editar» pasa a la casilla del inspector, encima de lo que
+// ya tenía (un salto de línea, como en A38), y la columna CONCLUSION_BASE
+// guarda el párrafo del que partió: desde ahí la app no lo antepone. El
+// «párrafo armado» dentro del texto es su primer párrafo (hasta el primer
+// salto de línea). Pruebas: tests/conclusion-editable.test.js.
+function _normParrafoConclusion(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+}
+// El texto de la casilla al empezar a editar.
+function textoConParrafoArmado(armado, propio) {
+  return [armado, propio].map(function(s) { return String(s || '').trim(); })
+    .filter(Boolean).join('\n');
+}
+// Lo que queda de la casilla sin su primer párrafo («Volver al armado»).
+function quitarParrafoArmado(texto) {
+  var t = String(texto || '').replace(/^\s+/, '');
+  var i = t.indexOf('\n');
+  return i < 0 ? '' : t.slice(i + 1).trim();
+}
+// La casilla con el primer párrafo cambiado por `nuevo` («Usar el nuevo»).
+function cambiarParrafoArmado(texto, nuevo) {
+  return textoConParrafoArmado(nuevo, quitarParrafoArmado(texto));
+}
+// ¿Con lo diligenciado, el párrafo armado ya no es aquel del que partió la
+// edición? Sin edición o sin párrafo armado, no hay nada que avisar.
+function parrafoArmadoCambio(base, armado) {
+  var b = _normParrafoConclusion(base), a = _normParrafoConclusion(armado);
+  return !!(b && a && b !== a);
+}
+// Comportamientos marcados que el texto editado ya no nombra: cada uno debe
+// seguir citado con el artículo 135, su literal y su numeral, como lo deja el
+// párrafo armado («artículo 135, literal A, numerales 1 y 4»; «en el literal
+// C, numeral 12»). Devuelve los códigos que faltan (['A4'], …).
+function comportamientosSinNombrar(texto, infraccion) {
+  var codigos = [];
+  String(infraccion || '').split(' | ').forEach(function(c) {
+    var m = /^([ABCD])(\d{1,2}):/.exec(c.trim());
+    if (m && codigos.indexOf(m[1] + parseInt(m[2], 10)) < 0) codigos.push(m[1] + parseInt(m[2], 10));
+  });
+  if (!codigos.length) return [];
+  var n = _sinTildesRev(texto).replace(/\s+/g, ' ');
+  var tiene135 = /\b135\b/.test(n);
+  return codigos.filter(function(k) {
+    if (!tiene135) return true;
+    var L = k.charAt(0).toLowerCase(), N = k.slice(1);
+    var lit = new RegExp('\\bliteral(es)?\\s+([a-d]\\s*(,|y|e)\\s*)*' + L + '\\b').test(n);
+    var num = new RegExp('\\bnumeral(es)?\\s+(\\d+\\s*(,|y|e)\\s*)*' + N + '\\b').test(n);
+    return !(lit && num);
+  });
+}
+
 // Lo que «Revisar» manda a la IA con la descripción (2026-11-05): la
 // modalidad exigible, su verbo rector y el tiempo según el estado de la obra.
 // La IA cambia solo la oración que describe la obra (prompt-actuacion.txt,
@@ -7275,6 +7328,11 @@ var _cuUtilsExports = {
   textoLeyChip: textoLeyChip,
   vigenciaLicencia: vigenciaLicencia,
   conclusionDeterminativa: conclusionDeterminativa,
+  textoConParrafoArmado: textoConParrafoArmado,
+  quitarParrafoArmado: quitarParrafoArmado,
+  cambiarParrafoArmado: cambiarParrafoArmado,
+  parrafoArmadoCambio: parrafoArmadoCambio,
+  comportamientosSinNombrar: comportamientosSinNombrar,
   pistaIntervencion: pistaIntervencion,
   comportamientosParaIA: comportamientosParaIA,
   reglasBloqueoActa: reglasBloqueoActa,

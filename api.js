@@ -1425,7 +1425,7 @@ async function obtenerIdFotos(idCarpetaVisita) {
 // Campos que van fuera de `valores` y que un guardado puede no traer (sin la
 // clave, el backend no toca la columna). Al reemplazar un guardado encolado
 // por uno más nuevo se heredan los que el nuevo no trae.
-const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita', 'referenciaDireccion'];
+const _CAMPOS_EXTRA_GUARDADO = ['ubicacionConfirmada', 'revisionTexto', 'documentoVisita', 'licenciaExtra', 'citadoVisita', 'referenciaDireccion', 'conclusionBase'];
 
 // Saca de la cola los `actualizar` de esa fila. Con `nuevo`, le pasa antes los
 // campos extra que solo traían los encolados (el más reciente gana).
@@ -1490,11 +1490,16 @@ async function guardarVisita(payload) {
   if (payload.citadoVisita) body.citadoVisita = payload.citadoVisita;
   // REFERENCIA_DIRECCION: por nombre; '' borra, clave ausente no se toca.
   if (payload.referenciaDireccion !== undefined) body.referenciaDireccion = payload.referenciaDireccion;
+  // CONCLUSION_BASE (2026-11-11): párrafo armado del que partió el inspector
+  // al editarlo; '' = el párrafo se arma solo. Por nombre, como la referencia.
+  if (payload.conclusionBase !== undefined) body.conclusionBase = payload.conclusionBase;
   try {
     const d = await gasPost(body);
     invalidarCache('visitas');
-    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida,
-      body.referenciaDireccion !== undefined ? { REFERENCIA_DIRECCION: body.referenciaDireccion } : null);
+    const porNombre = {};
+    if (body.referenciaDireccion !== undefined) porNombre.REFERENCIA_DIRECCION = body.referenciaDireccion;
+    if (body.conclusionBase !== undefined) porNombre.CONCLUSION_BASE = body.conclusionBase;
+    _parchearVisitaLocal(body.fila || d.fila, body.valores, d.ultimaModConocida, porNombre);
     // La fila entera ya quedó escrita: los guardados de esta visita que
     // seguían en cola son versiones anteriores. Si salieran después, chocarían
     // con este mismo guardado (conflicto de ULTIMA_MODIFICACION) y quedarían
