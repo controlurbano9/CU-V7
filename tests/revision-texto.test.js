@@ -463,6 +463,29 @@ test('topeSituacionRevision: cuenta siempre la línea en blanco entre párrafos'
   assert.equal(u.topeSituacionRevision('a.\nb.\nc.\nd.\ne.\nf.'), tope);
   assert.equal(u.topeSituacionRevision('Primer párrafo.\n\nSegundo párrafo.'), tope);
   assert.ok(tope < Math.floor(18 * 152 * 0.9), 'más corto que con salto simple');
+  // Los 5 párrafos que puede traer la propuesta (2026-11-11): 22 − 2 × 4 = 14.
+  assert.equal(tope, Math.floor(14 * 152 * 0.9));
+});
+
+test('topeReintentoActa: si la propuesta no cabe, pide un largo que sí', () => {
+  // Cabe: no hay segundo intento.
+  assert.equal(u.topeReintentoActa('Texto corto.', 'situacion'), 0);
+  // 4 párrafos de 700 caracteres = 4 × 5 renglones + 3 en blanco = 23 > 22.
+  const p = 'x'.repeat(700);
+  const prop = [p, p, p, p].join('\n\n');
+  assert.equal(u.capacidadActa(prop, 'situacion').cabe, false);
+  const max = u.topeReintentoActa(prop, 'situacion');
+  assert.ok(max > 0 && max < prop.length);
+  assert.equal(max, Math.floor((prop.length - 152) * 0.9));
+  // Nunca más que el primer intento: si la IA se pasó de 1915, el segundo pide menos.
+  assert.equal(u.topeReintentoActa(prop, 'situacion', prop, 1915), Math.floor(1915 * 0.9));
+  // Conclusiones: cuenta el párrafo armado que va delante en la celda.
+  const armado = 'a'.repeat(152 * 3);
+  const conc = 'b'.repeat(152 * 3);
+  assert.equal(u.topeReintentoActa(conc, 'conclusiones'), 0);
+  assert.ok(u.topeReintentoActa(conc, 'conclusiones', armado + '\n' + conc) > 0);
+  // Sin espacio que pedir.
+  assert.equal(u.topeReintentoActa(conc, 'conclusiones', 'a'.repeat(152 * 8) + '\n' + conc), 0);
 });
 
 test('marcadoresPendientes: corchetes y rayas bajas', () => {

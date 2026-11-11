@@ -4373,7 +4373,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const primeroConc = editadaConc ? String(d.obsConclusion || '').trim().split('\n')[0].trim() : '';
     const restoConc = editadaConc ? quitarParrafoArmado(d.obsConclusion) : (d.obsConclusion || '');
     if (pedirConc && !String(restoConc).trim() && (editadaConc || _conclusionArmadaActaD(d))) pedirConc = false;
-    if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d)) {
+    if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d) && !noCabePre) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
     }
@@ -4418,9 +4418,27 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
       ]);
       if (pedirDesc && !tD) throw new Error('respuesta vacía');
-      if (pedirDesc) desc = tD;
+      // Ajuste al acta (2026-11-11): el tope era solo una instrucción y la IA
+      // no cuenta caracteres, así que propuestas que no cabían llegaban al
+      // panel. Se mide cada propuesta y, si no cabe, se pide otra vez sobre
+      // ella misma con lo que sobró descontado (topeReintentoActa). Si el
+      // segundo intento falla, se queda la primera y el panel no deja aplicar
+      // hasta acortarla.
+      const conArmado = t => editadaConc ? textoConParrafoArmado(primeroConc, t) : t;
+      const celdaConc = t => _conclusionesActaD(Object.assign({}, d, { obsConclusion: conArmado(t) }));
+      const masCorta = async (prop, perfil, celda, textoCelda, contexto, maxPrevio) => {
+        const max = esActa ? topeReintentoActa(prop, celda, textoCelda, maxPrevio) : 0;
+        if (!max) return prop;
+        try { return (await mejorarTexto(prop, perfil, chips, max, contexto)) || prop; }
+        catch (e) { console.warn('[revisión] segundo intento sin respuesta:', e.message); return prop; }
+      };
+      const [tD2, tC2] = await Promise.all([
+        pedirDesc ? masCorta(tD, 'actuacion', 'situacion', tD, _pistaIntervencionD(d), maxDesc) : Promise.resolve(tD),
+        pedirConc && tC ? masCorta(tC, 'conclusionActa', 'conclusiones', celdaConc(tC), _contextoVisitaD(d), maxConc) : Promise.resolve(tC),
+      ]);
+      if (pedirDesc) desc = tD2;
       // '' = la IA falló.
-      if (pedirConc) { if (tC) conc = editadaConc ? textoConParrafoArmado(primeroConc, tC) : tC; else concFallo = true; }
+      if (pedirConc) { if (tC2) conc = conArmado(tC2); else concFallo = true; }
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -4436,7 +4454,9 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     if (ia && pedirConc && !aportaConc) conc = origConc;
     // Ninguna casilla aporta y sin contradicciones: sellar en silencio con el
     // modo que tocaría (modoPrevio || 'PROPIO') y no abrir el panel.
-    if (ia && !aportaDesc && !aportaConc && !concFallo && _senalesYaJustificadasD(d)) {
+    // Si el texto propio no cabe en el acta, no se sella: el panel abre para
+    // acortarlo (2026-11-11; antes quedaba «revisado» y el acta seguía sin salir).
+    if (ia && !aportaDesc && !aportaConc && !concFallo && _senalesYaJustificadasD(d) && !noCabePre) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       setBusyMe(false);
       return;
@@ -4486,6 +4506,10 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const senales = _senalesCoherencia(_senalesPanel(p));
     const justif = (p.justif || '').trim();
     if (senales.length && justif.length < 20) return;
+    // Un texto que no cabe en el acta no se aplica (2026-11-11): el botón ya
+    // está deshabilitado; esto cubre el Enter o un doble toque.
+    if (documentoVisita(d.documento) === 'ACTA' && (!capacidadActa(p.desc, 'situacion').cabe ||
+        !capacidadActa(_conclusionesActaD(Object.assign({}, d, { obsConclusion: p.conc })), 'conclusiones').cabe)) return;
     // Modo (regla 2026-10-17): IA = eligió la propuesta en alguna casilla
     // revisada (aunque luego la editara). Si no, se conserva el modo del
     // sello anterior —los campos no revisados ya estaban revisados con él—;
@@ -4609,6 +4633,15 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const esActaP = documentoVisita(d.documento) === 'ACTA';
     // Con informe técnico no hay casilla de conclusiones que revisar.
     const hayConc = esActaP && !!(p.origConc.trim() || p.iaConc.trim() || p.concFallo);
+    // Lo que ocupa cada celda del acta con el texto del panel: en
+    // conclusiones va delante el párrafo armado (antes el medidor del panel
+    // contaba solo el texto del inspector y decía «cabe» de más). Un texto
+    // elegido que no cabe no se aplica (2026-11-11): la revisión quedaba
+    // hecha y el acta seguía sin poder generarse.
+    const celdaTextoP = (t, celda) => celda === 'conclusiones'
+      ? _conclusionesActaD(Object.assign({}, d, { obsConclusion: t })) : t;
+    const noCabeDescP = esActaP && !!p.elDesc && !capacidadActa(p.desc, 'situacion').cabe;
+    const noCabeConcP = esActaP && !!p.elConc && !capacidadActa(celdaTextoP(p.conc, 'conclusiones'), 'conclusiones').cabe;
 
     // Rediseño 2026-10-17 (maqueta propuesta-revision.html, aprobada): pasos
     // con su estado arriba, la tarjeta elegida se vuelve el editor en su sitio
@@ -4695,7 +4728,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
           {exprIA.length > 0 && <div className="rv-nota">Lo tachado son expresiones de relleno.</div>}
           {aplaza.length > 0 && <div className="rv-nota">Lo subrayado deja la verificación para después o pone en duda lo que se vio.</div>}
           {elegida && avisos.map(s => <div key={s.id + s.donde} className="rv-forma">{s.mensaje}</div>)}
-          {medidor(elegida ? p[k] : texto, celda)}
+          {medidor(celdaTextoP(elegida ? p[k] : texto, celda), celda)}
         </article>
       );
     }
@@ -4743,6 +4776,8 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       !p.elDesc && 'elegir la situación encontrada',
       !p.elConc && 'elegir las conclusiones',
       !justifOk && ((p.justif || '').trim() ? 'explicar por qué (mínimo 20 caracteres)' : 'resolver ' + (nDatos > 1 ? nDatos + ' datos' : '1 dato')),
+      noCabeDescP && 'acortar la situación encontrada (no cabe en el acta)',
+      noCabeConcP && 'acortar las conclusiones (no caben en el acta)',
     ].filter(Boolean);
     const dejar = !!(p.dejar || (p.justif || '').trim());
     return (
@@ -4844,8 +4879,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
               ? <>Falta: {falta.map((f, i) => <React.Fragment key={f}>{i > 0 && ' · '}<b>{f}</b></React.Fragment>)}</>
               : 'Todo listo.'}
           </span>
+          {(noCabeDescP || noCabeConcP) && !_actaGeneradaD(d) && (
+            <button type="button" className="rv-cancelar" onClick={() => cambiarDocumento('INFORME')}>Usar informe técnico</button>
+          )}
           <button type="button" className="rv-cancelar" onClick={() => setRevisionPanel(null)}>Cancelar</button>
-          <button type="button" className="rv-aplicar" onClick={cerrarRevision} disabled={!elegidas || !justifOk}>Aplicar revisión</button>
+          <button type="button" className="rv-aplicar" onClick={cerrarRevision}
+            disabled={!elegidas || !justifOk || noCabeDescP || noCabeConcP}>Aplicar revisión</button>
         </footer>
       </section>
     );

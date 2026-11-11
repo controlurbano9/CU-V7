@@ -3731,12 +3731,30 @@ function capacidadActa(texto, celda) {
 // Largo al que «Revisar» condensa un texto que no cabe en su celda.
 // `ocupados`: renglones que ya usa otra cosa en la celda. Cada párrafo
 // después del primero cuesta una línea vacía y un renglón a medias; 10 % de margen por el ajuste de
-// palabras. 0 = no queda espacio.
+// palabras. 0 = no queda espacio. Hasta 5 párrafos (2026-11-11): la propuesta
+// puede traer 4 de hechos y uno de conclusión, y antes solo se descontaban 4
+// (el quinto se comía 2 renglones que el tope no contaba).
 function caracteresParaActa(celda, ocupados, parrafos) {
   var c = ACTA_CAPACIDAD[celda] || ACTA_CAPACIDAD.situacion;
-  var p = Math.min(4, Math.max(1, parrafos || 1));
+  var p = Math.min(5, Math.max(1, parrafos || 1));
   var libres = c.renglones - (ocupados || 0) - 2 * (p - 1);
   return libres > 0 ? Math.floor(libres * c.porRenglon * 0.9) : 0;
+}
+
+// Tope del segundo intento cuando la propuesta no cupo (2026-11-11): la IA no
+// cuenta caracteres, así que «Revisar» mide la propuesta y, si se pasa, la
+// pide otra vez sobre ella misma con el largo que le sobró descontado y un
+// 10 % de margen. `textoCelda`: lo que ocupa la celda con la propuesta (en
+// conclusiones lleva delante el párrafo armado). `maxPrevio`: el tope del
+// primer intento; el segundo nunca pide más que él. Devuelve 0 si ya cabe o
+// si no queda espacio que pedir.
+function topeReintentoActa(propuesta, celda, textoCelda, maxPrevio) {
+  var prop = String(propuesta == null ? '' : propuesta);
+  var c = capacidadActa(textoCelda == null ? prop : textoCelda, celda);
+  if (c.cabe || !prop.trim()) return 0;
+  var max = Math.floor((prop.length - Math.abs(c.caracteres)) * 0.9);
+  if (maxPrevio > 0) max = Math.min(max, Math.floor(maxPrevio * 0.9));
+  return max >= 50 ? max : 0;
 }
 
 // Tope que «Revisar» manda para la situación encontrada cuando la visita va
@@ -7451,6 +7469,7 @@ var _cuUtilsExports = {
   cambioMenorRevision: cambioMenorRevision,
   propuestaAporta: propuestaAporta,
   topeSituacionRevision: topeSituacionRevision,
+  topeReintentoActa: topeReintentoActa,
   numeroAreaCO: numeroAreaCO,
   marcadoresPendientes: marcadoresPendientes,
   SALVEDADES_REVISION: SALVEDADES_REVISION,
