@@ -263,7 +263,7 @@ function _HojaImpresionNorma({ d }) {
       </section>
 
       <footer className="cnp-pie">
-        <div><b>Consulta informativa.</b> Se generó con las capas del POT y la base catastral cargadas en el sistema. No reemplaza el concepto de norma urbanística ni el certificado de uso del suelo.</div>
+        <div><b>Consulta informativa.</b> Se generó con las capas del POT y la base catastral cargadas en el sistema.</div>
         <div className="der">Página 1 de 1</div>
         <div>Fuentes: capas POT de Bello · catastro municipal 2026 · imagen de Google.</div>
         <div className="der">Control Urbano · Inspección N°9</div>
