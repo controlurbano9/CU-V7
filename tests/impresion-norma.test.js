@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   codificarPolilinea, simplificarAnillo, zoomMapaEstatico, escalaMapaEstatico,
-  urlMapaEstatico, filasNormaImpresion,
+  urlMapaEstatico, filasNormaImpresion, condicionaNorma,
 } = require('../utils.js');
 
 test('codificarPolilinea — ejemplo de la documentación de Google', () => {
@@ -81,4 +81,13 @@ test('filasNormaImpresion — DRMI y amenaza solo cuando caen', () => {
   assert.equal(f.find(x => x.etiqueta === 'Amenaza natural').valor, 'Movimiento en masa (Alta)');
   assert.ok(!f.find(x => x.etiqueta === 'Tratamiento urbanístico').condiciona);
   assert.deepEqual(filasNormaImpresion(null), []);
+});
+
+test('condicionaNorma — un predio del Municipio condiciona aunque el POT no', () => {
+  const f = filasNormaImpresion({ clasificacion: 'Suelo urbano', tratamiento: 'CN1',
+    sueloProt: 'NO', amenaza: 'NO', enRetiro: 'NO' }, 'Comuna 2');
+  assert.deepEqual(condicionaNorma(f, false), []);
+  assert.deepEqual(condicionaNorma(f, true), ['Predio público']);
+  const g = filasNormaImpresion({ sueloProt: 'SI', amenaza: 'NO', enRetiro: 'NO' }, 'Comuna 3');
+  assert.deepEqual(condicionaNorma(g, true), ['Predio público', 'Suelo de protección']);
 });

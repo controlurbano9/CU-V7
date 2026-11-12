@@ -191,7 +191,7 @@ function _HojaImpresionNorma({ d }) {
       {d.municipal && (
         <div className="cnp-aviso">
           <span className="cnp-aviso-ic">!</span>
-          <span><b>Predio del Municipio de Bello.</b> Razón social {d.municipal}.</span>
+          <span><b>Predio público del Municipio de Bello.</b> {PREDIO_PUBLICO_CONSECUENCIA} Razón social {d.municipal}.</span>
         </div>
       )}
 
@@ -689,7 +689,7 @@ function ConsultaNormaScreen() {
           resultado.clasificacion || ''].filter(Boolean).join(' · '),
         coord: punto.lat.toFixed(6) + ', ' + punto.lon.toFixed(6),
         municipal: muni ? (muni.propietario || 'MUNICIPIO DE BELLO') : '',
-        condiciona: filas.filter(f => f.condiciona).map(f => f.corto),
+        condiciona: condicionaNorma(filas, !!muni),
         mapa: mapa,
         ficha: ficha,
         fichasTexto: fichas.length > 1 ? '1 de ' + fichas.length + ' fichas' : '1 ficha',
@@ -857,7 +857,10 @@ function ConsultaNormaScreen() {
           display: 'flex', alignItems: 'flex-start', gap: 8,
         }}>
           <Icon.Alert size={18} />
-          <div>Predio del <strong>Municipio de Bello</strong></div>
+          <div>
+            Predio público del <strong>Municipio de Bello</strong>
+            <div style={{ fontWeight: 400, marginTop: 2 }}>{PREDIO_PUBLICO_CONSECUENCIA}</div>
+          </div>
         </div>
       )}
 

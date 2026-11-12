@@ -7363,7 +7363,21 @@ function filasNormaImpresion(r, comunaLabel) {
   return filas;
 }
 
+// Un predio del Municipio es público: no se licencia ni se construye en él,
+// diga lo que diga el POT. Por eso va primero en «Condiciona» y la hoja no
+// puede decir que «nada restringe el predio».
+var PREDIO_PUBLICO_CONSECUENCIA = 'No se licencia ni se puede construir en él.';
+
+function condicionaNorma(filas, municipal) {
+  var lista = (filas || []).filter(function (f) { return f.condiciona; })
+    .map(function (f) { return f.corto; });
+  if (municipal) lista.unshift('Predio público');
+  return lista;
+}
+
 var _cuUtilsExports = {
+  PREDIO_PUBLICO_CONSECUENCIA: PREDIO_PUBLICO_CONSECUENCIA,
+  condicionaNorma: condicionaNorma,
   codificarPolilinea: codificarPolilinea,
   simplificarAnillo: simplificarAnillo,
   zoomMapaEstatico: zoomMapaEstatico,

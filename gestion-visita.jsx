@@ -197,7 +197,36 @@ function useGestionVisita({ datos, recargar }) {
     setBusyFila(null);
   }
 
-  return { busyFila, asignandoFila, setAsignandoFila, asignar, asignarNuevaVisita, desasignar, completar };
+  // Reabrir una completada (2026-11-12, decisión del usuario): vuelve a
+  // INICIADO para corregir datos y volver a generar el acta o el informe.
+  // Después se completa otra vez con «Completar». El backend vacía el PDF del
+  // acta (completar arma uno nuevo) y no borra nada de Drive.
+  async function reabrir(fila) {
+    const f = filaDe(fila);
+    const rad = (f && f['RADICADO']) || '';
+    const quien = f ? primerVisitador(visitadoresBD(f)) : '';
+    const ok = await appConfirm(
+      '¿Reabrir ' + (rad || 'esta visita') + '?\n\n' +
+      'Vuelve a INICIADO' + (quien ? ' a nombre de ' + quien : '') + ': se puede corregir y volver a generar ' +
+      'el acta, el registro fotográfico o el informe. Cuando esté lista, márcala otra vez con «Completar».',
+      { tono: 'aviso', titulo: 'Reabrir visita', btnOk: 'Reabrir' }
+    );
+    if (!ok) return;
+    setBusyFila(fila);
+    try {
+      const r = await gasPost({
+        accion: 'reabrirVisita', fila,
+        radicadoConocido: rad,
+        idVisita: (f && f['ID_VISITA']) || '',
+      });
+      if (r && r.ok === false) throw new Error(r.error || 'Error desconocido');
+      invalidarCache('visitas');
+      await recargarRef.current();
+    } catch (e) { await avisarError(e); }
+    setBusyFila(null);
+  }
+
+  return { busyFila, asignandoFila, setAsignandoFila, asignar, asignarNuevaVisita, desasignar, completar, reabrir };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -242,9 +271,13 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
   const inspSinIniciar = esInspeccionLugar(f) && est !== 'INICIADO';
   const irAgendaInsp = () => window.dispatchEvent(new CustomEvent('cu-ir-agenda-inspeccion',
     { detail: { fecha: formatearFecha(f['FECHA ASIGNACION VISITA'] || ''), fila: f._idx } }));
-  // Sin acciones (p. ej. completada con otra visita pendiente) no hay barra.
+  // Reabrir: solo una completada y solo si el caso no tiene otra visita en
+  // curso (dos iniciadas del mismo radicado no se distinguen en las listas).
+  // Las filas V2 «COMPLETADA» también entran (estadoBuscarDe las pliega).
+  const puedeReabrir = est === 'COMPLETADO' && !abierta;
+  // Sin acciones (p. ej. completada con otra visita en curso) no hay barra.
   const conNueva = puedeNueva && (abierta || (!pendiente && est === 'COMPLETADO'));
-  if (est !== 'PENDIENTE' && est !== 'ASIGNADO' && est !== 'INICIADO' && !conNueva) return null;
+  if (est !== 'PENDIENTE' && est !== 'ASIGNADO' && est !== 'INICIADO' && !conNueva && !puedeReabrir) return null;
 
   return (
     <section className="bq-gestion" aria-label="Gestión">
@@ -278,6 +311,13 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
           <button type="button" className={'vc-btn' + (entregablesFaltantes(f).length ? '' : ' vc-btn-cta')} disabled={busy}
             onClick={() => acciones.completar(f._idx, f['FECHA ASIGNACION VISITA'])}>
             <Icon.Check size={14} /> Completar
+          </button>
+        )}
+        {puedeReabrir && (
+          <button type="button" className="vc-btn" disabled={busy}
+            title="Vuelve a INICIADO para corregir y volver a generar el acta o el informe"
+            onClick={() => acciones.reabrir(f._idx)}>
+            <Icon.Edit size={14} /> Reabrir
           </button>
         )}
         {puedeNueva && (abierta
