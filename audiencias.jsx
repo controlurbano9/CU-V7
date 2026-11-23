@@ -1756,8 +1756,10 @@ function AudienciasScreen({ usuario }) {
 
   // Las del backend (cupos del bloque) + las citas escritas a mano en una visita completada.
   const completadas = useMemoAU(function () {
-    return excel ? citacionesCompletadasExcel(excel.lista, filas, hoyTxt) : [];
-  }, [excel, filas, hoyTxt]);
+    // Con los cupos: la recién completada sale ya con su sustanciador, sin
+    // esperar la respuesta del servidor.
+    return excel ? citacionesCompletadasExcel(excel.lista, filas, hoyTxt, datos && datos.cupos) : [];
+  }, [excel, filas, hoyTxt, datos]);
 
   const quedanCupos = esAdmin && datos && datos.ultimaFechaConCupo &&
     (function () {

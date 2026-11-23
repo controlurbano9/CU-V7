@@ -6029,7 +6029,13 @@ function citacionAntesDeVisita(citacionIso, visitaIso) {
   return iso.test(c) && iso.test(v) && c < v;
 }
 
-function citacionesCompletadasExcel(listaBackend, filas, hoyTxt) {
+// `cupos` (2026-11-23): los cupos que la pantalla ya tiene (copia guardada en
+// el equipo). Una visita recién completada sale primero por este camino —la BD
+// de visitas se refresca antes que la agenda— y salía «Por asignar en el Excel»
+// hasta que respondía el servidor. Si su cita es un cupo RESERVADO del bloque
+// (mismo caso, día y hora), se toman de él el sustanciador y el idCupo: el
+// renglón queda igual al que mandará el backend y la marca de copiada no salta.
+function citacionesCompletadasExcel(listaBackend, filas, hoyTxt, cupos) {
   var lista = (listaBackend || []).slice();
   var hoy = parsearFecha(hoyTxt);
   var limpio = function (s) { return String(s == null ? '' : s).replace(/[\t\r\n]+/g, ' ').trim(); };
@@ -6057,16 +6063,23 @@ function citacionesCompletadasExcel(listaBackend, filas, hoyTxt) {
       dir.toUpperCase().indexOf(bar.toUpperCase()) !== -1 ? dir : dir + ' - ' + bar;
     var exp = /^\d+$/.test(caso.expediente || '') ? caso.expediente : 'NUEVO';
     var fecha = formatearFecha(d);
+    var minHora = horaAudienciasMin(hora);
+    var cupo = (cupos || []).filter(function (c) {
+      return c.estado === 'RESERVADO' && c.fecha === fecha &&
+        horaAudienciasMin(c.hora) === minHora && _mismaCitaBloqueVisita(c, f);
+    })[0] || null;
+    if (cupo) hora = String(cupo.hora || hora);
+    var sus = cupo ? String(cupo.sustanciador || '').trim() : '';
     var fila = [
       // La celda puede ser una fecha de verdad y llegar como ISO
       // («2025-09-10T05:00:00.000Z»); el Excel la quiere DD/MM/YYYY (2026-11-05).
       caso.radicado || caso.ordenPolicia, formatearFecha(f['FECHA RADICADO']),
       f['DENUNCIANTE/REMITENTE'] || f['DENUNCIANTE'], citadoTxt, dirTxt,
-      fecha, hora, '', exp, ''
+      fecha, hora, sus, exp, ''
     ].map(limpio);
     lista.push({
-      idCupo: 'visita-' + (f['ID_VISITA'] || caso.radicado || caso.ordenPolicia),
-      filaExcel: null, fecha: fecha, hora: hora, sustanciador: '',
+      idCupo: cupo && cupo.idCupo ? cupo.idCupo : 'visita-' + (f['ID_VISITA'] || caso.radicado || caso.ordenPolicia),
+      filaExcel: cupo ? (cupo.filaExcel || null) : null, fecha: fecha, hora: hora, sustanciador: sus,
       radicado: fila[0], ordenPolicia: caso.ordenPolicia, expediente: exp, citado: citadoTxt,
       direccion: dirTxt, reservadoPor: '',
       fechaCompletada: String(f['FECHA DEVOLUCION'] || f['FECHA DE VISITA'] || '').trim(),

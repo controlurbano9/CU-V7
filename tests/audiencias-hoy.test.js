@@ -166,6 +166,26 @@ test('citacionesCompletadasExcel no repite el caso del backend ni suma pasadas o
   assert.equal(citacionesCompletadasExcel(back, filas, '03/11/2026').length, 1);
 });
 
+test('citacionesCompletadasExcel toma el sustanciador del cupo reservado sin esperar al backend', () => {
+  // Recién completada: la BD de visitas ya la trae y la lista del backend todavía no.
+  const f = visita({
+    RADICADO: '20261080137', 'ESTADO VISITA': 'COMPLETADO', ID_VISITA: 'V-9',
+    'FECHA CITACION': '07/04/2027 · 2:00 p. m.', 'FECHA DEVOLUCION': '23/11/2026'
+  });
+  const cupos = [
+    cupo({ idCupo: 'c-otro', radicado: '20261080137', fecha: '07/04/2027', hora: '9:00AM', sustanciador: 'OTRA' }),
+    cupo({ idCupo: 'c-77', radicado: '20261080137', fecha: '07/04/2027', hora: '2:00PM', sustanciador: 'JUANSE PINZON', filaExcel: 812 })
+  ];
+  const [r] = citacionesCompletadasExcel([], [f], '23/11/2026', cupos);
+  assert.equal(r.sustanciador, 'JUANSE PINZON');
+  assert.equal(r.idCupo, 'c-77'); // el mismo que mandará el backend
+  assert.equal(r.filaTSV.split('\t')[7], 'JUANSE PINZON');
+  // Sin cupo que calce, sigue sin sustanciador (no se deduce).
+  const [s] = citacionesCompletadasExcel([], [f], '23/11/2026', [cupos[0]]);
+  assert.equal(s.sustanciador, '');
+  assert.equal(s.idCupo, 'visita-V-9');
+});
+
 test('audienciasDelDia: el mismo caso con la misma cita en dos filas sale una vez (la más nueva)', () => {
   const filas = [
     visita({ _idx: 10, CITADO: 'José Correa' }),
