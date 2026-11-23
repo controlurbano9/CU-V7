@@ -5196,8 +5196,35 @@ function conclusionDeterminativa(o) {
 
   // § 3.a: con literal A.
   var oraciones = [];
+  var a13 = chipsA.indexOf('A1') >= 0 || chipsA.indexOf('A3') >= 0;
+  var a24 = chipsA.indexOf('A2') >= 0 || chipsA.indexOf('A4') >= 0;
+  // Lugar del A1: la categoría del suelo de protección que da el POT en el
+  // punto (ZIM-4, ZPAP-3…), nunca el polígono de uso del suelo, que es otra
+  // capa (2026-11-09). La amenaza acompaña, no sustenta sola el A1.
+  var catProt = String(o.sueloProtCategoria || '').trim();
+  var enAmenaza = '';
+  if (si(o.amenaza)) {
+    var catAm = String(o.amenazaCategoria || '').trim().toLowerCase();
+    var tipoAm = String(o.amenazaTipo || '').trim().toLowerCase();
+    enAmenaza = ' y en zona de amenaza' + (catAm ? ' ' + catAm : '') + (tipoAm ? ' por ' + tipoAm : '');
+  }
+  var lugarA1 = si(o.sueloProt) ? 'en suelo de protección' + (catProt ? ' (' + catProt + ')' : '') + enAmenaza
+    : si(o.quebrada) ? 'en el retiro de una fuente hídrica' + enAmenaza : '';
+  // Solo A1/A3 y sin licencia aportada (2026-11-12, decisión del usuario):
+  // «requiere licencia… y no se aportó» hacía creer que la falta era no
+  // traerla (y que faltaba marcar A4). La oración 1 dice que la modalidad
+  // exige licencia pero aquí no se puede otorgar, y por qué.
+  var noLicenciable = a13 && !a24 && req === 'SI' && mods.length > 0 && !si(o.licenciaAportada);
   // Oración 1: la actuación y la licencia (solo si requiere con modalidades).
-  if (req === 'SI' && mods.length) {
+  if (noLicenciable) {
+    var lugares = [];
+    if (cod.A1) lugares.push(lugarA1 || 'en un área protegida');
+    if (cod.A3) lugares.push('sobre bienes de uso público');
+    oraciones.push('Las obras corresponden a ' + nombresTxt + ', ' +
+      (mods.length === 1 ? 'modalidad que exige' : 'modalidades que exigen') +
+      ' licencia de construcción (Decreto 1077 de 2015, art. 2.2.6.1.1.7), pero no pueden licenciarse ni reconocerse por haberse ejecutado ' +
+      lugares.join(' y ') + '.');
+  } else if (req === 'SI' && mods.length) {
     var s1 = 'Las obras corresponden a ' + nombresTxt + ', que ' + requiereConc +
       ' licencia de construcción en ' + esa + ' (Decreto 1077 de 2015, art. 2.2.6.1.1.7)';
     if (!si(o.licenciaAportada)) s1 += ', y no se aportó licencia.';
@@ -5224,21 +5251,9 @@ function conclusionDeterminativa(o) {
   // Oración 2: el comportamiento del literal A (+ B/C/D si los hay).
   var s2 = '';
   var verbo0 = verbos.length ? verbos[0] : 'construir';
-  if (chipsA.length === 1 && chipsA[0] === 'A1') {
-    // Entre paréntesis va la categoría del suelo de protección que da el POT
-    // en el punto (ZIM-4, ZPAP-3…), nunca el polígono de uso del suelo, que es
-    // otra capa (2026-11-09). La amenaza acompaña, no sustenta sola el A1.
-    var catProt = String(o.sueloProtCategoria || '').trim();
-    var enAmenaza = '';
-    if (si(o.amenaza)) {
-      var catAm = String(o.amenazaCategoria || '').trim().toLowerCase();
-      var tipoAm = String(o.amenazaTipo || '').trim().toLowerCase();
-      enAmenaza = ' y en zona de amenaza' + (catAm ? ' ' + catAm : '') + (tipoAm ? ' por ' + tipoAm : '');
-    }
-    if (si(o.sueloProt)) s2 = 'Por ' + verbo0 + 'se en suelo de protección' +
-      (catProt ? ' (' + catProt + ')' : '') + enAmenaza + ', ';
-    else if (si(o.quebrada)) s2 = 'Por ' + verbo0 + 'se en el retiro de una fuente hídrica' + enAmenaza + ', ';
-  }
+  // El lugar va aquí solo si la oración 1 no lo dijo ya.
+  if (chipsA.length === 1 && chipsA[0] === 'A1' && lugarA1 && !noLicenciable)
+    s2 = 'Por ' + verbo0 + 'se ' + lugarA1 + ', ';
   var frasesA = {
     A1: 'en áreas protegidas',
     A2: 'con desconocimiento de lo preceptuado en la licencia',
@@ -5258,9 +5273,9 @@ function conclusionDeterminativa(o) {
     });
     s2 += otros.length === 1 ? ', y el previsto ' + citasOtros[0] : ', y los previstos ' + citasOtros.join(' y en ');
   }
-  var a13 = chipsA.indexOf('A1') >= 0 || chipsA.indexOf('A3') >= 0;
-  var a24 = chipsA.indexOf('A2') >= 0 || chipsA.indexOf('A4') >= 0;
-  if (a13 && !a24) {
+  if (noLicenciable) {
+    oraciones.push(s2 + '.');
+  } else if (a13 && !a24) {
     oraciones.push(s2 + ', y no pueden legalizarse mediante licencia ni reconocimiento.');
   } else {
     oraciones.push(s2 + '.');
@@ -5312,6 +5327,27 @@ function quitarParrafoArmado(texto) {
 function cambiarParrafoArmado(texto, nuevo) {
   return textoConParrafoArmado(nuevo, quitarParrafoArmado(texto));
 }
+// Corrección de escritura del párrafo armado que el inspector editó
+// (2026-11-12): «Revisar» no lo mandaba a la IA y sus errores llegaban al
+// acta. Se pide con el perfil 'ortografiaActa' y aquí se decide si sirve:
+// '' si la respuesta no cambia nada, cambia más que un retoque, parte el
+// párrafo, pierde una cifra o una norma, o deja de nombrar un comportamiento
+// que el original sí nombraba (también protege de un backend sin el perfil,
+// que reescribiría el párrafo entero). Pruebas: tests/conclusion-editable.test.js.
+function correccionParrafoConclusion(original, corregido, infraccion) {
+  var o = String(original == null ? '' : original).trim();
+  var c = String(corregido == null ? '' : corregido).trim().replace(/^[«"“]+|[»"”]+$/g, '').trim();
+  if (!o || !c || c.indexOf('\n') >= 0) return '';
+  if (_normParrafoConclusion(o) === _normParrafoConclusion(c)) return '';
+  if (!cambioMenorRevision(o, c)) return '';
+  var cifras = function (t) { return (t.match(/\d+([.,]\d+)*/g) || []).join(' '); };
+  if (cifras(o) !== cifras(c)) return '';
+  var faltan = comportamientosSinNombrar(c, infraccion);
+  var faltaban = comportamientosSinNombrar(o, infraccion);
+  if (faltan.some(function (k) { return faltaban.indexOf(k) < 0; })) return '';
+  return c;
+}
+
 // ¿Con lo diligenciado, el párrafo armado ya no es aquel del que partió la
 // edición? Sin edición o sin párrafo armado, no hay nada que avisar.
 function parrafoArmadoCambio(base, armado) {
@@ -7375,9 +7411,38 @@ function condicionaNorma(filas, municipal) {
   return lista;
 }
 
+// En un predio del Municipio, catastro trae también las fichas de quienes lo
+// ocupan (poseedores, mejoras en predio ajeno). El titular real es el
+// Municipio: su ficha va primero y es la que se imprime, aunque la búsqueda
+// haya calzado con la de un poseedor.
+function fichasMunicipalPrimero(fichas) {
+  var lista = fichas || [];
+  return lista.filter(function (r) { return r && r.municipal; })
+    .concat(lista.filter(function (r) { return !(r && r.municipal); }));
+}
+
+// Catastro marca con «S.N» (sin nomenclatura) los predios sin dirección, como
+// muchos del Municipio: eso no es una dirección para el encabezado de la hoja.
+function direccionCatastroValida(texto) {
+  var s = String(texto == null ? '' : texto).trim();
+  return /^(S\s*[.\/]?\s*N\.?|SIN\s+(DIRECCI[OÓ]N|NOMENCLATURA))$/i.test(s) ? '' : s;
+}
+
+function fichaImpresionNorma(fichas, catastrales) {
+  var lista = fichas || [];
+  var cats = catastrales || [];
+  var hallada = lista.find(function (r) { return cats.indexOf(r.catastral) >= 0; }) || null;
+  var muni = lista.find(function (r) { return r.municipal; }) || null;
+  var ficha = muni ? (hallada && hallada.municipal ? hallada : muni) : (hallada || lista[0] || null);
+  return { ficha: ficha, coincide: !!hallada && ficha === hallada, municipal: !!muni };
+}
+
 var _cuUtilsExports = {
   PREDIO_PUBLICO_CONSECUENCIA: PREDIO_PUBLICO_CONSECUENCIA,
   condicionaNorma: condicionaNorma,
+  fichasMunicipalPrimero: fichasMunicipalPrimero,
+  fichaImpresionNorma: fichaImpresionNorma,
+  direccionCatastroValida: direccionCatastroValida,
   codificarPolilinea: codificarPolilinea,
   simplificarAnillo: simplificarAnillo,
   zoomMapaEstatico: zoomMapaEstatico,
@@ -7495,6 +7560,7 @@ var _cuUtilsExports = {
   quitarParrafoArmado: quitarParrafoArmado,
   cambiarParrafoArmado: cambiarParrafoArmado,
   parrafoArmadoCambio: parrafoArmadoCambio,
+  correccionParrafoConclusion: correccionParrafoConclusion,
   comportamientosSinNombrar: comportamientosSinNombrar,
   pistaIntervencion: pistaIntervencion,
   comportamientosParaIA: comportamientosParaIA,

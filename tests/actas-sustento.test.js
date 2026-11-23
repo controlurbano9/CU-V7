@@ -253,21 +253,43 @@ const EJ3 = U.conclusionDeterminativa({ infraccion: 'No se evidencia infracción
 
 test('conclusionDeterminativa: ejemplo 1 (A1, ampliación, sin licencia)', () => {
   assert.equal(EJ1,
-    'Las obras corresponden a una ampliación de la edificación existente, que requiere licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), y no se aportó licencia. ' +
-    'Por construirse en suelo de protección (ZPAP-3), constituyen el comportamiento de construir en áreas protegidas, previsto en el artículo 135, literal A, numeral 1, de la Ley 1801 de 2016, y no pueden legalizarse mediante licencia ni reconocimiento.');
+    'Las obras corresponden a una ampliación de la edificación existente, modalidad que exige licencia de construcción (Decreto 1077 de 2015, art. 2.2.6.1.1.7), pero no pueden licenciarse ni reconocerse por haberse ejecutado en suelo de protección (ZPAP-3). ' +
+    'Constituyen el comportamiento de construir en áreas protegidas, previsto en el artículo 135, literal A, numeral 1, de la Ley 1801 de 2016.');
+});
+
+// 2026-11-12: con solo A1/A3 la licencia no se puede otorgar; decir «y no se
+// aportó licencia» hacía creer que la falta era no traerla.
+test('conclusionDeterminativa: A3 dice que no se puede licenciar y por qué', () => {
+  const t = U.conclusionDeterminativa({ infraccion: A3, requiere: 'SI', modalidades: ['Ampliación'], licenciaAportada: 'NO' });
+  assert.equal(t,
+    'Las obras corresponden a una ampliación de la edificación existente, modalidad que exige licencia de construcción (Decreto 1077 de 2015, art. 2.2.6.1.1.7), pero no pueden licenciarse ni reconocerse por haberse ejecutado sobre bienes de uso público. ' +
+    'Constituyen el comportamiento de construir en bienes de uso público y terrenos afectados al espacio público, previsto en el artículo 135, literal A, numeral 3, de la Ley 1801 de 2016.');
+  assert.ok(!t.includes('no se aportó'));
+  assert.deepEqual(U.comportamientosSinNombrar(t, A3), []);
+  // A1 + A3 nombra los dos lugares; sin «requiere» no hay oración 1 y el cierre se queda.
+  assert.ok(U.conclusionDeterminativa({ infraccion: 'A1: Área protegida o afectada | ' + A3, requiere: 'SI',
+    modalidades: ['Ampliación', 'Modificación'], licenciaAportada: 'NO', quebrada: 'SI' })
+    .includes('modalidades que exigen licencia de construcción (Decreto 1077 de 2015, art. 2.2.6.1.1.7), pero no pueden licenciarse ni reconocerse por haberse ejecutado en el retiro de una fuente hídrica y sobre bienes de uso público.'));
+  assert.ok(U.conclusionDeterminativa({ infraccion: A3 }).endsWith(', y no pueden legalizarse mediante licencia ni reconocimiento.'));
+  // Con licencia aportada sigue la redacción de antes.
+  assert.ok(U.conclusionDeterminativa({ infraccion: A3, requiere: 'SI', modalidades: ['Ampliación'], licenciaAportada: 'SI' })
+    .includes('y se aportó licencia.'));
 });
 
 test('conclusionDeterminativa: A1 nombra la categoría de protección y la amenaza, no el uso del suelo', () => {
   const base = { infraccion: 'A1: Área protegida o afectada', requiere: 'SI', modalidades: ['Ampliación'],
     licenciaAportada: 'NO', sueloProt: 'SI', poligono: 'ZR-1-C5' };
   const sinDetalle = U.conclusionDeterminativa(base);
-  assert.ok(sinDetalle.includes('Por construirse en suelo de protección, constituyen'));
+  assert.ok(sinDetalle.includes('por haberse ejecutado en suelo de protección. Constituyen'));
   assert.ok(!sinDetalle.includes('ZR-1-C5'));
   const t = U.conclusionDeterminativa(Object.assign({}, base, { sueloProtCategoria: 'ZIM-4: Zona de Interés Municipal',
     amenaza: 'SI', amenazaTipo: 'Movimiento en masa', amenazaCategoria: 'Alta' }));
-  assert.ok(t.includes('Por construirse en suelo de protección (ZIM-4: Zona de Interés Municipal) y en zona de amenaza alta por movimiento en masa, constituyen'));
+  assert.ok(t.includes('por haberse ejecutado en suelo de protección (ZIM-4: Zona de Interés Municipal) y en zona de amenaza alta por movimiento en masa. Constituyen'));
   assert.ok(U.conclusionDeterminativa(Object.assign({}, base, { amenaza: 'SI' }))
-    .includes('en suelo de protección y en zona de amenaza, constituyen'));
+    .includes('en suelo de protección y en zona de amenaza. Constituyen'));
+  // Sin «requiere» el lugar sigue en la oración del comportamiento.
+  assert.ok(U.conclusionDeterminativa(Object.assign({}, base, { requiere: '' }))
+    .includes('Por construirse en suelo de protección, constituyen'));
   assert.ok(!U.conclusionDeterminativa(Object.assign({}, base, { amenaza: 'NO', amenazaTipo: 'Inundación' })).includes('amenaza'));
 });
 

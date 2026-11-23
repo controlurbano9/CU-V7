@@ -4372,14 +4372,20 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     const editadaConc = _conclusionEditadaD(d);
     const primeroConc = editadaConc ? String(d.obsConclusion || '').trim().split('\n')[0].trim() : '';
     const restoConc = editadaConc ? quitarParrafoArmado(d.obsConclusion) : (d.obsConclusion || '');
+    // Ese primer párrafo editado sí se corrige, pero solo en su escritura
+    // (2026-11-12, perfil 'ortografiaActa'): antes sus errores llegaban al
+    // acta sin que nadie los viera. Solo si cambió desde la última revisión.
+    const primeroPrevio = previos && previos.conc ? String(previos.conc).trim().split('\n')[0].trim() : '';
+    const pedirPrimero = pedirConc && editadaConc && !!primeroConc &&
+      _normTextoUI(primeroPrevio) !== _normTextoUI(primeroConc);
     if (pedirConc && !String(restoConc).trim() && (editadaConc || _conclusionArmadaActaD(d))) pedirConc = false;
-    if (!pedirDesc && !pedirConc && _senalesYaJustificadasD(d) && !noCabePre) {
+    if (!pedirDesc && !pedirConc && !pedirPrimero && _senalesYaJustificadasD(d) && !noCabePre) {
       sellarRevisionSilencioso(d.revision && d.revision.modo);
       return;
     }
     // Solo cambian los datos (con señales de coherencia): sin IA, el panel
     // abre con los dos textos propios y pide la justificación.
-    const soloDatos = !pedirDesc && !pedirConc;
+    const soloDatos = !pedirDesc && !pedirConc && !pedirPrimero;
     // Sin señal no se abre: generar el acta también necesita conexión, y
     // cerrar «LOCAL» sin red sería una forma de saltarse la IA.
     if (!soloDatos && !navigator.onLine) {
@@ -4409,19 +4415,26 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // los datos y él la aprueba o la edita. Cada casilla falla por su lado:
     // si solo falla la de conclusiones, la descripción conserva su propuesta
     // y el panel avisa (concFallo).
-    let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false;
+    let ia = !soloDatos, desc = origDesc, conc = origConc, concFallo = false, primeroCorregido = '';
     try {
       // La calificación del art. 135 va en las conclusiones (párrafo armado),
       // no en la situación: se quita de la propuesta aunque la IA la agregue
       // (2026-11-11, quitarCalificacionArt135). Antes del segundo intento,
       // para que no la herede como si fuera del original.
       const sinCalif = t => t ? quitarCalificacionArt135(t) : t;
-      const [tD, tC] = await Promise.all([
+      const [tD, tC, tP] = await Promise.all([
         pedirDesc ? mejorarTexto(origDesc, 'actuacion', chips, maxDesc, _pistaIntervencionD(d)).then(sinCalif) : Promise.resolve(origDesc),
         !pedirConc ? Promise.resolve(origConc)
           : mejorarTexto(restoConc, 'conclusionActa', chips, maxConc, _contextoVisitaD(d))
               .catch(e => { console.warn('[revisión] conclusiones sin propuesta:', e.message); return ''; }),
+        // '' = sin corrección (la respuesta no era un retoque o falló).
+        !pedirPrimero ? Promise.resolve('')
+          : mejorarTexto(primeroConc, 'ortografiaActa')
+              .then(t => correccionParrafoConclusion(primeroConc, t, _infraccionSoloCatalogo(d.infraccion)))
+              .catch(e => { console.warn('[revisión] párrafo editado sin corrección:', e.message); return ''; }),
       ]);
+      primeroCorregido = tP;
+      const primeroFinal = tP || primeroConc;
       if (pedirDesc && !tD) throw new Error('respuesta vacía');
       // Ajuste al acta (2026-11-11): el tope era solo una instrucción y la IA
       // no cuenta caracteres, así que propuestas que no cabían llegaban al
@@ -4429,7 +4442,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       // ella misma con lo que sobró descontado (topeReintentoActa). Si el
       // segundo intento falla, se queda la primera y el panel no deja aplicar
       // hasta acortarla.
-      const conArmado = t => editadaConc ? textoConParrafoArmado(primeroConc, t) : t;
+      const conArmado = t => editadaConc ? textoConParrafoArmado(primeroFinal, t) : t;
       const celdaConc = t => _conclusionesActaD(Object.assign({}, d, { obsConclusion: conArmado(t) }));
       const masCorta = async (prop, perfil, celda, textoCelda, contexto, maxPrevio) => {
         const max = esActa ? topeReintentoActa(prop, celda, textoCelda, maxPrevio) : 0;
@@ -4444,6 +4457,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       if (pedirDesc) desc = sinCalif(tD2);
       // '' = la IA falló.
       if (pedirConc) { if (tC2) conc = conArmado(tC2); else concFallo = true; }
+      else if (tP) conc = textoConParrafoArmado(tP, restoConc);
     } catch (e) {
       // DeepSeek y Claude caídos: una caída del proveedor no deja a nadie
       // sin acta. Se cierra solo con el chequeo local (modo LOCAL).
@@ -4454,9 +4468,12 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
     // muestra como opción — la casilla queda «Sin cambios propuestos» y ya
     // viene elegida con el texto propio (2026-10-17).
     const aportaDesc = ia && pedirDesc && propuestaAporta(origDesc, desc);
-    const aportaConc = ia && pedirConc && conc !== '' && propuestaAporta(origConc, conc);
+    // Una sola tilde corregida en el párrafo editado ya aporta: propuestaAporta
+    // la descartaría por chica, y el error llegaría al acta.
+    const aportaConc = ia && conc !== '' && ((pedirConc && propuestaAporta(origConc, conc)) ||
+      (pedirPrimero && !!primeroCorregido));
     if (ia && pedirDesc && !aportaDesc) desc = origDesc;
-    if (ia && pedirConc && !aportaConc) conc = origConc;
+    if (ia && (pedirConc || pedirPrimero) && !aportaConc) conc = origConc;
     // Ninguna casilla aporta y sin contradicciones: sellar en silencio con el
     // modo que tocaría (modoPrevio || 'PROPIO') y no abrir el panel.
     // Si el texto propio no cabe en el acta, no se sella: el panel abre para
@@ -4475,7 +4492,7 @@ function NuevaVisitaScreen({ usuario, filaInicial, datosIniciales, onSalir, busq
       desc: origDesc, conc: origConc, justif: '',
       elDesc: sinCambio(origDesc, desc) ? 'propio' : null,
       elConc: sinCambio(origConc, conc) ? 'propio' : null,
-      cambioDesc: pedirDesc, cambioConc: pedirConc, soloDatos,
+      cambioDesc: pedirDesc, cambioConc: pedirConc || pedirPrimero, soloDatos,
       modoPrevio: d.revision && d.revision.modo,
       concFallo: ia && concFallo,
       // Las dos casillas llevan tope en acta: «se condensa» solo si el texto

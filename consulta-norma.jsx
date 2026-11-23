@@ -245,7 +245,8 @@ function _HojaImpresionNorma({ d }) {
           {d.nMas > 0 && (
             <div className="cnp-mas">
               {d.nMas === 1 ? 'Otra ficha en el mismo predio.' : d.nMas + ' fichas más en el mismo predio.'} Se imprime
-              {d.coincide ? ' la que coincide con la búsqueda.' : ' la primera.'}
+              {d.delMunicipio ? ' la del Municipio, titular del predio.'
+                : d.coincide ? ' la que coincide con la búsqueda.' : ' la primera.'}
             </div>
           )}
         </div>
@@ -667,16 +668,19 @@ function ConsultaNormaScreen() {
           mapa = { src: m.url, escala: m.escala, conContorno: anillos.length > 0 };
         }
       }
-      // Ficha a imprimir: la que coincidió con la búsqueda o la primera.
+      // Ficha a imprimir: en predio del Municipio, la del Municipio (titular
+      // real, no un poseedor); si no, la que coincidió con la búsqueda o la primera.
       var fichas = catastro || [];
-      var cats = (hallado && hallado.catastrales) || [];
-      var coincide = fichas.find(r => cats.indexOf(r.catastral) >= 0) || null;
-      var ficha = coincide || fichas[0] || null;
-      var muni = fichas.find(r => r.municipal);
+      var elegida = fichaImpresionNorma(fichas, (hallado && hallado.catastrales) || []);
+      var ficha = elegida.ficha;
+      var muni = elegida.municipal ? ficha : null;
       var filas = filasNormaImpresion(resultado, _comunaLabelCN(resultado));
       var s = (typeof SESSION !== 'undefined') ? SESSION.leer() : null;
-      var direccion = (ficha && ficha.direccion) ||
-        (consulta && !_parsearCoordenadas(consulta) ? consulta.trim() : '') || 'Punto GPS';
+      // Sin dirección en la ficha («S.N»), la escrita en la búsqueda; nunca una
+      // ficha, matrícula o código, que no son direcciones.
+      var direccion = direccionCatastroValida(ficha && ficha.direccion) ||
+        (consulta && !_parsearCoordenadas(consulta) && !claveBusquedaCatastral(consulta) ? consulta.trim() : '') ||
+        'Punto GPS';
       setHojaImp({
         fecha: new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota',
           day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -694,7 +698,8 @@ function ConsultaNormaScreen() {
         ficha: ficha,
         fichasTexto: fichas.length > 1 ? '1 de ' + fichas.length + ' fichas' : '1 ficha',
         nMas: Math.max(0, fichas.length - 1),
-        coincide: !!coincide,
+        coincide: elegida.coincide,
+        delMunicipio: elegida.municipal,
         filas: filas,
       });
     } finally {
@@ -909,9 +914,9 @@ function ConsultaNormaScreen() {
                 if (!halladas.length) {
                   return catastro.length === 1
                     ? <_TarjetaFichaCatastral r={catastro[0]} expandida={true} />
-                    : <_ListaFichasCatastrales fichas={catastro} maxAlto={420} />;
+                    : <_ListaFichasCatastrales fichas={fichasMunicipalPrimero(catastro)} maxAlto={420} />;
                 }
-                var resto = catastro.filter(r => cats.indexOf(r.catastral) < 0);
+                var resto = fichasMunicipalPrimero(catastro.filter(r => cats.indexOf(r.catastral) < 0));
                 return (
                   <>
                     <div className="cn-cat-rotulo">Coincide con tu búsqueda · {hallado.etiqueta}</div>

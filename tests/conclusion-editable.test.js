@@ -87,3 +87,20 @@ test('el párrafo armado en la casilla del inspector no levanta señales de cohe
     assert.deepEqual(senales.map(s => s.id), [], armado);
   });
 });
+
+// 2026-11-12: el párrafo armado editado pasa por una corrección de escritura
+// en «Revisar»; la respuesta solo vale si es un retoque.
+test('correccionParrafoConclusion: acepta un retoque de escritura y rechaza lo demás', () => {
+  const A3 = 'A3: Bien de uso público o espacio público';
+  const o = 'Las obras corresponden a una ampliación de la edificación existente, las ampliaciones equieren licencia de construcción en esa modalidad (Decreto 1077 de 2015, art. 2.2.6.1.1.7), sin embargo en este caso no es viable toda vez que la construccion se realizo sobre bienes de uso público. Constituyen el comportamiento de construir en bienes de uso público y terrenos afectados al espacio público, previsto en el articulo 135, literal A, numeral 3, de la Ley 1801 de 2016.';
+  const c = o.replace('equieren', 'requieren').replace('construccion se realizo', 'construcción se realizó')
+    .replace('articulo', 'artículo').replace('sin embargo en', 'sin embargo, en');
+  assert.equal(U.correccionParrafoConclusion(o, c, A3), c);
+  assert.equal(U.correccionParrafoConclusion(o, '«' + c + '»', A3), c);
+  assert.equal(U.correccionParrafoConclusion(o, o, A3), '');
+  assert.equal(U.correccionParrafoConclusion(o, c.replace('numeral 3', 'numeral 4'), A3), '');
+  assert.equal(U.correccionParrafoConclusion(o, c.replace('art. 2.2.6.1.1.7', 'art. 2.2.6.1.1.10'), A3), '');
+  assert.equal(U.correccionParrafoConclusion(o, c.replace('. Constituyen', '.\nConstituyen'), A3), '');
+  assert.equal(U.correccionParrafoConclusion(o, 'Las obras se ejecutaron en espacio público sin licencia y deben demolerse.', A3), '');
+  assert.equal(U.correccionParrafoConclusion(o, '', A3), '');
+});

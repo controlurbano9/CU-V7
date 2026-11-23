@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   codificarPolilinea, simplificarAnillo, zoomMapaEstatico, escalaMapaEstatico,
   urlMapaEstatico, filasNormaImpresion, condicionaNorma,
+  fichaImpresionNorma, fichasMunicipalPrimero, direccionCatastroValida,
 } = require('../utils.js');
 
 test('codificarPolilinea — ejemplo de la documentación de Google', () => {
@@ -90,4 +91,30 @@ test('condicionaNorma — un predio del Municipio condiciona aunque el POT no', 
   assert.deepEqual(condicionaNorma(f, true), ['Predio público']);
   const g = filasNormaImpresion({ sueloProt: 'SI', amenaza: 'NO', enRetiro: 'NO' }, 'Comuna 3');
   assert.deepEqual(condicionaNorma(g, true), ['Predio público', 'Suelo de protección']);
+});
+
+test('fichaImpresionNorma — en predio del Municipio se imprime su ficha, no la de un poseedor', () => {
+  const poseedor = { catastral: 'A1', propietario: 'WALTER ALONSO GARCIA TORRES', municipal: false };
+  const otro = { catastral: 'A2', propietario: 'OTRA PERSONA', municipal: false };
+  const muni = { catastral: 'A3', propietario: 'MUNICIPIO DE BELLO', esRazonSocial: true, municipal: true };
+  // Sin búsqueda: la del Municipio aunque no sea la primera.
+  let r = fichaImpresionNorma([poseedor, otro, muni], []);
+  assert.equal(r.ficha, muni);
+  assert.equal(r.municipal, true);
+  assert.equal(r.coincide, false);
+  // La búsqueda calzó con un poseedor: igual sale el Municipio.
+  r = fichaImpresionNorma([poseedor, muni], ['A1']);
+  assert.equal(r.ficha, muni);
+  assert.equal(r.coincide, false);
+  // Predio privado: la que coincide o la primera, como antes.
+  assert.equal(fichaImpresionNorma([poseedor, otro], ['A2']).ficha, otro);
+  assert.equal(fichaImpresionNorma([poseedor, otro], ['A2']).coincide, true);
+  assert.equal(fichaImpresionNorma([poseedor, otro], []).ficha, poseedor);
+  assert.equal(fichaImpresionNorma([], []).ficha, null);
+  // «S.N» no es una dirección.
+  for (const sn of ['S.N', 'SN', 'S/N', 's.n.', 'SIN DIRECCION', '']) assert.equal(direccionCatastroValida(sn), '');
+  assert.equal(direccionCatastroValida(' CL 50 # 32-10 '), 'CL 50 # 32-10');
+  assert.equal(direccionCatastroValida('SAN NICOLAS'), 'SAN NICOLAS');
+  // En pantalla, la del Municipio arriba.
+  assert.deepEqual(fichasMunicipalPrimero([poseedor, muni, otro]), [muni, poseedor, otro]);
 });
