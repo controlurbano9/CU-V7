@@ -407,15 +407,28 @@ function coincideReiterado(f, texto) {
 }
 
 // Qué tecleó el inspector: 'radicado' (8+ dígitos), 'oficio' (OFICIO-…),
-// 'orden' (AAAA-MM-NNN o solo el consecutivo) o 'direccion'.
+// 'expediente' («Exp. 2327»), 'orden' (AAAA-MM-NNN o solo el consecutivo)
+// o 'direccion'.
 function tipoBusquedaCaso(texto) {
   var t = String(texto == null ? '' : texto).trim().toUpperCase();
   if (!t) return '';
   var compacto = t.replace(/\s+/g, '');
   if (/^OFICIO-?\d/.test(compacto)) return 'oficio';
+  if (/^EXP(EDIENTE)?\.?\d/.test(compacto)) return 'expediente';
   if (/^\d{8,}$/.test(compacto)) return 'radicado';
   if (/^\d{4}-\d{1,2}-\d{1,4}$/.test(compacto) || /^\d{1,4}$/.test(compacto)) return 'orden';
   return 'direccion';
+}
+
+// Número de expediente que se puede estar buscando (2026-11-24, decisión del
+// usuario: la Agenda busca también por expediente): «Exp. 2327», «exp2327»
+// o el número solo, hasta 6 dígitos, sin ceros a la izquierda. '' si no.
+function _expedienteBuscado(texto) {
+  var m = /^(?:EXP(?:EDIENTE)?\.?)?0*(\d{1,6})$/.exec(String(texto == null ? '' : texto).toUpperCase().replace(/\s+/g, ''));
+  return m ? m[1] : '';
+}
+function _expedienteComparable(f) {
+  return expedienteDe(f).replace(/\s+/g, '').replace(/^0+/, '');
 }
 
 // Clave de caso de una fila: su radicado si identifica un caso; si no (V2
@@ -476,7 +489,15 @@ function buscarCasos(filas, texto) {
     }
   }
   var coincide = null;
-  if (tipo === 'oficio' || tipo === 'orden') {
+  // Expediente: con «Exp.» delante, solo expediente; un número solo (1 a 6
+  // dígitos) puede ser el consecutivo de la orden o el expediente, y se
+  // buscan los dos (los expedientes van por los miles y los consecutivos de
+  // orden por los cientos: casi no se cruzan).
+  var expQ = _expedienteBuscado(t);
+  var porExp = expQ ? function (f) { return _expedienteComparable(f) === expQ; } : null;
+  if (tipo === 'expediente') {
+    coincide = porExp;
+  } else if (tipo === 'oficio' || tipo === 'orden') {
     var q = _sinCerosTramos(t.replace(/\s+/g, '').replace(/^OFICIO-?/, ''));
     var soloConsecutivo = /^\d+$/.test(q);
     coincide = function (f) {
@@ -486,14 +507,21 @@ function buscarCasos(filas, texto) {
     };
   } else if (tipo === 'direccion') {
     var k = claveBusquedaDireccion(t);
-    if (k.length < 4) return { tipo: tipo, casos: [] };
-    coincide = function (f) {
+    if (k.length < 4 && !porExp) return { tipo: tipo, casos: [] };
+    coincide = k.length < 4 ? function () { return false; } : function (f) {
       var d = _direccionDeFila(f);
       return !!d && claveBusquedaDireccion(d).indexOf(k) !== -1;
     };
   }
   if (!coincide) return { tipo: tipo, casos: [] };  // 'radicado' sin coincidencia exacta
-  return { tipo: tipo, casos: _agruparCasos(lista.filter(coincide), lista) };
+  if (porExp && tipo !== 'expediente') {
+    var base = coincide;
+    coincide = function (f) { return base(f) || porExp(f); };
+  }
+  var casos = _agruparCasos(lista.filter(coincide), lista);
+  // porExpediente: el caso salió por su expediente (la lista lo muestra).
+  if (porExp) casos.forEach(function (c) { if (c.visitas.some(porExp)) c.porExpediente = expQ; });
+  return { tipo: tipo, casos: casos };
 }
 
 // Casos de OTRO radicado en la misma dirección (misma placa, sin mirar la

@@ -375,7 +375,7 @@ function AgendaSemana({ usuario }) {
   const porAgendar = useMemoAS(
     () => semana.dias.map(d => porAgendarDia(datosEf, candidatas, d.date)),
     [datosEf, candidatas, semana]);
-  // Buscador: otro caso (radicado, orden, dirección), desde 3 caracteres.
+  // Buscador: otro caso (radicado, expediente, orden, dirección), desde 3 caracteres.
   const resultados = useMemoAS(() => {
     if (!datos || q.trim().length < 3) return [];
     return (buscarCasos(datosEf, q).casos || []).filter(c => !c.sinRadicado).slice(0, 8);
@@ -921,7 +921,7 @@ function AgendaSemana({ usuario }) {
             <div className="as-buscar">
               <Icon.Search size={16} />
               <input type="search" value={q} autoComplete="off" onChange={e => { setQ(e.target.value); setRegistrando(false); }}
-                aria-label="Buscar un caso" placeholder="Radicado, orden o dirección" />
+                aria-label="Buscar un caso" placeholder="Radicado, expediente, orden o dirección" />
             </div>
             {esAdmin && q.trim().length < 3 && comunasZona.length > 1 && (
               <div className="as-seg" role="group" aria-label="Comuna">

@@ -22,6 +22,28 @@ const FILAS = [
   { _idx: 50, 'RADICADO': '', 'N° VISITA': '1', 'DIRECCION': 'CR 68C # 59E-51' },  // sin radicado: no es caso
 ];
 
+test('buscarCasos encuentra por expediente, con «Exp.» o el número solo', () => {
+  const filas = [
+    { _idx: 1, 'RADICADO': '20251004600', 'N° VISITA': '3', 'DIRECCION': 'CL 52 56A-13', 'EXPEDIENTE': '2254', 'ESTADO VISITA': 'ASIGNADO' },
+    { _idx: 2, 'RADICADO': '20251004600', 'N° VISITA': '2', 'DIRECCION': 'CL 52 56A-13', 'ESTADO VISITA': 'COMPLETADO' },
+    { _idx: 3, 'RADICADO': 'OFICIO-2026-09-254', 'N° VISITA': '1', 'DIRECCION': 'CR 50 # 10-10', 'N° ORDEN DE POLICIA': '2026-09-254', 'ESTADO VISITA': 'COMPLETADO' },
+    { _idx: 4, 'RADICADO': '20261000001', 'N° VISITA': '1', 'DIRECCION': 'CR 60 # 1-1', 'EXPEDIENTE': 'NUEVO', 'ESTADO VISITA': 'PENDIENTE' },
+    { _idx: 5, 'RADICADO': '20261000002', 'N° VISITA': '1', 'DIRECCION': 'CR 61 # 1-1', 'EXPEDIENTE': '12345', 'ESTADO VISITA': 'PENDIENTE' },
+  ];
+  assert.equal(tipoBusquedaCaso('Exp. 2254'), 'expediente');
+  let r = buscarCasos(filas, 'Exp. 2254');
+  assert.deepEqual(r.casos.map(c => c.radicado), ['20251004600']);
+  assert.equal(r.casos[0].visitas.length, 2);
+  assert.equal(r.casos[0].porExpediente, '2254');
+  assert.deepEqual(buscarCasos(filas, 'exp2254').casos.map(c => c.radicado), ['20251004600']);
+  // Número solo: la orden con ese consecutivo o el expediente.
+  assert.deepEqual(buscarCasos(filas, '254').casos.map(c => c.radicado), ['OFICIO-2026-09-254']);
+  assert.deepEqual(buscarCasos(filas, '2254').casos.map(c => c.radicado), ['20251004600']);
+  // Cinco dígitos (se leía como dirección) y «NUEVO» no es expediente.
+  assert.deepEqual(buscarCasos(filas, '12345').casos.map(c => c.radicado), ['20261000002']);
+  assert.deepEqual(buscarCasos(filas, 'Exp. 0').casos, []);
+});
+
 test('tipoBusquedaCaso distingue radicado, oficio, orden y dirección', () => {
   assert.equal(tipoBusquedaCaso('20251143210'), 'radicado');
   assert.equal(tipoBusquedaCaso('oficio-2026-09-239'), 'oficio');
