@@ -351,10 +351,11 @@ function PanelSeleccionInspector({ f, busy, abierto, inspectores,
 // el webhook falla.
 async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expediente) {
   const estActual = normalizarEstado(f ? (f['ESTADO VISITA'] || f[13] || '') : '');
-  // La inspección al lugar sin iniciar se cambia en Agenda › Inspecciones:
-  // asignarla aquí movía su día sin mirar la hora ni los cruces (2026-11-09).
+  // La inspección al lugar sin iniciar se cambia en la Agenda: asignarla
+  // aquí movía su día sin mirar la hora ni los cruces (2026-11-09). Las
+  // pantallas no la ofrecen (Semana: puedeReasignar); esto queda de red.
   if (f && esInspeccionLugar(f) && estActual !== 'INICIADO') {
-    await appAlert('La inspección al lugar se cambia en Agenda › Inspecciones, donde se revisan la hora y los cruces con las visitas.',
+    await appAlert('La inspección al lugar se cambia en la Agenda, donde se revisan la hora y los cruces con las visitas.',
       { titulo: 'Inspección al lugar' });
     return false;
   }

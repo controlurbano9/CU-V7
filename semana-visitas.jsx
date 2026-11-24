@@ -306,7 +306,11 @@ function SemanaCard({ f, movil, onAbrir, n, arrastrable, ordenable, onDragStart,
   const [reasignando, setReasignando] = useStateSV(false);
   const [ocupada, setOcupada] = useStateSV(false);
   const e = normalizarEstado(f['ESTADO VISITA'] || f[13] || '');
+  // La inspección al lugar sin iniciar no se reasigna aquí: día, hora e
+  // inspector se cambian en la Agenda (asignarVisitaAdmin la rechaza; antes
+  // el panel se abría y después avisaba que no).
   const puedeReasignar = !!onReasignar && (e === 'ASIGNADO' || e === 'INICIADO') &&
+    !(esInspeccionLugar(f) && e !== 'INICIADO') &&
     inspectores && inspectores.length > 0;
   async function reasignar(fila, nombre, fv, fecha) {
     setOcupada(true);

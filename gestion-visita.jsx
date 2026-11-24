@@ -266,7 +266,7 @@ function GestionVisita({ f, todas, inspectores, acciones, onNuevaVisita }) {
 
   const abrirPanel = (id) => setAsignandoFila(asignandoFila === id ? null : id);
   // La inspección al lugar sin iniciar no se asigna ni se reasigna aquí: su
-  // día, hora e inspector se cambian en Agenda › Inspecciones, que revisa los
+  // día, hora e inspector se cambian en la Agenda, que revisa los
   // cruces (2026-11-09). Asignar desde aquí movía su día sin mirar la hora.
   const inspSinIniciar = esInspeccionLugar(f) && est !== 'INICIADO';
   const irAgendaInsp = () => window.dispatchEvent(new CustomEvent('cu-ir-agenda-inspeccion',

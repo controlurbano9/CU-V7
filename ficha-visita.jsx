@@ -76,7 +76,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
   const empezada = est === 'INICIADO' || terminada;
   const esAdmin = usuario && usuario.rol === 'ADMIN';
   // «Ver en la Agenda» de la inspección al lugar: admin y supervisores, que la
-  // programan en la Agenda › Inspecciones (2026-11-03).
+  // programan en la Agenda (2026-11-03).
   const veAgendaInsp = !!usuario && veTodasLasVisitas(usuario.rol);
   const tono = cerrada ? { cls: '', label: motivoCierreBuscar(f) } : (_ESTADO_PANEL_MV[est] || { cls: '', label: est || '—' });
   const dir = f['DIRECCION INFRACCION'] || f['DIRECCION'] || 'Sin dirección';
@@ -334,7 +334,7 @@ function FichaVisita({ f, usuario, verPrioridad, onContinuar, onCerrar, gestion,
 
       {/* Gestión (E5 la inyecta): barra fija al pie, fuera de la información
           (decisión del usuario 2026-10-12). La inspección al lugar ya no se
-          programa aquí: va en la Agenda › Inspecciones (2026-11-03). */}
+          programa aquí: va en la Agenda (2026-11-03). */}
       {gestion && <div className="fv-gestion-pie">{gestion}</div>}
     </div>
   );

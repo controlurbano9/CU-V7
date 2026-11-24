@@ -409,7 +409,7 @@ function ReprogramarHoja({ cita, onCerrar, onListo }) {
 // borraba la fecha de citación real de la visita; el servidor también lo rechaza.
 function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLiberar, onDecretar, yaDecretada, onReprogramada }) {
   // Inspección al lugar decretada en la audiencia (2026-11-03): el caso queda
-  // en «Por programar» de la Agenda › Inspecciones, sin fecha todavía.
+  // en «Por agendar» de la Agenda, sin fecha todavía.
   const [decreto, setDecreto] = useStateAU('');   // '' | 'enviando' | 'ok' | mensaje de error
   const [reprogramando, setReprogramando] = useStateAU(false);
   const c = cita;
@@ -420,7 +420,7 @@ function CitaHoja({ cita, hoyTxt, esAdmin, ocupado, onCerrar, onVerVisita, onLib
     // se confirma, como «Liberar cita».
     const ok = await appConfirm('¿Decretar inspección al lugar para ' +
       (c.radicado ? 'el radicado ' + c.radicado : 'la orden ' + (c.ordenPolicia || '?')) + '?\n\n' +
-      'El caso queda en «Por programar» de la Agenda › Inspecciones.',
+      'El caso queda en la Agenda, en «Por agendar» del día de su zona.',
       { titulo: 'Decretar inspección', btnOk: 'Sí, decretar', btnCancel: 'Cancelar' });
     if (!ok) return;
     setDecreto('enviando');
@@ -1864,7 +1864,7 @@ function AudienciasScreen({ usuario }) {
     async function decretar(e) {
       e.stopPropagation();
       const ok = await appConfirm('¿Decretar inspección al lugar ' + caso + '?\n\n' +
-        'El caso queda en «Por programar» de la Agenda › Inspecciones.',
+        'El caso queda en la Agenda, en «Por agendar» del día de su zona.',
         { titulo: 'Decretar inspección', btnOk: 'Sí, decretar', btnCancel: 'Cancelar' });
       if (!ok) return;
       setDecretando(k);
