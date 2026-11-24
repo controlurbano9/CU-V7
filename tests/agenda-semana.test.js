@@ -295,7 +295,7 @@ test('envioBorrador: agrupa por inspector y fecha; el mover de inspección va co
   });
   // mover: solo los que no son inspección.
   assert.deepEqual(e.mover, [
-    { fila: 96, radicadoConocido: '20261100096', inspector: MAURICIO, fechaAsignacion: '26/11/2026' },
+    { fila: 96, radicadoConocido: '20261100096', inspector: MAURICIO, fechaAsignacion: '26/11/2026', expediente: '' },
   ]);
   // Borrador sin items: los tres vacíos.
   const v = envioBorrador(borradorVacio(LUN));

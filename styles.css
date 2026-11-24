@@ -6033,10 +6033,59 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-it-visita .as-it-h { display: none; }
 .as-it-visita .as-it-d { grid-column: 1 / 3; }
 .as-it-visita .as-it-s { grid-column: 1 / 4; }
-.as-it-hbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 26px; padding: 0 5px;
-  border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); cursor: pointer; }
-.as-it-hbtn:hover, .as-it-hbtn[aria-expanded="true"] { background: var(--valla-bg); border-color: var(--valla); }
-.as-it-horas { grid-column: 1 / 4; margin-top: 6px; cursor: default; }
+/* La tarjeta con su panel de gestión abierto. */
+.as-it-abierto { background: var(--surface); box-shadow: inset 0 0 0 2px var(--ink); }
+
+/* Panel de gestión de una tarjeta de «El día» (2026-11-24; maqueta
+   propuesta-agenda-gestion.html). Escritorio: encima de «El día», del mismo
+   ancho. <900: hoja desde abajo. Cada dato es una fila de botones del mismo
+   ancho (día · hora · inspector) para que quepa sin desplazamiento. */
+.as-gp { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; overflow: auto;
+  padding: 0 14px 12px; background: var(--surface); border-radius: var(--r-panel); color: var(--ink); }
+.as-gp-velo, .as-gp-asa { display: none; }
+/* Con el panel abierto, «El día» mide al menos lo que el panel (sin desplazamiento aunque haya pocas tarjetas). */
+@media (min-width: 900px) { .as-dia-panel.as-con-gp { min-height: 470px; } }
+.as-gp-cab { display: flex; align-items: flex-start; gap: 6px; margin: 0 -14px; padding: 10px 12px 8px 6px; border-bottom: 1px solid var(--line); }
+.as-gp-volver { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; border: 0; border-radius: var(--r-ctl);
+  background: none; color: var(--ink); cursor: pointer; }
+.as-gp-volver:hover { background: var(--surface-2); }
+.as-gp-tit { min-width: 0; padding-top: 2px; }
+.as-gp-tipo { margin: 0; font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); }
+.as-gp-tit h3 { margin: 0; font: 700 var(--fs-3)/1.2 var(--font-cond); overflow-wrap: anywhere; }
+.as-gp-meta { margin: 2px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
+.as-gp-f { margin-top: 10px; }
+.as-gp-lbl { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); }
+.as-gp-lbl span { font-weight: 400; color: var(--ink-4); }
+.as-gp-lbl .as-gp-aviso { font-weight: 600; color: var(--amarillo); }
+.as-gp-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.as-gp-b { min-height: 40px; padding: 2px 0; border: 0; border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink);
+  font: 600 var(--fs-2)/1.05 var(--font); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+.as-gp-b small { font-size: 11px; font-weight: 400; color: var(--ink-4); }
+.as-gp-b:hover:not(:disabled) { background: var(--surface-3); }
+.as-gp-b[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.as-gp-b[aria-pressed="true"] small { color: rgba(255, 255, 255, .75); }
+.as-gp-b:disabled { background: none; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-4); cursor: not-allowed; }
+.as-gp-b:disabled:not(.as-gp-ins) { text-decoration: line-through; }
+.as-gp-zona:not([aria-pressed="true"]) { box-shadow: inset 0 -3px 0 var(--valla); }
+.as-gp-fila { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.as-gp-fila label { font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); }
+.as-gp-exp { width: 92px; height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); }
+.as-gp-enlace { min-height: 36px; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--fs-1); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.as-gp-fila .as-gp-enlace { margin-left: auto; }
+.as-gp-peligro { color: var(--rojo); }
+.as-gp-enlace:disabled { color: var(--ink-4); cursor: default; }
+.as-gp-motivo { margin: 8px 0 0; padding: 6px 10px; border-radius: var(--r-ctl); background: var(--amarillo-bg); font-size: var(--fs-1); color: var(--ink-2); }
+.as-gp-pie { display: flex; align-items: center; gap: 12px; margin: 10px -14px 0; padding: 10px 14px 0; border-top: 1px solid var(--line); }
+.as-gp-pie .as-btn-llena { margin-left: auto; }
+@media (max-width: 899px) {
+  .as-gp-velo { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(21, 20, 15, .38); }
+  .as-gp { position: fixed; inset: auto 0 0 0; z-index: 1001; max-height: calc(100vh - 40px); border-radius: 16px 16px 0 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(21, 20, 15, .18); }
+  .as-gp-asa { display: block; flex: none; width: 40px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: var(--surface-3); }
+  .as-gp-exp, .as-gp-enlace { min-height: var(--tap); height: var(--tap); }
+  .as-gp-b { min-height: var(--tap); }
+}
 /* Lo del borrador: placa con filete, «Nueva» al inicio del subrenglón y ✕. */
 .as-it-nueva { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
 .as-it-s .as-nueva { color: var(--ink); }
@@ -6119,7 +6168,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-buscar svg { top: 14px; }
   .as-filtros { position: static; }
   .as-quitar { width: var(--tap); height: var(--tap); }
-  .as-mas, .as-hora, .as-elige button, .as-btn-t, .as-it-hbtn, .as-cancelar, .as-seg button { min-height: var(--tap); }
+  .as-mas, .as-hora, .as-elige button, .as-btn-t, .as-cancelar, .as-seg button { min-height: var(--tap); }
   .as-link { display: inline-flex; align-items: center; min-height: var(--tap); }
   .as-pie { position: fixed; left: 0; right: 0; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 30;
     border-radius: 0; border-top: 1px solid var(--line-2); box-shadow: 0 -6px 16px rgba(21, 20, 15, .08); }

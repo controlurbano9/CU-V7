@@ -200,7 +200,8 @@ function AgendaSemana({ usuario }) {
   const arrastre = useRefAS(null);
   const panelRef = useRefAS(null);
   const [abierta, setAbierta] = useStateAS(null);   // clave del caso de la inspección desplegada
-  const [horaDe, setHoraDe] = useStateAS(null);     // _idx de la inspección del tablero con sus horas abiertas
+  const [gestionDe, setGestionDe] = useStateAS(null); // _idx de la tarjeta de «El día» con su panel abierto
+  const [gestionando, setGestionando] = useStateAS(false); // cancelar / devolver en curso
   const [elegidos, setElegidos] = useStateAS({});   // clave del caso → inspector elegido
   const [expedientes, setExpedientes] = useStateAS({}); // clave del caso → expediente tecleado
   const [q, setQ] = useStateAS('');
@@ -309,7 +310,7 @@ function AgendaSemana({ usuario }) {
   }, [hayDatos]);
 
   // Otro día: sin filtro de comuna y sin nada desplegado.
-  useEffectAS(() => { setCom(''); setAbierta(null); setHoraDe(null); }, [diaSel]);
+  useEffectAS(() => { setCom(''); setAbierta(null); setGestionDe(null); }, [diaSel]);
   // El aviso breve se va solo.
   useEffectAS(() => {
     if (!avisoOk) return undefined;
@@ -331,7 +332,7 @@ function AgendaSemana({ usuario }) {
   }
 
   // Otra semana, su borrador guardado.
-  useEffectAS(() => { setBorrador(_asBorradorDe(lunes, quien)); setAbierta(null); setHoraDe(null); }, [lunes]);
+  useEffectAS(() => { setBorrador(_asBorradorDe(lunes, quien)); setAbierta(null); setGestionDe(null); }, [lunes]);
   // Cada cambio se guarda en el equipo (solo el de la semana a la vista).
   useEffectAS(() => {
     if (borrador.lunes === formatearFecha(lunes)) _asGuardarBorrador(borrador, quien);
@@ -760,6 +761,63 @@ function AgendaSemana({ usuario }) {
     if (it.nueva) return true;
     return _normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO';
   };
+  // ── Reglas comunes de «mover o cambiar» (arrastre y panel de gestión) ──
+  // datosEf sin el item del borrador de esa fila: contra qué se revisa el cambio.
+  const itemDe = f => borrador.items.find(x => x.fila === _asFilaBorrador(f)) || null;
+  const datosSin = f => { const it = itemDe(f); return datosConBorrador(datos, it ? borradorQuitar(borrador, it.fila) : borrador); };
+  // Dónde está hoy la tarjeta (con el borrador): día, inspector y hora.
+  const posicionDe = f => {
+    const it = itemDe(f);
+    return { fecha: it ? it.fecha : formatearFecha(f['FECHA ASIGNACION VISITA'] || ''),
+      inspector: it ? it.inspector : primerVisitador(visitadoresBD(f)),
+      hora: esInspeccionLugar(f) ? ((it && it.hora) || horaProgramadaDe(f)) : '',
+      expediente: (it && it.expediente != null ? it.expediente : expedienteDe(filaDeDatos(_asFilaBorrador(f)) || f)) || '' };
+  };
+  // '' si se puede llevar la tarjeta al día k con ese inspector y hora; si no, por qué.
+  function motivoCambio(f, k, insp, hora) {
+    const d = semana.dias[k];
+    if (!d || !d.habil) return 'Ese día es festivo.';
+    if (d.date < hoy0) return 'Ese día ya pasó.';
+    if (inspVisitas.indexOf(insp) < 0) return nombrePila(insp) + ' no recibe visitas de la agenda (⚙ Reglas).';
+    const esInsp = esInspeccionLugar(f);
+    const dEf = datosSin(f);
+    const m = choqueZonaInspeccion(dEf, insp, d.date, f, { inspeccion: esInsp });
+    if (m) return m;
+    // Sin hora programada no hay con qué chocar (antes avisaba «a las  ese día»).
+    if (esInsp && hora && !_asHorasLibres(dEf, insp, d.date, _asFilaBorrador(f)).some(h => horaAudienciasMin(h) === horaAudienciasMin(hora))) {
+      return nombrePila(insp) + ' ya tiene inspección a las ' + horaCortaInspeccion(hora) + ' ese día.';
+    }
+    return '';
+  }
+  // Lleva el cambio al borrador. Si la tarjeta queda igual que en BD, el
+  // cambio sale del borrador (no hay nada que asignar).
+  function aplicarCambio(f, k, insp, hora, expediente) {
+    const d = semana.dias[k];
+    const esInsp = esInspeccionLugar(f);
+    const filaB = _asFilaBorrador(f);
+    const item = itemDe(f);
+    const orig = filaDeDatos(filaB);
+    const exp = expediente != null ? String(expediente) : undefined;
+    if (item) {
+      const nuevo = Object.assign({}, item, { inspector: insp, fecha: d.fecha },
+        esInsp ? { hora: hora || item.hora } : null, exp !== undefined ? { expediente: exp } : null);
+      const igualBD = item.tipo === 'mover' && !!orig && formatearFecha(orig['FECHA ASIGNACION VISITA'] || '') === nuevo.fecha &&
+        primerVisitador(visitadoresBD(orig)) === nuevo.inspector &&
+        (!esInsp || horaAudienciasMin(horaProgramadaDe(orig)) === horaAudienciasMin(nuevo.hora)) &&
+        (exp === undefined || exp === expedienteDe(orig));
+      setBorrador(b => (igualBD ? borradorQuitar(b, filaB) : borradorAgregar(b, nuevo)));
+      return;
+    }
+    const mismo = formatearFecha(f['FECHA ASIGNACION VISITA'] || '') === d.fecha &&
+      primerVisitador(visitadoresBD(f)) === insp &&
+      (!esInsp || horaAudienciasMin(horaProgramadaDe(f)) === horaAudienciasMin(hora)) &&
+      (exp === undefined || exp === expedienteDe(f));
+    if (mismo) return;
+    setBorrador(b => borradorAgregar(b, { tipo: 'mover', fila: f._idx, radicado: String(f['RADICADO'] || '').trim(),
+      inspector: insp, fecha: d.fecha, hora: (esInsp && hora) || undefined,
+      expediente: exp !== undefined && exp !== expedienteDe(f) ? exp : undefined,
+      programadaConocida: esInsp ? _asProgramadaConocida(orig) : '' }));
+  }
   function soltar(k, insp) {
     const a = arrastre.current && arrastre.current.it;
     arrastre.current = null;
@@ -769,24 +827,11 @@ function AgendaSemana({ usuario }) {
     const d = semana.dias[k];
     if (!d.habil || d.date < hoy0) return;
     const f = a.f;
-    const esInsp = esInspeccionLugar(f);
-    const filaB = _asFilaBorrador(f);
-    const item = borrador.items.find(x => x.fila === filaB) || null;
-    const actualIns = primerVisitador(visitadoresBD(f));
-    if (formatearFecha(f['FECHA ASIGNACION VISITA'] || '') === d.fecha && actualIns === insp) return;
-    const dEf = datosConBorrador(datos, item ? borradorQuitar(borrador, filaB) : borrador);
-    const m = choqueZonaInspeccion(dEf, insp, d.date, f, { inspeccion: esInsp });
+    const pos = posicionDe(f);
+    if (pos.fecha === d.fecha && pos.inspector === insp) return;
+    const m = motivoCambio(f, k, insp, pos.hora);
     if (m) { avisar(m); return; }
-    const hora = esInsp ? (item ? item.hora : horaProgramadaDe(f)) : '';
-    // Sin hora programada no hay con qué chocar (antes avisaba «a las  ese día»).
-    if (esInsp && hora && !_asHorasLibres(dEf, insp, d.date, filaB).some(h => horaAudienciasMin(h) === horaAudienciasMin(hora))) {
-      avisar(nombrePila(insp) + ' ya tiene inspección a las ' + horaCortaInspeccion(hora) + ' ese día.');
-      return;
-    }
-    const nuevo = item ? Object.assign({}, item, { inspector: insp, fecha: d.fecha })
-      : { tipo: 'mover', fila: f._idx, radicado: String(f['RADICADO'] || '').trim(), inspector: insp, fecha: d.fecha,
-        hora: hora || undefined, programadaConocida: esInsp ? _asProgramadaConocida(filaDeDatos(f._idx)) : '' };
-    setBorrador(b => borradorAgregar(b, nuevo));
+    aplicarCambio(f, k, insp, pos.hora);
   }
   // Soltar sobre el bloque de un visitador del día elegido.
   function soltarEnVisitador(n) {
@@ -794,27 +839,44 @@ function AgendaSemana({ usuario }) {
     if (a && a.cand) { arrastre.current = null; setDropIns(null); agregarVisita(a.cand, n); return; }
     soltar(diaSel, n);
   }
-  // ── Cambiar la hora de una inspección del día elegido (tocar su hora) ──
-  // Mismo día y mismo inspector: va como reprogramar (mover con hora). Si
-  // queda igual que en BD, el cambio sale del borrador.
-  const puedeCambiarHora = it => it.tipo === 'insp' && !cerrado &&
-    (it.nueva || _normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO');
-  function cambiarHora(it, insp, h) {
-    setHoraDe(null);
-    const f = it.f;
-    const filaB = _asFilaBorrador(f);
-    const item = borrador.items.find(x => x.fila === filaB) || null;
-    const orig = filaDeDatos(filaB);
-    const igualBD = x => !!orig && esInspeccionLugar(orig) && formatearFecha(orig['FECHA ASIGNACION VISITA'] || '') === x.fecha &&
-      primerVisitador(visitadoresBD(orig)) === x.inspector && horaAudienciasMin(horaProgramadaDe(orig)) === horaAudienciasMin(x.hora);
-    if (item) {
-      const nuevo = Object.assign({}, item, { hora: h });
-      setBorrador(b => (item.tipo === 'mover' && igualBD(nuevo) ? borradorQuitar(b, filaB) : borradorAgregar(b, nuevo)));
-      return;
+  // ── Panel de gestión: tocar una tarjeta de «El día» (2026-11-24, decisión
+  // del usuario; maqueta propuesta-agenda-gestion.html) ──
+  // Se gestiona lo que se podría arrastrar: lo nuevo del borrador y lo
+  // ASIGNADO (las visitas, solo el admin). Lo demás (iniciada…) abre la ficha.
+  const gestionable = it => !!it.f && (it.nueva ||
+    (_normEstadoVisitaBD(it.f['ESTADO VISITA'] || '') === 'ASIGNADO' && (esAdmin || it.tipo === 'insp')));
+  // Cancelar una inspección o devolver una visita a «Por agendar»: se escriben
+  // de una vez (con confirmación), no van al borrador.
+  async function accionInmediata(f, payload, okTxt) {
+    setGestionando(true);
+    try {
+      const r = await gasPost(Object.assign({ fila: f._idx, radicadoConocido: String(f['RADICADO'] || '').trim(),
+        idVisita: f['ID_VISITA'] || '' }, payload));
+      if (r && r.ok === false) throw new Error(r.error || 'No se pudo.');
+      setBorrador(b => borradorQuitar(b, f._idx));
+      setGestionDe(null);
+      invalidarCache('visitas');
+      await cargar(true);
+      setAvisoOk(okTxt);
+    } catch (e) {
+      await appAlert(e.message || String(e), { titulo: 'No se pudo', tono: 'error' });
     }
-    if (horaAudienciasMin(horaProgramadaDe(f)) === horaAudienciasMin(h)) return;
-    setBorrador(b => borradorAgregar(b, { tipo: 'mover', fila: f._idx, radicado: String(f['RADICADO'] || '').trim(),
-      inspector: insp, fecha: dia.fecha, hora: h, programadaConocida: _asProgramadaConocida(orig) }));
+    setGestionando(false);
+  }
+  async function cancelarInspeccion(f) {
+    const pos = posicionDe(f);
+    const ok = await appConfirm('La inspección de ' + _asDir(f) + ' (' + pos.fecha + ' · ' + horaCortaInspeccion(pos.hora) +
+      ', ' + nombrePila(pos.inspector) + ') no se va a realizar. Sale de la Agenda y de las listas; en la base queda como cancelada.',
+      { titulo: 'Cancelar la inspección', btnOk: 'Cancelar inspección', btnCancel: 'Volver', peligro: true });
+    if (!ok) return;
+    await accionInmediata(f, { accion: 'cancelarInspeccion', programadaConocida: _asProgramadaConocida(filaDeDatos(f._idx)) },
+      'Inspección cancelada.');
+  }
+  async function devolverVisita(f) {
+    const ok = await appConfirm(_asDir(f) + ' vuelve a «Por agendar», sin inspector ni día.',
+      { titulo: 'Devolver a Por agendar', btnOk: 'Devolver', btnCancel: 'Volver' });
+    if (!ok) return;
+    await accionInmediata(f, { accion: 'desasignarRadicado' }, 'La visita volvió a «Por agendar».');
   }
 
   const partesResumen = [];
@@ -1006,7 +1068,7 @@ function AgendaSemana({ usuario }) {
 
         {/* El día: un bloque por inspector que se va llenando; al pie, el
             borrador con «Asignar» (el único botón lleno de la pantalla). */}
-        <aside className="as-dia-panel" aria-labelledby="as-dia-t" ref={panelRef}>
+        <aside className={'as-dia-panel' + (gestionDe != null ? ' as-con-gp' : '')} aria-labelledby="as-dia-t" ref={panelRef}>
           <div className="as-dia-cab">
             <h2 id="as-dia-t">El día</h2>
             <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}</p>
@@ -1041,11 +1103,8 @@ function AgendaSemana({ usuario }) {
                       onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
                       expediente={it.nueva && esNuevaConExp(it) ? expedienteBorrador(_asFilaBorrador(it.f)) : null}
                       onExpediente={it.nueva && esNuevaConExp(it) ? v => cambiarExpediente(_asFilaBorrador(it.f), v) : null}
-                      horaAbierta={horaDe != null && it.f && horaDe === it.f._idx}
-                      onAbrirHora={puedeCambiarHora(it) ? () => setHoraDe(h => (h === it.f._idx ? null : it.f._idx)) : null}
-                      horas={horaDe != null && it.f && horaDe === it.f._idx
-                        ? _asHorasLibres(datosEf, n, dia.date, _asFilaBorrador(it.f)) : null}
-                      onHora={h => cambiarHora(it, n, h)}
+                      abierto={gestionDe != null && it.f && gestionDe === it.f._idx}
+                      onTocar={gestionable(it) ? () => setGestionDe(it.f._idx) : null}
                       onArrastrar={conDragDia(it)} onFinArrastre={finArrastre} />
                   )) : <p className="as-libre">Libre</p>}
                 </div>
@@ -1065,6 +1124,23 @@ function AgendaSemana({ usuario }) {
               {asignando ? 'Asignando…' : resumen.total ? 'Asignar ' + resumen.total : 'Asignar'}
             </button>
           </div>
+          {(() => {
+            if (gestionDe == null) return null;
+            const it = semana.filas.reduce((acc, fi) => acc.concat(fi.dias[diaSel].items || []), [])
+              .find(x => x.f && x.f._idx === gestionDe);
+            if (!it || !gestionable(it)) return null;
+            return (
+              <PanelGestionAS key={gestionDe} it={it} dias={semana.dias} diaSel={diaSel} inspVisitas={inspVisitas}
+                pos={posicionDe(it.f)} motivoCambio={motivoCambio} ocupado={gestionando}
+                horasLibres={(k, ins) => _asHorasLibres(datosSin(it.f), ins, semana.dias[k].date, _asFilaBorrador(it.f))}
+                onAplicar={(k, ins, hora, exp) => { aplicarCambio(it.f, k, ins, hora, exp); setGestionDe(null); }}
+                onCerrar={() => setGestionDe(null)}
+                onFicha={() => { setGestionDe(null); if (window.abrirVisitaDetail) window.abrirVisitaDetail(filaDeDatos(_asFilaBorrador(it.f)) || it.f); }}
+                onQuitar={it.nueva ? () => { quitar(_asFilaBorrador(it.f)); setGestionDe(null); } : null}
+                onCancelar={!it.nueva && it.tipo === 'insp' && esAdmin ? () => cancelarInspeccion(it.f) : null}
+                onDevolver={!it.nueva && it.tipo !== 'insp' && esAdmin ? () => devolverVisita(it.f) : null} />
+            );
+          })()}
         </aside>
       </div>
 
@@ -1106,7 +1182,7 @@ function AgendaSemana({ usuario }) {
 // onAbrirHora (inspección que se puede reprogramar): la hora es un botón que
 // despliega sus horas libres (horas) dentro del item; onHora elige una.
 function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre, expediente, onExpediente,
-  horaAbierta, onAbrirHora, horas, onHora }) {
+  abierto, onTocar }) {
   const f = it.f;
   const dir = _asDir(f);
   const sub = _asSub(it);
@@ -1115,7 +1191,7 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
     (resaltada != null && f && f._idx === resaltada ? ' as-it-resaltada' : '');
   const title = dir + ' — ' + sub;
   const label = (hora ? hora + ', ' : '') + sub + ', ' + dir;
-  const abrir = () => { if (window.abrirVisitaDetail) window.abrirVisitaDetail(f); };
+  const abrir = () => { if (onTocar) onTocar(); else if (window.abrirVisitaDetail) window.abrirVisitaDetail(f); };
   const tecla = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } };
   // Arrastrable (escritorio) solo si el tablero lo permite (sePuedeArrastrar).
   const arr = onArrastrar ? { draggable: true, onDragStart: onArrastrar, onDragEnd: onFinArrastre } : {};
@@ -1128,15 +1204,11 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
     );
   }
   return (
-    <div className={clase} role="button" tabIndex={0} title={title} aria-label={label}
+    <div className={clase + (abierto ? ' as-it-abierto' : '')} role="button" tabIndex={0} title={title}
+      aria-label={label + (onTocar ? ' — gestionar' : '')} aria-expanded={onTocar ? !!abierto : undefined}
+      data-as-it={f && f._idx != null ? String(f._idx) : undefined}
       onClick={abrir} onKeyDown={tecla} {...arr}>
-      {onAbrirHora ? (
-        <button type="button" className="as-it-h as-it-hbtn" aria-expanded={!!horaAbierta}
-          aria-label={'Cambiar la hora, ahora ' + hora} title="Cambiar la hora"
-          onClick={e => { e.stopPropagation(); onAbrirHora(); }} onKeyDown={e => e.stopPropagation()}>
-          {hora}<Icon.Chevron size={12} />
-        </button>
-      ) : <span className="as-it-h">{hora}</span>}
+      <span className="as-it-h">{hora}</span>
       <span className="as-it-d">{dir}</span>
       {onQuitar ? (
         <button type="button" className="as-quitar" aria-label={'Quitar ' + dir + ' del borrador'}
@@ -1148,18 +1220,6 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
         {it.nueva && <b className="as-nueva">Nueva</b>}
         {it.nueva ? ' · ' : ''}{sub}
       </span>
-      {horaAbierta && horas && (
-        <div className="as-horas as-it-horas" role="group" aria-label={'Hora de ' + dir}
-          onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-          {horas.map(h => {
-            const actual = horaAudienciasMin(h) === horaAudienciasMin(it.hora);
-            return (
-              <button key={h} type="button" className="as-hora" aria-pressed={actual}
-                onClick={() => (actual ? onAbrirHora() : onHora(h))}>{horaCortaInspeccion(h)}</button>
-            );
-          })}
-        </div>
-      )}
       {/* Visita nueva: el expediente del caso lo conoce quien asigna (opcional, solo números). */}
       {onExpediente && (
         <input className="as-exp-it" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
@@ -1168,6 +1228,142 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
           onChange={e => onExpediente(e.target.value.replace(/\D+/g, '').slice(0, 6))} />
       )}
     </div>
+  );
+}
+
+// Panel de gestión de una tarjeta de «El día» (2026-11-24). Cada dato es una
+// fila de botones (día · hora · inspector) para que quepa sin desplazamiento.
+// Los cambios van al borrador (onAplicar); cancelar y devolver se escriben de
+// una vez desde el padre. motivoCambio(f, k, ins, hora) → '' o por qué no.
+function PanelGestionAS({ it, dias, diaSel, inspVisitas, pos, motivoCambio, horasLibres, ocupado,
+  onAplicar, onCerrar, onFicha, onQuitar, onCancelar, onDevolver }) {
+  const f = it.f;
+  const esInsp = it.tipo === 'insp';
+  const kPos = dias.findIndex(d => d.fecha === pos.fecha);
+  const [k, setK] = useStateAS(kPos >= 0 ? kPos : diaSel);
+  const [ins, setIns] = useStateAS(pos.inspector);
+  const [hora, setHora] = useStateAS(pos.hora);
+  const [exp, setExp] = useStateAS(pos.expediente);
+  const volverRef = useRefAS(null);
+  const cerrarRef = useRefAS(null);
+  useEffectAS(() => {
+    volverRef.current = document.activeElement;
+    if (cerrarRef.current) cerrarRef.current.focus();
+    const tecla = e => { if (e.key === 'Escape') onCerrar(); };
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('keydown', tecla);
+      const v = volverRef.current;
+      if (v && document.contains(v)) v.focus();
+    };
+  }, []);
+
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const grupo = esInsp ? diaGrupoInspeccion(f) : '';
+  const libres = esInsp ? horasLibres(k, ins).map(horaAudienciasMin) : [];
+  const hMin = horaAudienciasMin(hora);
+  const cambio = dias[k].fecha !== pos.fecha || ins !== pos.inspector ||
+    (esInsp && hMin !== horaAudienciasMin(pos.hora)) || String(exp || '') !== String(pos.expediente || '');
+  const motivo = cambio ? motivoCambio(f, k, ins, hora) : '';
+  const tipoTxt = esInsp ? 'Inspección al lugar' : 'Visita asignada';
+  const cuando = AS_DIAS[dias[k].date.getDay()] + ' ' + dias[k].date.getDate() + (esInsp && hora ? ' · ' + horaCortaInspeccion(hora) : '');
+  const barrio = String(f['BARRIO/VEREDA'] || f['BARRIO'] || '').trim();
+  const com = f['COMUNA'] ? etiquetaComuna(claveComunaAgenda(f['COMUNA']) || f['COMUNA']) : '';
+  const rad = String(f['RADICADO'] || '').trim();
+  const fueraZona = esInsp && grupo && dias[k].zona !== grupo;
+
+  return (
+    <>
+      <div className="as-gp-velo" onClick={onCerrar} aria-hidden="true"></div>
+      <div className="as-gp" role="dialog" aria-modal="false" aria-labelledby="as-gp-dir">
+        <span className="as-gp-asa" aria-hidden="true"></span>
+        <div className="as-gp-cab">
+          <button type="button" className="as-gp-volver" ref={cerrarRef} aria-label="Volver a El día" onClick={onCerrar}>
+            <Icon.ArrowLeft size={18} />
+          </button>
+          <div className="as-gp-tit">
+            <p className="as-gp-tipo">{tipoTxt}{it.nueva ? ' · nueva' : ''} · {cuando}</p>
+            <h3 id="as-gp-dir">{_asDir(f)}</h3>
+            <p className="as-gp-meta">
+              {pos.expediente ? <><span className="exp-tag">Exp. {pos.expediente}</span> · </> : null}
+              {rad ? 'Rad. ' + rad : ''}{barrio ? ' · ' + barrio : ''}{com ? ' · ' + com : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="as-gp-f">
+          <div className="as-gp-lbl">Día{fueraZona ? <span className="as-gp-aviso">fuera de su zona</span>
+            : esInsp && grupo ? <span>raya amarilla = su zona</span> : null}</div>
+          <div className="as-gp-seg" role="group" aria-label="Día">
+            {dias.map((d, j) => {
+              const bloq = !d.habil || d.date < hoy;
+              return (
+                <button key={d.fecha} type="button" className={'as-gp-b' + (esInsp && grupo && d.zona === grupo ? ' as-gp-zona' : '')}
+                  aria-pressed={j === k} disabled={!!bloq} title={bloq ? (d.habil ? 'Ese día ya pasó' : 'Festivo') : undefined}
+                  onClick={() => setK(j)}>{AS_DIAS[d.date.getDay()]} {d.date.getDate()}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {esInsp && (
+          <div className="as-gp-f">
+            <div className="as-gp-lbl">Hora<span>libres de {nombrePila(ins)}</span></div>
+            <div className="as-gp-seg" role="group" aria-label="Hora">
+              {HORAS_INSPECCION.map(h => {
+                const m = horaAudienciasMin(h);
+                const libre = libres.indexOf(m) >= 0;
+                return (
+                  <button key={h} type="button" className="as-gp-b" aria-pressed={m === hMin} disabled={!libre}
+                    aria-label={horaLargaInspeccion(h) + (libre ? '' : ', ocupada')}
+                    title={libre ? undefined : nombrePila(ins) + ' ya tiene inspección a esa hora'}
+                    onClick={() => setHora(h)}>{horaCortaInspeccion(h).replace(':00', '')}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="as-gp-f">
+          <div className="as-gp-lbl">Inspector{esInsp && hora ? <span>a las {horaCortaInspeccion(hora)}</span> : null}</div>
+          <div className="as-gp-seg" role="group" aria-label="Inspector">
+            {inspVisitas.map(n => {
+              const m = motivoCambio(f, k, n, esInsp ? hora : '');
+              const yaEs = n === pos.inspector && dias[k].fecha === pos.fecha &&
+                (!esInsp || horaAudienciasMin(hora) === horaAudienciasMin(pos.hora));
+              const bloq = !!m && !yaEs;
+              const sub = bloq ? (/zona/i.test(m) ? 'otra zona' : 'ocupado') : (esInsp ? 'libre' : '');
+              return (
+                <button key={n} type="button" className="as-gp-b as-gp-ins" aria-pressed={n === ins} disabled={bloq}
+                  title={bloq ? m : n} onClick={() => setIns(n)}>
+                  {nombrePila(n)}{sub ? <small>{sub}</small> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="as-gp-fila">
+          <label htmlFor="as-gp-exp">Exp.</label>
+          <input id="as-gp-exp" className="as-gp-exp" type="text" inputMode="numeric" autoComplete="off" maxLength={6}
+            placeholder="—" value={exp || ''} onChange={e => setExp(e.target.value.replace(/\D+/g, '').slice(0, 6))} />
+          <button type="button" className="as-gp-enlace" onClick={onFicha}>Ver la ficha ›</button>
+        </div>
+
+        {motivo && <p className="as-gp-motivo" role="status">{motivo}</p>}
+
+        <div className="as-gp-pie">
+          {onQuitar ? <button type="button" className="as-gp-enlace" onClick={onQuitar}>Quitar del borrador</button>
+            : onCancelar ? <button type="button" className="as-gp-enlace as-gp-peligro" onClick={onCancelar} disabled={ocupado}>Cancelar inspección…</button>
+            : onDevolver ? <button type="button" className="as-gp-enlace" onClick={onDevolver} disabled={ocupado}>Devolver a Por agendar</button>
+            : <span></span>}
+          <button type="button" className="as-btn-llena" disabled={!!motivo || ocupado}
+            onClick={() => (cambio ? onAplicar(k, ins, esInsp ? hora : '', exp) : onCerrar())}>
+            {ocupado ? 'Guardando…' : cambio ? 'Al borrador' : 'Listo'}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 

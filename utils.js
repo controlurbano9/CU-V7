@@ -6861,7 +6861,7 @@ function envioBorrador(b) {
     }
     if (x.tipo === 'mover') {
       mover.push({ fila: x.fila, radicadoConocido: x.radicado,
-        inspector: x.inspector, fechaAsignacion: x.fecha });
+        inspector: x.inspector, fechaAsignacion: x.fecha, expediente: x.expediente || '' });
       return;
     }
     var k = x.inspector + '|' + x.fecha;

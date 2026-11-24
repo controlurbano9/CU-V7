@@ -488,7 +488,10 @@ function _procesarVisitas(filas, nums) {
     .filter(o => o['RADICADO'] && o['RADICADO'].trim() !== '')
     // Fila propia de una PQR marcada como reiterada de otro caso: no es una
     // visita por hacer (mismo criterio que _compactarBdVisitas del backend).
-    .filter(o => jEst < 0 || (o[jEst] || '').toUpperCase() !== 'REITERADO');
+    .filter(o => jEst < 0 || (o[jEst] || '').toUpperCase() !== 'REITERADO')
+    // Inspección al lugar cancelada desde la Agenda (2026-11-24): no se hará.
+    // La fila queda en el Sheet; en la app no sale en ninguna pantalla.
+    .filter(o => jEst < 0 || (o[jEst] || '').toUpperCase() !== 'CANCELADO');
   // NO COMPETENCIA fuera de la app (decisión del usuario, 2026-09-25), salvo
   // Buscar: un radicado viejo tiene que encontrarse (2026-10-15). Van aparte,
   // en `noCompetencia`, y solo Buscar las junta con `datos`.
