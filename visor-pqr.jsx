@@ -20,6 +20,27 @@ const VP_ZOOM_MAX = 4;
 const VP_ANCHO_MAX = 900;    // ancho de la página con zoom 1 en pantallas grandes
 const VP_CANVAS_MAX = 4096;  // ancho máximo del lienzo: más reventaría la memoria de un Android barato
 
+// PDF de más de 15 MB (tope de obtenerPdfPqr en el backend): no cabe en una
+// respuesta del webhook. Se abre con su enlace de Drive (2026-11-24, decisión
+// del usuario). Ojo: si los PDF se cierran (cerrarPdfsPqr), ese enlace solo
+// abre con la cuenta dueña del Drive.
+function _vpEsMuyGrande(res) {
+  return !!(res && !res.ok && /demasiado grande/i.test(String(res.error || '')));
+}
+// Enlace de Drive de la PQR: primero la columna LINK_PDF_RADICADO de la copia
+// local de la BD; si la fila no lo tiene (un reiterado, una fila vieja), el
+// backend lo busca por nombre en las carpetas del descargador.
+async function _vpLinkDrive(radicado) {
+  const r = claveRadicado(radicado);
+  try {
+    const bd = await leerVisitas();
+    const f = ((bd && bd.datos) || []).find(x => claveRadicado(x['RADICADO']) === r && linkPdfRadicado(x));
+    if (f) return linkPdfRadicado(f);
+  } catch (e) { /* sin copia local: se pregunta al backend */ }
+  const res = await linksPdfReiterados([r]);
+  return (res && res.ok && res.links && (res.links[r] || res.links[radicado])) || '';
+}
+
 function abrirPqr(radicado) {
   const r = String(radicado || '').trim();
   if (!r) return;
@@ -41,6 +62,7 @@ function VisorPqr({ radicado, onCerrar }) {
   const [estado, setEstado] = useStateVP('cargando'); // cargando | listo | error
   const [mensaje, setMensaje] = useStateVP('');
   const [reintentable, setReintentable] = useStateVP(false);
+  const [drive, setDrive] = useStateVP(null); // PDF muy grande: null | 'buscando' | url | ''
   const [paginas, setPaginas] = useStateVP(0);
   const [zoom, setZoom] = useStateVP(1);
   const [intento, setIntento] = useStateVP(0);
@@ -84,7 +106,7 @@ function VisorPqr({ radicado, onCerrar }) {
   // Traer el PDF y abrirlo con pdf.js.
   useEffectVP(function () {
     let vivo = true;
-    setEstado('cargando'); setMensaje(''); setReintentable(false);
+    setEstado('cargando'); setMensaje(''); setReintentable(false); setDrive(null);
     (async function () {
       try {
         if (navigator.onLine === false) {
@@ -92,6 +114,15 @@ function VisorPqr({ radicado, onCerrar }) {
         }
         const [res, pdfjs] = await Promise.all([obtenerPdfPqr(radicado), cargarPdfJs()]);
         if (!vivo) return;
+        if (_vpEsMuyGrande(res)) {
+          const mb = /(\d+)\s*MB/.exec(res.error);
+          setEstado('error');
+          setMensaje('Esta PQR' + (mb ? ' pesa ' + mb[1] + ' MB y' : '') + ' es muy pesada para verla dentro de la app. Ábrela en Drive.');
+          setDrive('buscando');
+          const url = await _vpLinkDrive(radicado).catch(() => '');
+          if (vivo) setDrive(url || '');
+          return;
+        }
         if (!res || !res.ok) {
           setEstado('error');
           setMensaje((res && res.error) || 'No se pudo abrir la PQR.');
@@ -212,6 +243,11 @@ function VisorPqr({ radicado, onCerrar }) {
         {estado === 'error' && (
           <div className="rfm-fallo vp-error" role="alert">
             <span>{mensaje}</span>
+            {drive === 'buscando' && <span className="vp-error-nota">Buscando el enlace…</span>}
+            {drive && drive !== 'buscando' && (
+              <a className="vp-reintentar vp-drive" href={drive} target="_blank" rel="noopener noreferrer">Abrir en Drive</a>
+            )}
+            {drive === '' && <span className="vp-error-nota">No se encontró el enlace de Drive. Pídesela al administrador.</span>}
             {reintentable && (
               <button type="button" className="vp-reintentar" onClick={function () { setIntento(function (i) { return i + 1; }); }}>
                 Reintentar

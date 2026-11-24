@@ -5860,6 +5860,8 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .vp-lienzo { width: max-content; min-width: 100%; }
 .vp-pag { display: block; margin: 0 auto 12px; background: #fff; box-shadow: 0 1px 3px rgba(21,20,15,.18); }
 .vp-error { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.vp-drive { display: inline-flex; align-items: center; text-decoration: none; }
+.vp-error-nota { font-size: var(--fs-1); color: rgba(255, 255, 255, .78); }
 .vp-reintentar { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-ctl); background: var(--surface); color: var(--ink); font-family: inherit; font-size: var(--fs-2); font-weight: 600; cursor: pointer; }
 .vp .rfm-zoom button:disabled { opacity: .35; cursor: default; }
 @media (pointer: coarse) { .vp .rfm-zoom button { width: 44px; height: 44px; } }
