@@ -355,19 +355,9 @@ async function asignarVisitaAdmin(fila, inspector, f, fechaAsignacion, expedient
   // aquí movía su día sin mirar la hora ni los cruces (2026-11-09). Las
   // pantallas no la ofrecen (Semana: puedeReasignar); esto queda de red.
   if (f && esInspeccionLugar(f) && estActual !== 'INICIADO') {
-    await appAlert('La inspección al lugar se cambia en la Agenda, donde se revisan la hora y los cruces con las visitas.',
+    await appAlert('La inspección al lugar se cambia en la Agenda, donde se revisa la hora.',
       { titulo: 'Inspección al lugar' });
     return false;
-  }
-  // Inspecciones y visitas no se cruzan (choqueZonaInspeccion): el día con
-  // inspección es de su zona. Una iniciada no cambia de día al reasignarla.
-  if (f && estActual !== 'INICIADO') {
-    const bd = await leerVisitas().catch(() => null);
-    const cruce = choqueZonaInspeccion((bd && bd.datos) || [], inspector, fechaAsignacion || hoyDDMMAAAA(), f, { inspeccion: false });
-    if (cruce) {
-      await appAlert(cruce, { titulo: 'Se cruza con una inspección', tono: 'error' });
-      return false;
-    }
   }
   if (estActual === 'INICIADO') {
     const actual = primerVisitador(visitadoresBD(f));

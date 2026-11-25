@@ -6480,10 +6480,9 @@ function inspectorConfirmacionInspeccion(plan, elegido, libres) {
 // El día con inspección al lugar es de la zona de la inspección (su grupo de
 // comunas, diaGrupoInspeccion): ese día el inspector solo lleva visitas de
 // esa zona, y la inspección cuenta como una visita más para la meta
-// (visitasDelDia ya la cuenta). Bloquea, no avisa. Lo usan Agenda ›
-// Inspecciones (programar y arrastrar), Agenda › Visitas («+ AH» y
-// «Asignar»), asignarVisitaAdmin (Buscar, ficha, Semana) y mover de día en la
-// Semana. Sin comuna conocida no hay zona y no se bloquea.
+// (visitasDelDia ya la cuenta). Desde 2026-11-25 NO bloquea nada (decisión
+// del usuario): solo la usa «Proponer» de la Agenda (vía choqueZonaDia) para
+// no sugerirle visitas de la zona del día a quien tiene inspección en otra.
 // tests/inspecciones-visitas.test.js.
 var ZONAS_INSPECCION_TEXTO = { 1: 'las comunas 1, 2 y 3', 2: 'las comunas 4, 5 y 6',
   3: 'las comunas 7, 8 y 9', 4: 'las comunas 10, 11 y 12', 5: 'la zona rural' };

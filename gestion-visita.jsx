@@ -51,16 +51,6 @@ function useGestionVisita({ datos, recargar }) {
     setBusyFila(filaOrigen);
     try {
       const fOrigen = filaDe(filaOrigen);
-      // La visita nueva es del mismo predio: no va a un día con inspección de
-      // otra zona (choqueZonaInspeccion). Sin DILIGENCIA, cuenta como visita.
-      const bd = await leerVisitas().catch(() => null);
-      const cruce = fOrigen ? choqueZonaInspeccion((bd && bd.datos) || [], inspector, fechaAsignacion || hoyDDMMAAAA(),
-        Object.assign({}, fOrigen, { _idx: null }), { inspeccion: false }) : '';
-      if (cruce) {
-        await appAlert(cruce, { titulo: 'Se cruza con una inspección', tono: 'error' });
-        setBusyFila(null);
-        return;
-      }
       const r = await gasPost({
         accion: 'crearNuevaVisitaAsignada',
         radicadoConocido: (fOrigen && fOrigen['RADICADO']) || '',

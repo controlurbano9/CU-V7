@@ -14,8 +14,8 @@
 // borrador (guardado en el equipo, por semana) hasta «Asignar», que lo
 // envía con las acciones de siempre (programarInspecciones, confirmarAgenda,
 // asignarRadicado); las inspecciones programadas se confirman en una
-// ventana con caso, fecha (con año) y hora. La regla del cruce
-// (choqueZonaInspeccion) bloquea. Arrastrar (solo escritorio): un caso al
+// ventana con caso, fecha (con año) y hora. El cruce visita/inspección de
+// otra zona no bloquea nada (2026-11-25, decisión del usuario). Arrastrar (solo escritorio): un caso al
 // inspector, o algo del día a otro inspector o a otro día de la tira. La
 // lógica vive en utils.js (semanaEquipo, porAgendarDia, cuposDiaEquipo,
 // proponerDiaAgenda…; tests/agenda-semana.test.js, agenda-cupos.test.js).
@@ -418,9 +418,7 @@ function AgendaSemana({ usuario }) {
 
   // Agregar una visita sugerida al día de un visitador (botón o arrastre).
   function agregarVisita(v, n) {
-    const fv = { _idx: v.fila, RADICADO: v.radicado, COMUNA: v.comuna, 'BARRIO/VEREDA': v.barrio };
-    const motivo = cerrado || (inspVisitas.indexOf(n) < 0 ? nombrePila(n) + ' no recibe visitas de la agenda (⚙ Reglas).' : '') ||
-      choqueZonaInspeccion(datosEf, n, dia.date, fv, { inspeccion: false });
+    const motivo = cerrado || (inspVisitas.indexOf(n) < 0 ? nombrePila(n) + ' no recibe visitas de la agenda (⚙ Reglas).' : '');
     if (motivo) { avisar(motivo); return; }
     setBorrador(b => borradorAgregar(b, { tipo: 'visita', fila: v.fila, radicado: v.radicado, inspector: n, fecha: dia.fecha }));
   }
@@ -444,9 +442,8 @@ function AgendaSemana({ usuario }) {
     const actual = plan.modo === 'reprogramar' && inspVisitas.indexOf(plan.inspector) >= 0 ? plan.inspector : '';
     // Lo elegido vale solo si sigue en Reglas (pudo desmarcarse entretanto).
     const ins = elegidos[k] != null && inspVisitas.indexOf(elegidos[k]) >= 0 ? elegidos[k] : actual;
-    const choque = ins ? choqueZonaInspeccion(datosEf, ins, dia.date, f, { inspeccion: true }) : '';
     const excepto = plan.modo === 'reprogramar' ? plan.fila : null;
-    const horas = ins && !choque && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
+    const horas = ins && !cerrado ? _asHorasLibres(datosEf, ins, dia.date, excepto) : [];
     const fOrig = (datos || []).find(x => x._idx === plan.fila) || null;
     const programar = h => {
       setBorrador(bb => borradorAgregar(bb, { tipo: 'insp', fila: plan.fila, radicado: plan.radicado,
@@ -463,19 +460,14 @@ function AgendaSemana({ usuario }) {
         {inspAnterior && <p className="as-va">Visita anterior: <b>{nombrePila(inspAnterior)}</b></p>}
         <div className="as-elige" role="group" aria-label="Inspector">
           {/* Se elige entre los visitadores de la agenda (Alejandro y Mauricio). */}
-          {inspVisitas.map(n => {
-            const m = choqueZonaInspeccion(datosEf, n, dia.date, f, { inspeccion: true });
-            return (
-              <button key={n} type="button" aria-pressed={ins === n} aria-disabled={m ? 'true' : undefined}
-                title={m || undefined}
-                onClick={() => (m ? avisar(m) : setElegidos(e => Object.assign({}, e, { [k]: n })))}>
-                {nombrePila(n)}
-              </button>
-            );
-          })}
+          {inspVisitas.map(n => (
+            <button key={n} type="button" aria-pressed={ins === n}
+              onClick={() => setElegidos(e => Object.assign({}, e, { [k]: n }))}>
+              {nombrePila(n)}
+            </button>
+          ))}
         </div>
         {cerrado ? <p className="as-motivo">{cerrado}</p>
-          : choque ? <p className="as-motivo">{choque}</p>
           : !ins ? null
           : (
             <div className="as-horas" role="group" aria-label="Hora">
@@ -530,7 +522,6 @@ function AgendaSemana({ usuario }) {
   const filaVisita = (v, fInsp) => {
     const m = motivoPrioridad(v);
     const com = claveComunaAgenda(v.comuna);
-    const fv = { _idx: v.fila, RADICADO: v.radicado, COMUNA: v.comuna, 'BARRIO/VEREDA': v.barrio };
     const kI = fInsp ? claveIns(fInsp) : null;
     const abiertaI = kI && abierta === kI;
     const arr = conPuntero && !cerrado ? {
@@ -546,9 +537,8 @@ function AgendaSemana({ usuario }) {
         <span className="as-f-rad">{v.radicado}</span>
         <span className="as-f-acc">
           {!abiertaI && inspVisitas.map(n => {
-            // Cruza con una inspección de otra zona ese día: apagado, y al
-            // tocarlo dice por qué (en el celular no hay title).
-            const motivo = cerrado || choqueZonaInspeccion(datosEf, n, dia.date, fv, { inspeccion: false });
+            // Día cerrado: apagado, y al tocarlo dice por qué (en el celular no hay title).
+            const motivo = cerrado;
             return (
               <button key={n} type="button" className="as-mas" style={{ '--c': colorDe(n) }}
                 aria-disabled={motivo ? 'true' : undefined}
@@ -630,21 +620,6 @@ function AgendaSemana({ usuario }) {
 
   async function asignar() {
     if (!borrador.items.length || asignando) return;
-    // La regla, otra vez, contra los datos sin cada item: un borrador
-    // guardado antes puede chocar con lo que se asignó después.
-    const cruces = [];
-    borrador.items.forEach(it => {
-      const f = filaDeDatos(it.fila);
-      if (!f) return;
-      const m = choqueZonaInspeccion(datosConBorrador(datos, borradorQuitar(borrador, it.fila)), it.inspector,
-        parsearFecha(it.fecha), f, { inspeccion: esInspItem(it) });
-      if (m) cruces.push(_asDir(f) + ' — ' + m);
-    });
-    if (cruces.length) {
-      await appAlert('Quita estos casos del borrador antes de asignar:\n\n' + cruces.join('\n'),
-        { titulo: 'Se cruzan con otra zona', tono: 'error' });
-      return;
-    }
     setAsignando(true);
     const items = borrador.items.slice();
     // Lo que irá en la confirmación de cada inspección (caso, fecha y hora),
@@ -781,8 +756,6 @@ function AgendaSemana({ usuario }) {
     if (inspVisitas.indexOf(insp) < 0) return nombrePila(insp) + ' no recibe visitas de la agenda (⚙ Reglas).';
     const esInsp = esInspeccionLugar(f);
     const dEf = datosSin(f);
-    const m = choqueZonaInspeccion(dEf, insp, d.date, f, { inspeccion: esInsp });
-    if (m) return m;
     // Sin hora programada no hay con qué chocar (antes avisaba «a las  ese día»).
     if (esInsp && hora && !_asHorasLibres(dEf, insp, d.date, _asFilaBorrador(f)).some(h => horaAudienciasMin(h) === horaAudienciasMin(hora))) {
       return nombrePila(insp) + ' ya tiene inspección a las ' + horaCortaInspeccion(hora) + ' ese día.';
