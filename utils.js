@@ -3318,6 +3318,8 @@ function _describirLogBase(a) {
   // Gestión.
   if ((x = a.match(/^Usuario (ACTIVADO|DESACTIVADO): (.+)$/)))
     return { texto: (x[1] === 'ACTIVADO' ? 'Activó a ' : 'Desactivó a ') + titleCaseNombre(x[2]), detalle: '', tipo: 'gestion' };
+  if ((x = a.match(/^Usuario agregado: (.+?) \((\w+)\)$/)))
+    return { texto: 'Agregó a ' + titleCaseNombre(x[1]), detalle: x[2].toLowerCase(), tipo: 'gestion' };
   if ((x = a.match(/^PIN temporal generado para: (.+)$/)))
     return { texto: 'Generó un PIN temporal para ' + titleCaseNombre(x[1]), detalle: '', tipo: 'gestion' };
   if ((x = a.match(/^Rol de (.+?): (.+?) → (.+)$/)))

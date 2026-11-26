@@ -195,6 +195,8 @@ test('describirLog — frases internas del log como hechos, sin inventar el radi
   assert.deepEqual(_dl('Visita creada — fila 1700 (radicado 20261099999)'),
     { texto: 'Creó una visita', detalle: 'Radicado 20261099999' });
   assert.deepEqual(_dl('Cambió su PIN'), { texto: 'Cambió su PIN', detalle: '' });
+  assert.deepEqual(_dl('Usuario agregado: ANA GOMEZ MUÑOZ (SUPERVISOR)'),
+    { texto: 'Agregó a Ana Gomez', detalle: 'supervisor' });
 });
 
 // ── describirLog: todo lo que escribe el backend (arquitectura 2026-10-27) ──

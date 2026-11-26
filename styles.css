@@ -3302,6 +3302,28 @@ button.sv-col-head {
 .adm-rol-op:disabled { cursor: not-allowed; }
 .adm-rol-op:disabled:not(.activo) { opacity: .55; }
 
+/* Agregar usuario (Equipo, 2026-11-26): botón arriba de la lista y, al
+   tocarlo, el formulario en su lugar. */
+.adm-agregar { width: 100%; margin-bottom: 8px; }
+.adm-nuevo { margin-bottom: 12px; }
+.adm-nuevo .input-grupo:last-of-type { margin-bottom: 10px; }
+.adm-nuevo .adm-nota { margin-bottom: 0; }
+/* La columna de la lista mide ~300 px: el rol reparte el ancho. */
+.adm-nuevo .adm-rol { display: flex; }
+.adm-nuevo .adm-rol-op { flex: 1 1 auto; padding: 0 8px; }
+.adm-nuevo-check {
+  display: flex; align-items: flex-start; gap: 10px; min-height: var(--tap-min);
+  font-size: var(--fs-2); color: var(--ink); cursor: pointer;
+}
+.adm-nuevo-check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; accent-color: var(--ink); }
+.adm-nuevo-check em { display: block; font-style: normal; font-size: var(--fs-1); color: var(--ink-3); }
+.adm-nuevo-error { margin-top: 10px; font-size: var(--fs-1); font-weight: 600; color: var(--red); }
+.adm-nuevo-acc { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+@media (pointer: coarse) {
+  .adm-nuevo-acc .vc-btn { min-height: var(--tap); flex: 1 1 0; }
+  .adm-nuevo-check { min-height: var(--tap); }
+}
+
 /* PIN temporal recién generado: se ve una vez */
 .adm-pin-tmp {
   margin: 12px 20px 0; padding: 14px 16px; border: 1px solid var(--amber);

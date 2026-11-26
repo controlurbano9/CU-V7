@@ -46,6 +46,13 @@ function hoja(filas) {
           return out;
         },
         getValue() { const v = (s._v[r - 1] || [])[c - 1]; return v == null ? '' : v; },
+        setValues(m) { m.forEach((fila, i) => fila.forEach((v, j) => this._set(r + i, c + j, v))); return this; },
+        _set(rr, cc, v) {
+          while (s._v.length < rr) s._v.push([]);
+          const row = s._v[rr - 1];
+          while (row.length < cc) row.push('');
+          row[cc - 1] = v;
+        },
         setValue(v) {
           while (s._v.length < r) s._v.push([]);
           const row = s._v[r - 1];
@@ -219,4 +226,39 @@ test('leerLogAuditoria con limite: encabezado + las últimas N filas', opts, () 
   assert.equal(r.values[0][2], 'ACCION');
   assert.equal(r.values[5][2], 'acción 30');
   assert.equal(r.total, 30);
+});
+
+test('agregarUsuario: solo ADMIN, normaliza el nombre, sin repetidos, y con PIN entra', opts, () => {
+  const m = mundo();
+  const admin = m.ses('DANIEL PEDRAZA', '4826');
+  assert.equal(m.post({ accion: 'agregarUsuario', nombre: 'Ana Gómez', cargo: 'Contratista', rol: 'INSPECTOR',
+    ...m.ses('NELSON CUERVO', '5062') }).ok, false, 'un inspector no agrega usuarios');
+  assert.equal(m.usuarios._v.length, 4);
+
+  assert.equal(m.post({ accion: 'agregarUsuario', nombre: 'Ana', cargo: 'Contratista', rol: 'INSPECTOR', ...admin }).ok,
+    false, 'sin apellido');
+  assert.equal(m.post({ accion: 'agregarUsuario', nombre: 'Ana Gómez', cargo: '', rol: 'INSPECTOR', ...admin }).ok,
+    false, 'sin cargo');
+  assert.equal(m.post({ accion: 'agregarUsuario', nombre: 'Ana Gómez', cargo: 'Contratista', rol: 'JEFE', ...admin }).ok,
+    false, 'rol que no existe');
+  assert.equal(m.post({ accion: 'agregarUsuario', nombre: 'mauricio  herrera', cargo: 'X Y Z', rol: 'INSPECTOR', ...admin }).ok,
+    false, 'ya existe');
+
+  const r = m.post({ accion: 'agregarUsuario', nombre: '  ana   gómez muñoz ', cargo: 'Contratista',
+    rol: 'supervisor', conPin: true, ...admin });
+  assert.equal(r.ok, true);
+  assert.equal(r.nombre, 'ANA GOMEZ MUÑOZ');
+  assert.equal(r.fila, 5);
+  assert.match(r.pin, /^\d{4}$/);
+  const f = m.usuarios._v[4];
+  assert.deepEqual([f[0], f[2], f[3], f[4]], ['ANA GOMEZ MUÑOZ', 'SI', 'Contratista', 'SUPERVISOR']);
+  const l = m.post({ accion: 'login', nombre: 'ANA GOMEZ MUÑOZ', hash: sha(r.pin) });
+  assert.equal(l.ok, true);
+  assert.equal(l.debeCambiarPin, true);
+  assert.match(m.hojas.LOG_AUDITORIA._v.map(x => x[2]).join('\n'), /Usuario agregado: ANA GOMEZ MUÑOZ \(SUPERVISOR\)/);
+
+  const s = m.post({ accion: 'agregarUsuario', nombre: 'Pedro Ruiz', cargo: 'Profesional', rol: 'INSPECTOR', ...admin });
+  assert.equal(s.ok, true);
+  assert.equal(s.pin, undefined, 'sin conPin no hay PIN');
+  assert.equal(m.usuarios._v[5][1], '', 'queda sin hash: no entra a la app');
 });

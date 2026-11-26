@@ -872,6 +872,14 @@ async function cambiarMiPin(pinNuevo, pinActual) {
   return { ok: true };
 }
 
+// Agrega una persona a USUARIOS. Con conPin la respuesta trae su PIN temporal
+// en claro ({pin, vence}): se muestra una vez y no se guarda en ningún lado.
+async function agregarUsuario({ nombre, cargo, rol, conPin }) {
+  const d = await gasPost({ accion: 'agregarUsuario', nombre, cargo, rol, conPin: !!conPin });
+  invalidarCache('inspectores'); // la lista pública de inspectores cambia
+  return { fila: d.fila, nombre: d.nombre, rol: d.rol, pin: d.pin || '', vence: d.vence || '' };
+}
+
 async function cambiarRol(fila, nombreConocido, rol) {
   const d = await gasPost({ accion: 'cambiarRol', fila, nombreConocido, rol });
   invalidarCache('inspectores'); // la lista pública lleva el rol

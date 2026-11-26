@@ -463,6 +463,9 @@ function _actividadRelativa(d, hoy) {
 function TabEquipo({ usuarios, datos, logDesc, logListo, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
   const [sel, setSel]           = useStateA(null); // nombre de la persona elegida
   const [verInactivos, setVerInactivos] = useStateA(false);
+  const [agregando, setAgregando] = useStateA(false);
+  // PIN temporal de quien se acaba de agregar: lo muestra su panel una sola vez.
+  const [pinRecien, setPinRecien] = useStateA(null); // {nombre, pin, vence}
   const hoy = useMemoA(() => new Date(), []);
 
   const cargas = useMemoA(() => {
@@ -518,6 +521,18 @@ function TabEquipo({ usuarios, datos, logDesc, logListo, conPanel, yo, onAbrirRe
       {/* En móvil, con una persona elegida el panel reemplaza a la lista. */}
       {(!elegido || conPanel) && (
       <div className="adm-lista">
+        {agregando ? (
+          <FormNuevoUsuario onCancelar={() => setAgregando(false)} onAgregado={async (r) => {
+            setAgregando(false);
+            setPinRecien(r.pin ? { nombre: r.nombre, pin: r.pin, vence: r.vence } : null);
+            await recargarUsuarios();
+            setSel(r.nombre);
+          }} />
+        ) : (
+          <button type="button" className="vc-btn adm-agregar" onClick={() => setAgregando(true)}>
+            <Icon.Plus size={14} /> Agregar usuario
+          </button>
+        )}
         {grupos.map(g => (
           <React.Fragment key={g.k}>
             <div className="mv-grupo">{g.rotulo}<span>{g.lista.length}</span></div>
@@ -539,13 +554,15 @@ function TabEquipo({ usuarios, datos, logDesc, logListo, conPanel, yo, onAbrirRe
 
       {elegido && (conPanel ? (
         <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-          yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios} />
+          yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios}
+            pinRecien={pinRecien} onPinVisto={() => setPinRecien(null)} />
       ) : (
         <div className="adm-panel-movil">
           <button type="button" className="adm-volver" onClick={() => setSel(null)}
             aria-label="Volver a la lista de Equipo"><Icon.ArrowLeft size={16} /> Equipo</button>
           <PanelPersona u={elegido} info={cargas[elegido.nombre]} logDesc={logDesc} conPanel={conPanel}
-            yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios} />
+            yo={yo} onAbrirReglas={onAbrirReglas} onNavegar={onNavegar} recargarUsuarios={recargarUsuarios}
+            pinRecien={pinRecien} onPinVisto={() => setPinRecien(null)} />
         </div>
       ))}
     </div>
@@ -600,6 +617,75 @@ function TarjetaPersona({ u, info, maxAbiertas, elegida, onElegir }) {
 
 const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 'Inspector' };
 
+// Agregar una persona a USUARIOS. El backend normaliza el nombre (mayúsculas,
+// sin tildes: es el texto de los chips de visitadores) y rechaza los repetidos.
+// «Entra a la app» genera el PIN temporal en la misma llamada; sin marcarla
+// queda como funcionario que firma actas y recibe visitas sin entrar.
+function FormNuevoUsuario({ onCancelar, onAgregado }) {
+  const [nombre, setNombre] = useStateA('');
+  const [cargo, setCargo]   = useStateA('');
+  const [rol, setRol]       = useStateA('INSPECTOR');
+  const [conPin, setConPin] = useStateA(true);
+  const [busy, setBusy]     = useStateA(false);
+  const [error, setError]   = useStateA('');
+  const nombreRef = useRefA(null);
+  useEffectA(() => { if (nombreRef.current) nombreRef.current.focus(); }, []);
+
+  const palabras = nombre.trim().split(/\s+/).filter(Boolean).length;
+  // Misma regla que _nombreUsuarioNormal del backend, para que se vea antes.
+  const comoQueda = nombre.trim().replace(/\s+/g, ' ').toUpperCase()
+    .replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I')
+    .replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U');
+  const falta = palabras < 2 ? 'Escribe nombre y apellido.'
+    : cargo.trim().length < 3 ? 'Escribe el cargo: sale en las actas como firmante.' : '';
+
+  async function enviar(e) {
+    e.preventDefault();
+    if (busy) return;
+    if (falta) { setError(falta); return; }
+    setBusy(true); setError('');
+    try {
+      const r = await agregarUsuario({ nombre, cargo, rol, conPin });
+      await onAgregado(r);
+    } catch (err) { setError(err.message); setBusy(false); }
+  }
+
+  return (
+    <form className="card adm-nuevo" onSubmit={enviar} aria-label="Agregar usuario">
+      <div className="card-titulo">Agregar usuario</div>
+      <div className="input-grupo">
+        <label className="input-label" htmlFor="adm-nuevo-nombre">Nombre completo</label>
+        <input id="adm-nuevo-nombre" ref={nombreRef} className="input-campo" value={nombre} maxLength={60}
+          autoComplete="off" onChange={e => { setNombre(e.target.value); setError(''); }} />
+        {comoQueda && <div className="adm-nota">Queda como {comoQueda}</div>}
+      </div>
+      <div className="input-grupo">
+        <label className="input-label" htmlFor="adm-nuevo-cargo">Cargo</label>
+        <input id="adm-nuevo-cargo" className="input-campo" value={cargo} maxLength={80}
+          placeholder="Como debe salir en las actas" onChange={e => { setCargo(e.target.value); setError(''); }} />
+      </div>
+      <div className="input-grupo">
+        <div className="input-label" id="adm-nuevo-rol">Rol</div>
+        <div className="adm-rol" role="radiogroup" aria-labelledby="adm-nuevo-rol">
+          {['INSPECTOR', 'SUPERVISOR', 'ADMIN'].map(r => (
+            <button key={r} type="button" role="radio" aria-checked={rol === r}
+              className={'adm-rol-op' + (rol === r ? ' activo' : '')} onClick={() => setRol(r)}>{_ROL_ADM[r]}</button>
+          ))}
+        </div>
+      </div>
+      <label className="adm-nuevo-check">
+        <input type="checkbox" checked={conPin} onChange={e => setConPin(e.target.checked)} />
+        <span>Entra a la app <em>Se le genera un PIN temporal para dictárselo.</em></span>
+      </label>
+      {error && <div className="adm-nuevo-error" role="alert">{error}</div>}
+      <div className="adm-nuevo-acc">
+        <button type="button" className="vc-btn" onClick={onCancelar} disabled={busy}>Cancelar</button>
+        <button type="submit" className="vc-btn vc-btn-cta" disabled={busy}>{busy ? 'Agregando…' : 'Agregar'}</button>
+      </div>
+    </form>
+  );
+}
+
 // Abre Buscar con el filtro de visitador de esa persona. Mismo mecanismo que
 // _irBuscarConEstados de home.jsx: Buscar restaura sus filtros de
 // sessionStorage al montar, así que se le deja escrito lo que debe traer.
@@ -611,7 +697,7 @@ function _irBuscarConVisitador(nombre, onNavegar) {
   onNavegar('buscar');
 }
 
-function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios }) {
+function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar, recargarUsuarios, pinRecien, onPinVisto }) {
   const cajaRef = useRefA(null);
   const [cfg, setCfg] = useStateA(undefined); // undefined cargando · null falló (la fila no aparece)
   const [busy, setBusy] = useStateA(false);
@@ -629,6 +715,14 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
   }, []);
   // Otra persona: el panel vuelve arriba.
   useEffectA(() => { if (cajaRef.current) cajaRef.current.scrollTop = 0; setPinNuevo(null); }, [u.fila]);
+  // El PIN de quien se acaba de agregar llega de TabEquipo: se muestra aquí y
+  // se le avisa que ya se vio, para que no vuelva a salir al regresar.
+  useEffectA(() => {
+    if (pinRecien && pinRecien.nombre === u.nombre) {
+      setPinNuevo({ pin: pinRecien.pin, vence: pinRecien.vence });
+      if (onPinVisto) onPinVisto();
+    }
+  }, [u.fila, pinRecien]);
 
   async function togglear() {
     if (busy) return;
