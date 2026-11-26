@@ -882,11 +882,14 @@ function NovedadesHoja({ mias, esAdmin, usuario, sustanciadores, ocupado, onCerr
 // sobra y no sale. Las inspecciones al lugar entran por hora: misma fila, con
 // «Inspector» en la columna (no tienen sustanciador); al tocarlas abren la visita.
 function _auPrimerNombre(n) { return titleCaseNombre(String(n || '').trim().split(/\s+/)[0] || ''); }
+// Los cupos libres (fuente 'libre', Calendario v3) se cuentan aparte.
 function _auCuentaDia(citas) {
   const i = citas.filter(function (r) { return r.fuente === 'inspeccion'; }).length;
-  const a = citas.length - i;
+  const l = citas.filter(function (r) { return r.fuente === 'libre'; }).length;
+  const a = citas.length - i - l;
   return [a ? a + (a === 1 ? ' audiencia' : ' audiencias') : '',
-    i ? i + (i === 1 ? ' inspección al lugar' : ' inspecciones al lugar') : ''].filter(Boolean).join(' · ');
+    i ? i + (i === 1 ? ' inspección al lugar' : ' inspecciones al lugar') : '',
+    l ? l + (l === 1 ? ' cupo libre' : ' cupos libres') : ''].filter(Boolean).join(' · ');
 }
 const _AU_SVG_PIN = (
   <svg className="au-pin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -900,6 +903,19 @@ function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, buscando, clicable
   }
   const conColumna = !filtroSus;
   function fila(r, clave, fecha) {
+    // Cupo libre (Calendario v3): el día completo, como en el Excel del despacho.
+    if (r.fuente === 'libre') {
+      return (
+        <div className="au-row au-row-libre" key={clave}>
+          <span className="hora">{horaBonitaAudiencias(r.hora)}
+            {conColumna && <span className="au-sus-corto">{_auPrimerNombre(r.sustanciador)}</span>}</span>
+          <span className="t"><b>Libre</b></span>
+          {conColumna && (
+            <span className="au-sus"><span className="rot">Sustanciador</span><span className="nom">{titleCaseNombre(r.sustanciador)}</span></span>
+          )}
+        </div>
+      );
+    }
     const esInsp = r.fuente === 'inspeccion';
     const clicable = r.fuente === 'bloque' ? clicableCita(r.cupo) : !!(r.fila && window.abrirVisitaDetail);
     const Tag = clicable ? 'button' : 'div';
@@ -958,6 +974,183 @@ function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, buscando, clicable
   );
 }
 
+// ── Vista Calendario (v3, 2026-11-26, decisiones del usuario; maqueta
+// propuesta-agenda-audiencias-v3.html) ──
+// Reemplaza a la vista «Agenda» (admin y supervisor): la misma forma que la
+// Agenda de visitas, semana arriba y día abajo. La tira dice por día cuántas
+// audiencias hay y cuántos cupos quedan; el día va por hora, con los cupos
+// libres en su sitio (verLibres) como en el Excel del despacho. Al buscar, la
+// pantalla muestra en su lugar la lista de hoy en adelante (VistaAgenda) con el
+// enlace a la Lista para las pasadas.
+// `semana` = { lunes: Date, diaSel: 0–4 } vive en la pantalla: no se pierde al
+// pasar a Cupos o a la Lista y volver.
+const _AU_DIAS_CORTO = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+function _auRangoSemana(dias) {
+  const a = dias[0], b = dias[4];
+  return a.getMonth() === b.getMonth()
+    ? a.getDate() + ' – ' + b.getDate() + ' de ' + _AU_MESES[b.getMonth()]
+    : a.getDate() + ' de ' + _AU_MESES[a.getMonth()] + ' – ' + b.getDate() + ' de ' + _AU_MESES[b.getMonth()];
+}
+function VistaCalendario({ filas, cupos, hoyTxt, opts, filtroSus, verLibres, sinInspector, semana, onSemana,
+  clicableCita, onAbrirCita, decreto }) {
+  const lunes = semana.lunes;
+  const dias = [0, 1, 2, 3, 4].map(function (k) {
+    const d = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + k);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const fechas = dias.map(formatearFecha);
+  const hoyD = parsearFecha(hoyTxt);
+  // Citas de la semana (mismos filtros que la pantalla) y cupos de cada día.
+  const porFecha = useMemoAU(function () {
+    const m = {};
+    agendaAudienciasDias(filas, cupos, fechas[0], opts).forEach(function (g) { m[g.fecha] = g.citas; });
+    return m;
+  }, [filas, cupos, fechas[0], opts]);
+  const cuposDe = function (f) {
+    return (cupos || []).filter(function (c) {
+      return c.fecha === f && (!filtroSus || normNombreAudiencias(c.sustanciador) === filtroSus);
+    });
+  };
+  const esEsta = lunes.getTime() === lunesInspecciones(_auHoy()).getTime();
+  const mover = function (n) {
+    onSemana({ lunes: new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + n), diaSel: 0 });
+  };
+
+  const k = semana.diaSel;
+  const f = fechas[k];
+  const delDia = cuposDe(f);
+  const yaPaso = hoyD && dias[k] < hoyD;
+  const libres = verLibres && !yaPaso ? delDia.filter(function (c) { return c.estado === 'LIBRE'; }).map(function (c) {
+    return { fuente: 'libre', hora: c.hora, minutos: horaAudienciasMin(c.hora), sustanciador: c.sustanciador, idCupo: c.idCupo };
+  }) : [];
+  // Citas primero dentro de la misma hora; los libres después.
+  const filasDia = (porFecha[f] || []).map(function (r, i) { return { r: r, i: i, l: 0 }; })
+    .concat(libres.map(function (r, i) { return { r: r, i: i, l: 1 }; }))
+    .sort(function (a, b) {
+      const ma = a.r.minutos == null ? 24 * 60 : a.r.minutos, mb = b.r.minutos == null ? 24 * 60 : b.r.minutos;
+      return (ma - mb) || (a.l - b.l) || (a.i - b.i);
+    }).map(function (x) { return x.r; });
+
+  return (
+    <div className="au-cal">
+      <div className="au-cal-cab">
+        <button type="button" className="au-cal-flecha" aria-label="Semana anterior" onClick={function () { mover(-7); }}>
+          <Icon.ChevronLeft size={16} />
+        </button>
+        <b className="au-cal-rango">{_auRangoSemana(dias)}</b>
+        <button type="button" className="au-cal-flecha" aria-label="Semana siguiente" onClick={function () { mover(7); }}>
+          <Icon.ChevronRight size={16} />
+        </button>
+        {!esEsta && (
+          <button type="button" className="au-cal-hoy" onClick={function () { onSemana(_auSemanaInicial()); }}>Esta semana</button>
+        )}
+      </div>
+      <div className="au-cal-tira" role="group" aria-label="Día de la semana">
+        {dias.map(function (d, j) {
+          const fj = fechas[j];
+          const citas = porFecha[fj] || [];
+          const cu = cuposDe(fj);
+          const nLib = cu.filter(function (c) { return c.estado === 'LIBRE'; }).length;
+          const nBloq = cu.filter(function (c) { return c.estado === 'BLOQUEADO'; }).length;
+          const usables = cu.filter(function (c) { return c.estado === 'LIBRE' || c.estado === 'RESERVADO'; });
+          const nRes = usables.filter(function (c) { return c.estado === 'RESERVADO'; }).length;
+          const pasado = hoyD && d < hoyD;
+          const esHoy = fj === hoyTxt;
+          const cuenta = _auCuentaDia(citas);
+          return (
+            <button key={fj} type="button" className={'au-cal-dia' + (pasado ? ' pasado' : '') + (!cu.length && !citas.length ? ' vacio' : '')}
+              aria-pressed={j === k} aria-current={esHoy ? 'date' : undefined}
+              onClick={function () { onSemana({ lunes: lunes, diaSel: j }); }}>
+              <span className="au-cal-d1"><b>{_AU_DIAS_CORTO[d.getDay()]} {d.getDate()}</b>{esHoy && <span className="as-hoy-tag">Hoy</span>}</span>
+              <span className="au-cal-d2">{cuenta || (cu.length ? 'Sin audiencias' : 'Sin cupos de Control Urbano')}</span>
+              {!pasado && cu.length > 0 && (
+                <span className="au-cal-d3">
+                  <span><b>{nLib}</b> {nLib === 1 ? 'libre' : 'libres'}{nBloq ? ' · ' + nBloq + (nBloq === 1 ? ' bloqueado' : ' bloqueados') : ''}</span>
+                  {usables.length > 0 && (
+                    <span className="as-medidor" aria-hidden="true">
+                      {usables.map(function (c, i) { return <i key={i} className={i < nRes ? 'on' : undefined}></i>; })}
+                    </span>
+                  )}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {filasDia.length ? (
+        <VistaAgenda dias={[{ fecha: f, citas: filasDia }]} hoyTxt={hoyTxt} filtroSus={filtroSus} sinInspector={sinInspector}
+          buscando={false} clicableCita={clicableCita} onAbrirCita={onAbrirCita} decreto={decreto} />
+      ) : (
+        <div className="au-cal-vacio">
+          <b>{_auMayus(_auFechaLarga(f))}</b>
+          <span>{delDia.length ? 'Sin audiencias este día.' : 'Este día no tiene cupos de Control Urbano.'}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+// Semana y día con que abre el Calendario: la de hoy, en hoy (fin de semana:
+// la siguiente, en lunes; lunesInspecciones ya salta).
+function _auSemanaInicial() {
+  const l = lunesInspecciones(_auHoy());
+  const h = new Date(_auHoy()); h.setHours(0, 0, 0, 0);
+  const k = Math.round((h - new Date(l.getFullYear(), l.getMonth(), l.getDate())) / 86400000);
+  return { lunes: l, diaSel: k >= 0 && k <= 4 ? k : 0 };
+}
+
+// ── «Hoy ante ti» (v3): la sustanciadora entra a sus audiencias del día con lo
+// que necesita para presidirlas en la misma fila (PQR, acta, informe, orden),
+// sin abrir cita por cita. Sin imprimir (decisión del usuario). ──
+function HoyAnteTi({ filas, cupos, hoyTxt, yo, clicableCita, onAbrirCita, decreto }) {
+  const rows = audienciasDelDia(filas, cupos, hoyTxt, { sustanciador: yo });
+  const proxima = !rows.length
+    ? (agendaAudienciasDias(filas, cupos, hoyTxt, { sustanciador: yo }).find(function (g) { return g.fecha !== hoyTxt; }) || null)
+    : null;
+  const doc = function (href, txt, falta) {
+    if (href) return <a className="au-hoy-doc" href={href} target="_blank" rel="noopener noreferrer" key={txt}>{txt}</a>;
+    return falta ? <span className="au-hoy-doc falta" key={txt}>{falta}</span> : null;
+  };
+  return (
+    <section className="au-hoy" aria-labelledby="au-hoy-t">
+      <div className="au-hoy-cab">
+        <h2 id="au-hoy-t">Hoy ante ti</h2>
+        <span>{rows.length ? _auCuentaDia(rows) + ' · la primera a las ' + horaBonitaAudiencias(rows[0].hora) : _auMayus(_auFechaLarga(hoyTxt))}</span>
+      </div>
+      {!rows.length ? (
+        <p className="au-hoy-nada">
+          Hoy no tienes audiencias.
+          {proxima && proxima.citas[0] ? ' La próxima: ' + _auDiaCorto(proxima.fecha) + ' · ' + horaBonitaAudiencias(proxima.citas[0].hora) + '.' : ''}
+        </p>
+      ) : rows.map(function (r, i) {
+        const cita = r.fuente === 'bloque' ? r.cupo : null;
+        const f = r.fila || (cita ? visitaDeCitaAudiencias(filas, cita) : null);
+        const rad = (f && String(f['RADICADO'] || '').trim()) || (r.caso && r.caso.radicado) || '';
+        const clicable = cita ? clicableCita(cita) : !!(f && window.abrirVisitaDetail);
+        const abrir = cita ? function () { onAbrirCita(cita); } : function () { window.abrirVisitaDetail(f); };
+        const dec = decreto ? decreto(r, hoyTxt) : null;
+        return (
+          <div className="au-hoy-fila" key={i}>
+            <span className="hora">{horaBonitaAudiencias(r.hora)}</span>
+            <button type="button" className="t" onClick={clicable ? abrir : undefined} disabled={!clicable}>
+              <b>{r.citado || _auCaso(r.caso || {})}</b>{r.citado ? <> · {_auCaso(r.caso || {})}</> : null}
+              <small>{[r.direccion, _auInsp(r.inspector)].filter(Boolean).join(' · ')}</small>
+            </button>
+            <span className="au-hoy-docs">
+              {f && linkPdfRadicado(f) && rad
+                ? <button type="button" className="au-hoy-doc" onClick={function () { abrirPqr(rad); }}>PQR</button> : null}
+              {f ? doc(f['LINK_PDF_ACTA'] || f['LINK_XLSX_ACTA'], 'Acta', 'Sin acta') : null}
+              {f ? doc(f['LINK_DOCX_INFORME'], 'Informe', 'Sin informe') : null}
+              {f ? doc(f['LINK_ORDEN_POLICIA'], 'Orden', '') : null}
+            </span>
+            {dec && <span className="au-dec">{dec}</span>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 // ── Vista Cupos (2026-11-03): la lista de la maqueta propuesta-cupos.html ──
 // Dueña de sus filtros, su selección y sus hojas: al salir de la vista todo
 // eso se descarta solo. Las escrituras de un toque pasan por `escribir` de la
@@ -966,13 +1159,12 @@ function VistaAgenda({ dias, hoyTxt, filtroSus, sinInspector, buscando, clicable
 // En el celular las filas libres no traen «Bloquear»/«Eliminar»: se marcan y
 // se usa la barra de abajo (cada cupo eran tres renglones de botones).
 function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciadores, ocupado,
-  escribir, onCambio, onAbrirCita, onAbrirNovedades }) {
+  escribir, onCambio, onAbrirCita, onAbrirNovedades, copiadoApartar, onCopiarApartar, onConfirmarApartar }) {
   const [fMes, setFMes] = useStateAU('todos');        // 'todos' | 'YYYY-MM'
   const [fEstado, setFEstado] = useStateAU('todos');  // 'todos' | estado del cupo
   const [filtrosAbiertos, setFiltrosAbiertos] = useStateAU(false);
   const [sel, setSel] = useStateAU({});               // idCupo → true
   const [hoja, setHoja] = useStateAU(null);           // {t:'agregar'} | {t:'bloquear'|'eliminar', ids} | {t:'dia', fecha}
-  const [copiadoApartar, setCopiadoApartar] = useStateAU(false);
   const cupos = datos.cupos || [];
 
   // Solo de hoy en adelante: la agenda trae también las pasadas para la Lista,
@@ -1064,33 +1256,6 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
     await escribir(function () { return desactivarNovedadAudiencias(nov.id); }, 'No se pudo quitar el bloqueo');
   }
 
-  // «Copiar lista para el Excel» del aviso de por apartar: una fila por cupo,
-  // fecha, hora y sustanciador separados por tabulador.
-  async function copiarApartar() {
-    const tsv = porApartar
-      .map(function (c) { return c.fecha + '\t' + horaBonitaAudiencias(c.hora) + '\t' + titleCaseNombre(c.sustanciador); })
-      .join('\n');
-    const ok = await _auCopiarConRespaldo(tsv, 'Cupos por apartar');
-    if (ok) {
-      setCopiadoApartar(true);
-      setTimeout(function () { setCopiadoApartar(false); }, 2500);
-    }
-  }
-
-  async function confirmarApartar() {
-    if (ocupado) return;
-    const ids = porApartar.map(function (c) { return c.idCupo; });
-    const ok = await appConfirm('¿Ya apartaste los ' + ids.length + ' cupos en el Excel del despacho?',
-      { titulo: 'Apartar cupos', btnOk: 'Sí, ya los aparté', btnCancel: 'Cancelar' });
-    if (!ok) return;
-    await escribir(async function () {
-      const r = await confirmarCuposAudiencias(ids);
-      const nc = (r.noConfirmados || []).length;
-      if (nc) await appAlert('El servidor no confirmó ' + nc + ' cupo' + (nc === 1 ? '' : 's') +
-        ' (ya no estaban por apartar).', { tono: 'error' });
-    }, 'No se pudieron confirmar los cupos');
-  }
-
   // Lo que el servidor omitió al crear cupos (ya existían, festivo…).
   function avisarOmitidos(r) {
     const om = (r && r.omitidos) || [];
@@ -1103,55 +1268,66 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
       { titulo: 'El servidor omitió ' + om.length + ' cupo' + (om.length === 1 ? '' : 's') });
   }
 
-  // Acciones de una fila. «lote» = las que también están en la barra de
-  // selección: en el celular se esconden y se usan desde la barra.
-  function acciones(c) {
-    const btn = function (txt, fn, lote) {
-      return (
-        <button type="button" key={txt} className={'btn-neutro btn-chico au-cl-act-btn' + (lote ? ' au-cl-act-lote' : '')}
-          onClick={fn}>{txt}</button>
-      );
-    };
-    if (c.estado === 'LIBRE') return [
-      btn('Bloquear', function () { setHoja({ t: 'bloquear', ids: [c.idCupo] }); }, true),
-      btn('Eliminar', function () { setHoja({ t: 'eliminar', ids: [c.idCupo] }); }, true)];
-    if (c.estado === 'POR_APARTAR') return [btn('Eliminar', function () { setHoja({ t: 'eliminar', ids: [c.idCupo] }); }, true)];
-    if (c.estado === 'RESERVADO') return [btn('Ver cita', function () { onAbrirCita(c); })];
-    if (c.estado === 'BLOQUEADO') return [btn('Desbloquear', function () { desbloquear(c); })];
-    return null;
-  }
+  // Columnas del cuadro: una por hora y sustanciador de lo que se ve, en orden
+  // de hora y, dentro de la hora, en el de los chips de sustanciador.
+  const ordenSus = function (n) {
+    const i = sustanciadores.findIndex(function (x) { return x.norm === n; });
+    return i < 0 ? 99 : i;
+  };
+  const columnasCu = (function () {
+    const vistos = {}; const cols = [];
+    visibles.forEach(function (c) {
+      const norm = normNombreAudiencias(c.sustanciador);
+      const k = horaAudienciasMin(c.hora) + '|' + norm;
+      if (vistos[k]) return;
+      vistos[k] = 1;
+      cols.push({ k: k, hora: c.hora, min: horaAudienciasMin(c.hora), norm: norm, sustanciador: c.sustanciador });
+    });
+    cols.sort(function (a, b) { return (a.min - b.min) || (ordenSus(a.norm) - ordenSus(b.norm)); });
+    const horas = [];
+    cols.forEach(function (c) {
+      const u = horas[horas.length - 1];
+      if (u && u.min === c.min) u.n++; else horas.push({ hora: c.hora, min: c.min, n: 1 });
+    });
+    return { cols: cols, horas: horas };
+  })();
 
-  function fila(c) {
-    const E = _AU_ESTADOS_CUPOS[c.estado] || { texto: c.estado };
-    const on = !!sel[c.idCupo];
-    const soloLote = c.estado === 'LIBRE' || c.estado === 'POR_APARTAR';
-    // _auCaso puede devolver la etiqueta del expediente (JSX): se intercala con
-    // « · », no con join, que la volvía «[object Object]».
-    const det = c.estado === 'RESERVADO'
-      ? [_auCaso(c), c.citado, _auInsp(c.reservadoPor)].filter(Boolean)
-          .map(function (p, i) { return <React.Fragment key={i}>{i ? ' · ' : ''}{p}</React.Fragment>; })
-      : c.estado === 'BLOQUEADO' ? (c.motivoBloqueo || '') : '';
+  // Una celda del cuadro. Lo que se puede tocar depende del estado y del rol.
+  function celdaCupo(c) {
+    const est = String(c.estado || '').toLowerCase();
+    const quien = c.fecha + ', ' + horaBonitaAudiencias(c.hora) + ', ' + titleCaseNombre(c.sustanciador);
+    let txt, sub = '', alClic = null, pressed;
+    if (c.estado === 'RESERVADO') {
+      const cit = String(c.citado || '').trim();
+      txt = cit ? titleCaseNombre(cit.split(' - ')[0]) : 'Citado';
+      sub = c.expediente && c.expediente !== 'NUEVO' ? 'Exp. ' + c.expediente
+        : (c.radicado || (c.ordenPolicia ? 'Orden ' + c.ordenPolicia : ''));
+      alClic = function () { onAbrirCita(c); };
+    } else if (c.estado === 'BLOQUEADO') {
+      txt = 'Bloqueado'; sub = c.motivoBloqueo || '';
+      if (esAdmin) alClic = function () { desbloquear(c); };
+    } else if (c.estado === 'LIBRE' || c.estado === 'POR_APARTAR') {
+      txt = c.estado === 'LIBRE' ? 'Libre' : 'Por apartar';
+      if (esAdmin) {
+        pressed = !!sel[c.idCupo];
+        alClic = function () {
+          setSel(function (prev) {
+            const n = Object.assign({}, prev);
+            if (n[c.idCupo]) delete n[c.idCupo]; else n[c.idCupo] = true;
+            return n;
+          });
+        };
+      }
+    } else {
+      txt = (_AU_ESTADOS_CUPOS[c.estado] || { texto: c.estado }).texto;
+    }
+    const cuerpo = <><span className="e">{txt}</span>{sub ? <span className="s">{sub}</span> : null}</>;
+    if (!alClic) return <span className={'au-cel ' + est} title={quien}>{cuerpo}</span>;
+    const etiqueta = c.estado === 'RESERVADO' ? 'Ver la cita del ' + quien
+      : c.estado === 'BLOQUEADO' ? 'Desbloquear ' + quien : (pressed ? 'Quitar la marca de ' : 'Marcar ') + quien;
     return (
-      <div className={'au-cl-cupo' + (on ? ' sel' : '')} key={c.idCupo}>
-        {esAdmin && (
-          <label className="au-cl-sel">
-            <input type="checkbox" checked={on}
-              aria-label={'Seleccionar ' + c.fecha + ', ' + horaBonitaAudiencias(c.hora) + ', ' + titleCaseNombre(c.sustanciador)}
-              onChange={function () {
-                setSel(function (prev) {
-                  const n = Object.assign({}, prev);
-                  if (n[c.idCupo]) delete n[c.idCupo]; else n[c.idCupo] = true;
-                  return n;
-                });
-              }} />
-          </label>
-        )}
-        <span className="au-cl-hora">{horaBonitaAudiencias(c.hora)}</span>
-        <span className="au-cl-sust">{titleCaseNombre(c.sustanciador)}</span>
-        <span className="au-cl-estado"><span className={'au-cl-punto ' + String(c.estado || '').toLowerCase()} aria-hidden="true"></span><b>{E.texto}</b></span>
-        <span className="au-cl-det">{det}</span>
-        {esAdmin && <div className={'au-cl-act' + (soloLote ? ' solo-lote' : '')}>{acciones(c)}</div>}
-      </div>
+      <button type="button" className={'au-cel ' + est} aria-pressed={pressed === undefined ? undefined : pressed}
+        aria-label={etiqueta + (sub ? ' (' + sub + ')' : '')} title={quien} onClick={alClic}>{cuerpo}</button>
     );
   }
 
@@ -1200,36 +1376,78 @@ function VistaCupos({ datos, novedades, esAdmin, hoyTxt, filtroSus, sustanciador
             <b>{porApartar.length} {_auPluralCupo(porApartar.length)} por apartar en el Excel.</b> Hasta confirmarlos, nadie puede pedirlos.
           </span>
           <span className="au-cl-aviso-btn">
-            <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={copiarApartar}>
+            <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={onCopiarApartar}>
               {copiadoApartar ? '✓ Copiado' : 'Copiar lista para el Excel'}
             </button>
-            <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={confirmarApartar}>Ya los aparté</button>
+            <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={onConfirmarApartar}>Ya los aparté</button>
           </span>
         </div>
       )}
-      {esAdmin && visibles.length > 0 && <p className="au-cl-pista">Marca los cupos para bloquearlos o eliminarlos.</p>}
+      {esAdmin && visibles.length > 0 && <p className="au-cl-pista">Toca los cupos libres para marcarlos; luego bloquéalos o elimínalos abajo.</p>}
       {!visibles.length && <p className="au-vacio-hoy">No hay cupos con esos filtros.</p>}
-      {porDia.map(function (fecha) {
-        const dia = porFecha[fecha];
-        // El conteo dice todos los estados de lo que se ve. «Bloquear el día»
-        // bloquea a todos los sustanciadores: mira el día entero y no sale si
-        // ya no queda ningún cupo que pedir (resumenDiaCupos, puedeBloquearDiaCupos).
-        const diaEntero = cupos.filter(function (c) { return c.fecha === fecha; });
-        return (
-          <div className="au-cl-dia" key={fecha}>
-            <div className="au-cl-dia-cab">
-              <h2>{_auMayus(_auFechaLarga(fecha))}</h2>
-              <span className="au-cl-dia-n">{resumenDiaCupos(dia)}</span>
-              {esAdmin && puedeBloquearDiaCupos(diaEntero) && (
-                <button type="button" className="au-cl-texto" onClick={function () { setHoja({ t: 'dia', fecha: fecha }); }}>
-                  Bloquear el día
-                </button>
-              )}
-            </div>
-            {dia.map(fila)}
-          </div>
-        );
-      })}
+      {/* Cupos en cuadro (v3, decisión del usuario): un renglón por día y una
+          columna por hora y sustanciador; el mes cabe en una pantalla y se ve
+          dónde hay hueco. Libre / por apartar: tocar marca (barra de abajo);
+          citado: abre la cita; bloqueado: desbloquear. El estado va en color y
+          en forma (borde, barra, rayado, borde ámbar) y en palabra. */}
+      {porDia.length > 0 && (
+        <div className="au-cu-wrap">
+          <table className="au-cu">
+            <thead>
+              <tr>
+                <th className="au-cu-esq" rowSpan={2}><span className="sr-only">Día</span></th>
+                {columnasCu.horas.map(function (h) {
+                  return <th key={h.hora} className="au-cu-hora" colSpan={h.n}>{horaBonitaAudiencias(h.hora)}</th>;
+                })}
+              </tr>
+              <tr>
+                {columnasCu.cols.map(function (c) {
+                  return <th key={c.k} className="au-cu-sus" scope="col">{_auPrimerNombre(c.sustanciador)}</th>;
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {porDia.map(function (fecha) {
+                const dia = porFecha[fecha];
+                const diaEntero = cupos.filter(function (c) { return c.fecha === fecha; });
+                const d = parsearFecha(fecha);
+                const marcables = dia.filter(function (c) { return c.estado === 'LIBRE' || c.estado === 'POR_APARTAR'; });
+                const todasMarcadas = marcables.length > 0 && marcables.every(function (c) { return sel[c.idCupo]; });
+                return (
+                  <tr key={fecha}>
+                    <th className="au-cu-fecha" scope="row">
+                      {esAdmin && marcables.length > 0 ? (
+                        <button type="button" className="au-cu-fbtn" aria-pressed={todasMarcadas}
+                          title={todasMarcadas ? 'Quitar la marca del día' : 'Marcar los cupos libres del día'}
+                          onClick={function () {
+                            setSel(function (prev) {
+                              const n = Object.assign({}, prev);
+                              marcables.forEach(function (c) { if (todasMarcadas) delete n[c.idCupo]; else n[c.idCupo] = true; });
+                              return n;
+                            });
+                          }}>
+                          <b>{_AU_DIAS_CORTO[d.getDay()]} {d.getDate()}</b><small>{_AU_MESES[d.getMonth()].slice(0, 3)}</small>
+                        </button>
+                      ) : (
+                        <span className="au-cu-fbtn"><b>{_AU_DIAS_CORTO[d.getDay()]} {d.getDate()}</b><small>{_AU_MESES[d.getMonth()].slice(0, 3)}</small></span>
+                      )}
+                      {esAdmin && puedeBloquearDiaCupos(diaEntero) && (
+                        <button type="button" className="au-cl-texto au-cu-bdia" onClick={function () { setHoja({ t: 'dia', fecha: fecha }); }}>
+                          Bloquear el día
+                        </button>
+                      )}
+                    </th>
+                    {columnasCu.cols.map(function (col) {
+                      const c = dia.find(function (x) { return x.hora === col.hora && normNombreAudiencias(x.sustanciador) === col.norm; });
+                      return <td key={col.k}>{c ? celdaCupo(c) : <span className="au-cel nada" aria-label="Sin cupo">—</span>}</td>;
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {selIds.length > 0 && (
         <div className="au-cl-barra" role="region" aria-label="Cupos seleccionados">
@@ -1432,31 +1650,29 @@ function CompletadasCaja({ lista, pegadas, copiadasLocal, aviso, onCopiar }) {
     // el renglón mientras no se recarga la pantalla.
     const m = r.pegada || copiadasLocal[r.idCupo] || null;
     const cit = partirCitadoExcel(r.citado);
+    // v3: tres renglones cortos (antes cinco con rótulos): cuándo + Copiar,
+    // quién, y el caso con su sustanciador.
     return (
-      <div className={'au-exc' + (r.pegada ? ' au-pegada' : '')} key={r.idCupo}>
-        <p className="au-exc-fecha">
-          {_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}
+      <div className={'au-exc2' + (r.pegada ? ' pegada' : '')} key={r.idCupo}
+        title={r.fechaCompletada ? 'Visita completada ' + formatearFecha(r.fechaCompletada) : undefined}>
+        <div className="au-exc2-l1">
+          <b>{_auDiaCorto(r.fecha)}/{String(r.fecha).slice(-4)} · {horaBonitaAudiencias(r.hora)}</b>
+          <button type="button" className={'btn-accion au-exc-btn' + (m ? ' ok' : '')}
+            aria-label={m ? 'Copiar otra vez la citación del ' + r.fecha : 'Copiar fila para el Excel'}
+            title={m ? 'Copiar otra vez la fila para el Excel' : 'Copiar fila para el Excel'}
+            onClick={function () { onCopiar(r); }}>
+            {m ? '✓ Copiada' : <>{_AU_SVG_COPIAR}Copiar</>}
+          </button>
+        </div>
+        <p className="au-exc2-l2">
+          {cit.nombre
+            ? <>{cit.nombre}{cit.documento ? ' · C.C. ' + _auDocPuntos(cit.documento) : ''}</>
+            : <span className="au-sindoc">Sin nombre</span>}
         </p>
-        <button type="button" className={'btn-accion au-exc-btn' + (m ? ' ok' : '')}
-          aria-label={m ? 'Copiar otra vez la citación del ' + r.fecha : 'Copiar fila para el Excel'}
-          title={m ? 'Copiar otra vez la fila para el Excel' : 'Copiar fila para el Excel'}
-          onClick={function () { onCopiar(r); }}>
-          {m ? '✓ Copiada' : <>{_AU_SVG_COPIAR}Copiar</>}
-        </button>
-        <dl className="au-exc-dl">
-          <dt>Citado</dt>
-          <dd>
-            {cit.nombre
-              ? <>{cit.nombre}{cit.documento ? ' · C.C. ' + _auDocPuntos(cit.documento) : ''}</>
-              : <span className="au-sindoc">Sin nombre</span>}
-          </dd>
-          <dt>Caso</dt>
-          <dd>{_auCasoExcel(r)}</dd>
-          <dt>Sustanciador</dt>
-          <dd>{r.sustanciador ? titleCaseNombre(r.sustanciador)
-            : <span className="au-exc-sin">Por asignar en el Excel</span>}</dd>
-        </dl>
-        {r.fechaCompletada && <p className="au-exc-pie">Visita completada {formatearFecha(r.fechaCompletada)}</p>}
+        <p className="au-exc2-l3">
+          {_auCasoExcel(r)}{' · '}
+          {r.sustanciador ? titleCaseNombre(r.sustanciador) : <span className="au-exc-sin">Sustanciador por asignar en el Excel</span>}
+        </p>
         {m && <p className="au-exc-marca">Copiada el {m.en}{m.por ? ' · ' + titleCaseNombre(m.por) : ''}</p>}
       </div>
     );
@@ -1590,6 +1806,12 @@ function AudienciasScreen({ usuario }) {
   // La hoja abierta de la pantalla, una a la vez: {t:'pedir'} | {t:'cita', cita}
   // | {t:'novedades'}. Las hojas de la vista Cupos viven en VistaCupos.
   const [hoja, setHoja] = useStateAU(null);
+  // Calendario (v3): semana y día elegidos, y si se ven los cupos libres (el
+  // admin los ve de entrada: arma el día como en el Excel).
+  const [semana, setSemana] = useStateAU(_auSemanaInicial);
+  const [verLibres, setVerLibres] = useStateAU(usuario.rol === 'ADMIN');
+  // «Copiar lista para el Excel» de los cupos por apartar (Por hacer y Cupos).
+  const [copiadoApartar, setCopiadoApartar] = useStateAU(false);
 
   const esAdmin = usuario.rol === 'ADMIN';
   const esSup = !esAdmin && veTodasLasVisitas(usuario.rol);
@@ -1746,11 +1968,15 @@ function AudienciasScreen({ usuario }) {
   // Vista Agenda: filtros vigentes («Mis citas» del inspector, chip de
   // sustanciador — con sustanciador elegido las citas viejas no salen), la
   // búsqueda común y las inspecciones al lugar.
-  const agendaDias = useMemoAU(function () {
-    const opts = { soloDe: soloMias ? usuario.usuario : '', sustanciador: susFiltro, q: q,
+  const optsAgenda = useMemoAU(function () {
+    return { soloDe: soloMias ? usuario.usuario : '', sustanciador: susFiltro, q: q,
       inspecciones: true, soloInspecciones: soloInsp };
-    return agendaAudienciasDias(filas, (datos && datos.cupos) || [], hoyTxt, opts);
-  }, [filas, datos, hoyTxt, soloMias, susFiltro, soloInsp, q]);
+  }, [soloMias, susFiltro, soloInsp, q]);
+  const agendaDias = useMemoAU(function () {
+    return agendaAudienciasDias(filas, (datos && datos.cupos) || [], hoyTxt, optsAgenda);
+  }, [filas, datos, hoyTxt, optsAgenda]);
+  // El Calendario lee la semana sin búsqueda (al buscar se ve la lista).
+  const optsCalendario = useMemoAU(function () { return Object.assign({}, optsAgenda, { q: '' }); }, [optsAgenda]);
 
   const decretadas = useMemoAU(function () { return inspeccionesDecretadas(filas); }, [filas]);
 
@@ -1794,6 +2020,34 @@ function AudienciasScreen({ usuario }) {
       await liberarCupoAudiencias(c.idCupo, 'Liberado desde la pestaña Audiencias');
       setHoja(null);
     }, 'No se pudo liberar el cupo');
+  }
+
+  // «Copiar lista para el Excel» del aviso de por apartar: una fila por cupo,
+  // fecha, hora y sustanciador separados por tabulador.
+  const porApartarDe = function () { return ((datos && datos.cupos) || []).filter(function (c) { return c.estado === 'POR_APARTAR'; }); };
+  async function copiarApartar() {
+    const tsv = porApartarDe()
+      .map(function (c) { return c.fecha + '\t' + horaBonitaAudiencias(c.hora) + '\t' + titleCaseNombre(c.sustanciador); })
+      .join('\n');
+    const ok = await _auCopiarConRespaldo(tsv, 'Cupos por apartar');
+    if (ok) {
+      setCopiadoApartar(true);
+      setTimeout(function () { setCopiadoApartar(false); }, 2500);
+    }
+  }
+
+  async function confirmarApartar() {
+    if (ocupado) return;
+    const ids = porApartarDe().map(function (c) { return c.idCupo; });
+    const ok = await appConfirm('¿Ya apartaste los ' + ids.length + ' cupos en el Excel del despacho?',
+      { titulo: 'Apartar cupos', btnOk: 'Sí, ya los aparté', btnCancel: 'Cancelar' });
+    if (!ok) return;
+    await escribir(async function () {
+      const r = await confirmarCuposAudiencias(ids);
+      const nc = (r.noConfirmados || []).length;
+      if (nc) await appAlert('El servidor no confirmó ' + nc + ' cupo' + (nc === 1 ? '' : 's') +
+        ' (ya no estaban por apartar).', { tono: 'error' });
+    }, 'No se pudieron confirmar los cupos');
   }
 
   async function quitarNovedad(n) {
@@ -1845,8 +2099,10 @@ function AudienciasScreen({ usuario }) {
   // El botón de la fila de la cita: solo admin y supervisor, solo si la cita
   // tiene visita y solo de hoy hacia atrás (se decreta en la audiencia).
   // `r`: cupo (Lista) o renglón de la Agenda ({ fuente, cupo | fila, caso }).
+  // v3 (decisión del usuario): en la fila, solo la supervisora, que es quien
+  // decide en la audiencia. El admin decreta desde la hoja de la cita.
   function decretoDe(r, fechaTxt) {
-    if (!(esAdmin || esSup)) return null;
+    if (!esSup) return null;
     const cita = r.fuente === 'visita' ? null : (r.fuente === 'bloque' ? r.cupo : r);
     const fila = r.fuente === 'visita' ? r.fila : null;
     if (cita && cita.sinVisita) return null;
@@ -1978,12 +2234,23 @@ function AudienciasScreen({ usuario }) {
     return !esSup || normNombreAudiencias(n.sustanciador) === yo;
   }).sort(function (a, b) { return (parsearFecha(a.desde) || 0) - (parsearFecha(b.desde) || 0); });
 
+  const nPorApartar = datos.cupos.filter(function (c) { return c.estado === 'POR_APARTAR'; }).length;
+  // «Hoy ante ti»: la supervisora que también es sustanciadora. Sus citas de hoy
+  // ya llevan «Decretar» allí; en el Calendario no se repite.
+  const verHoyAnteTi = esSup && !buscando && sustanciadores.some(function (x) { return x.norm === yo; });
+  const decretoCalendario = function (r, fechaTxt) {
+    const sus = r.sustanciador || (r.cupo && r.cupo.sustanciador) || '';
+    if (verHoyAnteTi && fechaTxt === hoyTxt && normNombreAudiencias(sus) === yo) return null;
+    return decretoDe(r, fechaTxt);
+  };
   const propsPedidas = { cupos: datos.cupos, pendientes: pendientes, hoyTxt: hoyTxt, usuario: usuario, yo: yo,
     clicableCita: clicableCita, onAbrirCita: abrirCita };
 
   // Vistas en control segmentado y filtros en chips: antes eran el mismo chip
   // y en el celular se mezclaban al saltar de renglón.
-  const vistas = [['agenda', 'Agenda']].concat(esInsp ? [] : [['cupos', 'Cupos']]).concat([['lista', 'Lista']]);
+  // v3: «Calendario» (semana y día) para admin y supervisor; el inspector
+  // sigue con la lista de sus próximas citas.
+  const vistas = [['agenda', esInsp ? 'Próximas' : 'Calendario']].concat(esInsp ? [] : [['cupos', 'Cupos']]).concat([['lista', 'Lista']]);
   // «Inspecciones al lugar» no aplica a Cupos: allí no se ofrece.
   const filtros = esInsp
     ? [['mias', 'Mis citas', misCitas, function () { setMisCitas(true); }],
@@ -2033,9 +2300,6 @@ function AudienciasScreen({ usuario }) {
       </header>
 
       {sinConexion && <p className="au-aviso-linea">Sin conexión</p>}
-      {quedanCupos && (
-        <p className="au-aviso-linea">Quedan cupos solo hasta el <b>{datos.ultimaFechaConCupo}</b>. Hay que apartar más en el Excel.</p>
-      )}
 
       {/* Pedidas hoy, un renglón plegable. El admin en escritorio (≥1200) la
           tiene en el riel y este renglón se oculta por CSS. */}
@@ -2068,25 +2332,41 @@ function AudienciasScreen({ usuario }) {
                 title="Busca por citado, documento, radicado, N° de orden, expediente, dirección, sustanciador o inspector"
                 aria-label="Buscar audiencia por citado, documento, radicado, orden, expediente, sustanciador o inspector"
                 onChange={function (e) { setQ(e.target.value); }} />
+              {vista === 'agenda' && !esInsp && !buscando && (
+                <label className="au-ver-libres">
+                  <input type="checkbox" checked={verLibres} onChange={function (e) { setVerLibres(e.target.checked); }} />
+                  Ver cupos libres
+                </label>
+              )}
             </div>
           )}
           {resultado}
 
-          {vista === 'agenda' && (
+          {vista === 'agenda' && verHoyAnteTi && (
+            <HoyAnteTi filas={filas} cupos={datos.cupos} hoyTxt={hoyTxt} yo={yo}
+              clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={decretoDe} />
+          )}
+          {vista === 'agenda' && (esInsp || buscando) && (
             <VistaAgenda dias={agendaDias} hoyTxt={hoyTxt} filtroSus={susFiltro} sinInspector={soloMias} buscando={buscando}
-              clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={(esAdmin || esSup) ? decretoDe : null} />
+              clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={esSup ? decretoDe : null} />
+          )}
+          {vista === 'agenda' && !esInsp && !buscando && (
+            <VistaCalendario filas={filas} cupos={datos.cupos} hoyTxt={hoyTxt} opts={optsCalendario} filtroSus={susFiltro}
+              verLibres={verLibres && !soloInsp} sinInspector={soloMias} semana={semana} onSemana={setSemana}
+              clicableCita={clicableCita} onAbrirCita={abrirCita} decreto={esSup ? decretoCalendario : null} />
           )}
           {vista === 'cupos' && (
             <VistaCupos datos={datos} novedades={novedades} esAdmin={esAdmin} hoyTxt={hoyTxt}
               filtroSus={susFiltro} sustanciadores={sustanciadores} ocupado={ocupado}
               escribir={escribir} onCambio={function () { cargar({ fresca: true }); }} onAbrirCita={abrirCita}
+              copiadoApartar={copiadoApartar} onCopiarApartar={copiarApartar} onConfirmarApartar={confirmarApartar}
               onAbrirNovedades={function () { setHoja({ t: 'novedades' }); }} />
           )}
           {vista === 'lista' && (
             <VistaLista proximas={lista.proximas} pasadas={lista.pasadas} buscando={buscando}
               pasadasAbiertas={buscando || verPasadas} onVerPasadas={function () { setVerPasadas(!verPasadas); }}
               esAdmin={esAdmin} clicableCita={clicableCita} onAbrirCita={abrirCita}
-              decreto={(esAdmin || esSup) ? function (c) { return decretoDe(c); } : null} />
+              decreto={esSup ? function (c) { return decretoDe(c); } : null} />
           )}
         </div>
 
@@ -2096,6 +2376,34 @@ function AudienciasScreen({ usuario }) {
         {esAdmin && (
           <aside className="au-riel">
             <div className="au-riel-pedidas"><PedidasHoyCaja {...propsPedidas} /></div>
+            {/* Por hacer en el Excel (v3): apartar cupos y el aviso de que se
+                acaban, juntos. Antes eran un aviso en Cupos y otro bajo el título. */}
+            {(nPorApartar > 0 || quedanCupos) && (
+              <section className="au-caja au-porhacer" aria-labelledby="au-t-ph">
+                <h2 id="au-t-ph">Por hacer en el Excel</h2>
+                {nPorApartar > 0 && (
+                  <div className="au-ph-item">
+                    <p><b>Apartar {nPorApartar} {_auPluralCupo(nPorApartar)} nuevos</b> Hasta confirmarlos, nadie puede pedirlos.</p>
+                    <span className="au-ph-acc">
+                      <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={copiarApartar}>
+                        {copiadoApartar ? '✓ Copiado' : 'Copiar lista'}
+                      </button>
+                      <button type="button" className="btn-neutro btn-chico" disabled={ocupado} onClick={confirmarApartar}>Ya los aparté</button>
+                    </span>
+                  </div>
+                )}
+                {quedanCupos && (
+                  <div className="au-ph-item aviso">
+                    <p><b>Hay cupos solo hasta el {datos.ultimaFechaConCupo}</b> Hay que apartar más en el Excel.</p>
+                    {vista !== 'cupos' && (
+                      <span className="au-ph-acc">
+                        <button type="button" className="btn-neutro btn-chico" onClick={function () { irVista('cupos'); }}>Ir a Cupos</button>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
             <CompletadasCaja lista={completadas} pegadas={(excel && excel.pegadas) || {}}
               copiadasLocal={copiadasLocal} aviso={avisoCopia} onCopiar={copiarFilaExcel} />
           </aside>
