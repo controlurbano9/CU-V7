@@ -617,6 +617,43 @@ function TarjetaPersona({ u, info, maxAbiertas, elegida, onElegir }) {
 
 const _ROL_ADM = { ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', INSPECTOR: 'Inspector' };
 
+// Mensaje con el enlace y el PIN temporal para que el admin lo envíe desde su
+// WhatsApp o su correo (la app no lo envía: USUARIOS no tiene teléfonos ni
+// correos, y así el PIN no queda guardado en ningún servidor). En el celular
+// abre el menú de compartir del teléfono; en el computador copia el texto. Si
+// ninguna de las dos se puede, muestra el texto para copiarlo a mano.
+function CompartirPinTemporal({ nombre, pin, vence }) {
+  const [estado, setEstado] = useStateA(''); // '' · 'copiado' · 'manual'
+  const tactil = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const puedeCompartir = tactil && typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const enlace = enlaceLoginUsuario(location.origin + location.pathname, nombre);
+  const texto = mensajePinTemporal({ nombre, pin, vence, enlace });
+
+  async function compartir() {
+    if (puedeCompartir) {
+      try { await navigator.share({ text: texto }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; } // cerró el menú
+    }
+    try {
+      await navigator.clipboard.writeText(texto);
+      setEstado('copiado');
+    } catch (e) { setEstado('manual'); }
+  }
+
+  return (
+    <>
+      <button type="button" className="vc-btn vc-btn-cta" onClick={compartir}>
+        {puedeCompartir ? 'Compartir mensaje' : (estado === 'copiado' ? '✓ Mensaje copiado' : 'Copiar mensaje')}
+      </button>
+      {estado === 'copiado' && <span className="adm-nota adm-pin-copiado" role="status">Pégalo en WhatsApp o en un correo.</span>}
+      {estado === 'manual' && (
+        <textarea className="input-campo adm-pin-texto" readOnly value={texto} rows={9}
+          aria-label="Mensaje para enviar" onFocus={e => e.target.select()} ref={el => el && el.select()} />
+      )}
+    </>
+  );
+}
+
 // Agregar una persona a USUARIOS. El backend normaliza el nombre (mayúsculas,
 // sin tildes: es el texto de los chips de visitadores) y rechaza los repetidos.
 // «Entra a la app» genera el PIN temporal en la misma llamada; sin marcarla
@@ -903,9 +940,12 @@ function PanelPersona({ u, info, logDesc, conPanel, yo, onAbrirReglas, onNavegar
               <div className="adm-pin-dig" aria-label={'PIN temporal ' + pinNuevo.pin.split('').join(' ')}>
                 {pinNuevo.pin.split('').map((d, i) => <span key={i} aria-hidden="true">{d}</span>)}
               </div>
-              <p>Díctaselo a {titleCaseNombre(u.nombre)}. No se vuelve a mostrar.</p>
+              <p>Envíaselo o díctaselo a {titleCaseNombre(u.nombre)}. No se vuelve a mostrar.</p>
               <p className="adm-nota">Vence {pinNuevo.vence}. Al entrar tendrá que elegir el suyo.</p>
-              <button type="button" className="vc-btn" onClick={() => setPinNuevo(null)}>Listo</button>
+              <div className="adm-pin-acc">
+                <CompartirPinTemporal nombre={u.nombre} pin={pinNuevo.pin} vence={pinNuevo.vence} />
+                <button type="button" className="vc-btn" onClick={() => setPinNuevo(null)}>Listo</button>
+              </div>
             </div>
           )}
 

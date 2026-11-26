@@ -145,11 +145,20 @@ function LoginScreen({ onLogin }) {
     // aparecían en este desplegable y ningún PIN les servía. `!== false`
     // tolera un backend anterior que no manda el campo.
     const conPin = l => l.filter(i => i.conUsuario !== false);
-    listarInspectoresActivos({ onActualizado: l => setInspectores(conPin(l)) })
+    // El enlace del mensaje del PIN temporal trae a la persona (#usuario=…):
+    // gana sobre el último usado. Puede no estar en la lista guardada en el
+    // equipo (es nueva), así que se mira también cuando llega la del webhook.
+    const delEnlace = usuarioDeEnlace(location.hash);
+    const elegirDelEnlace = list => {
+      if (delEnlace && list.some(i => i.nombre === delEnlace)) { setNombre(delEnlace); return true; }
+      return false;
+    };
+    listarInspectoresActivos({ onActualizado: l => { const list = conPin(l); setInspectores(list); elegirDelEnlace(list); } })
       .then(lista => {
         const list = conPin(lista);
         setInspectores(list);
         setCargandoLista(false);
+        if (elegirDelEnlace(list)) return;
         // Pre-seleccionar último usado
         const last = localStorage.getItem('cu_ultimo_usuario');
         if (last && list.some(i => i.nombre === last)) setNombre(last);
@@ -174,6 +183,11 @@ function LoginScreen({ onLogin }) {
     const { ok, error: errorMsg, ...usuario } = await login(nombre, pin);
     if (ok) {
       localStorage.setItem('cu_ultimo_usuario', usuario.usuario);
+      // El #usuario=… del enlace ya sirvió: fuera, para que Buscar y el
+      // Tablero (que leen el fragmento) no lo encuentren.
+      if (usuarioDeEnlace(location.hash)) {
+        try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e2) {}
+      }
       SESSION_V6.guardar(usuario);
       registrarLog(usuario.usuario, 'Login V6');
       // PIN temporal: la sesión queda guardada (es la que autoriza cambiarlo),

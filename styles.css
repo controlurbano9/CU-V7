@@ -3331,6 +3331,11 @@ button.sv-col-head {
 }
 .adm-pin-tmp p { margin: 6px 0 0; }
 .adm-pin-tmp .vc-btn { margin-top: 10px; }
+/* Compartir el mensaje con el PIN (2026-11-26): al lado de «Listo». */
+.adm-pin-acc { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+.adm-pin-acc .adm-pin-copiado { order: 3; flex-basis: 100%; margin: 6px 0 0; }
+.adm-pin-acc .adm-pin-texto { order: 3; flex-basis: 100%; margin-top: 10px; font-size: var(--fs-1); line-height: 1.45; resize: vertical; }
+@media (pointer: coarse) { .adm-pin-acc .vc-btn { min-height: var(--tap); } }
 .adm-pin-dig { display: flex; gap: 10px; }
 .adm-pin-dig span {
   font-family: var(--font-mono); font-size: var(--fs-5); font-weight: 600; color: var(--ink);

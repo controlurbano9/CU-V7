@@ -52,6 +52,42 @@ function titleCaseNombre(nombre) {
     .join(' ');
 }
 
+// ── PIN temporal: mensaje para compartir y enlace al login (2026-11-26) ──
+// El nombre va en el fragmento (#usuario=…), que el navegador no manda al
+// servidor; el PIN NUNCA va en el enlace (quedaría en el historial): solo en
+// el texto del mensaje, que el admin envía desde su WhatsApp o su correo.
+function enlaceLoginUsuario(base, nombre) {
+  var b = String(base || '').split('#')[0];
+  return b + '#usuario=' + encodeURIComponent(String(nombre || '').trim().toUpperCase());
+}
+
+// Nombre que trae el enlace (#usuario=…), en mayúsculas; '' si no trae.
+function usuarioDeEnlace(hash) {
+  var m = String(hash || '').match(/(?:^#|&)usuario=([^&]*)/);
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]).trim().replace(/\s+/g, ' ').toUpperCase(); }
+  catch (e) { return ''; }
+}
+
+// Texto que el admin le envía a quien recibe un PIN temporal. `vence` llega
+// como 'dd/MM/yyyy HH:mm' del backend.
+function mensajePinTemporal(o) {
+  var nombre = String((o && o.nombre) || '').trim();
+  var primer = nombre.split(/\s+/)[0] || '';
+  primer = primer ? primer.charAt(0).toUpperCase() + primer.slice(1).toLowerCase() : '';
+  var v = String((o && o.vence) || '').trim().split(/\s+/);
+  var vence = v[0] ? ('el ' + v[0] + (v[1] ? ' a las ' + v[1] : '')) : 'en 72 horas';
+  return [
+    'Hola' + (primer ? ', ' + primer : '') + '. Ya tienes usuario en la app de Control Urbano – Inspección N°9.',
+    '',
+    '1. Entra a ' + o.enlace,
+    '2. Tu nombre ya sale elegido. Escribe este PIN temporal: ' + o.pin,
+    '3. La app te pedirá crear tu propio PIN de 4 dígitos. Ese es el que usarás desde ahora; no se lo compartas a nadie.',
+    '',
+    'El PIN temporal vence ' + vence + '. Si se vence antes de que entres, pídeme otro.'
+  ].join('\n');
+}
+
 function _padFecha(dia, mes, anio) {
   return String(dia).padStart(2, '0') + '/' + String(mes).padStart(2, '0') + '/' + anio;
 }
@@ -7714,6 +7750,7 @@ var _cuUtilsExports = {
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
+  enlaceLoginUsuario: enlaceLoginUsuario, usuarioDeEnlace: usuarioDeEnlace, mensajePinTemporal: mensajePinTemporal,
   parsearFecha: parsearFecha,
   esDiaHabil: esDiaHabil,
   diasHabilesHasta: diasHabilesHasta,
