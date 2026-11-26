@@ -626,8 +626,7 @@ function CompartirPinTemporal({ nombre, pin, vence }) {
   const [estado, setEstado] = useStateA(''); // '' · 'copiado' · 'manual'
   const tactil = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   const puedeCompartir = tactil && typeof navigator !== 'undefined' && typeof navigator.share === 'function';
-  const enlace = enlaceLoginUsuario(location.origin + location.pathname, nombre);
-  const texto = mensajePinTemporal({ nombre, pin, vence, enlace });
+  const texto = mensajePinTemporal({ nombre, pin, vence });
 
   async function compartir() {
     if (puedeCompartir) {

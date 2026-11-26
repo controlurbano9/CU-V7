@@ -52,22 +52,12 @@ function titleCaseNombre(nombre) {
     .join(' ');
 }
 
-// ── PIN temporal: mensaje para compartir y enlace al login (2026-11-26) ──
-// El nombre va en el fragmento (#usuario=…), que el navegador no manda al
-// servidor; el PIN NUNCA va en el enlace (quedaría en el historial): solo en
-// el texto del mensaje, que el admin envía desde su WhatsApp o su correo.
-function enlaceLoginUsuario(base, nombre) {
-  var b = String(base || '').split('#')[0];
-  return b + '#usuario=' + encodeURIComponent(String(nombre || '').trim().toUpperCase());
-}
-
-// Nombre que trae el enlace (#usuario=…), en mayúsculas; '' si no trae.
-function usuarioDeEnlace(hash) {
-  var m = String(hash || '').match(/(?:^#|&)usuario=([^&]*)/);
-  if (!m) return '';
-  try { return decodeURIComponent(m[1]).trim().replace(/\s+/g, ' ').toUpperCase(); }
-  catch (e) { return ''; }
-}
+// ── PIN temporal: mensaje para compartir (2026-11-26) ──
+// Enlace oficial de la app, el que usa el equipo, sea cual sea la copia desde
+// la que el admin genera el PIN. Sin nada agregado (decisión del usuario): la
+// persona elige su nombre en la lista. El PIN va solo en el texto del mensaje,
+// que el admin envía desde su WhatsApp o su correo.
+var URL_APP_OFICIAL = 'https://controlurbano9.github.io/CU-V7/';
 
 // Texto que el admin le envía a quien recibe un PIN temporal. `vence` llega
 // como 'dd/MM/yyyy HH:mm' del backend.
@@ -80,8 +70,9 @@ function mensajePinTemporal(o) {
   return [
     'Hola' + (primer ? ', ' + primer : '') + '. Ya tienes usuario en la app de Control Urbano – Inspección N°9.',
     '',
-    '1. Entra a ' + o.enlace,
-    '2. Tu nombre ya sale elegido. Escribe este PIN temporal: ' + o.pin,
+    '1. Entra a ' + URL_APP_OFICIAL,
+    '2. Elige tu nombre en la lista' + (nombre ? ' (' + nombre.toUpperCase() + ')' : '') +
+      ' y escribe este PIN temporal: ' + o.pin,
     '3. La app te pedirá crear tu propio PIN de 4 dígitos. Ese es el que usarás desde ahora; no se lo compartas a nadie.',
     '',
     'El PIN temporal vence ' + vence + '. Si se vence antes de que entres, pídeme otro.'
@@ -7750,7 +7741,7 @@ var _cuUtilsExports = {
   formatearFecha: formatearFecha,
   formatearFechaHora: formatearFechaHora,
   titleCaseNombre: titleCaseNombre,
-  enlaceLoginUsuario: enlaceLoginUsuario, usuarioDeEnlace: usuarioDeEnlace, mensajePinTemporal: mensajePinTemporal,
+  URL_APP_OFICIAL: URL_APP_OFICIAL, mensajePinTemporal: mensajePinTemporal,
   parsearFecha: parsearFecha,
   esDiaHabil: esDiaHabil,
   diasHabilesHasta: diasHabilesHasta,
