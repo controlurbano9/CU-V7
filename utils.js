@@ -1863,11 +1863,15 @@ function fechaLargaAgenda(fecha) {
 
 // Lo que un inspector ya tiene ese día: asignadas o iniciadas cuya fecha de
 // agenda es esa, con la regla del diligenciador. Cuenta para su meta.
-function visitasDelDia(filas, fecha, nombre) {
+// conCompletadas (la Agenda, 2026-11-26): también las completadas de ese día
+// (fechaAgendaVisita = FECHA DE VISITA), para ver lo que se hizo y que cuenten
+// en la meta del día.
+function visitasDelDia(filas, fecha, nombre, conCompletadas) {
   var t = _soloFecha(fecha).getTime();
   return (filas || []).filter(function (f) {
     var e = _normEstadoVisitaBD(f['ESTADO VISITA'] || '');
-    if (e !== 'ASIGNADO' && e !== 'INICIADO') return false;
+    var comp = e === 'COMPLETADO' || e === 'COMPLETADA';
+    if (e !== 'ASIGNADO' && e !== 'INICIADO' && !(conCompletadas && comp)) return false;
     var d = fechaAgendaVisita(f);
     return !!d && _soloFecha(d).getTime() === t && _esVisitaDe(f, nombre);
   });
@@ -6731,7 +6735,9 @@ function datosConBorrador(datos, b) {
 // tal como llegan.
 //   → { dias: [{ fecha, date, zona, habil }],
 //       filas: [{ inspector, dias: [{ items, visitas, inspecciones, total }] }] }
-// Cada item: { f, tipo: 'insp'|'visita', hora, fueraZona, nueva }.
+// Cada item: { f, tipo: 'insp'|'visita', hora, fueraZona, nueva, estado }. Desde
+// 2026-11-26 entran también las completadas del día (hechas), que cuentan
+// para la meta: el día se planea con lo que ya se hizo en él.
 function semanaEquipo(datos, lunes, inspectores) {
   var l = lunesInspecciones(lunes);
   var dias = [0, 1, 2, 3, 4].map(function (k) {
@@ -6742,18 +6748,21 @@ function semanaEquipo(datos, lunes, inspectores) {
     return {
       inspector: nombre,
       dias: dias.map(function (d) {
-        var items = visitasDelDia(datos, d.date, nombre).map(function (f) {
+        var items = visitasDelDia(datos, d.date, nombre, true).map(function (f) {
           var g = diaGrupoInspeccion(f);
-          return { f: f, tipo: esInspeccionLugar(f) ? 'insp' : 'visita',
+          var it = { f: f, tipo: esInspeccionLugar(f) ? 'insp' : 'visita',
             hora: horaProgramadaDe(f), fueraZona: !!g && g !== d.zona, nueva: !!f._borrador };
+          it.estado = estadoItemAgenda(it);
+          return it;
         });
         items.sort(function (a, b) {
           if (a.tipo !== b.tipo) return a.tipo === 'insp' ? -1 : 1;
           return a.tipo === 'insp' ? horaAudienciasMin(a.hora) - horaAudienciasMin(b.hora) : 0;
         });
         var inspecciones = items.filter(function (x) { return x.tipo === 'insp'; }).length;
+        var hechas = items.filter(function (x) { return x.estado === 'completada'; }).length;
         return { items: items, inspecciones: inspecciones, visitas: items.length - inspecciones,
-          total: items.length };
+          hechas: hechas, total: items.length };
       }),
     };
   });
@@ -6809,6 +6818,67 @@ function cuposDiaEquipo(semana, k, visitadores, meta) {
     usados += c ? (c.total || 0) : 0;
   });
   return { total: total, usados: usados, libres: total - usados };
+}
+
+// ── Agenda v3 (2026-11-26, decisiones del usuario; maqueta
+// propuesta-agenda-audiencias-v3.html; tests/agenda-v3.test.js) ──
+
+// Estado de una tarjeta de «El día», con el código de la Semana de Inicio:
+// 'nueva' (del borrador), 'asignada', 'iniciada' o 'completada'.
+function estadoItemAgenda(it) {
+  if (!it) return 'asignada';
+  if (it.nueva) return 'nueva';
+  var e = _normEstadoVisitaBD((it.f && it.f['ESTADO VISITA']) || '');
+  if (e === 'COMPLETADO' || e === 'COMPLETADA') return 'completada';
+  if (e === 'INICIADO') return 'iniciada';
+  return 'asignada';
+}
+
+// Lo que pasó un día (para la tira, en los días ya pasados): cuántas se
+// hicieron y cuántas quedaron sin terminar, de todo el equipo.
+//   → { hechas, sinTerminar, total }
+function resumenDiaEquipo(semana, k) {
+  var hechas = 0, total = 0;
+  ((semana && semana.filas) || []).forEach(function (fila) {
+    var c = fila.dias && fila.dias[k];
+    if (!c) return;
+    total += c.total || 0;
+    hechas += c.hechas || 0;
+  });
+  return { hechas: hechas, sinTerminar: total - hechas, total: total };
+}
+
+// «Más urgente» en dos grupos (decisión del usuario): primero las vencidas
+// (pasaron el plazo de su prioridad, motivoPrioridad), en el orden en que
+// llegan (puntaje); después el resto, de la más antigua a la más nueva (sin
+// antigüedad, al final). Antes una Crítica vencida salía detrás de casos sin
+// prioridad, porque la antigüedad pesa más en el puntaje.
+//   → { vencidas: [candidata], resto: [candidata] }
+function gruposUrgenciaAgenda(visitas) {
+  var vencidas = [], resto = [];
+  (visitas || []).forEach(function (v, i) {
+    (motivoPrioridad(v).vencida ? vencidas : resto).push({ v: v, i: i });
+  });
+  resto.sort(function (a, b) {
+    var da = typeof a.v.dias === 'number' ? a.v.dias : -1;
+    var db = typeof b.v.dias === 'number' ? b.v.dias : -1;
+    return (db - da) || (a.i - b.i);
+  });
+  var solo = function (x) { return x.v; };
+  return { vencidas: vencidas.map(solo), resto: resto.map(solo) };
+}
+
+// Índice (0–4) del primer día de la semana, desde `desde`, que es hábil, no ya
+// pasado y tiene cupo libre. -1 si no queda ninguno esa semana.
+// libresDe(k) → cupos libres del día k (cuposDiaEquipo(...).libres).
+function siguienteDiaConCupo(dias, desde, hoy, libresDe) {
+  var h = _soloFecha(hoy || new Date()).getTime();
+  for (var k = Math.max(0, desde); k < (dias || []).length; k++) {
+    var d = dias[k];
+    if (!d || !d.habil || _soloFecha(d.date).getTime() < h) continue;
+    if (libresDe(k) > 0) return k;
+  }
+  return -1;
 }
 
 // «Lunes 9 de noviembre de 2026»: la fecha con año de la confirmación de una
@@ -7576,6 +7646,10 @@ var _cuUtilsExports = {
   envioBorrador: envioBorrador,
   itemBorradorVigente: itemBorradorVigente,
   cuposDiaEquipo: cuposDiaEquipo,
+  estadoItemAgenda: estadoItemAgenda,
+  resumenDiaEquipo: resumenDiaEquipo,
+  gruposUrgenciaAgenda: gruposUrgenciaAgenda,
+  siguienteDiaConCupo: siguienteDiaConCupo,
   fechaLargaConAnio: fechaLargaConAnio,
   horaLargaInspeccion: horaLargaInspeccion,
   agruparPorBarrioAgenda: agruparPorBarrioAgenda,

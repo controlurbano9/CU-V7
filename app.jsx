@@ -949,7 +949,7 @@ function AppV6() {
           {pantalla === 'mis-visitas' && <MisVisitasScreen usuario={usuario} onContinuar={irContinuar} />}
           {pantalla === 'buscar' && <BuscarScreen usuario={usuario}
             onContinuar={irContinuar} onNuevaVisita={irNuevaVisitaRadicado} />}
-          {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} />}
+          {pantalla === 'agenda' && <AgendaScreen usuario={usuario} onContinuar={irContinuar} onNavegar={navegar} />}
           {pantalla === 'audiencias' && <AudienciasScreen usuario={usuario} />}
           {pantalla === 'tablero' && <TableroScreen usuario={usuario} onNavegar={navegar} onContinuar={irContinuar} />}
           {pantalla === 'nueva-visita' && <NuevaVisitaScreen

@@ -47,11 +47,11 @@ function inicialesInsp(n) {
 // Admin y supervisores (veTodasLasVisitas). El supervisor ve la semana y
 // programa inspecciones; asignar visitas y ⚙ Reglas son del admin
 // (agenda-semana.jsx lo decide).
-function AgendaScreen({ usuario }) {
+function AgendaScreen({ usuario, onNavegar }) {
   if (!usuario || !veTodasLasVisitas(usuario.rol)) {
     return <div className="card" style={{ margin: 16 }}>Acceso restringido.</div>;
   }
-  return <div className="pantalla activa pad-bottom"><AgendaSemana usuario={usuario} /></div>;
+  return <div className="pantalla activa pad-bottom"><AgendaSemana usuario={usuario} onNavegar={onNavegar} /></div>;
 }
 
 // ⚙ Reglas: quién recibe visitas de la agenda y la meta por inspector. Es el

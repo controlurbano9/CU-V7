@@ -46,6 +46,23 @@ function _asRangoSemana(dias) {
 function _asDir(f) {
   return direccionVisible(String(f['DIRECCION INFRACCION'] || f['DIRECCION'] || '').trim() || 'Sin dirección');
 }
+// Barrio en un solo formato (v3): los que llegan en mayúsculas («FONTIDUEÑO»,
+// «LA GABRIELA») pasan a «Fontidueño», «La Gabriela»; los demás, tal cual.
+const AS_MENORES = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, EL: 1, Y: 1 };
+function _asBarrio(b) {
+  const t = String(b || '').trim();
+  if (!t || t !== t.toUpperCase()) return t;
+  return t.split(/\s+/).map((w, i) => (i > 0 && AS_MENORES[w] ? w.toLowerCase() : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
+}
+// Celda de dirección de «Por agendar»: la dirección y, debajo, el caso.
+function _asCeldaDir(txt, sub) {
+  return (
+    <span className="as-f-dir">
+      <span className="as-f-dir-t">{txt}</span>
+      {sub ? <span className="as-f-sub">{sub}</span> : null}
+    </span>
+  );
+}
 // Subrenglón del item: «Inspección · Exp. N» o «Rad. N» (el expediente
 // manda sobre el radicado; identificadorVisita ya resuelve cuál hay).
 function _asSub(it) {
@@ -160,7 +177,7 @@ function _asCandidataDeFila(f) {
     barrio: String(f['BARRIO/VEREDA'] || f['BARRIO'] || ''), comuna: f['COMUNA'], prioridad: isNaN(p) ? null : p };
 }
 
-function AgendaSemana({ usuario }) {
+function AgendaSemana({ usuario, onNavegar }) {
   // Hooks antes de cualquier early return (React #310). La marca se lee
   // una sola vez (la deja «Ver en la Agenda» desde la ficha).
   const ir = useRefAS(undefined);
@@ -209,6 +226,9 @@ function AgendaSemana({ usuario }) {
   const [idxBarrios, setIdxBarrios] = useStateAS(null);
   const [com, setCom] = useStateAS('');             // filtro de comuna de la lista ('' = todas)
   const [orden, setOrden] = useStateAS('urg');      // 'urg' | 'barrio'
+  // A quién se agregan los casos de la lista (v3, 2026-11-26): un solo botón por
+  // fila. null = el visitador con menos carga ese día; agregar lo fija.
+  const [destino, setDestino] = useStateAS(null);
   const [dropIns, setDropIns] = useStateAS(null);   // visitador bajo el arrastre
   const [confirmadas, setConfirmadas] = useStateAS(null); // { inspecciones, visitas } tras «Asignar»
   const [avisoOk, setAvisoOk] = useStateAS('');     // aviso breve de abajo
@@ -397,6 +417,16 @@ function AgendaSemana({ usuario }) {
   }
 
   const esEstaSemana = lunes.getTime() === lunesInspecciones(new Date()).getTime();
+  // «Ver la semana en Inicio»: la Semana de Inicio lee su semana de cu_semana_v1
+  // al montar (semana-visitas.jsx); se deja la de aquí y se navega.
+  const verEnInicio = () => {
+    try {
+      const prev = JSON.parse(sessionStorage.getItem('cu_semana_v1') || '{}') || {};
+      prev.offset = offsetSemanaDe(lunes) || 0;
+      sessionStorage.setItem('cu_semana_v1', JSON.stringify(prev));
+    } catch (e) { /* sin sessionStorage: Inicio abre en su semana */ }
+    onNavegar('home');
+  };
   const moverSemana = dias => setLunes(d => lunesInspecciones(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias)));
 
   // ── El día elegido ──
@@ -404,6 +434,13 @@ function AgendaSemana({ usuario }) {
   const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
   // Día pasado o festivo: se ve lo que hay, pero no se agrega nada.
   const cerrado = !dia.habil ? 'Es festivo: elige otro día.' : dia.date < hoy0 ? 'Ese día ya pasó: elige otro.' : '';
+  // Día pasado (v3): se ve lo que se hizo, sin «Por agendar» ni «Proponer».
+  const pasado = dia.habil && dia.date < hoy0;
+  const esHoyDia = dia.date.getTime() === hoy0.getTime();
+  const cuposDe = k => cuposDiaEquipo(semana, k, inspVisitas, meta);
+  const cuDia = cuposDe(diaSel);
+  const diaLleno = !cerrado && cuDia.total > 0 && cuDia.libres <= 0;
+  const sigConCupo = diaLleno ? siguienteDiaConCupo(semana.dias, diaSel + 1, hoy0, k => cuposDe(k).libres) : -1;
   const pa = porAgendar[diaSel] || { inspecciones: [], visitas: [] };
   const quitar = fila => setBorrador(b => borradorQuitar(b, fila));
   const avisar = m => appAlert(m, { titulo: 'No se puede agregar' });
@@ -411,6 +448,10 @@ function AgendaSemana({ usuario }) {
   const colorDe = n => 'var(--ag-i' + ((Math.max(0, inspectores.indexOf(n)) % 4) + 1) + ')';
   const filaDelDia = n => semana.filas.find(x => x.inspector === n);
   const delDia = n => { const fi = filaDelDia(n); return (fi && fi.dias[diaSel]) || { items: [], total: 0 }; };
+  // A quién va «+ Nombre» de la lista: el elegido si sigue en ⚙ Reglas; si no,
+  // el visitador con menos carga ese día.
+  const destinoEf = (destino && inspVisitas.indexOf(destino) >= 0 ? destino
+    : inspVisitas.reduce((m, n) => (m == null || delDia(n).total < delDia(m).total ? n : m), null)) || '';
 
   // Clave del caso para «abierta», el inspector elegido y el expediente.
   const claveIns = f => claveCasoInspeccion(f) || String(f._idx);
@@ -421,6 +462,7 @@ function AgendaSemana({ usuario }) {
     const motivo = cerrado || (inspVisitas.indexOf(n) < 0 ? nombrePila(n) + ' no recibe visitas de la agenda (⚙ Reglas).' : '');
     if (motivo) { avisar(motivo); return; }
     setBorrador(b => borradorAgregar(b, { tipo: 'visita', fila: v.fila, radicado: v.radicado, inspector: n, fecha: dia.fecha }));
+    setDestino(n);
   }
 
   // Lo que se despliega al programar una inspección en el día elegido:
@@ -497,8 +539,8 @@ function AgendaSemana({ usuario }) {
     const abiertaEsta = abierta === k;
     return (
       <div key={'i' + k} className="as-fila">
-        <span className="as-f-dir">{_asDir(b.f)}</span>
-        <span className="as-f-bar">{[barrio, com].filter(Boolean).join(' · ')}</span>
+        {_asCeldaDir(_asDir(b.f), b.f['RADICADO'] || '')}
+        <span className="as-f-bar">{[_asBarrio(barrio), com].filter(Boolean).join(' · ')}</span>
         <span className="as-f-urg">
           {b.fecha ? 'decretada el ' + b.fecha : (exp ? 'Exp. ' + exp : '')}
           {diaZona >= 0 && (
@@ -507,7 +549,7 @@ function AgendaSemana({ usuario }) {
             </button></>
           )}
         </span>
-        <span className="as-f-rad">{b.f['RADICADO'] || ''}</span>
+        <span className="as-f-dias"></span>
         <span className="as-f-acc">
           {!abiertaEsta && <button type="button" className="as-btn-t" onClick={() => setAbierta(k)}>{etiqueta || 'Elegir hora'}</button>}
         </span>
@@ -531,24 +573,27 @@ function AgendaSemana({ usuario }) {
     } : {};
     return (
       <div key={'v' + v.fila} className="as-fila" {...arr}>
-        <span className="as-f-dir">{direccionVisible(v.direccion || '') || 'Sin dirección'}</span>
-        <span className="as-f-bar">{[v.barrio || 'Sin barrio', com ? etiquetaComuna(com) : ''].filter(Boolean).join(' · ')}</span>
-        <span className="as-f-urg">{nivelPrioridad(v.prioridad) && <b>{m.nivel}</b>}{nivelPrioridad(v.prioridad) && m.texto ? ' · ' : ''}{m.texto}</span>
-        <span className="as-f-rad">{v.radicado}</span>
+        {_asCeldaDir(direccionVisible(v.direccion || '') || 'Sin dirección', v.radicado)}
+        <span className="as-f-bar">{[_asBarrio(v.barrio) || 'Sin barrio', com ? etiquetaComuna(com) : ''].filter(Boolean).join(' · ')}</span>
+        {/* La urgencia es la prioridad y su plazo (v3); la antigüedad va aparte. */}
+        <span className="as-f-urg">
+          <b className={nivelPrioridad(v.prioridad) ? 'as-niv' : 'as-niv as-niv-sin'}>{nivelPrioridad(v.prioridad) ? m.nivel : 'Sin prioridad'}</b>
+          {m.vencida && <span className="as-venc"> · {m.texto}</span>}
+        </span>
+        <span className="as-f-dias" title={v.fechaRad ? 'Radicada el ' + v.fechaRad : undefined}>
+          {typeof v.dias === 'number' ? v.dias + (v.dias === 1 ? ' día' : ' días') : ''}
+        </span>
         <span className="as-f-acc">
-          {!abiertaI && inspVisitas.map(n => {
-            // Día cerrado: apagado, y al tocarlo dice por qué (en el celular no hay title).
-            const motivo = cerrado;
-            return (
-              <button key={n} type="button" className="as-mas" style={{ '--c': colorDe(n) }}
-                aria-disabled={motivo ? 'true' : undefined}
-                aria-label={motivo ? 'No se puede agregar al día de ' + nombrePila(n) + ': ' + motivo : 'Agregar al día de ' + nombrePila(n)}
-                title={motivo || 'Agregar al día de ' + nombrePila(n)}
-                onClick={() => (motivo ? avisar(motivo) : agregarVisita(v, n))}>
-                <i aria-hidden="true"></i>{inicialesInsp(n)}
-              </button>
-            );
-          })}
+          {/* Un solo botón: va a quien está en «Agregar a» (o su bloque en «El día»). */}
+          {!abiertaI && destinoEf && (
+            <button type="button" className="as-mas" style={{ '--c': colorDe(destinoEf) }}
+              aria-disabled={cerrado ? 'true' : undefined}
+              aria-label={cerrado ? 'No se puede agregar: ' + cerrado : 'Agregar al día de ' + nombrePila(destinoEf)}
+              title={cerrado || 'Agregar al día de ' + nombrePila(destinoEf)}
+              onClick={() => (cerrado ? avisar(cerrado) : agregarVisita(v, destinoEf))}>
+              <i aria-hidden="true"></i>+ {nombrePila(destinoEf)}
+            </button>
+          )}
           {kI && !abiertaI && (
             <button type="button" className="as-btn-t" onClick={() => setAbierta(kI)}>Inspección</button>
           )}
@@ -584,10 +629,10 @@ function AgendaSemana({ usuario }) {
     const barrio = String(c.ultima['BARRIO/VEREDA'] || c.ultima['BARRIO'] || '').trim();
     return (
       <div key={'r' + c.clave} className="as-fila">
-        <span className="as-f-dir">{_asDir(c.ultima)}</span>
-        <span className="as-f-bar">{barrio}</span>
+        {_asCeldaDir(_asDir(c.ultima), c.radicado)}
+        <span className="as-f-bar">{_asBarrio(barrio)}</span>
         <span className="as-f-urg">{textoEst}{quien ? ' · ' + nombrePila(quien) : ''}</span>
-        <span className="as-f-rad">{c.radicado}</span>
+        <span className="as-f-dias"></span>
         <span className="as-f-acc"></span>
         {plan.motivo && <p className="as-motivo as-prog">{plan.motivo}</p>}
       </div>
@@ -714,7 +759,8 @@ function AgendaSemana({ usuario }) {
       ocupados[n] = { n: c.total || 0, barrios: (c.items || []).map(it => String(it.f['BARRIO/VEREDA'] || it.f['BARRIO'] || '')) };
     });
     const elegibles = inspVisitas.filter(n => !choqueZonaDia(datosEf, n, dia.date));
-    const nuevos = proponerDiaAgenda(visitasLista, ocupados, elegibles, meta);
+    // Mismo orden que la lista: las vencidas primero (gruposUrgenciaAgenda).
+    const nuevos = proponerDiaAgenda(visitasUrg, ocupados, elegibles, meta);
     if (!nuevos.length) {
       setAvisoOk(visitasLista.length ? 'Los visitadores ya tienen su meta de este día.' : 'No quedan visitas por agendar en esta zona.');
       return;
@@ -863,13 +909,16 @@ function AgendaSemana({ usuario }) {
   // ── La lista de visitas: filtro de comuna (zonas de varias) y orden ──
   const comunasZona = COMUNAS_ZONA_EQUIPO[dia.zona] || [];
   const visitasLista = com ? pa.visitas.filter(v => claveComunaAgenda(v.comuna) === com) : pa.visitas;
+  // «Más urgente» (v3): primero las vencidas, después por antigüedad.
+  const gruposUrg = gruposUrgenciaAgenda(visitasLista);
+  const visitasUrg = gruposUrg.vencidas.concat(gruposUrg.resto);
   const conDragDia = it => (sePuedeArrastrar(it)
     ? e => { arrastre.current = { it }; try { e.dataTransfer.effectAllowed = 'move'; } catch (er) { /* sin dataTransfer */ } }
     : null);
   const finArrastre = () => { arrastre.current = null; setDropCelda(null); setDropIns(null); };
   const cabeceraCols = (
     <div className="as-cols" aria-hidden="true">
-      <span>Dirección</span><span>Barrio</span><span>Urgencia</span><span>Radicado</span><span>Agregar al día de</span>
+      <span>Dirección</span><span>Barrio</span><span>Prioridad</span><span>Antigüedad</span><span></span>
     </div>
   );
 
@@ -890,6 +939,13 @@ function AgendaSemana({ usuario }) {
           )}
         </div>
         <div className="as-cab-der">
+          {/* La semana con sus visitas por día ya vive en Inicio (v3): un puente,
+              no una copia. Inicio abre en esta misma semana. */}
+          {onNavegar && (
+            <button type="button" className="vc-btn as-ver-inicio" aria-label="Ver la semana en Inicio" onClick={verEnInicio}>
+              <Icon.Home size={14} /><span className="as-lbl">Ver la semana en Inicio</span>
+            </button>
+          )}
           {esAdmin && (
             <button type="button" className="vc-btn as-reglas" aria-label="Reglas" aria-expanded={reglasAbiertas}
               onClick={() => setReglasAbiertas(v => !v)}>
@@ -914,18 +970,24 @@ function AgendaSemana({ usuario }) {
           Con cupo: cifra grande y cuadros vacíos; sin cupo: apagado. */}
       <div className="as-tira" role="group" aria-label="Día de la semana">
         {semana.dias.map((d, k) => {
+          // v3: el día pasado dice lo que se hizo; el que viene, «usados de meta»
+          // con medidor y, si se pasa, «+N sobre la meta». Las inspecciones, contadas.
           const cu = cuposDiaEquipo(semana, k, inspVisitas, meta);
-          const usadosVis = Math.min(cu.usados, cu.total);
           const esHoy = d.date.getTime() === hoy0.getTime();
-          const horasInsp = semana.filas.reduce((acc, fi) => acc.concat((fi.dias[k].items || []).filter(it => it.tipo === 'insp').map(it => it.hora)), [])
-            .sort((a, b) => horaAudienciasMin(a) - horaAudienciasMin(b)).map(horaCortaInspeccion);
+          const yaPaso = d.habil && d.date < hoy0;
+          const rs = yaPaso ? resumenDiaEquipo(semana, k) : null;
+          const nInsp = semana.filas.reduce((acc, fi) => acc + ((fi.dias[k].items || []).filter(it => it.tipo === 'insp').length), 0);
           const txt = !d.habil ? 'Festivo'
-            : cu.libres > 0 ? <><b>{cu.libres}</b> {cu.libres === 1 ? 'cupo libre' : 'cupos libres'}</>
-            : cu.libres === 0 ? 'Sin cupos' : 'Sin cupos · ' + cu.usados + ' de ' + cu.total;
+            : yaPaso ? (rs.total
+              ? <><b>{rs.hechas}</b> {rs.hechas === 1 ? 'hecha' : 'hechas'}{rs.sinTerminar ? <span className="as-sin-term"> · {rs.sinTerminar} sin terminar</span> : null}</>
+              : 'Sin visitas')
+            : cu.total > 0
+              ? <><b>{cu.usados}</b> de {cu.total}{cu.libres < 0 ? <span className="as-sobre"> · +{-cu.libres} sobre la meta</span> : null}</>
+              : <><b>{cu.usados}</b> {cu.usados === 1 ? 'visita' : 'visitas'}</>;
           const clave = 'd' + k;
           return (
             <button key={d.fecha} type="button"
-              className={'as-dia' + (d.habil && cu.libres > 0 ? ' con-cupo' : ' lleno') + (dropCelda === clave ? ' as-drop' : '')}
+              className={'as-dia' + (yaPaso ? ' as-pasado' : d.habil && cu.libres > 0 ? ' con-cupo' : ' lleno') + (dropCelda === clave ? ' as-drop' : '')}
               aria-pressed={k === diaSel} aria-current={esHoy ? 'date' : undefined} disabled={!d.habil} onClick={() => setDiaSel(k)}
               onDragOver={conPuntero ? e => { const a = arrastre.current; if (a && a.it && d.habil && d.date >= hoy0) { e.preventDefault(); if (dropCelda !== clave) setDropCelda(clave); } } : undefined}
               onDragLeave={conPuntero ? e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropCelda(x => (x === clave ? null : x)); } : undefined}
@@ -934,13 +996,13 @@ function AgendaSemana({ usuario }) {
               <span className="as-dia-zona">{d.habil ? textoZonaDia(d.zona, false) : ''}</span>
               <span className="as-cupos">
                 <span className="as-cupos-txt">{txt}</span>
-                {d.habil && cu.total > 0 && (
-                  <span className="as-cuadros" aria-hidden="true">
-                    {Array.from({ length: cu.total }, (_, j) => <i key={j} className={j < usadosVis ? 'on' : undefined}></i>)}
+                {d.habil && !yaPaso && cu.total > 0 && (
+                  <span className="as-medidor" aria-hidden="true">
+                    {Array.from({ length: cu.total }, (_, j) => <i key={j} className={j < cu.usados ? (cu.libres < 0 ? 'on sobre' : 'on') : undefined}></i>)}
                   </span>
                 )}
               </span>
-              {horasInsp.length > 0 && <span className="as-dia-insp">Inspección {horasInsp.join(' · ')}</span>}
+              {nInsp > 0 && <span className="as-dia-insp">{nInsp === 1 ? '1 inspección al lugar' : nInsp + ' inspecciones al lugar'}</span>}
             </button>
           );
         })}
@@ -951,7 +1013,39 @@ function AgendaSemana({ usuario }) {
           <div className="as-lista-cab">
             <h2 id="as-pa-t">Por agendar</h2>
             <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}{tituloZona ? ' · ' + tituloZona : ''}</p>
+            {/* A quién van los «+»: un solo botón por fila (v3). También se elige
+                tocando el nombre del visitador en «El día». */}
+            {esAdmin && !cerrado && inspVisitas.length > 1 && (
+              <div className="as-seg as-destino" role="group" aria-label="Agregar a">
+                <span className="as-seg-lbl" aria-hidden="true">Agregar a</span>
+                {inspVisitas.map(n => (
+                  <button key={n} type="button" aria-pressed={destinoEf === n} onClick={() => setDestino(n)}>{nombrePila(n)}</button>
+                ))}
+              </div>
+            )}
           </div>
+          {/* Día pasado o festivo: aquí no se agenda; «El día» muestra lo que hubo. */}
+          {cerrado ? (
+            <div className="as-cerrado">
+              <p><b>{pasado ? (AS_DIAS[dia.date.getDay()] + ' ' + dia.date.getDate() + ' ya pasó.') : 'Es festivo.'}</b>
+                {pasado ? ' En «El día» ves lo que se hizo.' : ''} Para agendar, elige hoy o un día que viene.</p>
+              {esEstaSemana && (
+                <button type="button" className="as-btn-t" onClick={() => setDiaSel(_asDiaInicial(null))}>Ir a hoy</button>
+              )}
+            </div>
+          ) : (<>
+          {diaLleno && esAdmin && (
+            <div className="as-lleno" role="status">
+              <span><b>{esHoyDia ? 'Hoy ya está completo' : 'Este día ya está completo'}</b> · {cuDia.usados} de {cuDia.total}{cuDia.libres < 0 ? ', ' + (-cuDia.libres) + ' sobre la meta' : ''}</span>
+              {sigConCupo >= 0 ? (
+                <button type="button" className="as-btn-t" onClick={() => setDiaSel(sigConCupo)}>
+                  Planear el {AS_DIAS[semana.dias[sigConCupo].date.getDay()].toLowerCase()} {semana.dias[sigConCupo].date.getDate()}
+                </button>
+              ) : (
+                <button type="button" className="as-btn-t" onClick={() => moverSemana(7)}>Planear la semana siguiente</button>
+              )}
+            </div>
+          )}
           <div className="as-filtros">
             <div className="as-buscar">
               <Icon.Search size={16} />
@@ -1015,8 +1109,18 @@ function AgendaSemana({ usuario }) {
                     {!visitasLista.length ? (
                       <p className="as-vacio">{pa.visitas.length ? 'Ninguna visita en esa comuna.' : 'No quedan visitas por agendar en esta zona. Busca otro caso arriba si hace falta.'}</p>
                     ) : orden === 'urg' ? (
-                      <>{cabeceraCols}{visitasLista.map(v => filaVisita(v, null))}</>
-                    ) : agruparPorBarrioAgenda(visitasLista).map(g => {
+                      <>
+                        {cabeceraCols}
+                        {gruposUrg.vencidas.length > 0 && (
+                          <h4 className="as-barrio">Vencidas <span>{gruposUrg.vencidas.length} · pasaron el plazo de su prioridad</span></h4>
+                        )}
+                        {gruposUrg.vencidas.map(v => filaVisita(v, null))}
+                        {gruposUrg.resto.length > 0 && (
+                          <h4 className="as-barrio">Por antigüedad <span>{gruposUrg.resto.length} · de la más antigua a la más nueva</span></h4>
+                        )}
+                        {gruposUrg.resto.map(v => filaVisita(v, null))}
+                      </>
+                    ) : agruparPorBarrioAgenda(visitasUrg).map(g => {
                       const van = inspVisitas.filter(n => (delDia(n).items || []).some(it =>
                         String(it.f['BARRIO/VEREDA'] || it.f['BARRIO'] || '').trim().toUpperCase() === g.barrio.toUpperCase())).map(nombrePila);
                       return (
@@ -1037,6 +1141,7 @@ function AgendaSemana({ usuario }) {
               </>
             )}
           </div>
+          </>)}
         </section>
 
         {/* El día: un bloque por inspector que se va llenando; al pie, el
@@ -1044,8 +1149,8 @@ function AgendaSemana({ usuario }) {
         <aside className={'as-dia-panel' + (gestionDe != null ? ' as-con-gp' : '')} aria-labelledby="as-dia-t" ref={panelRef}>
           <div className="as-dia-cab">
             <h2 id="as-dia-t">El día</h2>
-            <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}</p>
-            {esAdmin && (
+            <p>{AS_DIAS[dia.date.getDay()]} {dia.date.getDate()}{pasado ? ' · ya pasó' : ''}</p>
+            {esAdmin && !cerrado && (
               <button type="button" className="as-btn-t" onClick={proponer}
                 title="Llena lo que falta de la meta con lo más urgente, por barrio">Proponer</button>
             )}
@@ -1059,27 +1164,49 @@ function AgendaSemana({ usuario }) {
               const recibe = inspVisitas.indexOf(n) >= 0;
               const nuevas = (c.items || []).filter(it => it.nueva).length;
               const pasa = recibe && c.total > meta;
+              // Destino de los «+» de la lista (v3): se elige tocando el nombre.
+              const elegible = esAdmin && recibe && !cerrado && inspVisitas.length > 1;
+              const esDestino = esAdmin && recibe && !cerrado && destinoEf === n;
+              // Las visitas numeradas en el orden de la ruta (ordenarVisitasDia,
+              // el mismo de la Semana de Inicio); las inspecciones, con su hora.
+              const ordenRuta = ordenarVisitasDia((c.items || []).map(it => it.f), dia.fecha);
+              const items = (c.items || []).slice().sort((a, b) => ordenRuta.indexOf(a.f) - ordenRuta.indexOf(b.f));
+              let nVis = 0;
+              const cuenta = pasado
+                ? <><b>{c.hechas || 0}</b> de {c.total} {c.total === 1 ? 'hecha' : 'hechas'}</>
+                : <><b>{c.total}</b>{recibe ? ' de ' + meta : ''}{pasa ? ' · pasa la meta' : nuevas ? ' · ' + nuevas + (nuevas === 1 ? ' nueva' : ' nuevas') : ''}</>;
               return (
-                <div key={n} className={'as-ins' + (dropIns === n ? ' as-drop' : '')} style={{ '--c': colorDe(n) }}
+                <div key={n} className={'as-ins' + (dropIns === n ? ' as-drop' : '') + (esDestino ? ' as-ins-destino' : '')} style={{ '--c': colorDe(n) }}
                   onDragOver={conPuntero ? e => { if (arrastre.current && !cerrado) { e.preventDefault(); if (dropIns !== n) setDropIns(n); } } : undefined}
                   onDragLeave={conPuntero ? e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropIns(x => (x === n ? null : x)); } : undefined}
                   onDrop={conPuntero ? e => { e.preventDefault(); soltarEnVisitador(n); } : undefined}>
                   <div className="as-ins-cab">
-                    <span className="as-ini" aria-hidden="true">{inicialesInsp(n)}</span>
-                    <b title={n}>{nombrePila(n)}</b>
-                    <span className={'as-cuenta' + (pasa ? ' as-pasa' : '')}>
-                      <b>{c.total}</b>{recibe ? ' de ' + meta : ''}{pasa ? ' · pasa la meta' : nuevas ? ' · ' + nuevas + (nuevas === 1 ? ' nueva' : ' nuevas') : ''}
-                    </span>
+                    {elegible ? (
+                      <button type="button" className="as-ins-elegir" aria-pressed={esDestino}
+                        title={esDestino ? 'Los casos de la lista se agregan aquí' : 'Agregar aquí los casos de la lista'}
+                        onClick={() => setDestino(n)}>
+                        <span className="as-ini" aria-hidden="true">{inicialesInsp(n)}</span>
+                        <b title={n}>{nombrePila(n)}</b>
+                      </button>
+                    ) : (
+                      <>
+                        <span className="as-ini" aria-hidden="true">{inicialesInsp(n)}</span>
+                        <b title={n}>{nombrePila(n)}</b>
+                      </>
+                    )}
+                    {esDestino && inspVisitas.length > 1 && <span className="as-dest-tag">Agregando aquí</span>}
+                    <span className={'as-cuenta' + (pasa && !pasado ? ' as-pasa' : '')}>{cuenta}</span>
                   </div>
-                  {(c.items || []).length ? c.items.map((it, j) => (
+                  {items.length ? items.map((it, j) => (
                     <AsItem key={it.f && it.f._idx != null ? it.f._idx : 'i' + j} it={it} detallado={true} resaltada={resaltada}
+                      num={it.tipo === 'insp' ? null : ++nVis}
                       onQuitar={it.nueva ? () => quitar(_asFilaBorrador(it.f)) : null}
                       expediente={it.nueva && esNuevaConExp(it) ? expedienteBorrador(_asFilaBorrador(it.f)) : null}
                       onExpediente={it.nueva && esNuevaConExp(it) ? v => cambiarExpediente(_asFilaBorrador(it.f), v) : null}
                       abierto={gestionDe != null && it.f && gestionDe === it.f._idx}
                       onTocar={gestionable(it) ? () => setGestionDe(it.f._idx) : null}
                       onArrastrar={conDragDia(it)} onFinArrastre={finArrastre} />
-                  )) : <p className="as-libre">Libre</p>}
+                  )) : <p className="as-libre">{pasado ? 'Sin visitas' : 'Libre'}</p>}
                 </div>
               );
             })}
@@ -1155,15 +1282,18 @@ function AgendaSemana({ usuario }) {
 // onAbrirHora (inspección que se puede reprogramar): la hora es un botón que
 // despliega sus horas libres (horas) dentro del item; onHora elige una.
 function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre, expediente, onExpediente,
-  abierto, onTocar }) {
+  abierto, onTocar, num }) {
   const f = it.f;
   const dir = _asDir(f);
   const sub = _asSub(it);
   const hora = it.tipo === 'insp' ? horaCortaInspeccion(it.hora) : '';
-  const clase = 'as-it as-it-' + it.tipo + (it.nueva ? ' as-it-nueva' : '') +
+  // Estado con el código de la Semana de Inicio (v3): barra de color y palabra.
+  const estado = it.estado || estadoItemAgenda(it);
+  const palabra = { nueva: 'Nueva', asignada: 'Asignada', iniciada: 'Iniciada', completada: 'Completada' }[estado];
+  const clase = 'as-it as-it-' + it.tipo + ' as-it-e-' + estado + (it.nueva ? ' as-it-nueva' : '') +
     (resaltada != null && f && f._idx === resaltada ? ' as-it-resaltada' : '');
   const title = dir + ' — ' + sub;
-  const label = (hora ? hora + ', ' : '') + sub + ', ' + dir;
+  const label = (hora ? hora + ', ' : (num ? 'Parada ' + num + ', ' : '')) + palabra + ', ' + sub + ', ' + dir;
   const abrir = () => { if (onTocar) onTocar(); else if (window.abrirVisitaDetail) window.abrirVisitaDetail(f); };
   const tecla = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } };
   // Arrastrable (escritorio) solo si el tablero lo permite (sePuedeArrastrar).
@@ -1181,7 +1311,7 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
       aria-label={label + (onTocar ? ' — gestionar' : '')} aria-expanded={onTocar ? !!abierto : undefined}
       data-as-it={f && f._idx != null ? String(f._idx) : undefined}
       onClick={abrir} onKeyDown={tecla} {...arr}>
-      <span className="as-it-h">{hora}</span>
+      <span className="as-it-h">{hora || (num ? num : '')}</span>
       <span className="as-it-d">{dir}</span>
       {onQuitar ? (
         <button type="button" className="as-quitar" aria-label={'Quitar ' + dir + ' del borrador'}
@@ -1190,8 +1320,7 @@ function AsItem({ it, detallado, resaltada, onQuitar, onArrastrar, onFinArrastre
         </button>
       ) : <span></span>}
       <span className="as-it-s">
-        {it.nueva && <b className="as-nueva">Nueva</b>}
-        {it.nueva ? ' · ' : ''}{sub}
+        <b className="as-estado">{palabra}</b> · {sub}
       </span>
       {/* Visita nueva: el expediente del caso lo conoce quien asigna (opcional, solo números). */}
       {onExpediente && (

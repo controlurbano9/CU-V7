@@ -5963,7 +5963,7 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-grupo span, .as-barrio span { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); }
 .as-barrio { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 12px 16px 4px; border-top: 1px solid var(--line);
   font: 600 var(--fs-2) var(--font-cond); color: var(--ink); }
-.as-cols, .as-fila { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .85fr) minmax(0, 1.6fr) 104px minmax(132px, auto);
+.as-cols, .as-fila { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .9fr) minmax(0, 1.1fr) 76px minmax(124px, auto);
   gap: 0 14px; align-items: center; padding: 0 16px; }
 .as-cols { font-size: var(--fs-1); color: var(--ink-4); padding-bottom: 4px; }
 .as-cols span:last-child { text-align: right; }
@@ -6148,13 +6148,65 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
 .as-dlg-otros { margin: 12px 0 0; font-size: var(--fs-1); color: var(--ink-3); }
 .as-dlg-acc { display: flex; justify-content: flex-end; margin-top: 18px; }
 
+/* ── Agenda v3 (2026-11-26, decisiones del usuario; maqueta
+   propuesta-agenda-audiencias-v3.html) ──
+   Tira: el día pasado dice lo hecho; el que viene, «usados de meta» con un
+   medidor (reemplaza los cuadros). Lista: la dirección con el caso debajo,
+   la prioridad y la antigüedad aparte, un solo «+ Nombre» por fila. El día:
+   destino de los «+», estado de cada tarjeta con el código de la Semana. */
+.as-medidor { display: flex; gap: 2px; flex: 1 1 48px; max-width: 96px; margin-left: auto; }
+.as-medidor i { flex: 1; height: 6px; border-radius: 2px; background: var(--surface-3); }
+.as-medidor i.on { background: var(--ink); }
+.as-medidor i.sobre { background: var(--amber); }
+.as-sobre { font: 600 var(--fs-1) var(--font-sans); color: var(--amber); }
+.as-sin-term { font: 500 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.as-dia.as-pasado:not([aria-pressed="true"]) { background: var(--carril); }
+.as-dia.as-pasado .as-dia-1 b, .as-dia.as-pasado .as-cupos-txt { color: var(--ink-3); }
+.as-f-dir { display: flex; flex-direction: column; min-width: 0; white-space: normal; overflow: visible; }
+.as-f-dir-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-f-sub { font: 400 var(--fs-1) var(--font-sans); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-f-dias { font-size: var(--fs-1); color: var(--ink-3); text-align: right; white-space: nowrap; }
+/* Barrio y prioridad envuelven a dos renglones en vez de cortarse («decretada el …»). */
+.as-fila .as-f-bar, .as-fila .as-f-urg { white-space: normal; line-height: 1.3; padding: 6px 0; }
+.as-niv { color: var(--ink); font-weight: 600; }
+.as-niv-sin { color: var(--ink-4); font-weight: 500; }
+.as-venc { color: var(--red); }
+.as-mas { min-width: 112px; padding: 0 12px; }
+.as-destino { margin-left: auto; align-self: center; }
+.as-seg-lbl { align-self: center; padding: 0 6px 0 4px; color: var(--ink-3); }
+.as-lleno { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 12px 16px 0; padding: 8px 8px 8px 12px;
+  border-radius: var(--r-card); background: var(--carril); font-size: var(--fs-1); color: var(--ink-2); }
+.as-lleno b { color: var(--ink); }
+.as-lleno .as-btn-t { margin-left: auto; }
+.as-cerrado { padding: 18px 16px 22px; font-size: var(--fs-2); color: var(--ink-2); }
+.as-cerrado p { margin: 0 0 12px; max-width: 60ch; }
+.as-cerrado b { color: var(--ink); }
+.as-ins-elegir { display: inline-flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; padding: 0 6px 0 0;
+  border: 0; background: none; border-radius: var(--r-ctl); font: inherit; color: inherit; cursor: pointer; }
+.as-ins-elegir b { font-weight: 600; font-size: var(--fs-2); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-ins-elegir:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.as-ins-destino { box-shadow: inset 4px 0 0 var(--valla); }
+/* Con «Agregando aquí» y la cuenta, el renglón envuelve: el nombre no se corta. */
+.as-ins-destino .as-ins-cab { flex-wrap: wrap; row-gap: 4px; }
+.as-ins-elegir { flex: none; }
+.as-ins-elegir b { overflow: visible; }
+.as-dest-tag { padding: 1px 6px; border-radius: 4px; background: var(--valla); color: var(--valla-ink);
+  font: 700 12px/1.5 var(--font-sans); white-space: nowrap; }
+.as-estado { color: var(--ink); font-weight: 600; }
+.as-it-visita .as-it-h { display: block; min-width: 14px; text-align: center; font: 600 var(--fs-1) var(--font-sans); color: var(--ink-3); }
+.as-it-visita .as-it-d { grid-column: 2 / 3; }
+.as-it-visita .as-it-s { grid-column: 2 / 4; }
+.as-it-e-asignada:not(.as-it-abierto):not(.as-it-resaltada) { box-shadow: inset 3px 0 0 var(--amber); }
+.as-it-e-iniciada:not(.as-it-abierto):not(.as-it-resaltada) { box-shadow: inset 3px 0 0 var(--info); }
+.as-it-e-completada:not(.as-it-abierto):not(.as-it-resaltada) { box-shadow: inset 3px 0 0 var(--green); }
+.as-it-e-completada { opacity: .62; }
+.as-it-e-nueva:not(.as-it-abierto):not(.as-it-resaltada) { background: var(--valla-bg); box-shadow: inset 3px 0 0 var(--ink); }
+
 /* 900–1439: renglones más compactos (sin radicado en su columna). */
 @media (min-width: 900px) and (max-width: 1439px) {
   .as-cuerpo { grid-template-columns: minmax(0, 1fr) 320px; }
-  .as-cols, .as-fila { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.4fr) minmax(124px, auto); }
-  .as-cols span:nth-child(4), .as-f-rad { display: none; }
+  .as-cols, .as-fila { grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, 1fr) 68px minmax(116px, auto); }
   .as-dia { padding: 10px 10px 12px; }
-  .as-cuadros i { width: 11px; height: 11px; }
 }
 /* <1280: «El día» arriba de la lista y a lo ancho, un bloque por inspector
    lado a lado; el borrador queda fijo abajo. */
@@ -6174,12 +6226,12 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-flecha { width: var(--tap); height: var(--tap); }
   .as-hoy { min-height: var(--tap); }
   .as-cab-der .vc-btn { min-height: var(--tap); min-width: var(--tap); justify-content: center; }
-  .as-reglas .as-lbl { display: none; }
+  .as-reglas .as-lbl, .as-ver-inicio .as-lbl { display: none; }
   .as-dia { padding: 8px 4px 10px; text-align: center; align-items: center; min-height: 64px; }
   .as-dia-1 { display: block; }
   .as-dia-1 b { display: block; font-size: var(--fs-2); }
   .as-hoy-tag { display: inline-block; margin-top: 2px; }
-  .as-dia-zona, .as-dia-insp, .as-cuadros { display: none; }
+  .as-dia-zona, .as-dia-insp, .as-cuadros, .as-medidor, .as-sobre, .as-sin-term { display: none; }
   .as-cupos { display: block; margin-top: 2px; }
   .as-cupos-txt { display: block; font-size: var(--fs-1); line-height: 1.2; white-space: normal; }
   .as-cupos-txt b { display: block; margin: 0; font-size: var(--fs-3); }
@@ -6191,7 +6243,11 @@ body.abriendo-visita .mv-sig:not(.abriendo) { opacity: .5; pointer-events: none;
   .as-f-bar { grid-column: 1; grid-row: 2; }
   .as-f-urg { grid-column: 1; grid-row: 3; white-space: normal; }
   .as-f-rad { display: none; }
-  .as-f-acc { grid-column: 2; grid-row: 2 / 4; flex-wrap: wrap; }
+  .as-f-dir-t { white-space: normal; }
+  .as-f-dias { grid-column: 1; grid-row: 4; text-align: left; }
+  .as-f-acc { grid-column: 2; grid-row: 2 / 5; flex-wrap: wrap; }
+  .as-destino { margin-left: 0; }
+  .as-lleno .as-btn-t { margin-left: 0; }
   .as-buscar { max-width: none; flex-basis: 100%; }
   .as-buscar input, .as-exp, .as-exp-it { height: var(--tap); }
   .as-buscar svg { top: 14px; }
